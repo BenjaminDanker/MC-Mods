@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "enderfight",
+  "version": "1.0.0",
+  "name": "Ender Fight",
+  "description": "Controls The End dimension lifecycle with automated resets, custom dragon breath, and portal interception.",
+  "authors": [
+    "BenjaminDanker"
+  ],
+  "contact": {
+    "homepage": "",
+    "sources": ""
+  },
+  "license": "MIT",
+  "icon": "",
+  "environment": "server",
+  "entrypoints": {
+    "main": [
+      "com.silver.enderfight.EnderFightMod"
+    ]
+  },
+  "mixins": [
+    "enderfight.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "fabric": "*",
+    "minecraft": ">=1.21",
+    "java": ">=21"
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "mappings": {
+    "com/silver/enderfight/mixin/EndPortalBlockMixin": {
+      "tick": "Lnet/minecraft/class_1297;method_5773()V"
+    },
+    "com/silver/enderfight/mixin/MinecraftServerAccessor": {
+      "saveProperties": "field_24372:Lnet/minecraft/class_5219;",
+      "session": "field_23784:Lnet/minecraft/class_32$class_5143;",
+      "workerExecutor": "field_17200:Ljava/util/concurrent/Executor;",
+      "worlds": "field_4589:Ljava/util/Map;"
+    },
+    "com/silver/enderfight/mixin/RandomSequencesStateAccessor": {
+      "seed": "field_44862:J"
+    },
+    "com/silver/enderfight/mixin/ServerChunkLoadingManagerAccessor": {
+      "generationContext": "field_51861:Lnet/minecraft/class_9312;",
+      "noiseConfig": "field_37278:Lnet/minecraft/class_7138;",
+      "structurePlacementCalculator": "field_40856:Lnet/minecraft/class_7869;"
+    },
+    "com/silver/enderfight/mixin/ServerWorldAccessor": {
+      "getSeed": "Lnet/minecraft/class_3218;method_8412()J"
+    },
+    "com/silver/enderfight/mixin/SimpleRegistryAccessor": {
+      "entryToRawId": "field_26683:Lit/unimi/dsi/fastutil/objects/Reference2IntMap;",
+      "frozen": "field_36463:Z",
+      "intrusiveValueToEntry": "field_40584:Ljava/util/Map;",
+      "method_45938": "method_45938(Ljava/lang/Object;Lnet/minecraft/class_6880$class_6883;)V",
+      "valueToEntry": "field_36461:Ljava/util/Map;"
+    }
+  },
+  "data": {
+    "named:intermediary": {
+      "com/silver/enderfight/mixin/EndPortalBlockMixin": {
+        "tick": "Lnet/minecraft/class_1297;method_5773()V"
+      },
+      "com/silver/enderfight/mixin/MinecraftServerAccessor": {
+        "saveProperties": "field_24372:Lnet/minecraft/class_5219;",
+        "session": "field_23784:Lnet/minecraft/class_32$class_5143;",
+        "workerExecutor": "field_17200:Ljava/util/concurrent/Executor;",
+        "worlds": "field_4589:Ljava/util/Map;"
+      },
+      "com/silver/enderfight/mixin/RandomSequencesStateAccessor": {
+        "seed": "field_44862:J"
+      },
+      "com/silver/enderfight/mixin/ServerChunkLoadingManagerAccessor": {
+        "generationContext": "field_51861:Lnet/minecraft/class_9312;",
+        "noiseConfig": "field_37278:Lnet/minecraft/class_7138;",
+        "structurePlacementCalculator": "field_40856:Lnet/minecraft/class_7869;"
+      },
+      "com/silver/enderfight/mixin/ServerWorldAccessor": {
+        "getSeed": "Lnet/minecraft/class_3218;method_8412()J"
+      },
+      "com/silver/enderfight/mixin/SimpleRegistryAccessor": {
+        "entryToRawId": "field_26683:Lit/unimi/dsi/fastutil/objects/Reference2IntMap;",
+        "frozen": "field_36463:Z",
+        "intrusiveValueToEntry": "field_40584:Ljava/util/Map;",
+        "method_45938": "method_45938(Ljava/lang/Object;Lnet/minecraft/class_6880$class_6883;)V",
+        "valueToEntry": "field_36461:Ljava/util/Map;"
+      }
+    }
+  }
+}

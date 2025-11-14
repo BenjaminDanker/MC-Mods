@@ -1,0 +1,20 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.silver.enderfight.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+  "EndPortalBlockMixin",
+  "MinecraftServerAccessor",
+  "NoiseChunkGeneratorMixin",
+  "RandomSequencesStateAccessor",
+  "ServerChunkLoadingManagerAccessor",
+  "ServerWorldAccessor",
+  "SimpleRegistryAccessor"
+  ],
+  "server": [],
+  "client": [],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

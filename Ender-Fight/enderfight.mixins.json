@@ -1,0 +1,22 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.silver.enderfight.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "EndGatewayBlockEntityInvoker",
+    "EndGatewayBlockMixin",
+    "EndPortalBlockMixin",
+    "MinecraftServerAccessor",
+    "RandomSequencesStateAccessor",
+    "ServerChunkLoadingManagerAccessor",
+    "ServerWorldAccessor",
+    "SimpleRegistryAccessor"
+  ],
+  "server": [],
+  "client": [],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "refmap": "enderfight-refmap.json"
+}
