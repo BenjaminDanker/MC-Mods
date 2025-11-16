@@ -243,6 +243,12 @@ public final class PortalInterceptor {
      */
     public static void handlePortalTeleport(ServerPlayerEntity player, RegistryKey<World> from, RegistryKey<World> to, EndControlConfig config) {
         EnderFightMod.LOGGER.debug("Teleport event: {} moving from {} to {}", player.getName().getString(), from.getValue(), to.getValue());
+
+        boolean redirectEligible = shouldRedirect(from, to);
+        if (!redirectEligible) {
+            EnderFightMod.LOGGER.debug("Teleport not eligible for redirect ({} -> {})", from.getValue(), to.getValue());
+            return;
+        }
         
         // Check if this is a MCServerPortals handoff - if so, skip interception
         try {
@@ -265,13 +271,9 @@ public final class PortalInterceptor {
         } catch (Exception e) {
             EnderFightMod.LOGGER.debug("Could not check MCServerPortals pending/queued state: {}", e.getMessage());
         }
-        
+
         if (consumeRedirectSuppression(player)) {
             EnderFightMod.LOGGER.debug("Skipping portal redirect for {} due to suppression", player.getName().getString());
-            return;
-        }
-        if (!shouldRedirect(from, to)) {
-            EnderFightMod.LOGGER.debug("Teleport not eligible for redirect ({} -> {})", from.getValue(), to.getValue());
             return;
         }
 

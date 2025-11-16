@@ -11,7 +11,8 @@
     "RandomSequencesStateAccessor",
     "ServerChunkLoadingManagerAccessor",
     "ServerWorldAccessor",
-    "SimpleRegistryAccessor"
+    "SimpleRegistryAccessor",
+    "GlassBottleItemMixin"
   ],
   "server": [],
   "client": [],

@@ -4,6 +4,7 @@ import com.google.common.collect.ImmutableList;
 import com.silver.enderfight.EnderFightMod;
 import com.silver.enderfight.config.ConfigManager;
 import com.silver.enderfight.config.EndControlConfig;
+import com.silver.enderfight.dragon.DragonBreathModifier;
 import com.silver.enderfight.duck.NoiseChunkGeneratorExtension;
 import com.silver.enderfight.duck.ServerWorldDuck;
 import com.silver.enderfight.mixin.MinecraftServerAccessor;
@@ -77,6 +78,7 @@ import java.util.concurrent.ThreadLocalRandom;
  * reusable no matter how often the server restarts.
  */
 public class EndResetManager {
+    private static final int WALL_CLOCK_CHECK_INTERVAL_TICKS = 20;
     private static final DateTimeFormatter DIMENSION_KEY_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmmss").withZone(ZoneOffset.UTC);
     private static final String DRAGON_BOSS_BAR_FIELD_NAME = "field_13119"; // obfuscated getter for EnderDragonFight#bossBar
 
@@ -88,6 +90,9 @@ public class EndResetManager {
     private long countdownTicksRemaining;
     private boolean warningSent;
     private RegistryKey<World> activeEndWorldKey = World.END;
+    private int wallClockCheckAccumulator;
+    private boolean resetIntervalElapsed;
+    private boolean warningWindowExceeded;
 
     private static final BlockPos END_PLATFORM_BASE = new BlockPos(100, 49, 0);
     private static final Vec3d END_PLATFORM_SPAWN = Vec3d.ofCenter(END_PLATFORM_BASE).add(0.0, 1.0, 0.0);
@@ -125,24 +130,36 @@ public class EndResetManager {
 
         cachedConfig = configManager.getConfig();
 
+        updateResetScheduleFlags();
+
         if (!countdownActive) {
-            double intervalHours = cachedConfig.resetIntervalHours();
-            long intervalMillis = (long) Math.max(1D, intervalHours * 3_600_000D);
-            long now = Instant.now().toEpochMilli();
-            long lastReset = persistentState.getLastResetEpochMillis();
-            if (lastReset <= 0 || now - lastReset >= intervalMillis) {
+            if (resetIntervalElapsed) {
                 beginCountdown();
             }
-        } else {
-            processCountdown(server);
+            return;
         }
+
+        if (warningWindowExceeded && countdownTicksRemaining > 0) {
+            EnderFightMod.LOGGER.info("Reset overdue while server was idle; fast-forwarding countdown ({} ticks remaining)", countdownTicksRemaining);
+            countdownTicksRemaining = 0;
+        }
+
+        processCountdown(server);
     }
 
     private void beginCountdown() {
         this.countdownActive = true;
         this.warningSent = false;
-        this.countdownTicksRemaining = cachedConfig.warningDelayTicks();
-        EnderFightMod.LOGGER.info("End reset countdown started; warning window {} ticks", countdownTicksRemaining);
+        long warningTicks = cachedConfig.warningDelayTicks();
+        this.countdownTicksRemaining = warningTicks;
+        double intervalHours = cachedConfig.resetIntervalHours();
+        int warningSeconds = cachedConfig.resetWarningSeconds();
+        EnderFightMod.LOGGER.info(
+            "End reset countdown started (interval={}h); warning window {} ticks ({}s)",
+            intervalHours,
+            warningTicks,
+            warningSeconds
+        );
     }
 
     private void processCountdown(MinecraftServer server) {
@@ -160,6 +177,7 @@ public class EndResetManager {
         if (success) {
             countdownActive = false;
             warningSent = false;
+            onResetCompleted();
         } else {
             EnderFightMod.LOGGER.warn("Scheduled End reset failed; countdown cancelled (check logs)");
             countdownActive = false;
@@ -239,8 +257,44 @@ public class EndResetManager {
         if (success) {
             countdownActive = false;
             warningSent = false;
+            onResetCompleted();
         }
         return success;
+    }
+
+    private void updateResetScheduleFlags() {
+        wallClockCheckAccumulator++;
+        if (wallClockCheckAccumulator < WALL_CLOCK_CHECK_INTERVAL_TICKS) {
+            return;
+        }
+        wallClockCheckAccumulator = 0;
+
+        if (cachedConfig == null) {
+            cachedConfig = configManager.getConfig();
+        }
+
+        long lastReset = persistentState.getLastResetEpochMillis();
+        double intervalHours = cachedConfig.resetIntervalHours();
+        long intervalMillis = (long) Math.max(1D, intervalHours * 3_600_000D);
+        long warningTicks = Math.max(0L, (long) cachedConfig.warningDelayTicks());
+        long warningMillis = warningTicks * 50L;
+        long now = Instant.now().toEpochMilli();
+
+        if (lastReset <= 0L) {
+            resetIntervalElapsed = true;
+            warningWindowExceeded = false;
+            return;
+        }
+
+        long elapsed = now - lastReset;
+        resetIntervalElapsed = elapsed >= intervalMillis;
+        warningWindowExceeded = elapsed >= intervalMillis + warningMillis;
+    }
+
+    private void onResetCompleted() {
+        resetIntervalElapsed = false;
+        warningWindowExceeded = false;
+        wallClockCheckAccumulator = 0;
     }
 
     /**
@@ -353,15 +407,24 @@ public class EndResetManager {
         ServerPlayerEntity player = handler.player;
         RegistryKey<World> recordedKey = persistentState.getRecordedEndDimension(player.getUuid());
         if (recordedKey == null) {
+            EnderFightMod.LOGGER.debug("No offline End record for {}; skipping safeguard", player.getName().getString());
             return;
         }
+
+        EnderFightMod.LOGGER.info("Offline End record found for {}: recordedKey={} activeKey={}",
+            player.getName().getString(),
+            recordedKey.getValue(),
+            getActiveEndWorldKey().getValue());
 
     RegistryKey<World> activeKey = getActiveEndWorldKey();
 
         ServerWorld currentWorld = player.getCommandSource().getWorld();
         if (currentWorld != null && !PortalInterceptor.isManagedEndDimension(currentWorld.getRegistryKey())) {
-            EnderFightMod.LOGGER.debug("Skipping offline End safeguard for {} – player already in {}",
+            EnderFightMod.LOGGER.info("Player {} already placed in {} after End reset; forcing return to spawn",
                 player.getName().getString(), currentWorld.getRegistryKey().getValue());
+            DragonBreathModifier.purgeExtraSpecialDragonBreath(player, "offline End reset (post-login spawn correction)");
+            Text message = Text.literal("The End reset while you were offline; you've been returned to spawn.");
+            teleportPlayersToOverworld(server, ImmutableList.of(player), message, "Offline End reset safeguard (post-login)");
             if (persistentState.clearRecordedPlayer(player.getUuid())) {
                 persistentState.save(server);
             }
@@ -369,6 +432,10 @@ public class EndResetManager {
         }
 
         if (!PortalInterceptor.isManagedEndDimension(recordedKey) || recordedKey.equals(activeKey)) {
+            EnderFightMod.LOGGER.info("Clearing offline End record for {} because recordedKey managed={} equalsActive={}",
+                player.getName().getString(),
+                PortalInterceptor.isManagedEndDimension(recordedKey),
+                recordedKey.equals(activeKey));
             if (persistentState.clearRecordedPlayer(player.getUuid())) {
                 persistentState.save(server);
             }
@@ -384,7 +451,10 @@ public class EndResetManager {
             return;
         }
 
+        EnderFightMod.LOGGER.info("Executing offline End safeguard for {} (recorded {}, active {})",
+            player.getName().getString(), recordedKey.getValue(), activeKey.getValue());
         Text message = Text.literal("The End reset while you were offline; you've been returned to spawn.");
+        DragonBreathModifier.purgeExtraSpecialDragonBreath(player, "offline End reset teleport");
         teleportPlayersToOverworld(server, ImmutableList.of(player), message, "Offline End reset safeguard");
 
         if (persistentState.clearRecordedPlayer(player.getUuid())) {
@@ -398,16 +468,24 @@ public class EndResetManager {
         }
 
         ServerPlayerEntity player = handler.player;
-    RegistryKey<World> worldKey = player.getCommandSource().getWorld().getRegistryKey();
+        RegistryKey<World> worldKey = player.getCommandSource().getWorld().getRegistryKey();
+
+        boolean managedEnd = PortalInterceptor.isManagedEndDimension(worldKey);
+        EnderFightMod.LOGGER.info("Player {} disconnecting from world {} (managedEnd={})",
+            player.getName().getString(), worldKey.getValue(), managedEnd);
 
         tryRemoveFromDragonBossBar(player);
 
         boolean changed;
-        if (PortalInterceptor.isManagedEndDimension(worldKey)) {
+        if (managedEnd) {
             persistentState.recordPlayerLoggedOutInEnd(player.getUuid(), worldKey);
+            EnderFightMod.LOGGER.info("Recorded {} as offline-in-End for {}", player.getName().getString(), worldKey.getValue());
             changed = true;
         } else {
             changed = persistentState.clearRecordedPlayer(player.getUuid());
+            if (changed) {
+                EnderFightMod.LOGGER.info("Cleared offline End record for {} after disconnect outside End", player.getName().getString());
+            }
         }
 
         if (changed) {
@@ -509,7 +587,19 @@ public class EndResetManager {
         initializeEndDragonFight(newWorld);
     }
 
-    private void ensureEndSpawnPlatform(ServerWorld world) {
+    public BlockPos getEndSpawnPlatformBase() {
+        return END_PLATFORM_BASE;
+    }
+
+    public Vec3d getEndSpawnLocation() {
+        return END_PLATFORM_SPAWN;
+    }
+
+    public float getEndSpawnYaw() {
+        return END_PLATFORM_YAW;
+    }
+
+    public void ensureEndSpawnPlatform(ServerWorld world) {
         BlockPos base = END_PLATFORM_BASE;
         world.getChunk(base.getX() >> 4, base.getZ() >> 4);
 

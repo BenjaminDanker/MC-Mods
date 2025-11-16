@@ -4,6 +4,7 @@ import com.silver.enderfight.config.ConfigManager;
 import com.silver.enderfight.reset.EndResetManager;
 import com.silver.enderfight.dragon.DragonBreathModifier;
 import com.silver.enderfight.portal.PortalInterceptor;
+import com.silver.enderfight.portal.RespawnRedirectHandler;
 import com.silver.enderfight.command.EnderFightCommands;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -43,6 +44,7 @@ public final class EnderFightMod implements ModInitializer {
             LOGGER.error("Skipping dragon breath customization; Minecraft class linkage failed: {}", linkageError.toString());
         }
         PortalInterceptor.register(configManager);
+        RespawnRedirectHandler.register();
         EnderFightCommands.register();
     }
 
