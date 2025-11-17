@@ -3,6 +3,7 @@
 # Gradle
 .gradle
 Ender-Fight/build/
+Wither-Fight/build/
 
 # Ignore Gradle GUI config
 gradle-app.setting
@@ -12,9 +13,11 @@ gradle-app.setting
 
 # Common working directory
 Ender-Fight/run/
+Wither-Fight/run/
 
 # Avoid ignoring Gradle wrapper jar file (.jar files are usually ignored)
 !Ender-Fight/gradle-wrapper.jar
+!Wither-Fight/gradle-wrapper.jar
 
 
 # ---------------------
@@ -22,6 +25,8 @@ Ender-Fight/run/
 # ---------------------
 Ender-Fight/runClient/
 !Ender-Fight/lib/*.jar
+Wither-Fight/runClient/
+!Wither-Fight/lib/*.jar
 *.nar
 *.ear
 *.zip
@@ -115,6 +120,7 @@ run/
 # Avoid ignoring Gradle wrapper jar file (.jar files are usually ignored)
 !gradle-wrapper.jar
 
+.github/
 
 # ---------------------
 # My changes
@@ -124,6 +130,8 @@ runClient/
 
 Ender-Fight/.cache/
 Ender-Fight/tmp/
-Ender-Fight/.github/
+Wither-Fight/.cache/
+Wither-Fight/tmp/
 .vscode/
 Ender-Fight/tried.md
+Wither-Fight/tried.md

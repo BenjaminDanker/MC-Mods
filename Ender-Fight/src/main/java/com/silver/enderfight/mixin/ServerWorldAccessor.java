@@ -28,6 +28,7 @@ public abstract class ServerWorldAccessor implements ServerWorldDuck {
         }
         
         // Fallback to registry-based override
+        @SuppressWarnings("resource")
         ServerWorld self = (ServerWorld)(Object)this;
         Long overrideSeed = WorldSeedOverrides.getSeedOverride(self.getRegistryKey());
         if (overrideSeed != null) {

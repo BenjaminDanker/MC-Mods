@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "witherfight",
+  "version": "1.0.0",
+  "name": "Wither Fight",
+  "description": "Controls the wither fight and custom beacon teleport",
+  "authors": [
+    "BenjaminDanker"
+  ],
+  "contact": {
+    "homepage": "",
+    "sources": ""
+  },
+  "license": "MIT",
+  "icon": "",
+  "environment": "server",
+  "entrypoints": {
+    "main": [
+      "com.silver.witherfight.WitherFightMod"
+    ]
+  },
+  "mixins": [
+    "witherfight.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "fabric": "*",
+    "minecraft": ">=1.21",
+    "java": ">=21"
+  }
+}
