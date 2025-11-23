@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.silver.elderguardianfight.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "ElderGuardianEntityMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
