@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "atlantis",
+  "version": "1.0.0",
+  "name": "Atlantis",
+  "description": "Controls the Atlantis mod",
+  "authors": [
+    "BenjaminDanker"
+  ],
+  "contact": {
+    "homepage": "",
+    "sources": ""
+  },
+  "license": "MIT",
+  "icon": "",
+  "environment": "server",
+  "entrypoints": {
+    "main": [
+      "com.silver.atlantis.AtlantisMod"
+    ]
+  },
+  "mixins": [
+    "atlantis.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "fabric": "*",
+    "minecraft": ">=1.21",
+    "java": ">=21"
+  }
+}
