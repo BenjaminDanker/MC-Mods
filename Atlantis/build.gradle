@@ -37,6 +37,9 @@ dependencies {
 
 	// Fabric API. This is technically optional, but you probably want it anyway.
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+	// WorldEdit API (provided at runtime as a separate mod). Use modCompileOnly so Loom remaps it to named.
+	modCompileOnly files("libs/worldedit-mod-7.3.17.jar")
 }
 
 processResources {

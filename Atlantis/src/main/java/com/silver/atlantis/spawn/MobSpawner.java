@@ -78,6 +78,9 @@ public final class MobSpawner {
             // Apply mob-specific customizations
             if (entity instanceof MobEntity mob) {
                 applyMobCustomizations(world, mob, customization);
+
+                // Ensure structure-spawned mobs never despawn naturally.
+                mob.setPersistent();
             }
 
             // Custom name

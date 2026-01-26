@@ -1,10 +1,8 @@
 package com.silver.atlantis.spawn;
 
-import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.silver.atlantis.AtlantisMod;
-import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerBlockEntityEvents;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.block.entity.CommandBlockBlockEntity;
@@ -19,8 +17,10 @@ import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.ChunkPos;
 import net.minecraft.world.CommandBlockExecutor;
 import net.minecraft.world.World;
+import net.minecraft.world.chunk.WorldChunk;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -46,21 +46,19 @@ public final class SpawnCommandManager {
                 untrack(serverWorld, blockEntity.getPos());
             }
         });
-
-        // Register command
-        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> 
-            registerCommand(dispatcher)
-        );
     }
 
-    private void registerCommand(CommandDispatcher<ServerCommandSource> dispatcher) {
-        dispatcher.register(
-            CommandManager.literal("structuremob")
-                .requires(source -> source.hasPermissionLevel(2))
-                .executes(context -> execute(context.getSource(), false))
-                .then(CommandManager.literal("dryrun")
-                    .executes(context -> execute(context.getSource(), true)))
-        );
+    public int runStructureMob(ServerCommandSource source, boolean dryRun) {
+        return execute(source, dryRun);
+    }
+
+    public LiteralArgumentBuilder<ServerCommandSource> buildSubcommand() {
+        // Note: permission gating is done at the /atlantis root.
+        return CommandManager.literal("structuremob")
+            .executes(context -> execute(context.getSource(), false))
+            .then(CommandManager.literal("dryrun")
+                .executes(context -> execute(context.getSource(), true))
+            );
     }
 
     private int execute(ServerCommandSource source, boolean dryRun) {
@@ -68,15 +66,41 @@ public final class SpawnCommandManager {
         int tracked = 0;
         int eligible = 0;
         int spawned = 0;
+        int eligibleInActive = 0;
         List<String> errors = new ArrayList<>();
+
+        ActiveConstructBounds activeBounds = ActiveConstructBoundsResolver.tryResolveLatest();
+        if (activeBounds == null) {
+            source.sendFeedback(() -> Text.literal("No active construct bounds found; /structuremob only spawns within the current cycle build. Run /construct first."), false);
+            return 0;
+        }
+
+        // After a server restart, block entities can already be loaded before our BLOCK_ENTITY_LOAD
+        // hooks begin tracking them. Do a best-effort scan of already-loaded chunks within the
+        // active bounds so this command remains reliable.
+        ensureTrackedInActiveBounds(server, activeBounds);
+
+        Random random = new Random(server.getOverworld() != null ? server.getOverworld().getRandom().nextLong() : System.nanoTime());
+        List<Entity> spawnedEntities = new ArrayList<>();
 
         for (var entry : trackedBlocks.entrySet()) {
             ServerWorld world = server.getWorld(entry.getKey());
             if (world == null) continue;
 
+            String dimId = world.getRegistryKey().getValue().toString();
+            if (!dimId.equals(activeBounds.dimensionId())) {
+                continue;
+            }
+
             Iterator<BlockPos> iterator = entry.getValue().iterator();
             while (iterator.hasNext()) {
                 BlockPos pos = iterator.next();
+
+                // Only consider blocks inside the active construct run.
+                if (!activeBounds.contains(pos)) {
+                    continue;
+                }
+
                 BlockEntity blockEntity = world.getBlockEntity(pos);
 
                 // Extract spawn data from block entity
@@ -101,6 +125,7 @@ public final class SpawnCommandManager {
                 }
 
                 eligible++;
+                eligibleInActive++;
 
                 if (dryRun) {
                     spawned++;
@@ -111,16 +136,22 @@ public final class SpawnCommandManager {
                 Optional<Entity> entityOpt = MobSpawner.spawn(world, data.customization);
                 if (entityOpt.isPresent()) {
                     spawned++;
+                    spawnedEntities.add(entityOpt.get());
                 } else {
                     errors.add(formatError(world, pos, "Spawn failed"));
                 }
             }
         }
 
+        int specialMarked = 0;
+        if (!dryRun && spawned > 0) {
+            specialMarked = SpecialDropManager.markRandomSpecialMobs(spawnedEntities, random);
+        }
+
         String summary = String.format(Locale.ROOT, 
-            "%s %d mob(s) from %d eligible block(s); %d blocks tracked.",
+            "%s %d mob(s) from %d eligible block(s) in active construct (special=%d); %d blocks tracked.",
             dryRun ? "Would spawn" : "Spawned",
-            spawned, eligible, tracked
+            spawned, eligibleInActive, specialMarked, tracked
         );
         source.sendFeedback(() -> Text.literal(summary), false);
 
@@ -129,6 +160,86 @@ public final class SpawnCommandManager {
         }
 
         return spawned;
+    }
+
+    private void ensureTrackedInActiveBounds(MinecraftServer server, ActiveConstructBounds bounds) {
+        if (bounds == null) {
+            return;
+        }
+
+        // If we already have positions for the active dimension, assume tracking is fine.
+        boolean alreadyTrackingDim = false;
+        for (var entry : trackedBlocks.entrySet()) {
+            ServerWorld w = server.getWorld(entry.getKey());
+            if (w == null) {
+                continue;
+            }
+            String dimId = w.getRegistryKey().getValue().toString();
+            if (dimId.equals(bounds.dimensionId()) && !entry.getValue().isEmpty()) {
+                alreadyTrackingDim = true;
+                break;
+            }
+        }
+        if (alreadyTrackingDim) {
+            return;
+        }
+
+        ServerWorld world = null;
+        for (ServerWorld w : server.getWorlds()) {
+            if (w.getRegistryKey().getValue().toString().equals(bounds.dimensionId())) {
+                world = w;
+                break;
+            }
+        }
+        if (world == null) {
+            return;
+        }
+
+        int minChunkX = bounds.minX() >> 4;
+        int maxChunkX = bounds.maxX() >> 4;
+        int minChunkZ = bounds.minZ() >> 4;
+        int maxChunkZ = bounds.maxZ() >> 4;
+
+        int scannedChunks = 0;
+        int found = 0;
+
+        for (int cx = minChunkX; cx <= maxChunkX; cx++) {
+            for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
+                WorldChunk chunk;
+                try {
+                    chunk = world.getChunkManager().getWorldChunk(cx, cz);
+                } catch (Exception e) {
+                    chunk = null;
+                }
+                if (chunk == null) {
+                    continue;
+                }
+                scannedChunks++;
+
+                try {
+                    for (BlockEntity be : chunk.getBlockEntities().values()) {
+                        if (be == null) {
+                            continue;
+                        }
+                        if (!shouldTrack(be)) {
+                            continue;
+                        }
+                        BlockPos pos = be.getPos();
+                        if (!bounds.contains(pos)) {
+                            continue;
+                        }
+                        track(world, pos);
+                        found++;
+                    }
+                } catch (Exception ignored) {
+                    // Best-effort only.
+                }
+            }
+        }
+
+        if (found > 0) {
+            AtlantisMod.LOGGER.info("Spawn tracker bootstrap: scanned {} loaded chunks in active bounds; tracked {} block entities.", scannedChunks, found);
+        }
     }
 
     private Optional<SpawnData> extractSpawnData(BlockEntity blockEntity, BlockPos pos) {

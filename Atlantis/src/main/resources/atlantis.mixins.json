@@ -1,9 +1,14 @@
 {
   "required": false,
   "minVersion": "0.8",
-  "package": "com.silver.atlantis.mixin",
+  "package": "com.silver.atlantis.protect.mixin",
   "compatibilityLevel": "JAVA_21",
-  "mixins": [],
+  "mixins": [
+    "ServerPlayerInteractionManagerMixin",
+    "ExplosionMixin",
+    "PistonHandlerMixin",
+    "FireBlockMixin"
+  ],
   "injectors": {
     "defaultRequire": 1
   }
