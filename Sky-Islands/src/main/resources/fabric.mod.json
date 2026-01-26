@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "sky_islands",
+  "version": "${version}",
+  "name": "Sky-Islands",
+  "description": "Prevents creepers from spawning naturally.",
+  "authors": ["Benjamin Danker"],
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.benjamin.skyislands.SkyIslands"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.17.3",
+    "fabric": "*",
+    "minecraft": "1.21.10",
+    "java": ">=21"
+  }
+}
