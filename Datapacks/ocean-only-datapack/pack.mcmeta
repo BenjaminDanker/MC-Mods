@@ -1,0 +1,13 @@
+{
+  "pack": {
+    "description": "Ocean-only overworld using Tectonic deep oceans; sea level 319; bedrock roof at Y=319",
+    "min_format": [
+      94,
+      1
+    ],
+    "max_format": [
+      94,
+      1
+    ]
+  }
+}
