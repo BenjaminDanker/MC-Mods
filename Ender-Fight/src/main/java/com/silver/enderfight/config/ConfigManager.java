@@ -46,24 +46,47 @@ public final class ConfigManager {
     }
 
     private EndControlConfig coerceConfig(EndControlConfig loaded) {
-        if (loaded.portalRedirectCommand() == null || loaded.portalRedirectCommand().isBlank()) {
-            String defaultCommand = EndControlConfig.createDefault().portalRedirectCommand();
-            EnderFightMod.LOGGER.info("Config missing portal redirect command; defaulting to '{}'",
-                defaultCommand);
-            EndControlConfig updated = new EndControlConfig(
-                loaded.resetIntervalHours(),
-                loaded.resetWarningSeconds(),
-                loaded.warningMessage(),
-                loaded.teleportMessage(),
-                loaded.customBreathEnabled(),
-                loaded.portalRedirectEnabled(),
-                defaultCommand
-            );
-            this.config = updated;
-            save();
-            return updated;
+        boolean changed = false;
+
+        String portalRedirectCommand = loaded.portalRedirectCommand();
+        if (portalRedirectCommand == null || portalRedirectCommand.isBlank()) {
+            portalRedirectCommand = EndControlConfig.createDefault().portalRedirectCommand();
+            EnderFightMod.LOGGER.info("Config missing portal redirect command; defaulting to '{}'", portalRedirectCommand);
+            changed = true;
         }
-        return loaded;
+
+        int usesDefault = loaded.customBreathTrackingUsesDefault();
+        if (usesDefault <= 0) {
+            usesDefault = EndControlConfig.DEFAULT_CUSTOM_BREATH_TRACKING_USES;
+            EnderFightMod.LOGGER.info("Config missing custom breath tracking uses; defaulting to {}", usesDefault);
+            changed = true;
+        }
+
+        String customBreathId = loaded.customBreathId();
+        if (customBreathId == null || customBreathId.isBlank()) {
+            customBreathId = EndControlConfig.DEFAULT_CUSTOM_BREATH_ID;
+            EnderFightMod.LOGGER.info("Config missing custom breath id; defaulting to '{}'", customBreathId);
+            changed = true;
+        }
+
+        if (!changed) {
+            return loaded;
+        }
+
+        EndControlConfig updated = new EndControlConfig(
+            loaded.resetIntervalHours(),
+            loaded.resetWarningSeconds(),
+            loaded.warningMessage(),
+            loaded.teleportMessage(),
+            loaded.customBreathEnabled(),
+            usesDefault,
+            customBreathId,
+            loaded.portalRedirectEnabled(),
+            portalRedirectCommand
+        );
+        this.config = updated;
+        save();
+        return updated;
     }
 
     public void save() {

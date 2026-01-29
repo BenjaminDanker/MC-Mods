@@ -3,15 +3,19 @@
   "id": "sky_islands",
   "version": "${version}",
   "name": "Sky-Islands",
-  "description": "Prevents creepers from spawning naturally.",
+  "description": "Prevents creepers from spawning naturally (and from mob spawners).",
   "authors": ["Benjamin Danker"],
   "license": "MIT",
   "environment": "*",
   "entrypoints": {
     "main": [
-      "com.benjamin.skyislands.SkyIslands"
+      "com.silver.skyislands.SkyIslands"
     ]
   },
+  "mixins": [
+    "sky_islands.mixins.json",
+    "sky_islands_nocreepers.mixins.json"
+  ],
   "depends": {
     "fabricloader": ">=0.17.3",
     "fabric": "*",

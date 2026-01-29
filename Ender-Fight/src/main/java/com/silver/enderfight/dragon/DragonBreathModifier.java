@@ -8,6 +8,7 @@ import net.minecraft.component.type.NbtComponent;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
+import net.minecraft.nbt.NbtCompound;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import net.minecraft.world.World;
@@ -19,6 +20,10 @@ import net.minecraft.world.World;
  */
 public final class DragonBreathModifier {
     private static ConfigManager configManager;
+
+    private static final String KEY_SPECIAL_ID = "SpecialDragonBreathId";
+    private static final String KEY_USES_LEFT = "TrackingUsesLeft";
+    private static final String KEY_USES_MAX = "TrackingUsesMax";
 
     private DragonBreathModifier() {
     }
@@ -59,22 +64,73 @@ public final class DragonBreathModifier {
 
         EnderFightMod.LOGGER.info("Tagging dragon breath stack {} at tick {} in world {}", stack, world.getTime(),
             world.getRegistryKey().getValue());
+
+        final int usesDefault = getTrackingUsesDefault();
+        final String specialId = getSpecialBreathId();
+
         NbtComponent.set(DataComponentTypes.CUSTOM_DATA, stack, tag -> {
-            tag.putBoolean("CustomDragonBreath", true);
+            tag.putString(KEY_SPECIAL_ID, specialId);
+            tag.putInt(KEY_USES_LEFT, usesDefault);
+            tag.putInt(KEY_USES_MAX, usesDefault);
             tag.putLong("CapturedTick", world.getTime());
         });
-        stack.set(DataComponentTypes.CUSTOM_NAME, Text.literal("Special Dragon Breath"));
+        stack.set(DataComponentTypes.CUSTOM_NAME, Text.literal(buildDisplayName(usesDefault, usesDefault)));
         EnderFightMod.LOGGER.info("Tagged dragon breath bottle with custom metadata at tick {}", world.getTime());
         return true;
     }
 
     public static boolean isSpecialDragonBreath(ItemStack stack) {
-        if (stack == null || !stack.isOf(Items.DRAGON_BREATH)) {
+        if (stack == null || stack.isEmpty() || !stack.isOf(Items.DRAGON_BREATH)) {
             return false;
         }
 
-        Text name = stack.getName();
-        return name != null && "Special Dragon Breath".equals(name.getString());
+        NbtComponent custom = stack.get(DataComponentTypes.CUSTOM_DATA);
+        if (custom == null) {
+            return false;
+        }
+
+        NbtCompound nbt = custom.copyNbt();
+        if (nbt == null) {
+            return false;
+        }
+
+        String expectedId = getSpecialBreathId();
+        String id = nbt.getString(KEY_SPECIAL_ID).orElse("");
+        if (!expectedId.equals(id)) {
+            return false;
+        }
+
+        return nbt.getInt(KEY_USES_LEFT).isPresent() && nbt.getInt(KEY_USES_MAX).isPresent();
+    }
+
+    public static int getTrackingUsesLeft(ItemStack stack) {
+        if (stack == null || stack.isEmpty() || !stack.isOf(Items.DRAGON_BREATH)) {
+            return 0;
+        }
+        NbtComponent custom = stack.get(DataComponentTypes.CUSTOM_DATA);
+        if (custom == null) {
+            return 0;
+        }
+        NbtCompound nbt = custom.copyNbt();
+        if (nbt == null) {
+            return 0;
+        }
+        return nbt.getInt(KEY_USES_LEFT).orElse(0);
+    }
+
+    public static int getTrackingUsesMax(ItemStack stack) {
+        if (stack == null || stack.isEmpty() || !stack.isOf(Items.DRAGON_BREATH)) {
+            return 0;
+        }
+        NbtComponent custom = stack.get(DataComponentTypes.CUSTOM_DATA);
+        if (custom == null) {
+            return 0;
+        }
+        NbtCompound nbt = custom.copyNbt();
+        if (nbt == null) {
+            return 0;
+        }
+        return nbt.getInt(KEY_USES_MAX).orElse(0);
     }
 
     /**
@@ -128,5 +184,32 @@ public final class DragonBreathModifier {
         }
         EndControlConfig config = configManager.getConfig();
         return config != null && config.customBreathEnabled();
+    }
+
+    private static int getTrackingUsesDefault() {
+        if (configManager == null) {
+            return EndControlConfig.DEFAULT_CUSTOM_BREATH_TRACKING_USES;
+        }
+        EndControlConfig config = configManager.getConfig();
+        if (config == null) {
+            return EndControlConfig.DEFAULT_CUSTOM_BREATH_TRACKING_USES;
+        }
+        int uses = config.customBreathTrackingUsesDefault();
+        return uses > 0 ? uses : EndControlConfig.DEFAULT_CUSTOM_BREATH_TRACKING_USES;
+    }
+
+    private static String getSpecialBreathId() {
+        if (configManager == null) {
+            return EndControlConfig.DEFAULT_CUSTOM_BREATH_ID;
+        }
+        EndControlConfig config = configManager.getConfig();
+        if (config == null || config.customBreathId() == null || config.customBreathId().isBlank()) {
+            return EndControlConfig.DEFAULT_CUSTOM_BREATH_ID;
+        }
+        return config.customBreathId();
+    }
+
+    private static String buildDisplayName(int usesLeft, int usesMax) {
+        return "Special Dragon Breath (" + usesLeft + "/" + usesMax + ")";
     }
 }

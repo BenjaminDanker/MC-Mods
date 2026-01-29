@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "package": "com.silver.skyislands.enderdragons.mixins",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "BlockItemDragonHeadPlaceMixin",
+    "EnderDragonEntityMixin",
+    "PhaseManagerMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

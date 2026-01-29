@@ -1,0 +1,11 @@
+{
+  "required": true,
+  "package": "com.silver.skyislands.nocreepers.mixins",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "MobSpawnerLogicMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

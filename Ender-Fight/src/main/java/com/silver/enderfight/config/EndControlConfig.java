@@ -5,6 +5,9 @@ package com.silver.enderfight.config;
  * persisting this structure from disk.
  */
 public final class EndControlConfig {
+    public static final int DEFAULT_CUSTOM_BREATH_TRACKING_USES = 5;
+    public static final String DEFAULT_CUSTOM_BREATH_ID = "enderfight:special_dragon_breath";
+
     public static EndControlConfig createDefault() {
         return new EndControlConfig(
             24.0,
@@ -12,6 +15,8 @@ public final class EndControlConfig {
             "The End will reset soon!",
             "You have been returned to the Overworld. The End is resetting!",
             true,
+            DEFAULT_CUSTOM_BREATH_TRACKING_USES,
+            DEFAULT_CUSTOM_BREATH_ID,
             true,
             "proxycommand \"wl portal destion_server token\""
         );
@@ -22,6 +27,8 @@ public final class EndControlConfig {
     private final String warningMessage;
     private final String teleportMessage;
     private final boolean customBreathEnabled;
+    private final int customBreathTrackingUsesDefault;
+    private final String customBreathId;
     private final boolean portalRedirectEnabled;
     private final String portalRedirectCommand;
 
@@ -31,6 +38,8 @@ public final class EndControlConfig {
         String warningMessage,
         String teleportMessage,
         boolean customBreathEnabled,
+        int customBreathTrackingUsesDefault,
+        String customBreathId,
         boolean portalRedirectEnabled,
         String portalRedirectCommand
     ) {
@@ -39,6 +48,8 @@ public final class EndControlConfig {
         this.warningMessage = warningMessage;
         this.teleportMessage = teleportMessage;
         this.customBreathEnabled = customBreathEnabled;
+        this.customBreathTrackingUsesDefault = customBreathTrackingUsesDefault;
+        this.customBreathId = customBreathId;
         this.portalRedirectEnabled = portalRedirectEnabled;
         this.portalRedirectCommand = portalRedirectCommand;
     }
@@ -61,6 +72,14 @@ public final class EndControlConfig {
 
     public boolean customBreathEnabled() {
         return customBreathEnabled;
+    }
+
+    public int customBreathTrackingUsesDefault() {
+        return customBreathTrackingUsesDefault;
+    }
+
+    public String customBreathId() {
+        return customBreathId;
     }
 
     public boolean portalRedirectEnabled() {
