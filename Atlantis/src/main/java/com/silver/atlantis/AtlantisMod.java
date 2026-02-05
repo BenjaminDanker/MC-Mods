@@ -11,6 +11,7 @@ import com.silver.atlantis.heightcap.HeightCapService;
 import com.silver.atlantis.protect.ProtectionBootstrap;
 import com.silver.atlantis.protect.ProtectionService;
 import com.silver.atlantis.spawn.SpawnCommandManager;
+import com.silver.atlantis.spawn.SpecialItemConversionManager;
 import net.fabricmc.api.ModInitializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,6 +45,7 @@ public final class AtlantisMod implements ModInitializer {
 		ProtectionBootstrap.loadAllPersisted();
 		heightCapService.register();
 		spawnManager.register();
+		SpecialItemConversionManager.init();
 		flatAreaSearchService.register();
 		constructService.register();
 		cycleService.register();

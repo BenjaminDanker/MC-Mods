@@ -18,7 +18,8 @@
                 },
                 "minecraft:item_name": "Special Dead Bush",
                 "minecraft:custom_data": {
-                  "id": "special_dead_bush"
+                  "id": "special_dead_bush",
+                  "idType": "Soulbound"
                 }
               }
             }

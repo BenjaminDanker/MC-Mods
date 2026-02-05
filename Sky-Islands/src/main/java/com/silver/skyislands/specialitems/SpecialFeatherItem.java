@@ -8,15 +8,17 @@ import net.minecraft.nbt.NbtCompound;
 import net.minecraft.text.Text;
 
 public final class SpecialFeatherItem {
-    public static final String KEY_SPECIAL_ID = "SpecialItemId";
-    public static final String SPECIAL_ID = "Special Feather";
+    public static final String KEY_ID = "id";
+    public static final String ID = "special_feather";
 
     private SpecialFeatherItem() {
     }
 
     public static ItemStack createOne() {
         ItemStack stack = new ItemStack(Items.FEATHER, 1);
-        NbtComponent.set(DataComponentTypes.CUSTOM_DATA, stack, tag -> tag.putString(KEY_SPECIAL_ID, SPECIAL_ID));
+        NbtComponent.set(DataComponentTypes.CUSTOM_DATA, stack, tag -> {
+            tag.putString(KEY_ID, ID);
+        });
         stack.set(DataComponentTypes.CUSTOM_NAME, Text.literal("Special Feather"));
         return stack;
     }
@@ -29,8 +31,8 @@ public final class SpecialFeatherItem {
         if (nbt == null) {
             return false;
         }
-        String id = nbt.getString(KEY_SPECIAL_ID).orElse("");
-        return SPECIAL_ID.equals(id);
+        String id = nbt.getString(KEY_ID).orElse("");
+        return ID.equals(id);
     }
 
     private static NbtCompound readCustomData(ItemStack stack) {

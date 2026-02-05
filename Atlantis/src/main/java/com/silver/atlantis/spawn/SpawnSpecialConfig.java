@@ -25,9 +25,27 @@ public final class SpawnSpecialConfig {
     /** How many of the item to drop. */
     public static final int SPECIAL_DROP_ITEM_COUNT = 1;
 
+    /** Marker key stored in SPECIAL_DROP_CUSTOM_DATA_SNBT so the inventory converter can reliably identify special drops. */
+    public static final String SPECIAL_DROP_MARKER_KEY = "atlantis_special";
+
     /**
      * Custom data (SNBT compound) stored on the dropped item.
      * Example: {atlantis_special:1b,run:"cycle"}
      */
     public static final String SPECIAL_DROP_CUSTOM_DATA_SNBT = "{atlantis_special:1b}";
+
+    /** How many special dropped items convert into 1 Special Sea Lantern. */
+    public static final int SPECIAL_ITEMS_PER_SEA_LANTERN = 16;
+
+    /** Output item id for conversion reward. */
+    public static final String SPECIAL_SEA_LANTERN_ITEM_ID = "minecraft:sea_lantern";
+
+    /** Display name for the converted output. */
+    public static final String SPECIAL_SEA_LANTERN_DISPLAY_NAME = "Special Sea Lantern";
+
+    /** Custom data applied to the converted output. */
+    public static final String SPECIAL_SEA_LANTERN_CUSTOM_ID = "special_sea_lantern";
+
+    /** Custom data applied to the converted output. */
+    public static final String SPECIAL_SEA_LANTERN_CUSTOM_ITEM_TYPE = "Soulbound";
 }

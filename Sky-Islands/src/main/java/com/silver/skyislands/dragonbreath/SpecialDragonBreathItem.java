@@ -7,12 +7,12 @@ import net.minecraft.item.Items;
 import net.minecraft.nbt.NbtCompound;
 
 public final class SpecialDragonBreathItem {
-    public static final String KEY_SPECIAL_ID = "SpecialDragonBreathId";
+    public static final String KEY_SPECIAL_ID = "id";
+    public static final String KEY_ID_TYPE = "idType";
     public static final String KEY_USES_LEFT = "TrackingUsesLeft";
     public static final String KEY_USES_MAX = "TrackingUsesMax";
 
-    // Default namespace aligns with where the item is minted (Ender-Fight).
-    public static final String DEFAULT_SPECIAL_ID = "enderfight:special_dragon_breath";
+    public static final String DEFAULT_SPECIAL_ID = "special_dragon_breath";
 
     private SpecialDragonBreathItem() {
     }
@@ -30,6 +30,11 @@ public final class SpecialDragonBreathItem {
         String expected = DEFAULT_SPECIAL_ID;
         String id = nbt.getString(KEY_SPECIAL_ID).orElse("");
         if (!expected.equals(id)) {
+            return false;
+        }
+
+        String idType = nbt.getString(KEY_ID_TYPE).orElse("");
+        if (!"Soulbound".equals(idType)) {
             return false;
         }
 
@@ -83,6 +88,7 @@ public final class SpecialDragonBreathItem {
         int usesMax = getUsesMax(template);
         NbtComponent.set(DataComponentTypes.CUSTOM_DATA, single, tag -> {
             tag.putString(KEY_SPECIAL_ID, DEFAULT_SPECIAL_ID);
+            tag.putString(KEY_ID_TYPE, "Soulbound");
             tag.putInt(KEY_USES_LEFT, Math.max(0, usesLeft));
             tag.putInt(KEY_USES_MAX, Math.max(0, usesMax));
         });

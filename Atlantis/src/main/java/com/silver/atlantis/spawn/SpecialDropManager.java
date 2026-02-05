@@ -103,6 +103,10 @@ public final class SpecialDropManager {
             }
         }
 
+        NbtComponent.set(DataComponentTypes.CUSTOM_DATA, stack, tag -> {
+            tag.putString("id", "special_drop");
+        });
+
         return stack;
     }
 }

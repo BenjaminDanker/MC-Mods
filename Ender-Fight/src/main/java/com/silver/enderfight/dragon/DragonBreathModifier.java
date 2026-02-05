@@ -21,7 +21,8 @@ import net.minecraft.world.World;
 public final class DragonBreathModifier {
     private static ConfigManager configManager;
 
-    private static final String KEY_SPECIAL_ID = "SpecialDragonBreathId";
+    private static final String KEY_SPECIAL_ID = "id";
+    private static final String KEY_ID_TYPE = "idType";
     private static final String KEY_USES_LEFT = "TrackingUsesLeft";
     private static final String KEY_USES_MAX = "TrackingUsesMax";
 
@@ -70,6 +71,7 @@ public final class DragonBreathModifier {
 
         NbtComponent.set(DataComponentTypes.CUSTOM_DATA, stack, tag -> {
             tag.putString(KEY_SPECIAL_ID, specialId);
+            tag.putString(KEY_ID_TYPE, "Soulbound");
             tag.putInt(KEY_USES_LEFT, usesDefault);
             tag.putInt(KEY_USES_MAX, usesDefault);
             tag.putLong("CapturedTick", world.getTime());
@@ -97,6 +99,11 @@ public final class DragonBreathModifier {
         String expectedId = getSpecialBreathId();
         String id = nbt.getString(KEY_SPECIAL_ID).orElse("");
         if (!expectedId.equals(id)) {
+            return false;
+        }
+
+        String idType = nbt.getString(KEY_ID_TYPE).orElse("");
+        if (!"Soulbound".equals(idType)) {
             return false;
         }
 

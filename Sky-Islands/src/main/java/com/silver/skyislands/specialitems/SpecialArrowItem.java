@@ -8,15 +8,19 @@ import net.minecraft.nbt.NbtCompound;
 import net.minecraft.text.Text;
 
 public final class SpecialArrowItem {
-    public static final String KEY_SPECIAL_ID = "SpecialItemId";
-    public static final String SPECIAL_ID = "Special Arrow";
+    public static final String KEY_ID = "id";
+    public static final String KEY_ID_TYPE = "idType";
+    public static final String ID = "special_arrow";
 
     private SpecialArrowItem() {
     }
 
     public static ItemStack createOne() {
         ItemStack stack = new ItemStack(Items.ARROW, 1);
-        NbtComponent.set(DataComponentTypes.CUSTOM_DATA, stack, tag -> tag.putString(KEY_SPECIAL_ID, SPECIAL_ID));
+        NbtComponent.set(DataComponentTypes.CUSTOM_DATA, stack, tag -> {
+            tag.putString(KEY_ID, ID);
+            tag.putString(KEY_ID_TYPE, "Soulbound");
+        });
         stack.set(DataComponentTypes.CUSTOM_NAME, Text.literal("Special Arrow"));
         return stack;
     }
@@ -29,8 +33,9 @@ public final class SpecialArrowItem {
         if (nbt == null) {
             return false;
         }
-        String id = nbt.getString(KEY_SPECIAL_ID).orElse("");
-        return SPECIAL_ID.equals(id);
+        String id = nbt.getString(KEY_ID).orElse("");
+        String idType = nbt.getString(KEY_ID_TYPE).orElse("");
+        return ID.equals(id) && "Soulbound".equals(idType);
     }
 
     private static NbtCompound readCustomData(ItemStack stack) {

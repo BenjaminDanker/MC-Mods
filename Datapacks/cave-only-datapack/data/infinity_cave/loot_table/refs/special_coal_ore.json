@@ -25,7 +25,8 @@
               "function": "minecraft:set_components",
               "components": {
                 "minecraft:custom_data": {
-                  "id": "Special Coal Ore"
+                  "id": "special_coal_ore",
+                  "idType": "Soulbound"
                 }
               }
             }
