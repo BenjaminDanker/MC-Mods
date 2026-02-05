@@ -5,17 +5,21 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
+import net.minecraft.entity.ItemEntity;
 import net.minecraft.entity.boss.dragon.EnderDragonEntity;
 import net.minecraft.entity.boss.dragon.phase.PhaseType;
 import net.minecraft.entity.SpawnReason;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
+import net.minecraft.item.ItemStack;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.WorldProperties;
+
+import com.silver.skyislands.specialitems.SpecialFeatherItem;
 
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.command.ServerCommandSource;
@@ -35,6 +39,8 @@ import java.util.Optional;
 
 public final class EnderDragonManager {
     public static final String MANAGED_TAG = "sky_islands_managed_dragon";
+    private static final long RECENT_DEATH_GUARD_TICKS = 20L * 30L;
+    private static final Map<UUID, Long> recentlyDiedUntilTick = new HashMap<>();
 
     private static final Logger LOGGER = LoggerFactory.getLogger(EnderDragonManager.class);
 
@@ -58,6 +64,8 @@ public final class EnderDragonManager {
     private static final Map<UUID, Long> returnTurnUntilTick = new HashMap<>();
     private static final Map<UUID, Long> nextReturnDecisionTick = new HashMap<>();
     private static final Map<UUID, Long> nextSpawnWaitLogTick = new HashMap<>();
+
+    private static final Set<UUID> debugLoggedUnmanagedDragons = new HashSet<>();
 
     // Prevent spamming chunk release calls/logs when a dragon stays inactive for a long time.
     private static final Set<UUID> inactiveChunkReleaseDone = new HashSet<>();
@@ -185,6 +193,14 @@ public final class EnderDragonManager {
                 LOGGER.debug("[Sky-Islands][dragons][manager] onDeath ignore (not managed) uuid={}", dragon.getUuidAsString());
             }
             return;
+        }
+
+        // Guaranteed special drop for managed dragons.
+        if (dragon.getEntityWorld() instanceof ServerWorld serverWorld) {
+            ItemStack feather = SpecialFeatherItem.createOne();
+            ItemEntity entity = new ItemEntity(serverWorld, dragon.getX(), dragon.getY(), dragon.getZ(), feather);
+            entity.setToDefaultPickupDelay();
+            serverWorld.spawnEntity(entity);
         }
 
         DragonIdTags.getId(dragon).ifPresent(id -> {
@@ -368,6 +384,10 @@ public final class EnderDragonManager {
     private static void tick(MinecraftServer server) {
         serverRef = server;
         serverTicks++;
+        if ((serverTicks % 200L) == 0L && !recentlyDiedUntilTick.isEmpty()) {
+            recentlyDiedUntilTick.entrySet().removeIf(e -> e.getValue() < serverTicks);
+
+        }
 
         updateEffectiveDistancesFromServerSettings(server);
 
@@ -398,6 +418,10 @@ public final class EnderDragonManager {
             return;
         }
 
+        if (debug && (serverTicks % 40L) == 0L) {
+            debugLogUnmanagedDragons(overworld);
+        }
+
         // Reconcile any managed dragons that exist as loaded entities but are missing from the
         // virtual store (e.g., crash/unflushed shutdown). This must run before we decide whether to
         // create new virtual dragons, otherwise we can overspawn beyond the configured minimum.
@@ -418,6 +442,38 @@ public final class EnderDragonManager {
         tickVirtualTravel(overworld);
     }
 
+    private static void debugLogUnmanagedDragons(ServerWorld world) {
+        int found = 0;
+        for (Entity entity : world.iterateEntities()) {
+            if (!(entity instanceof EnderDragonEntity dragon)) {
+                continue;
+            }
+            if (isManaged(dragon)) {
+                continue;
+            }
+
+            found++;
+            UUID id = dragon.getUuid();
+            if (!debugLoggedUnmanagedDragons.add(id)) {
+                continue;
+            }
+
+            ChunkPos cp = new ChunkPos(dragon.getBlockPos());
+            LOGGER.warn("[Sky-Islands][debug] unmanaged EnderDragonEntity present uuid={} pos=({}, {}, {}) chunk=({}, {}) tags={} phase={} fightOrigin={}",
+                    dragon.getUuidAsString(),
+                    round1(dragon.getX()), round1(dragon.getY()), round1(dragon.getZ()),
+                    cp.x, cp.z,
+                    dragon.getCommandTags().size(),
+                    dragon.getPhaseManager().getCurrent().getType(),
+                    dragon.getFightOrigin());
+        }
+
+        if (found == 0 && !debugLoggedUnmanagedDragons.isEmpty()) {
+            // If none are present now, allow future instances to be logged again.
+            debugLoggedUnmanagedDragons.clear();
+        }
+    }
+
     private static void recoverMissingLoadedDragons(ServerWorld world) {
         if (virtualStore == null) {
             return;
@@ -425,7 +481,6 @@ public final class EnderDragonManager {
 
         final boolean debug = LOGGER.isDebugEnabled();
         int scanned = 0;
-        int recovered = 0;
 
         Set<UUID> known = new HashSet<>();
         for (VirtualDragonStore.VirtualDragonState s : virtualStore.snapshot()) {
@@ -444,10 +499,24 @@ public final class EnderDragonManager {
                 continue;
             }
 
+            if (dragon.isRemoved() || !dragon.isAlive()) {
+                continue;
+            }
+
+            // Don't recover dragons that are in the middle of their death animation.
+            if (dragon.getPhaseManager().getCurrent().getType() == PhaseType.DYING) {
+                continue;
+            }
+
             scanned++;
 
             getOrAssignId(dragon).ifPresent(id -> {
                 if (known.contains(id)) {
+                    return;
+                }
+
+                Long recentlyDiedUntil = recentlyDiedUntilTick.get(id);
+                if (recentlyDiedUntil != null && recentlyDiedUntil >= serverTicks) {
                     return;
                 }
 
@@ -481,9 +550,6 @@ public final class EnderDragonManager {
                             round2(hx), round2(hz));
                 }
 
-                // best-effort: keep a count for the end-of-scan debug log
-                // (int is captured effectively-final by lambda via array wrapper)
-
                 LOGGER.warn("[Sky-Islands] Recovered managed dragon missing from virtual store. id={} uuid={} entityPos=({}, {}, {})",
                         shortId(id),
                         dragon.getUuidAsString(),
@@ -492,7 +558,6 @@ public final class EnderDragonManager {
         }
 
         if (debug) {
-            // We can't safely increment recovered inside the lambda without extra wrappers; log scanned only.
             LOGGER.debug("[Sky-Islands][dragons][manager] recover scan end scannedManagedLoaded={}", scanned);
         }
     }
@@ -1259,6 +1324,16 @@ public final class EnderDragonManager {
             }
         }
 
+        // If chunk tickets load an old/unmanaged dragon from disk (or another mod spawns one), it can look
+        // like "an unmanaged dragon spawned" exactly when we materialize a managed virtual dragon.
+        // Sky-Islands only intentionally spawns managed dragons, so proactively discard unmanaged dragons
+        // near the intended spawn location.
+        Vec3d spawnPos = state.pos();
+        if (config.headFearEnabled) {
+            spawnPos = pushPosOutOfHeadExclusion(world, spawnPos);
+        }
+        cleanupUnmanagedDragonsNear(world, spawnPos, Math.max(96.0, getActivationRadiusBlocks()));
+
         EnderDragonEntity dragon = EntityType.ENDER_DRAGON.create(world, SpawnReason.EVENT);
         if (dragon == null) {
             if (debug) {
@@ -1268,10 +1343,8 @@ public final class EnderDragonManager {
         }
 
         // Never spawn inside a dragon-head orbit exclusion zone.
-        Vec3d spawnPos = state.pos();
         if (config.headFearEnabled) {
-            Vec3d before = spawnPos;
-            spawnPos = pushPosOutOfHeadExclusion(world, spawnPos);
+            Vec3d before = state.pos();
             if (debug && (before.x != spawnPos.x || before.z != spawnPos.z)) {
                 LOGGER.debug("[Sky-Islands][dragons][manager] id={} spawn pushed out of headExclusion from=({}, {}, {}) to=({}, {}, {})",
                         shortId(state.id()),
@@ -1315,6 +1388,47 @@ public final class EnderDragonManager {
         loadedStuckTicks.put(state.id(), 0);
         loadedSpawnGraceUntilTick.put(state.id(), serverTicks + 100);
         return dragon;
+    }
+
+    private static void cleanupUnmanagedDragonsNear(ServerWorld world, Vec3d center, double radiusBlocks) {
+        if (world == null || center == null || radiusBlocks <= 0) {
+            return;
+        }
+
+        double r2 = radiusBlocks * radiusBlocks;
+        int removed = 0;
+
+        for (Entity entity : world.iterateEntities()) {
+            if (!(entity instanceof EnderDragonEntity dragon)) {
+                continue;
+            }
+            if (isManaged(dragon)) {
+                continue;
+            }
+
+            double dx = dragon.getX() - center.x;
+            double dy = dragon.getY() - center.y;
+            double dz = dragon.getZ() - center.z;
+            double d2 = dx * dx + dy * dy + dz * dz;
+            if (d2 > r2) {
+                continue;
+            }
+
+            removed++;
+            if (LOGGER.isDebugEnabled()) {
+                LOGGER.debug("[Sky-Islands][dragons][manager] discarded unmanaged dragon uuid={} nearSpawn=({}, {}, {}) d2={}",
+                        dragon.getUuidAsString(),
+                        round1(center.x), round1(center.y), round1(center.z),
+                        round1(d2));
+            }
+            dragon.discard();
+        }
+
+        if (removed > 0) {
+            LOGGER.warn("[Sky-Islands] Discarded {} unmanaged Ender Dragon(s) near managed spawn at ({}, {}, {}).",
+                    removed,
+                    round1(center.x), round1(center.y), round1(center.z));
+        }
     }
 
     private static BlockPos pickSpawnPos(ServerWorld world) {

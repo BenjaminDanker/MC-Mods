@@ -7,6 +7,7 @@ import com.silver.skyislands.dragonbreath.DragonBreathTracking;
 import com.silver.skyislands.enderdragons.EnderDragons;
 import com.silver.skyislands.nightghasts.NightGhasts;
 import com.silver.skyislands.nocreepers.NoCreepers;
+import com.silver.skyislands.specialitems.SpecialItemConversionManager;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,6 +42,11 @@ public class SkyIslands implements ModInitializer {
         NightGhasts.init();
         if (LOGGER.isDebugEnabled()) {
             LOGGER.debug("[Sky-Islands][init] NightGhasts.init() complete");
+        }
+
+        SpecialItemConversionManager.init();
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("[Sky-Islands][init] SpecialItemConversionManager.init() complete");
             LOGGER.debug("[Sky-Islands][init] onInitialize() done");
         }
     }

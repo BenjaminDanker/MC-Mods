@@ -400,11 +400,14 @@ public class EndResetManager {
     }
 
     private void handlePlayerJoin(ServerPlayNetworkHandler handler, PacketSender sender, MinecraftServer server) {
+        ServerPlayerEntity player = handler.player;
+
+        DragonBreathModifier.purgeExtraSpecialDragonBreath(player, "player join");
+
         if (persistentState == null) {
             return;
         }
 
-        ServerPlayerEntity player = handler.player;
         RegistryKey<World> recordedKey = persistentState.getRecordedEndDimension(player.getUuid());
         if (recordedKey == null) {
             EnderFightMod.LOGGER.debug("No offline End record for {}; skipping safeguard", player.getName().getString());

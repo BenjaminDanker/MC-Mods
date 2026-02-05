@@ -172,7 +172,7 @@ public final class DragonBreathModifier {
             EnderFightMod.LOGGER.info("Removed {} extra special dragon breath bottles from {} ({})", removed,
                 player.getName().getString(), context);
         } else {
-            EnderFightMod.LOGGER.info("No extra special dragon breath bottles found for {} ({})",
+            EnderFightMod.LOGGER.debug("No extra special dragon breath bottles found for {} ({})",
                 player.getName().getString(), context);
         }
         return removed;
