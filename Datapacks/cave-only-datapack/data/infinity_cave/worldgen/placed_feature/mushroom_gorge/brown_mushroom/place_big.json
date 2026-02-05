@@ -1,0 +1,56 @@
+{
+  "feature": "infinity_cave:mushroom_gorge/brown_mushroom/big",
+  "placement": [
+    {
+      "type": "minecraft:count_on_every_layer",
+      "count": {
+        "type": "minecraft:biased_to_bottom",
+        "min_inclusive": 1,
+        "max_inclusive": 50
+      }
+    },
+    {
+      "type": "minecraft:block_predicate_filter",
+      "predicate": {
+        "type": "minecraft:all_of",
+        "predicates": [
+          {
+            "type": "minecraft:replaceable"
+          },
+          {
+            "type": "minecraft:matching_blocks",
+            "offset": [
+              0,
+              0,
+              0
+            ],
+            "blocks": [
+              "minecraft:air",
+              "minecraft:void_air",
+              "minecraft:cave_air"
+            ]
+          },
+          {
+            "type": "minecraft:matching_blocks",
+            "offset": [
+              0,
+              -1,
+              0
+            ],
+            "blocks": [
+              "minecraft:grass_block"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "minecraft:random_offset",
+      "xz_spread": 0,
+      "y_spread": 1
+    },
+    {
+      "type": "minecraft:biome"
+    }
+  ]
+}

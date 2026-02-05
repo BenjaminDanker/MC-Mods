@@ -1,0 +1,1 @@
+function infinity_cave:mobs/limestone_grotto/tiers/legendary/set_data with storage infinity_cave:limestone_grotto data.legendary

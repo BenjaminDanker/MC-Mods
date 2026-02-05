@@ -1,0 +1,65 @@
+{
+  "description": {
+    "text": "Bonk Diver"
+  },
+  "supported_items": "#minecraft:acacia_logs",
+  "weight": 1,
+  "max_level": 1,
+  "min_cost": {
+    "base": 9999,
+    "per_level_above_first": 0
+  },
+  "max_cost": {
+    "base": 9999,
+    "per_level_above_first": 0
+  },
+  "anvil_cost": 9999,
+  "slots": [
+    "any"
+  ],
+  "effects": {
+    "minecraft:post_attack": [
+      {
+        "enchanted": "victim",
+        "affected": "victim",
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/zombie_rider/damage_taken/get_damage"
+        }
+      },
+      {
+        "enchanted": "attacker",
+        "affected": "victim",
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/zombie_rider/get_attack"
+        },
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "this",
+          "predicate": {}
+        }
+      }
+    ],
+    "minecraft:tick": [
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/sneezer/no_rider"
+        },
+        "requirements": [
+          {
+            "condition": "minecraft:inverted",
+            "term": {
+              "condition": "minecraft:entity_properties",
+              "entity": "this",
+              "predicate": {
+                "vehicle": {}
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

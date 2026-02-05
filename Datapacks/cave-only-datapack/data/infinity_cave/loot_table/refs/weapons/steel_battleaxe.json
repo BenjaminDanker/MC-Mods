@@ -1,0 +1,118 @@
+{
+    "pools": [
+      {
+        "rolls": 1,
+        "entries": [
+          {
+            "type": "minecraft:item",
+            "name": "minecraft:netherite_axe",
+            "functions": [
+              {
+                "function": "minecraft:set_count",
+                "count": 1
+              },
+              {
+                "function": "minecraft:set_components",
+                "components": {
+                  "weapon": {
+                    "disable_blocking_for_seconds": 20,
+                    "item_damage_per_attack": 1
+                  },
+                  "enchantments": {
+                    "infinity_cave:technical/steel_battleaxe": 1
+                  },
+                  "minecraft:attribute_modifiers": [
+                      {
+                        "type": "attack_speed",
+                        "slot": "mainhand",
+                        "id": "steel_battleaxe",
+                        "amount": -2.95,
+                        "operation": "add_value"
+                      },
+                      {
+                        "type": "attack_damage",
+                        "slot": "mainhand",
+                        "id": "steel_battleaxe",
+                        "amount": 13,
+                        "operation": "add_value"
+                      }
+                    ],
+                    "tooltip_display": {
+                      "hidden_components": [
+                        "attribute_modifiers"
+                      ]
+                    },
+                  "minecraft:item_model": "infinity_cave:steel_battleaxe",
+                  "minecraft:custom_data": {
+                    "infinity_cave": {
+                      "item": "steel_battleaxe",
+                      "tier": 5,
+                      "label": "important"
+                    }
+                  }
+                }
+              },
+              {
+                "function": "minecraft:set_name",
+                "name": [
+                  {
+                    "text": "Steel Battleaxe",
+                    "color": "gold",
+                    "italic": false
+                  }
+                ]
+              },
+              {
+                "function": "minecraft:set_lore",
+                "lore": [
+                  {
+                    "text": " "
+                  },
+                  {
+                    "text": "Deals more damage when enemy ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": "is holding a shield, also has ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": "a 20% chance of stealing the ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": "enemy's Resistance effect. ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": " "
+                  },
+                  {
+                    "text": "When in Main Hand:",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": " 14 Attack Damage ",
+                    "color": "dark_green",
+                    "italic": false
+                  },
+                  {
+                    "text": " 1.05 Attack Speed",
+                    "color": "dark_green",
+                    "italic": false
+                  }
+                ],
+                "mode": "append"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+  

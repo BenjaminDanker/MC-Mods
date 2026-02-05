@@ -1,0 +1,81 @@
+{
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:rotten_flesh",
+          "functions": [
+              {
+                "function": "minecraft:set_name",
+                "entity": "this",
+                "name": "Fiery Flesh",
+                "target": "item_name"
+              },
+            {
+              "function": "set_components",
+              "components": {
+                "rarity": "uncommon",
+                "item_model": "infinity_cave:fiery_flesh",
+                "custom_data": {
+                  "infinity_cave": {
+                    "item": "fiery_flesh"
+                  }
+                },
+                "food": {
+                  "nutrition": 5,
+                  "saturation": 4,
+                  "can_always_eat": true
+                },
+                "consumable": {
+                  "animation": "eat",
+                  "consume_seconds": 1.5,
+                  "has_consume_particles": true,
+                  "on_consume_effects": [
+                    {
+                      "type": "apply_effects",
+                      "effects": [
+                        {
+                          "id": "strength",
+                          "ambient": true,
+                          "amplifier": 1,
+                          "duration": 500,
+                          "show_icon": true,
+                          "show_particles": true
+                        },
+                        {
+                          "id": "fire_resistance",
+                          "ambient": true,
+                          "amplifier": 1,
+                          "duration": 500,
+                          "show_icon": true,
+                          "show_particles": true
+                        },
+                        {
+                          "id": "resistance",
+                          "ambient": true,
+                          "amplifier": 0,
+                          "duration": 500,
+                          "show_icon": true,
+                          "show_particles": true
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "min": 2,
+                "max": 5
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

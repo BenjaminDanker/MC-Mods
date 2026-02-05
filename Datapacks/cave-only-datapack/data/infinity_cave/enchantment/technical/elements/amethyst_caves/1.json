@@ -1,0 +1,117 @@
+{
+  "description": {
+    "text": "Element"
+  },
+  "supported_items": "#minecraft:acacia_logs",
+  "weight": 1,
+  "max_level": 1,
+  "min_cost": {
+    "base": 9999,
+    "per_level_above_first": 0
+  },
+  "max_cost": {
+    "base": 9999,
+    "per_level_above_first": 0
+  },
+  "anvil_cost": 9999,
+  "slots": [
+    "any"
+  ],
+  "effects": {
+    "minecraft:tick": [
+      {
+        "requirements": [
+          {
+            "condition": "minecraft:inverted",
+            "term": {
+              "condition": "minecraft:entity_scores",
+              "entity": "this",
+              "scores": {
+                "ic.tagged": 1
+              }
+            }
+          }
+        ],
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:mobs/amethyst_caves/elements/1/init"
+        }
+      },
+      {
+        "requirements": [
+          {
+            "condition": "minecraft:any_of",
+            "terms": [
+              {
+                "condition": "minecraft:entity_properties",
+                "entity": "this",
+                "predicate": {
+                  "vehicle": {
+                    "nbt": "{DeathTime:10s}"
+                  }
+                }
+              },
+              {
+                "condition": "minecraft:entity_properties",
+                "entity": "this",
+                "predicate": {
+                  "nbt": "{DeathTime:10s}"
+                }
+              }
+            ]
+          }
+        ],
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:mobs/amethyst_caves/elements/kill_crystal"
+        }
+      },
+      {
+        "requirements": [
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "targeted_entity": {},
+              "periodic_tick": 81
+            }
+          },
+          {
+            "condition": "minecraft:random_chance",
+            "chance": 0.5
+          }
+        ],
+        "effect": {
+          "type": "run_function",
+          "function": "infinity_cave:mobs/amethyst_caves/elements/1/laser"
+        }
+      },
+      {
+        "requirements": [
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "targeted_entity": {
+                "distance": {
+                  "absolute": {
+                    "min": 8
+                  }
+                }
+              },
+              "periodic_tick": 120
+            }
+          },
+          {
+            "condition": "minecraft:random_chance",
+            "chance": 0.5
+          }
+        ],
+        "effect": {
+          "type": "run_function",
+          "function": "infinity_cave:mobs/amethyst_caves/elements/1/levitation/start"
+        }
+      }
+    ]
+  }
+}

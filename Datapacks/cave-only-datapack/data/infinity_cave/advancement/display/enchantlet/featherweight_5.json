@@ -1,0 +1,40 @@
+{
+    "display": {
+      "icon": {
+        "id": "minecraft:feather"
+      },
+      "title": "Float Like a Feather, String Li-",
+      "description": [
+        {
+          "text": "Obtain Featherweight V"
+        }
+      ],
+      "show_toast": true,
+      "announce_to_chat": true,
+      "hidden": false
+    },
+    "parent": "infinity_cave:display/enchantlet/5",
+    "criteria": {
+      "requirement": {
+        "trigger": "minecraft:inventory_changed",
+        "conditions": {
+          "items": [
+            {
+              "items": "#infinity_cave:sharpness",
+              "predicates": {
+                "minecraft:enchantments": [
+                  {
+                    "enchantments": "infinity_cave:featherweight",
+                    "levels": {
+                      "min": 5
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+  

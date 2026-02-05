@@ -1,0 +1,121 @@
+{
+    "pools": [
+        {
+            "rolls": 1,
+            "entries": [
+          {
+            "type": "minecraft:item",
+            "weight": 2,
+            "name": "minecraft:snowball",
+            "functions": [
+              {
+                "function": "minecraft:set_name",
+                "entity": "this",
+                "name": "Ender Sword",
+                "target": "item_name"
+              },
+              {
+                "function": "minecraft:toggle_tooltips",
+                "toggles": {
+                  "attribute_modifiers": false
+                }
+              },
+              {
+                "function": "set_components",
+                "components": {
+                  "enchantments": {
+                    "infinity_cave:zender_sword": 1
+                  },
+                  "enchantable": {
+                    "value": 15
+                  },
+                  "use_cooldown": {
+                    "seconds": 15,
+                    "cooldown_group": "ic:ender_sword"
+                  },
+                  "rarity":"rare",
+                  "minecraft:repair_cost": 99999,
+                  "max_damage": 1481,
+                  "minecraft:damage": 0,
+                  "minecraft:max_stack_size": 1,
+                  "minecraft:item_model": "infinity_cave:ender_sword",
+                  "minecraft:custom_data": {
+                    "infinity_cave": {
+                      "item": "ender_sword",
+                      "tier": 3,
+                      "cooldown": 10,
+                      "label": "important"
+                    }
+                  },
+                  "weapon": {
+                    "item_damage_per_attack": 1
+                  },
+                  "use_remainder": {
+                    "id": "command_block",
+                    "components": {
+                      "custom_data": {
+                        "infinity_cave": {
+                          "item": "ender_sword",
+                          "tier": 3,
+                          "cooldown": 10
+                        }
+                      },
+                      "item_model": "infinity_cave:ender_sword"
+                    }
+                  },
+                  "minecraft:tool": {
+                    "damage_per_block": 2,
+                    "rules": [
+                      {
+                        "blocks": "minecraft:cobweb",
+                        "correct_for_drops": true,
+                        "speed": 15.0
+                      },
+                      {
+                        "blocks": "#minecraft:sword_efficient",
+                        "speed": 1.5
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "function": "minecraft:set_lore",
+                "lore": [
+                  {
+                    "text": "Right Click to teleport ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": "20 blocks forward ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": " "
+                  },
+                  {
+                    "text": "When in Main Hand:",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": " 7 Attack Damage ",
+                    "color": "dark_green",
+                    "italic": false
+                  },
+                  {
+                    "text": " 1.6 Attack Speed",
+                    "color": "dark_green",
+                    "italic": false
+                  }
+                ],
+                "mode": "append"
+              }
+            ]
+          } 
+            ]
+        }
+    ]
+}

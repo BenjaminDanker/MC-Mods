@@ -1,0 +1,2 @@
+execute as @e[type=#infinity_cave:aggro] if score @s ic.uuid = #compare ic.int \
+ run function infinity_cave:mobs/deep_dark/elements/1/vibration/spawn with storage infinity_cave:elements deep_dark.1.vibration

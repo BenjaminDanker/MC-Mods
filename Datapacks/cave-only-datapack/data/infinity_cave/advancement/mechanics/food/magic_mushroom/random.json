@@ -1,0 +1,40 @@
+{
+  "criteria": {
+    "location": {
+      "trigger": "minecraft:location",
+      "conditions": {
+        "player": [
+          {
+            "condition": "minecraft:inverted",
+            "term": {
+              "condition": "minecraft:entity_properties",
+              "entity": "this",
+              "predicate": {
+                "effects": {
+                  "minecraft:unluck": {}
+                }
+              }
+            }
+          },
+          {
+            "condition": "minecraft:entity_scores",
+            "entity": "this",
+            "scores": {
+              "ic.tagged": 1
+            }
+          },
+          {
+            "condition": "minecraft:random_chance",
+            "chance": {
+              "type": "minecraft:constant",
+              "value": 0.005
+            }
+          }
+        ]
+      }
+    }
+  },
+  "rewards": {
+    "function": "infinity_cave:mechanics/food/magic_mushroom/milk"
+  }
+}

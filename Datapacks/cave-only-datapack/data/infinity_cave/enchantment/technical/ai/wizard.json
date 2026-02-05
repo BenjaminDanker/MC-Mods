@@ -1,0 +1,83 @@
+{
+  "description": {
+    "text": "Bonk Diver"
+  },
+  "supported_items": "#minecraft:acacia_logs",
+  "weight": 1,
+  "max_level": 1,
+  "min_cost": {
+    "base": 9999,
+    "per_level_above_first": 0
+  },
+  "max_cost": {
+    "base": 9999,
+    "per_level_above_first": 0
+  },
+  "anvil_cost": 9999,
+  "slots": [
+    "armor"
+  ],
+  "effects": {
+    "minecraft:tick": [
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/wizard/rotate/on_target"
+        },
+        "requirements": [
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "passenger": {
+                "passenger": {
+                  "targeted_entity": {
+                    "type": "minecraft:player"
+                  }
+                }
+              },
+              "periodic_tick": 2
+            }
+          }
+        ]
+      },
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/wizard/remove_potion"
+        },
+        "requirements": [
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "equipment": {
+                "mainhand": {
+                  "items": [
+                    "minecraft:potion",
+                    "minecraft:milk_bucket"
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/wizard/rotate/head"
+        },
+        "requirements": [
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "periodic_tick": 2
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "asset_id": "infinity_cave:entity/frog/rideable_frog",
+  "spawn_conditions": [
+    {
+      "condition": {
+        "type": "moon_brightness",
+        "range": 0
+      },
+      "priority": 0
+    }
+  ]
+}

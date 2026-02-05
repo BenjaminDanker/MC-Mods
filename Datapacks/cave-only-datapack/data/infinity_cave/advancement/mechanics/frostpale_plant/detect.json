@@ -1,0 +1,29 @@
+{
+  "criteria": {
+    "test": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": "minecraft:bow",
+            "predicates": {
+              "minecraft:attribute_modifiers": {
+                "modifiers": {
+                  "contains": [
+                    {
+                      "id": "infinity_cave:id",
+                      "amount": 1
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "rewards": {
+    "function": "infinity_cave:mechanics/frostpale_plant/scan/start"
+  }
+}

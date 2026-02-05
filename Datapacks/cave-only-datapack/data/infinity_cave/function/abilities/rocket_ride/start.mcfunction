@@ -1,0 +1,1 @@
+execute positioned ~ ~1 ~ facing entity @p[gamemode=!creative,gamemode=!spectator] eyes run function infinity_cave:abilities/rocket_ride/shootfacing

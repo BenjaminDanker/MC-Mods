@@ -1,0 +1,26 @@
+{
+    "pools": [
+      {
+        "rolls": 1,
+        "entries": [
+            {
+                "type": "minecraft:item",
+                "name": "minecraft:music_disc_13",
+                "functions": [
+                  {
+                    "function": "minecraft:set_components",
+                    "components": {
+                      "minecraft:jukebox_playable": "infinity_cave:twinleaf_town",
+                      "minecraft:item_model": "infinity_cave:twinleaf_town",
+                      "minecraft:custom_data": {
+                        "ic.music_disc.twinleaf_town": 1
+                      }
+                    }
+                  }
+                ]
+            }
+        ]
+      }
+    ]
+  }
+  

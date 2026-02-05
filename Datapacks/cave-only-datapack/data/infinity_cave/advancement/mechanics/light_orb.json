@@ -1,0 +1,111 @@
+{
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:effects_changed",
+      "conditions": {
+        "player": [
+          {
+            "condition": "any_of",
+            "terms": [
+              {
+                "condition": "minecraft:all_of",
+                "terms": [
+                  {
+                    "condition": "minecraft:any_of",
+                    "terms": [
+                      {
+                        "condition": "minecraft:entity_properties",
+                        "entity": "this",
+                        "predicate": {
+                          "effects": {
+                            "minecraft:blindness": {}
+                          }
+                        }
+                      },
+                      {
+                        "condition": "minecraft:entity_properties",
+                        "entity": "this",
+                        "predicate": {
+                          "effects": {
+                            "minecraft:darkness": {}
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "condition": "minecraft:entity_properties",
+                    "entity": "this",
+                    "predicate": {
+                      "slots": {
+                        "inventory.*": {
+                          "items": "minecraft:music_disc_11",
+                          "predicates": {
+                            "minecraft:custom_data": {
+                              "infinity_cave": {
+                                "item": "light_orb"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "condition": "minecraft:all_of",
+                "terms": [
+                  {
+                    "condition": "minecraft:any_of",
+                    "terms": [
+                      {
+                        "condition": "minecraft:entity_properties",
+                        "entity": "this",
+                        "predicate": {
+                          "effects": {
+                            "minecraft:blindness": {}
+                          }
+                        }
+                      },
+                      {
+                        "condition": "minecraft:entity_properties",
+                        "entity": "this",
+                        "predicate": {
+                          "effects": {
+                            "minecraft:darkness": {}
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "condition": "minecraft:entity_properties",
+                    "entity": "this",
+                    "predicate": {
+                      "slots": {
+                        "hotbar.*": {
+                          "items": "minecraft:music_disc_11",
+                          "predicates": {
+                            "minecraft:custom_data": {
+                              "infinity_cave": {
+                                "item": "light_orb"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "rewards": {
+    "function": "infinity_cave:mechanics/light_orb"
+  }
+}

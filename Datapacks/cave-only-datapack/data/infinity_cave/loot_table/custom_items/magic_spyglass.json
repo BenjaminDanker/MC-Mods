@@ -1,0 +1,54 @@
+{
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:spyglass",
+          "weight": 1,
+          "functions": [
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "item_model": "infinity_cave:magic_spyglass",
+                "minecraft:enchantment_glint_override": true,
+                "minecraft:custom_data": {
+                    "infinity_cave": {
+                        "item": "magic_spyglass"
+                    }
+                }
+              }
+            },
+            {
+              "function": "minecraft:set_name",
+              "name": [
+                {
+                  "text": "Magic Spyglass",
+                  "color": "light_purple",
+                  "italic": false
+                }
+              ]
+            },
+            {
+              "function": "minecraft:set_lore",
+              "lore": [
+                {
+                  "text": "Looking at a mob will ",
+                  "color": "gray",
+                  "italic": false
+                },
+                {
+                  "text": "return its health. ",
+                  "color": "gray",
+                  "italic": false
+                }
+              ],
+              "mode": "append"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

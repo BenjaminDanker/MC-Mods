@@ -1,0 +1,63 @@
+{
+  "pools": [
+    {
+      "rolls": 3,
+      "bonus_rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/uncommon_gear"
+        },
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/frozen/uncommon"
+        },
+        {
+          "type": "minecraft:item",
+          "weight": 2,
+          "name": "minecraft:phantom_membrane",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "min": 2,
+                "max": 5
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "weight": 1,
+          "name": "minecraft:diamond_sword",
+          "functions": [
+            { 
+            "function": "minecraft:enchant_with_levels",
+            "levels": 30,
+            "options": "#infinity_cave:valid"
+            }
+          ],
+          "conditions": [
+            { "condition": "minecraft:random_chance", "chance": 0.1 }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "weight": 2,
+          "name": "minecraft:feather",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "min": 2,
+                "max": 5
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

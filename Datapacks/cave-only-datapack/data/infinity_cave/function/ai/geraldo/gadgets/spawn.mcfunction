@@ -1,0 +1,3 @@
+$execute if predicate {condition:"minecraft:entity_properties",entity:"this",predicate:{targeted_entity:{distance:{absolute:{min:8}}}}} positioned ~ ~1 ~ facing entity @p[gamemode=!creative,gamemode=!spectator] eyes summon $(gadget) run function infinity_cave:ai/geraldo/gadgets/apply_data with storage infinity_cave:geraldo current
+
+$execute if predicate {condition:"minecraft:entity_properties",entity:"this",predicate:{targeted_entity:{distance:{absolute:{max:7.99999999}}}}} positioned ~ ~1 ~ facing entity @p[gamemode=!creative,gamemode=!spectator] eyes summon $(gadget) run function infinity_cave:ai/geraldo/gadgets/apply_data_close with storage infinity_cave:geraldo current

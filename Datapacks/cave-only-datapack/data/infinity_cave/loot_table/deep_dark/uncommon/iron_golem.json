@@ -1,0 +1,70 @@
+{
+  "pools": [
+    {
+      "rolls": 3,
+      "bonus_rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/uncommon_gear"
+        },
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/deep_dark/uncommon"
+        },
+        {
+          "type": "minecraft:item",
+          "weight": 2,
+          "name": "minecraft:iron_ingot",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "min": 2,
+                "max": 4
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "weight": 1,
+          "name": "minecraft:iron_hoe",
+          "functions": [
+            {
+              "function": "minecraft:enchant_with_levels",
+              "levels": 15,
+              "options": "#infinity_cave:valid"
+            }
+          ],
+          "conditions": [
+            {
+              "condition": "random_chance",
+              "chance": 0.33
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "weight": 1,
+          "name": "minecraft:iron_pickaxe",
+          "functions": [
+            {
+              "function": "minecraft:enchant_with_levels",
+              "levels": 15,
+              "options": "#infinity_cave:valid"
+            }
+          ],
+          "conditions": [
+            {
+              "condition": "random_chance",
+              "chance": 0.33
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

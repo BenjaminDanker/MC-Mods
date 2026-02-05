@@ -1,0 +1,42 @@
+{
+    "display": {
+      "icon": {
+        "id": "minecraft:brush",
+        "components": {
+          "item_model": "infinity_cave:molten_hammer"
+        }
+      },
+      "title": "Stop, Hammertime!",
+      "description": [
+        {
+          "text": "Dropped from a Legendary\n\nObtain the Molten Hammer"
+        }
+      ],
+      "show_toast": true,
+      "announce_to_chat": true,
+      "hidden": false
+    },
+    "parent": "infinity_cave:display/molten_caves/bonk_diver",
+    "criteria": {
+      "requirement": {
+        "trigger": "minecraft:inventory_changed",
+        "conditions": {
+          "items": [
+            {
+              "items": [
+                "minecraft:snowball"
+              ],
+            "predicates": {
+              "minecraft:custom_data": {
+                "infinity_cave": {
+                  "item": "molten_hammer"
+                }
+              }
+            }
+            }
+          ]
+        }
+      }
+    }
+  }
+  

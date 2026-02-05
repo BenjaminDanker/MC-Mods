@@ -1,0 +1,121 @@
+{
+    "pools": [
+      {
+        "rolls": 1,
+        "entries": [
+          {
+            "type": "minecraft:item",
+            "name": "minecraft:netherite_sword",
+            "functions": [
+              {
+                "function": "minecraft:set_count",
+                "count": 1
+              },
+              {
+                "function": "minecraft:set_components",
+                "components": {
+                  "enchantments": {
+                    "infinity_cave:technical/bastion_piercer": 1
+                  },
+                  "minecraft:attribute_modifiers": [
+                      {
+                        "type": "attack_speed",
+                        "slot": "mainhand",
+                        "id": "bastion_piercer",
+                        "amount": -3,
+                        "operation": "add_value"
+                      },
+                      {
+                        "type": "entity_interaction_range",
+                        "slot": "mainhand",
+                        "id": "bastion_piercer",
+                        "amount": 1,
+                        "operation": "add_value"
+                      },
+                      {
+                        "type": "attack_damage",
+                        "slot": "mainhand",
+                        "id": "bastion_piercer",
+                        "amount": 11,
+                        "operation": "add_value"
+                      }
+                    ],
+                    "tooltip_display": {
+                      "hidden_components": [
+                        "attribute_modifiers"
+                      ]
+                    },
+                  "minecraft:item_model": "infinity_cave:bastion_piercer",
+                  "minecraft:custom_data": {
+                    "infinity_cave": {
+                      "item": "bastion_piercer",
+                      "tier": 5,
+                      "label": "important"
+                    }
+                  }
+                }
+              },
+              {
+                "function": "minecraft:set_name",
+                "name": [
+                  {
+                    "text": "Bastion Piercer",
+                    "color": "gold",
+                    "italic": false
+                  }
+                ]
+              },
+              {
+                "function": "minecraft:set_lore",
+                "lore": [
+                  {
+                    "text": " "
+                  },
+                  {
+                    "text": "Deals more damage when enemy ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": "is 3.5+ blocks away from ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": "the user. ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": " "
+                  },
+                  {
+                    "text": "When in Main Hand:",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": " 12 Attack Damage ",
+                    "color": "dark_green",
+                    "italic": false
+                  },
+                  {
+                    "text": " 1 Attack Speed",
+                    "color": "dark_green",
+                    "italic": false
+                  },
+                  {
+                    "text": " 4 Reach ",
+                    "color": "dark_green",
+                    "italic": false
+                  }
+                ],
+                "mode": "append"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+  

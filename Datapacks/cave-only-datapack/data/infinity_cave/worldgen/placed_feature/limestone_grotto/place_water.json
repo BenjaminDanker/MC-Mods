@@ -1,0 +1,15 @@
+{
+    "feature": "infinity_cave:limestone_grotto/water",
+    "placement": [
+      {
+        "type": "minecraft:height_range",
+        "height": {
+          "absolute": -130
+        }
+      },
+      {
+        "type": "minecraft:biome"
+      }
+    ]
+  }
+  

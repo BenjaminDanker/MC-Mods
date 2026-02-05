@@ -1,0 +1,42 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:splash_potion",
+      "components": {
+        "item_model": "infinity_cave:tier_three_potion"
+      }
+    },
+    "title": "Rare Grid Ahead",
+    "description": [
+      {
+        "text": "Find a Rare Trial Spawner (replenishes around 20 minutes)!"
+      }
+    ],
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "infinity_cave:display/trial_spawners/uncommon",
+  "criteria": {
+    "requirement": {
+      "trigger": "location",
+      "conditions": {
+        "player": [
+          {
+            "condition": "minecraft:location_check",
+            "predicate": {
+              "structures": [
+                "infinity_cave:limestone_grotto/trial_spawners/rare",
+                "infinity_cave:sulfide_caves/trial_spawners/rare",
+                "infinity_cave:molten_caves/trial_spawners/rare",
+                "infinity_cave:mushroom_gorge/trial_spawners/rare",
+                "infinity_cave:frozen_caves/trial_spawners/rare",
+                "infinity_cave:amethyst_caves/trial_spawners/rare"
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}

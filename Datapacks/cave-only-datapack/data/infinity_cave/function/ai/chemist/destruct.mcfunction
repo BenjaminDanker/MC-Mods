@@ -1,0 +1,1 @@
+execute if entity @a[distance=..1.8] run data modify entity @s OnGround set value true

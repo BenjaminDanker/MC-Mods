@@ -1,0 +1,68 @@
+{
+  "pools": [
+    {
+      "rolls": 3,
+      "bonus_rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/uncommon_gear"
+        },
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/sulfide/uncommon"
+        },
+        {
+          "type": "minecraft:item",
+          "weight": 2,
+          "name": "minecraft:rotten_flesh",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "min": 4,
+                "max": 8
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "weight": 2,
+          "name": "minecraft:netherite_upgrade_smithing_template",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "min": 1,
+                "max": 2
+              }
+            }
+          ],
+          "conditions": [
+            {
+              "condition": "random_chance",
+              "chance": 0.025
+            }
+          ]
+        },
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:custom_items/crumbling_potato",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "min": 4,
+                "max": 8
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

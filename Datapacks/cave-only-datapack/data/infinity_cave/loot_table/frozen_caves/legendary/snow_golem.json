@@ -1,0 +1,101 @@
+{
+  "pools": [
+    {
+      "rolls": 3,
+      "bonus_rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/legendary_gear"
+        },
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/frozen/legendary"
+        }
+      ]
+    },
+    {
+      "rolls": 2,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "weight": 1,
+          "name": "minecraft:book",
+          "functions": [
+            {
+              "function": "enchant_randomly",
+              "options": [
+                "infinity_cave:shockwave_arrow"
+              ]
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "weight": 1,
+          "name": "minecraft:spawner",
+          "functions": [
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "minecraft:block_entity_data": {
+                  "id": "minecraft:mob_spawner",
+                  "SpawnPotentials": [
+                    {
+                      "data": {
+                        "entity": {
+                          "id": "minecraft:snow_golem"
+                        },
+                        "custom_spawn_rules": {
+                          "block_light_limit": {
+                            "max_inclusive": 15,
+                            "min_inclusive": 0
+                          },
+                          "sky_light_limit": {
+                            "min_inclusive": 0,
+                            "max_inclusive": 15
+                          }
+                        }
+                      },
+                      "weight": 1
+                    }
+                  ],
+                  "SpawnData": {
+                    "entity": {
+                      "id": "minecraft:snow_golem"
+                    }
+                  },
+                  "SpawnCount": 4,
+                  "SpawnRange": 16,
+                  "Delay": 200,
+                  "MinSpawnDelay": 200,
+                  "MaxSpawnDelay": 400,
+                  "MaxNearbyEntities": 10,
+                  "RequiredPlayerRange": 16
+                }
+              }
+            },
+            {
+              "function": "set_count",
+              "count": {
+                "type": "minecraft:constant",
+                "value": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:loot_table",
+          "value": "infinity_cave:refs/special_coal_ore"
+        }
+      ]
+    }
+  ]
+}

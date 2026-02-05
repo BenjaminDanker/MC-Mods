@@ -1,0 +1,65 @@
+{
+    "pools": [
+      {
+        "rolls": 1,
+        "entries": [
+          {
+            "type": "minecraft:item",
+            "name": "minecraft:crossbow",
+            "functions": [
+              {
+                "function": "minecraft:set_count",
+                "count": 1
+              },
+              {
+                "function": "minecraft:set_components",
+                "components": {
+                  "enchantments": {
+                    "infinity_cave:technical/icicle_crossbow": 1
+                  },
+                  "minecraft:item_model": "infinity_cave:icicle_crossbow",
+                  "minecraft:custom_data": {
+                    "infinity_cave": {
+                      "item": "icicle_crossbow",
+                      "tier": 5,
+                      "label": "important"
+                    }
+                  }
+                }
+              },
+              {
+                "function": "minecraft:set_name",
+                "name": [
+                  {
+                    "text": "Icicle Crossbow",
+                    "color": "gold",
+                    "italic": false
+                  }
+                ]
+              },
+              {
+                "function": "minecraft:set_lore",
+                "lore": [
+                  {
+                    "text": " "
+                  },
+                  {
+                    "text": "Projectiles travel 3 times",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": "faster, dealing more damage. ",
+                    "color": "gray",
+                    "italic": false
+                  }
+                ],
+                "mode": "append"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+  

@@ -1,0 +1,48 @@
+{
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:jigsaw",
+          "functions": [
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "!lore": {},
+                "max_stack_size": 64,
+                "item_name": "Crumbling Potato",
+                "rarity": "uncommon",
+                "lore": [
+                  {
+                    "text": "Smelt in furnace for sand ",
+                    "italic": false,
+                    "color": "gray"
+                  }
+                ],
+                "minecraft:item_model": "infinity_cave:crumbling_potato",
+                "food": {
+                  "nutrition": 2,
+                  "saturation": 2,
+                  "can_always_eat": false
+                },
+                "minecraft:consumable": {
+                  "consume_seconds": 1.5,
+                  "animation": "eat",
+                  "has_consume_particles": true,
+                  "on_consume_effects": []
+                },
+                "minecraft:custom_data": {
+                  "infinity_cave": {
+                    "item": "crumbling_potato"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

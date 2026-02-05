@@ -1,0 +1,101 @@
+{
+  "description": " ",
+  "supported_items": "#minecraft:enchantable/foot_armor",
+  "weight": 1,
+  "max_level": 1,
+  "min_cost": {
+    "base": 99999,
+    "per_level_above_first": 99999
+  },
+  "max_cost": {
+    "base": 99999,
+    "per_level_above_first": 99999
+  },
+  "anvil_cost": 99999,
+  "slots": [
+    "any"
+  ],
+  "effects": {
+    "minecraft:damage_immunity": [
+      {
+        "effect": {},
+        "requirements": {
+          "condition": "minecraft:damage_source_properties",
+          "predicate": {
+            "tags": [
+              {
+                "id": "infinity_cave:hell_immune",
+                "expected": true
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "minecraft:tick": [
+      {
+        "effect": {
+          "type": "minecraft:spawn_particles",
+          "particle": {
+            "type": "minecraft:lava"
+          },
+          "horizontal_position": {
+            "type": "in_bounding_box",
+            "offset": 0,
+            "scale": 2
+          },
+          "vertical_position": {
+            "type": "entity_position",
+            "offset": 1
+          },
+          "horizontal_velocity": {
+            "base": 0,
+            "movement_scale": 0.2
+          },
+          "vertical_velocity": {
+            "base": 0,
+            "movement_scale": 0.2
+          },
+          "speed": 0.4
+        },
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "this",
+          "predicate": {
+            "periodic_tick": 8
+          }
+        }
+      },
+      {
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "this",
+          "predicate": {
+            "nbt": "{DeathTime:10s}"
+          }
+        },
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/hell_hog/fireball/kill_passenger"
+        }
+      },
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/hell_hog/fireball/tick"
+        },
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "this",
+          "predicate": {
+            "passenger": {
+              "flags": {
+                "is_on_fire": true
+              }
+            }
+          }
+        }
+      }
+    ]
+  }
+}

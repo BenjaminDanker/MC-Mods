@@ -1,0 +1,1 @@
+execute as @n[type=snowball,tag=ic.cooldown,distance=..3] run function infinity_cave:mechanics/weapons/katana/cooldown/mainhand/set_item with storage ic:cooldown item

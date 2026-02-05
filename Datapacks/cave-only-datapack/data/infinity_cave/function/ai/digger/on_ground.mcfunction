@@ -1,0 +1,1 @@
+scoreboard players set @s ic.ai 0

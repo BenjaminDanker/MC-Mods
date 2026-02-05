@@ -1,0 +1,40 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:soul_campfire"
+    },
+    "title": "Phew, We're Safe!?",
+    "description": [
+      {
+        "text": "Place a Soul-like block to prevent spawning in a 10x10 area."
+      }
+    ],
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "infinity_cave:display/root",
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:placed_block",
+      "conditions": {
+        "location": [
+          {
+            "condition": "minecraft:location_check",
+            "predicate": {
+              "position": {
+                "y": {
+                  "min": -128,
+                  "max": -56
+                }
+              },
+              "block": {
+                "blocks": "#infinity_cave:block_spawns"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

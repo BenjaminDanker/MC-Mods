@@ -1,0 +1,39 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:music_disc_13",
+      "components": {
+        "item_model": "infinity_cave:oracion"
+      }
+    },
+    "title": "What Does This Entail?",
+    "description": [
+      {
+        "text": "Find Oracion Music Disc!"
+      }
+    ],
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "infinity_cave:display/misc/twinleaf_town",
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "minecraft:music_disc_13"
+            ],
+            "components": {
+              "minecraft:custom_data": {
+                "ic.music_disc.oracion": 1
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

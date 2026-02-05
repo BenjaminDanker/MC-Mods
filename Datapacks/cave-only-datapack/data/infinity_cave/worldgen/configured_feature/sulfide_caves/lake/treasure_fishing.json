@@ -1,0 +1,390 @@
+{
+  "type": "minecraft:random_patch",
+  "config": {
+    "tries": 25,
+    "xz_spread": 0,
+    "y_spread": 0,
+    "feature": {
+      "feature": {
+        "type": "minecraft:simple_random_selector",
+        "config": {
+          "features": [
+            {
+              "feature": {
+                "type": "minecraft:disk",
+                "config": {
+                  "state_provider": {
+                    "fallback": {
+                      "type": "minecraft:simple_state_provider",
+                      "state": { "Name": "minecraft:stone" }
+                    },
+                    "rules": [
+                      {
+                        "if_true": {
+                          "type": "not",
+                          "predicate": {
+                            "type": "matching_blocks",
+                            "blocks": ["minecraft:stone"],
+                            "offset": [0, -1, 0]
+                          }
+                        },
+                        "then": {
+                          "type": "minecraft:simple_state_provider",
+                          "state": { "Name": "minecraft:stone" }
+                        }
+                      }
+                    ]
+                  },
+                  "radius": 8,
+                  "half_height": 1,
+                  "target": {
+                    "type": "minecraft:matching_block_tag",
+                    "tag": "infinity_cave:all_but_lava"
+                  }
+                }
+              },
+              "placement": []
+            },
+            {
+              "feature": {
+                "type": "minecraft:disk",
+                "config": {
+                  "state_provider": {
+                    "fallback": {
+                      "type": "minecraft:simple_state_provider",
+                      "state": { "Name": "minecraft:stone" }
+                    },
+                    "rules": [
+                      {
+                        "if_true": {
+                          "type": "not",
+                          "predicate": {
+                            "type": "matching_blocks",
+                            "blocks": ["minecraft:stone"],
+                            "offset": [0, -2, 0]
+                          }
+                        },
+                        "then": {
+                          "type": "minecraft:simple_state_provider",
+                          "state": { "Name": "minecraft:stone" }
+                        }
+                      }
+                    ]
+                  },
+                  "radius": 7,
+                  "half_height": 1,
+                  "target": {
+                    "type": "minecraft:matching_block_tag",
+                    "tag": "infinity_cave:all_but_lava"
+                  }
+                }
+              },
+              "placement": [
+                {
+                  "type": "random_offset",
+                  "xz_spread": 0,
+                  "y_spread": -2
+                }
+              ]
+            },
+            {
+              "feature": {
+                "type": "minecraft:disk",
+                "config": {
+                  "state_provider": {
+                    "fallback": {
+                      "type": "minecraft:simple_state_provider",
+                      "state": { "Name": "minecraft:stone" }
+                    },
+                    "rules": [
+                      {
+                        "if_true": {
+                          "type": "not",
+                          "predicate": {
+                            "type": "matching_blocks",
+                            "blocks": ["minecraft:stone"],
+                            "offset": [0, -3, 0]
+                          }
+                        },
+                        "then": {
+                          "type": "minecraft:simple_state_provider",
+                          "state": { "Name": "minecraft:stone" }
+                        }
+                      }
+                    ]
+                  },
+                  "radius": 6,
+                  "half_height": 1,
+                  "target": {
+                    "type": "minecraft:matching_block_tag",
+                    "tag": "infinity_cave:all_but_lava"
+                  }
+                }
+              },
+              "placement": [
+                {
+                  "type": "random_offset",
+                  "xz_spread": 0,
+                  "y_spread": -3
+                }
+              ]
+            },
+            {
+              "feature": {
+                "type": "minecraft:disk",
+                "config": {
+                  "state_provider": {
+                    "fallback": {
+                      "type": "minecraft:simple_state_provider",
+                      "state": { "Name": "minecraft:stone" }
+                    },
+                    "rules": [
+                      {
+                        "if_true": {
+                          "type": "not",
+                          "predicate": {
+                            "type": "matching_blocks",
+                            "blocks": ["minecraft:stone"],
+                            "offset": [0, -4, 0]
+                          }
+                        },
+                        "then": {
+                          "type": "minecraft:simple_state_provider",
+                          "state": { "Name": "minecraft:stone" }
+                        }
+                      }
+                    ]
+                  },
+                  "radius": 5,
+                  "half_height": 1,
+                  "target": {
+                    "type": "minecraft:matching_block_tag",
+                    "tag": "infinity_cave:all_but_lava"
+                  }
+                }
+              },
+              "placement": [
+                {
+                  "type": "random_offset",
+                  "xz_spread": 0,
+                  "y_spread": -4
+                }
+              ]
+            },
+            {
+              "feature": {
+                "type": "minecraft:disk",
+                "config": {
+                  "state_provider": {
+                    "fallback": {
+                      "type": "minecraft:simple_state_provider",
+                      "state": { "Name": "minecraft:stone" }
+                    },
+                    "rules": [
+                      {
+                        "if_true": {
+                          "type": "not",
+                          "predicate": {
+                            "type": "matching_blocks",
+                            "blocks": ["minecraft:stone"],
+                            "offset": [0, -5, 0]
+                          }
+                        },
+                        "then": {
+                          "type": "minecraft:simple_state_provider",
+                          "state": { "Name": "minecraft:stone" }
+                        }
+                      }
+                    ]
+                  },
+                  "radius": 4,
+                  "half_height": 1,
+                  "target": {
+                    "type": "minecraft:matching_block_tag",
+                    "tag": "infinity_cave:all_but_lava"
+                  }
+                }
+              },
+              "placement": [
+                {
+                  "type": "random_offset",
+                  "xz_spread": 0,
+                  "y_spread": -5
+                }
+              ]
+            },
+            {
+              "feature": {
+                "type": "minecraft:disk",
+                "config": {
+                  "state_provider": {
+                    "fallback": {
+                      "type": "minecraft:simple_state_provider",
+                      "state": { "Name": "minecraft:water" }
+                    },
+                    "rules": [
+                      {
+                        "if_true": {
+                          "type": "not",
+                          "predicate": {
+                            "type": "matching_blocks",
+                            "blocks": ["minecraft:water"],
+                            "offset": [0, -1, 0]
+                          }
+                        },
+                        "then": {
+                          "type": "minecraft:simple_state_provider",
+                          "state": { "Name": "minecraft:water" }
+                        }
+                      }
+                    ]
+                  },
+                  "radius": 7,
+                  "half_height": 1,
+                  "target": {
+                    "type": "minecraft:matching_block_tag",
+                    "tag": "infinity_cave:all_but_lava"
+                  }
+                }
+              },
+              "placement": [
+                {
+                  "type": "random_offset",
+                  "xz_spread": 0,
+                  "y_spread": 0
+                }
+              ]
+            },
+            {
+              "feature": {
+                "type": "minecraft:disk",
+                "config": {
+                  "state_provider": {
+                    "fallback": {
+                      "type": "minecraft:simple_state_provider",
+                      "state": { "Name": "minecraft:water" }
+                    },
+                    "rules": [
+                      {
+                        "if_true": {
+                          "type": "not",
+                          "predicate": {
+                            "type": "matching_blocks",
+                            "blocks": ["minecraft:water"],
+                            "offset": [0, -2, 0]
+                          }
+                        },
+                        "then": {
+                          "type": "minecraft:simple_state_provider",
+                          "state": { "Name": "minecraft:water" }
+                        }
+                      }
+                    ]
+                  },
+                  "radius": 6,
+                  "half_height": 1,
+                  "target": {
+                    "type": "minecraft:matching_block_tag",
+                    "tag": "infinity_cave:all_but_lava"
+                  }
+                }
+              },
+              "placement": [
+                {
+                  "type": "random_offset",
+                  "xz_spread": 0,
+                  "y_spread": -1
+                }
+              ]
+            },
+            {
+              "feature": {
+                "type": "minecraft:disk",
+                "config": {
+                  "state_provider": {
+                    "fallback": {
+                      "type": "minecraft:simple_state_provider",
+                      "state": { "Name": "minecraft:water" }
+                    },
+                    "rules": [
+                      {
+                        "if_true": {
+                          "type": "not",
+                          "predicate": {
+                            "type": "matching_blocks",
+                            "blocks": ["minecraft:water"],
+                            "offset": [0, -3, 0]
+                          }
+                        },
+                        "then": {
+                          "type": "minecraft:simple_state_provider",
+                          "state": { "Name": "minecraft:water" }
+                        }
+                      }
+                    ]
+                  },
+                  "radius": 5,
+                  "half_height": 1,
+                  "target": {
+                    "type": "minecraft:matching_block_tag",
+                    "tag": "infinity_cave:all_but_lava"
+                  }
+                }
+              },
+              "placement": [
+                {
+                  "type": "random_offset",
+                  "xz_spread": 0,
+                  "y_spread": -2
+                }
+              ]
+            },
+            {
+              "feature": {
+                "type": "minecraft:disk",
+                "config": {
+                  "state_provider": {
+                    "fallback": {
+                      "type": "minecraft:simple_state_provider",
+                      "state": { "Name": "minecraft:water" }
+                    },
+                    "rules": [
+                      {
+                        "if_true": {
+                          "type": "not",
+                          "predicate": {
+                            "type": "matching_blocks",
+                            "blocks": ["minecraft:water"],
+                            "offset": [0, -4, 0]
+                          }
+                        },
+                        "then": {
+                          "type": "minecraft:simple_state_provider",
+                          "state": { "Name": "minecraft:water" }
+                        }
+                      }
+                    ]
+                  },
+                  "radius": 4,
+                  "half_height": 1,
+                  "target": {
+                    "type": "minecraft:matching_block_tag",
+                    "tag": "infinity_cave:all_but_lava"
+                  }
+                }
+              },
+              "placement": [
+                {
+                  "type": "random_offset",
+                  "xz_spread": 0,
+                  "y_spread": -3
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "placement": []
+    }
+  }
+}

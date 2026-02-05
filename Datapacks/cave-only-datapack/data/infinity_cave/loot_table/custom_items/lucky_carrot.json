@@ -1,0 +1,71 @@
+{
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:suspicious_stew",
+          "functions": [
+            {
+              "function": "minecraft:set_stew_effect",
+              "effects": [
+                {
+                  "type": "minecraft:luck",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                }
+              ]
+            },
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "max_stack_size": 64,
+                "item_name": "Lucky Carrot",
+                "rarity": "uncommon",
+                "!use_remainder": {},
+                "lore": [
+                  {
+                    "text": "Grants Luck to user",
+                    "italic": false,
+                    "color": "gray"
+                  }
+                ],
+                "minecraft:custom_data": {
+                  "infinity_cave": {
+                    "item": "lucky_carrot"
+                  }
+                },
+                "minecraft:item_model": "infinity_cave:lucky_carrot",
+                "minecraft:consumable": {
+                  "consume_seconds": 1.5,
+                  "animation": "eat",
+                  "has_consume_particles": true,
+                  "on_consume_effects": [
+                    {
+                      "type": "apply_effects",
+                      "effects": [
+                        {
+                          "id": "luck",
+                          "ambient": true,
+                          "amplifier": 0,
+                          "duration": 200,
+                          "show_icon": true,
+                          "show_particles": true
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

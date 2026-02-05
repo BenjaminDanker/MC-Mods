@@ -1,0 +1,207 @@
+{
+  "description": {
+    "text": "Ninja"
+  },
+  "supported_items": "#minecraft:acacia_logs",
+  "weight": 1,
+  "max_level": 1,
+  "min_cost": {
+    "base": 9999,
+    "per_level_above_first": 0
+  },
+  "max_cost": {
+    "base": 9999,
+    "per_level_above_first": 0
+  },
+  "anvil_cost": 9999,
+  "slots": ["armor"],
+  "effects": {
+    "minecraft:tick": [
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/ninja/long_jump/set_motion"
+        },
+        "requirements": [
+          {
+            "condition": "minecraft:random_chance",
+            "chance": {
+              "type": "minecraft:enchantment_level",
+              "amount": {
+                "type": "minecraft:linear",
+                "base": 0.5,
+                "per_level_above_first": 0.05
+              }
+            }
+          },
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "type": "#infinity_cave:aggro",
+              "periodic_tick": 50,
+              "targeted_entity": {
+                "type": "minecraft:player",
+                "distance": { "horizontal": { "min": 15 } }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/ninja/middle_jump/set_motion"
+        },
+        "requirements": [
+          {
+            "condition": "minecraft:random_chance",
+            "chance": {
+              "type": "minecraft:enchantment_level",
+              "amount": {
+                "type": "minecraft:linear",
+                "base": 0.5,
+                "per_level_above_first": 0.05
+              }
+            }
+          },
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "type": "#infinity_cave:aggro",
+              "periodic_tick": 50,
+              "targeted_entity": {
+                "type": "minecraft:player",
+                "distance": {
+                  "horizontal": { "min": 5, "max": 14.999 }
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "requirements": [
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "flags": { "is_on_ground": false
+            },
+              "targeted_entity": {
+                "distance": { "absolute": { "max": 3 } }
+              },
+              "movement": { "horizontal_speed": { "min": 8, "max": 9 } }
+            }
+          }
+        ],
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/ninja/damage/1"
+        }
+      },
+      {
+        "requirements": [
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "flags": { "is_on_ground": false
+            },
+              "targeted_entity": {
+                "distance": { "absolute": { "max": 3 } }
+              },
+              "movement": { "horizontal_speed": { "min": 9.0001, "max": 10 } }
+            }
+          }
+        ],
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/ninja/damage/2"
+        }
+      },
+      {
+        "requirements": [
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "flags": { "is_on_ground": false
+            },
+              "targeted_entity": {
+                "distance": { "absolute": { "max": 3 } }
+              },
+              "movement": { "horizontal_speed": { "min": 10.0001, "max": 11 } }
+            }
+          }
+        ],
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/ninja/damage/3"
+        }
+      },
+      {
+        "requirements": [
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "flags": { "is_on_ground": false
+            },
+              "targeted_entity": {
+                "distance": { "absolute": { "max": 3 } }
+              },
+              "movement": { "horizontal_speed": { "min": 11.0001, "max": 12 } }
+            }
+          }
+        ],
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/ninja/damage/4"
+        }
+      },
+      {
+        "requirements": [
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "flags": { "is_on_ground": false
+            },
+              "targeted_entity": {
+                "distance": { "absolute": { "max": 3 } }
+              },
+              "movement": { "horizontal_speed": { "min": 12.0001 } }
+            }
+          }
+        ],
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/ninja/damage/5"
+        }
+      }
+    ],
+    "minecraft:post_attack": [
+      {
+        "requirements": {
+          "condition": "minecraft:random_chance",
+          "chance": {
+            "type": "minecraft:enchantment_level",
+            "amount": {
+              "type": "minecraft:linear",
+              "base": 0.05,
+              "per_level_above_first": 0.0125
+            }
+          }
+        },
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/ninja/smoke_bomb/get_y"
+        },
+        "enchanted": "victim",
+        "affected": "victim"
+      }
+    ]
+  }
+}

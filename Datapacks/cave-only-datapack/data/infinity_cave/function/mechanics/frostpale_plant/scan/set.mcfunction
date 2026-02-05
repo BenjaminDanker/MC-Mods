@@ -1,0 +1,3 @@
+$item modify entity @s $(location).$(slot) [{function:"minecraft:set_attributes",modifiers:[{attribute:"minecraft:tempt_range",id:"infinity_cave:id",amount:0,operation:"add_value",slot:"mainhand"}],replace:1b},{function:"minecraft:set_enchantments",enchantments:{"infinity_cave:technical/ai/ice_archer":1},add:1b}]
+
+execute if score .count ic.int matches 1.. run function infinity_cave:mechanics/frostpale_plant/scan/start

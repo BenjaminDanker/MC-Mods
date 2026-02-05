@@ -1,0 +1,2 @@
+execute as @e[type=#infinity_cave:aggro] if score @s ic.uuid = #compare ic.int \
+ run function infinity_cave:mobs/mushroom_gorge/elements/1/levitation_spore/spawn with storage infinity_cave:elements mushroom.1.levitation_spore

@@ -1,0 +1,158 @@
+{
+    "pools": [
+      {
+        "rolls": 5,
+        "entries": [
+          {
+            "type": "minecraft:item",
+            "weight": 3,
+            "name": "minecraft:brown_mushroom",
+            "functions": [
+              {
+                "function": "minecraft:set_count",
+                "count": {
+                  "min": 6,
+                  "max": 12
+                }
+              }
+            ]
+          },
+          {
+            "type": "loot_table",
+            "value": "infinity_cave:custom_items/nimbus_nunchucks",
+            "functions": [
+              {
+                "function": "enchant_with_levels",
+                "levels": 22,
+                "options": "#infinity_cave:valid"
+              }
+            ],
+            "conditions": [
+              {
+                "condition": "random_chance", 
+                "chance": 0.25
+              }
+            ]
+          },
+          {
+            "type": "loot_table",
+            "value": "infinity_cave:custom_items/bonding_sword",
+            "functions": [
+              {
+                "function": "enchant_with_levels",
+                "levels": 30,
+                "options": "#infinity_cave:valid"
+              }
+            ],
+            "conditions": [
+              {
+                "condition": "random_chance", 
+                "chance": 0.25
+              }
+            ]
+          },
+          {
+            "type": "loot_table",
+            "value": "infinity_cave:custom_items/cetirizine",
+            "functions": [
+              {
+                "function": "set_count",
+                "count": {
+                  "max": 4,
+                  "min": 2
+                }
+              }
+            ]
+          },
+          {
+            "type": "minecraft:item",
+            "weight": 2,
+            "name": "minecraft:red_mushroom",
+            "functions": [
+              {
+                "function": "minecraft:set_count",
+                "count": {
+                  "min": 6,
+                  "max": 12
+                }
+              }
+            ]
+          },
+          {
+            "type": "minecraft:item",
+            "weight": 2,
+            "name": "minecraft:dandelion",
+            "functions": [
+              {
+                "function": "minecraft:set_count",
+                "count": {
+                  "min": 6,
+                  "max": 12
+                }
+              }
+            ]
+          },
+          {
+            "type": "minecraft:item",
+            "weight": 3,
+            "name": "minecraft:emerald",
+            "functions": [
+              {
+                "function": "minecraft:set_count",
+                "count": {
+                  "min": 5,
+                  "max": 10
+                }
+              }
+            ]
+          },
+          {
+            "type": "minecraft:item",
+            "weight": 2,
+            "name": "minecraft:tipped_arrow",
+            "functions": [
+              {
+                "function": "minecraft:set_count",
+                "count": {
+                  "min": 4,
+                  "max": 8
+                }
+              },
+              {
+                "function": "minecraft:set_components",
+                "components": {
+                  "minecraft:potion_contents": {
+                    "custom_color": 670482,
+                    "custom_effects": [
+                      {
+                        "id": "minecraft:slowness",
+                        "amplifier": 1,
+                        "duration": 200
+                      },
+                      {
+                        "id": "minecraft:wither",
+                        "amplifier": 2,
+                        "duration": 200,
+                        "show_particles": true
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "function": "minecraft:set_name",
+                "name": [
+                  {
+                    "text": "Toxic Arrow",
+                    "color": "white",
+                    "italic": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+  

@@ -1,0 +1,54 @@
+{
+  "description": {
+    "translate": "Disposal"
+  },
+  "supported_items": "#minecraft:enchantable/sharp_weapon",
+  "weight": 1,
+  "max_level": 1,
+  "min_cost": {
+    "base": 9999,
+    "per_level_above_first": 9999
+  },
+  "max_cost": {
+    "base": 9999,
+    "per_level_above_first": 9999
+  },
+  "anvil_cost": 9999,
+  "slots": [
+    "mainhand"
+  ],
+  "effects": {
+    "minecraft:projectile_spawned": [
+      {
+        "requirements": [
+        ],
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:mechanics/weapons/nimbus_nunchucks/origin"
+        }
+      },
+      {
+        "requirements": [
+        ],
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:mechanics/weapons/nimbus_nunchucks/cooldown/get_data"
+        }
+      }
+    ],
+    "minecraft:attributes": [
+      {
+        "id": "ic.nimbus_nunchucks",
+        "attribute": "minecraft:attack_damage",
+        "amount": 6,
+        "operation": "add_value"
+      },
+      {
+        "id": "ic.nimbus_nunchucks",
+        "attribute": "minecraft:attack_speed",
+        "amount": -2,
+        "operation": "add_value"
+      }
+    ]
+  }
+}

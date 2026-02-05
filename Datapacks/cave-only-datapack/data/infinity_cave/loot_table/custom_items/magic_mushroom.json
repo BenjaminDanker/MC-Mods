@@ -1,0 +1,470 @@
+{
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:suspicious_stew",
+          "functions": [
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "custom_data": {
+                  "infinity_cave": {
+                   "item": "magic_mushroom",
+                   "enlarge": true
+                  }
+                },
+                "max_stack_size": 16,
+                "item_name": "Magic Mushroom",
+                "rarity": "uncommon",
+                "!use_remainder": {},
+                "use_cooldown": {
+                  "seconds": 5,
+                  "cooldown_group": "infinity_cave:magic_mushroom"
+                },
+                "lore": [
+                  {
+                    "text": "Randomly applies effect to user, ",
+                    "italic": false,
+                    "color": "gray"
+                  },
+                  {
+                    "text": "duration scales with progression ",
+                    "italic": false,
+                    "color": "gray"
+                  }
+                ],
+                "minecraft:item_model": "infinity_cave:magic_mushroom",
+                "minecraft:consumable": {
+                  "consume_seconds": 1.5,
+                  "animation": "eat",
+                  "has_consume_particles": true,
+                  "on_consume_effects": [
+                    {
+                      "type": "play_sound",
+                      "sound": "entity.illusioner.mirror_move"
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "conditions": [
+            {
+              "condition": "random_chance",
+              "chance": 0.04
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:suspicious_stew",
+          "functions": [
+
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "custom_data": {
+                  "infinity_cave": {
+                   "item": "magic_mushroom",
+                   "shrink": true
+                  }
+                },
+                "max_stack_size": 16,
+                "item_name": "Magic Mushroom",
+                "rarity": "uncommon",
+                "!use_remainder": {},
+                "use_cooldown": {
+                  "seconds": 5,
+                  "cooldown_group": "infinity_cave:magic_mushroom"
+                },
+                "lore": [
+                  {
+                    "text": "Randomly applies effect to user, ",
+                    "italic": false,
+                    "color": "gray"
+                  },
+                  {
+                    "text": "duration scales with progression ",
+                    "italic": false,
+                    "color": "gray"
+                  }
+                ],
+                "minecraft:item_model": "infinity_cave:magic_mushroom",
+                "minecraft:consumable": {
+                  "consume_seconds": 1.5,
+                  "animation": "eat",
+                  "has_consume_particles": true,
+                  "on_consume_effects": [
+                    {
+                      "type": "play_sound",
+                      "sound": "entity.illusioner.mirror_move"
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "conditions": [
+            {
+              "condition": "random_chance",
+              "chance": 0.04
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:suspicious_stew",
+          "functions": [
+            {
+              "function": "minecraft:set_stew_effect",
+              "effects": [
+                {
+                  "type": "minecraft:speed",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:slowness",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:haste",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:mining_fatigue",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:strength",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:jump_boost",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:nausea",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:regeneration",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:resistance",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:fire_resistance",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:water_breathing",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:invisibility",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:blindness",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:night_vision",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:hunger",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:weakness",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:poison",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:wither",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:health_boost",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:absorption",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:saturation",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:glowing",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:levitation",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:luck",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:unluck",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.5
+                  }
+                },
+                {
+                  "type": "minecraft:slow_falling",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:conduit_power",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:dolphins_grace",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:bad_omen",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:hero_of_the_village",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:infested",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:weaving",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                },
+                {
+                  "type": "minecraft:oozing",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                }
+              ]
+            },
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "custom_data": {
+                  "infinity_cave": {
+                   "item": "magic_mushroom"
+                  }
+                },
+                "max_stack_size": 16,
+                "item_name": "Magic Mushroom",
+                "rarity": "uncommon",
+                "!use_remainder": {},
+                "use_cooldown": {
+                  "seconds": 5,
+                  "cooldown_group": "infinity_cave:magic_mushroom"
+                },
+                "lore": [
+                  {
+                    "text": "Randomly applies effect to user, ",
+                    "italic": false,
+                    "color": "gray"
+                  },
+                  {
+                    "text": "duration scales with progression ",
+                    "italic": false,
+                    "color": "gray"
+                  }
+                ],
+                "minecraft:item_model": "infinity_cave:magic_mushroom",
+                "minecraft:consumable": {
+                  "consume_seconds": 1.5,
+                  "animation": "eat",
+                  "has_consume_particles": true,
+                  "on_consume_effects": [
+                    {
+                      "type": "play_sound",
+                      "sound": "entity.illusioner.mirror_move"
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

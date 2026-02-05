@@ -1,0 +1,41 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:stone_axe",
+      "components": {
+        "item_model": "infinity_cave:ender_sword"
+      }
+    },
+    "title": "END ASPECT IN SKYBLOCK!?",
+    "description": [
+      {
+        "text": "Find an Ender Sword"
+      }
+    ],
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "infinity_cave:display/amethyst_caves/magician",
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "minecraft:snowball"
+            ],
+            "predicates": {
+              "minecraft:custom_data": {
+                "infinity_cave": {
+                  "item": "ender_sword"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

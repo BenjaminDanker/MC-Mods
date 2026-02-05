@@ -1,0 +1,41 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:stone_sword",
+      "components": {
+        "item_model": "infinity_cave:heavy_sword"
+      }
+    },
+    "title": "With a Heavy Heart...",
+    "description": [
+      {
+        "text": "Find a Heavy Sword"
+      }
+    ],
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "infinity_cave:display/deeprock_caverns/dinosaur",
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "minecraft:stone_sword"
+            ],
+            "predicates": {
+              "minecraft:custom_data": {
+                "infinity_cave": {
+                  "item": "heavy_sword"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

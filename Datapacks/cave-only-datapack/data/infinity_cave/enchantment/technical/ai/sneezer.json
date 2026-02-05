@@ -1,0 +1,129 @@
+{
+  "description": {
+    "text": "Bonk Diver"
+  },
+  "supported_items": "#minecraft:acacia_logs",
+  "weight": 1,
+  "max_level": 1,
+  "min_cost": {
+    "base": 9999,
+    "per_level_above_first": 0
+  },
+  "max_cost": {
+    "base": 9999,
+    "per_level_above_first": 0
+  },
+  "anvil_cost": 9999,
+  "slots": [
+    "any"
+  ],
+  "effects": {
+    "minecraft:post_attack": [
+      {
+        "enchanted": "attacker",
+        "affected": "victim",
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/sneezer/get_attack"
+        },
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "this",
+          "predicate": {}
+        }
+      }
+    ],
+    "minecraft:tick": [
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/sneezer/no_rider"
+        },
+        "requirements": [
+          {
+            "condition": "minecraft:inverted",
+            "term": {
+              "condition": "minecraft:entity_properties",
+              "entity": "this",
+              "predicate": {
+                "vehicle": {}
+              }
+            }
+          }
+        ]
+      },
+      {
+        "requirements": [
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "vehicle": {
+                "effects": {
+                  "minecraft:slowness": {
+                    "amplifier": 5,
+                    "duration": {
+                      "max": 20
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "effect": {
+          "type": "run_function",
+          "function": "infinity_cave:ai/sneezer/sneeze"
+        }
+      },
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/sneezer/get_data"
+        },
+        "requirements": [
+          {
+            "condition": "inverted",
+            "term": {
+              "condition": "minecraft:entity_properties",
+              "entity": "this",
+              "predicate": {
+                "vehicle": {
+                  "effects": {
+                    "minecraft:slowness": {
+                      "amplifier": 5,
+                      "duration": {
+                        "min": 21
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "condition": "minecraft:random_chance",
+            "chance": {
+              "type": "minecraft:enchantment_level",
+              "amount": {
+                "type": "minecraft:linear",
+                "base": 0.25,
+                "per_level_above_first": 0.05
+              }
+            }
+          },
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "periodic_tick": 50,
+              "targeted_entity": {
+                "type": "minecraft:player"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,119 @@
+{
+  "pools": [
+    {
+      "rolls": 3,
+      "bonus_rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/legendary_gear"
+        },
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/sulfide/legendary"
+        }
+      ]
+    },
+    {
+      "rolls": 2,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "weight": 1,
+          "name": "minecraft:book",
+          "functions": [
+            {
+              "function": "enchant_randomly",
+              "options": [
+                "infinity_cave:smite_shot"
+              ]
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "weight": 1,
+          "name": "minecraft:book",
+          "functions": [
+            {
+              "function": "enchant_randomly",
+              "options": [
+                "infinity_cave:outlaw_shot"
+              ]
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "weight": 2,
+          "name": "minecraft:bone_block",
+          "functions": [
+            {
+              "function": "set_count",
+              "count": {
+                "max": 7,
+                "min": 3
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:bow",
+          "weight": 2,
+          "functions": [
+            {
+              "function": "set_components",
+              "components": {
+                "item_name": "Skeleton Bow",
+                "rarity": "epic",
+                "enchantments": {
+                  "infinity_cave:zskeleton_bow": 1
+                },
+                "item_model": "infinity_cave:skeleton_bow"
+              }
+            },
+            {
+              "function": "enchant_with_levels",
+              "levels": 50,
+              "options": "#infinity_cave:valid"
+            },
+            {
+              "function": "set_damage",
+              "damage": {
+                "max": 0.9,
+                "min": 0.05
+              }
+            }
+          ],
+          "conditions": [
+            {
+              "condition": "random_chance",
+              "chance": 0.5
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "rolls": 2,
+      "entries": [
+        {
+          "type": "loot_table",
+          "value": "infinity_cave:custom_items/tipped_arrow_pool"
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:loot_table",
+          "value": "infinity_cave:refs/special_coal_ore"
+        }
+      ]
+    }
+  ]
+}

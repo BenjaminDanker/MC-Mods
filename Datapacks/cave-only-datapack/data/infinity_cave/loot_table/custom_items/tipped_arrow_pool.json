@@ -1,0 +1,319 @@
+{
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:tipped_arrow",
+          "weight": 20,
+          "functions": [
+            {
+              "function": "set_count",
+              "count": { "min": 8, "max": 16 }
+            },
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "max_stack_size": 99,
+                "minecraft:potion_contents": {
+                  "custom_effects": [
+                    { "id": "minecraft:slowness", "amplifier": 0, "duration": 1600 }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:tipped_arrow",
+          "weight": 18,
+          "functions": [
+            {
+              "function": "set_count",
+              "count": { "min": 8, "max": 16 }
+            },
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "max_stack_size": 99,
+                "minecraft:potion_contents": {
+                  "custom_effects": [
+                    { "id": "minecraft:weakness", "amplifier": 0, "duration": 1600 }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:tipped_arrow",
+          "weight": 16,
+          "functions": [
+            {
+              "function": "set_count",
+              "count": { "min": 8, "max": 16 }
+            },
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "max_stack_size": 99,
+                "minecraft:potion_contents": {
+                  "custom_effects": [
+                    { "id": "minecraft:poison", "amplifier": 1, "duration": 1800 }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:tipped_arrow",
+          "weight": 10,
+          "functions": [
+            {
+              "function": "set_count",
+              "count": { "min": 8, "max": 16 }
+            },
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "max_stack_size": 99,
+                "minecraft:potion_contents": {
+                  "custom_effects": [
+                    { "id": "minecraft:hunger", "amplifier": 1, "duration": 2000 }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:tipped_arrow",
+          "weight": 8,
+          "functions": [
+            {
+              "function": "set_count",
+              "count": { "min": 8, "max": 16 }
+            },
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "max_stack_size": 99,
+                "minecraft:potion_contents": {
+                  "custom_effects": [
+                    { "id": "minecraft:blindness", "amplifier": 0, "duration": 1000 }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:tipped_arrow",
+          "weight": 6,
+          "functions": [
+            {
+              "function": "set_count",
+              "count": { "min": 8, "max": 16 }
+            },
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "max_stack_size": 99,
+                "minecraft:potion_contents": {
+                  "custom_effects": [
+                    { "id": "minecraft:mining_fatigue", "amplifier": 2, "duration": 2400 }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:tipped_arrow",
+          "weight": 4,
+          "functions": [
+            {
+              "function": "set_count",
+              "count": { "min": 8, "max": 16 }
+            },
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "max_stack_size": 99,
+                "minecraft:potion_contents": {
+                  "custom_effects": [
+                    { "id": "minecraft:nausea", "amplifier": 1, "duration": 2400 }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:tipped_arrow",
+          "weight": 3,
+          "functions": [
+            {
+              "function": "set_count",
+              "count": { "min": 8, "max": 16 }
+            },
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "max_stack_size": 99,
+                "minecraft:potion_contents": {
+                  "custom_effects": [
+                    { "id": "minecraft:wither", "amplifier": 2, "duration": 2000 }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:tipped_arrow",
+          "weight": 3,
+          "functions": [
+            {
+              "function": "set_count",
+              "count": { "min": 8, "max": 16 }
+            },
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "max_stack_size": 99,
+                "minecraft:potion_contents": {
+                  "custom_effects": [
+                    { "id": "minecraft:levitation", "amplifier": 1, "duration": 800 }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:tipped_arrow",
+          "weight": 2,
+          "functions": [
+            {
+              "function": "set_count",
+              "count": { "min": 8, "max": 16 }
+            },
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "max_stack_size": 99,
+                "minecraft:potion_contents": {
+                  "custom_effects": [
+                    { "id": "minecraft:darkness", "amplifier": 1, "duration": 1800 }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:tipped_arrow",
+          "weight": 2,
+          "functions": [
+            {
+              "function": "set_count",
+              "count": { "min": 8, "max": 16 }
+            },
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "max_stack_size": 99,
+                "minecraft:potion_contents": {
+                  "custom_effects": [
+                    { "id": "minecraft:instant_damage", "amplifier": 2, "duration": 1 }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:tipped_arrow",
+          "weight": 1,
+          "functions": [
+            {
+              "function": "set_count",
+              "count": { "min": 8, "max": 16 }
+            },
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "max_stack_size": 99,
+                "minecraft:potion_contents": {
+                  "custom_effects": [
+                    { "id": "minecraft:mining_fatigue", "amplifier": 4, "duration": 4000 }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:tipped_arrow",
+          "weight": 1,
+          "functions": [
+            {
+              "function": "set_count",
+              "count": { "min": 8, "max": 16 }
+            },
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "max_stack_size": 99,
+                "minecraft:potion_contents": {
+                  "custom_effects": [
+                    { "id": "minecraft:blindness", "amplifier": 1, "duration": 1600 },
+                    { "id": "minecraft:nausea", "amplifier": 1, "duration": 2400 }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:tipped_arrow",
+          "weight": 1,
+          "functions": [
+            {
+              "function": "set_count",
+              "count": { "min": 8, "max": 16 }
+            },
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "max_stack_size": 99,
+                "minecraft:potion_contents": {
+                  "custom_effects": [
+                    { "id": "minecraft:levitation", "amplifier": 1, "duration": 600 },
+                    { "id": "minecraft:slow_falling", "amplifier": 0, "duration": 1200 }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

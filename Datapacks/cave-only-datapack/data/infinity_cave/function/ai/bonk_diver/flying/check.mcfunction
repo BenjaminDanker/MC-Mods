@@ -1,0 +1,1 @@
+execute if score @s ic.ai matches 0 run function infinity_cave:ai/bonk_diver/flying/set_motion

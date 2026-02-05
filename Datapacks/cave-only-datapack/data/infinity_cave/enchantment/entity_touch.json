@@ -1,0 +1,37 @@
+{
+  "description": {
+    "translate": "enchantment.infinity_cave.entity_touch",
+      "fallback": "Entity Touch",
+      "color": "gold"
+    },
+    "supported_items": "#infinity_cave:sharpness",
+    "weight": 4,
+    "max_level": 3,
+    "min_cost": {
+      "base": 30,
+      "per_level_above_first": 4
+    },
+    "max_cost": {
+      "base": 65,
+      "per_level_above_first": 4
+    },
+    "anvil_cost": 8,
+    "slots": [
+      "mainhand"
+    ],
+    "effects": {
+      "minecraft:attributes": [
+        {
+          "id": "ic.entity_touch",
+          "attribute": "minecraft:entity_interaction_range",
+          "amount": {
+            "type": "minecraft:linear",
+            "base": 0.5,
+            "per_level_above_first": 0.5
+          },
+          "operation": "add_value"
+        }
+      ]
+    }
+  }
+  

@@ -1,0 +1,41 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:shield",
+      "components": {
+        "item_model": "infinity_cave:acid_shield"
+      }
+    },
+    "title": "How Do You Own Disoder?",
+    "description": [
+      {
+        "text": "Dropped from a Legendary with a shield in Sulfide Caves\n\nObtain the Acid Shield"
+      }
+    ],
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "infinity_cave:display/sulfide_caves/sneezer",
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "minecraft:shield"
+            ],
+            "predicates": {
+              "minecraft:custom_data": {
+                "infinity_cave": {
+                  "item": "acid_shield"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

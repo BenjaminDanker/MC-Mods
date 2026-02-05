@@ -1,0 +1,86 @@
+{
+  "pools": [
+    {
+      "rolls": 3,
+      "bonus_rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/frozen/rare"
+        },
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/rare_gear"
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:wolf_armor",
+          "functions": [
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "minecraft:attribute_modifiers": [
+                  {
+                    "type": "minecraft:attack_damage",
+                    "id": "infinity_cave:attack_damage",
+                    "amount": 10,
+                    "operation": "add_value"
+                  },
+                  {
+                    "type": "minecraft:armor",
+                    "id": "infinity_cave:armor",
+                    "amount": 12,
+                    "operation": "add_value"
+                  },
+                  {
+                    "type": "minecraft:armor_toughness",
+                    "id": "infinity_cave:toughness",
+                    "amount": 2,
+                    "operation": "add_value"
+                  }
+                ]
+              }
+            }
+          ],
+          "conditions": [
+            {
+              "condition": "random_chance",
+              "chance": 0.4
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "weight": 2,
+          "name": "minecraft:cooked_beef",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "min": 1,
+                "max": 2
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "weight": 2,
+          "name": "minecraft:bone",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "min": 2,
+                "max": 4
+              }
+            }
+          ]
+        }
+      ],
+      "functions": []
+    }
+  ]
+}

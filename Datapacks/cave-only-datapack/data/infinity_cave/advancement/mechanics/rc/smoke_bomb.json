@@ -1,0 +1,23 @@
+{
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:consume_item",
+      "conditions": {
+        "player": [
+        ],
+        "item": {
+          "predicates": {
+            "minecraft:custom_data": {
+              "infinity_cave": {
+                "item": "smoke_bomb"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "rewards": {
+    "function": "infinity_cave:mechanics/rc/smoke_bomb/activate"
+  }
+}

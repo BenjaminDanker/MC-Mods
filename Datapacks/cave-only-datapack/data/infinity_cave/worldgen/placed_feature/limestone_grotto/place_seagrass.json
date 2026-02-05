@@ -1,0 +1,67 @@
+{
+  "feature": {
+    "config": {
+      "tries": 12,
+      "xz_spread": 2,
+      "y_spread": 0,
+      "feature": {
+        "feature": {
+          "config": {
+            "to_place": {
+              "type": "minecraft:simple_state_provider",
+              "state": {
+                "Name": "minecraft:seagrass"
+              }
+            }
+          },
+          "type": "minecraft:simple_block"
+        },
+        "placement": []
+      }
+    },
+    "type": "minecraft:random_patch"
+  },
+  "placement": [
+    {
+      "type": "count",
+      "count": 21
+    },
+    {
+      "type": "minecraft:in_square"
+    },
+    {
+      "type": "minecraft:height_range",
+      "height": {
+        "type": "minecraft:uniform",
+        "max_inclusive": {
+          "absolute": -116
+        },
+        "min_inclusive": {
+          "above_bottom": -124
+        }
+      }
+    },
+    {
+      "type": "minecraft:environment_scan",
+      "allowed_search_condition": {
+        "type": "minecraft:matching_blocks",
+        "blocks": [
+          "minecraft:water"
+        ]
+      },
+      "direction_of_search": "down",
+      "max_steps": 32,
+      "target_condition": {
+        "type": "minecraft:solid"
+      }
+    },
+    {
+      "type": "minecraft:random_offset",
+      "xz_spread": 0,
+      "y_spread": 1
+    },
+    {
+      "type": "minecraft:biome"
+    }
+  ]
+}

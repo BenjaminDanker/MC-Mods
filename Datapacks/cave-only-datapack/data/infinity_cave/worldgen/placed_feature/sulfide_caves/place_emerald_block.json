@@ -1,0 +1,68 @@
+{
+  "feature": {
+    "type": "minecraft:disk",
+    "config": {
+      "state_provider": {
+        "fallback": {
+          "type": "minecraft:weighted_state_provider",
+          "entries": [
+            {
+              "weight": 1,
+              "data": {
+                "Name": "minecraft:emerald_block"
+              }
+            },
+            {
+              "weight": 9,
+              "data": {
+                "Name": "minecraft:tuff"
+              }
+            },
+            {
+              "weight": 3,
+              "data": {
+                "Name": "minecraft:emerald_ore"
+              }
+            }
+          ]
+        },
+        "rules": []
+      },
+      "target": {
+        "type": "minecraft:has_sturdy_face",
+        "direction": "down"
+      },
+      "radius": {
+        "type": "minecraft:uniform",
+        "min_inclusive": 1,
+        "max_inclusive": 4
+      },
+      "half_height": 2
+    }
+  },
+  "placement": [
+    {
+      "type": "minecraft:count_on_every_layer",
+      "count": 1
+    },
+    {
+      "type": "minecraft:rarity_filter",
+      "chance": 5
+    },
+    {
+      "type": "minecraft:biome"
+    },
+    {
+      "type": "minecraft:height_range",
+      "height": {
+        "type": "minecraft:uniform",
+        "min_inclusive": {
+          "absolute": -123
+        },
+        "max_inclusive": {
+          "absolute": -55
+        }
+      }
+    }
+  ]
+}

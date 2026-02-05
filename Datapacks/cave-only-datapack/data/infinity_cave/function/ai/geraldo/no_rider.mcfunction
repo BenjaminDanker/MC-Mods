@@ -1,0 +1,1 @@
+execute on vehicle on passengers run tp @s ~ ~-1000 ~

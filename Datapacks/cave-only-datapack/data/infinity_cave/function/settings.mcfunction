@@ -1,0 +1,1 @@
+function infinity_cave:settings/get with storage infinity_cave:settings

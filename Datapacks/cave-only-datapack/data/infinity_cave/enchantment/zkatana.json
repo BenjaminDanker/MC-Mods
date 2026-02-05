@@ -1,0 +1,167 @@
+{
+  "description": {
+    "translate": "Slash"
+  },
+  "supported_items": "#minecraft:enchantable/sharp_weapon",
+  "weight": 1,
+  "max_level": 1,
+  "min_cost": {
+    "base": 9999,
+    "per_level_above_first": 9999
+  },
+  "max_cost": {
+    "base": 9999,
+    "per_level_above_first": 9999
+  },
+  "anvil_cost": 9999,
+  "slots": [
+    "mainhand"
+  ],
+  "effects": {
+    "minecraft:projectile_spawned": [
+      {
+        "requirements": [
+        ],
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:mechanics/weapons/katana/origin"
+        }
+      },
+      {
+        "requirements": [
+        ],
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:mechanics/weapons/katana/cooldown/get_data"
+        }
+      }
+    ],
+    "minecraft:attributes": [
+      {
+        "id": "ic.katana",
+        "attribute": "minecraft:attack_damage",
+        "amount": 7,
+        "operation": "add_value"
+      },
+      {
+        "id": "ic.katana",
+        "attribute": "minecraft:attack_speed",
+        "amount": -2.2,
+        "operation": "add_value"
+      }
+    ],
+    "minecraft:damage": [
+      {
+        "effect": {
+          "type": "minecraft:add",
+          "value": 9
+        },
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "attacker",
+          "predicate": {
+            "movement": {
+              "horizontal_speed": {
+                "min": 6,
+                "max": 7
+              }
+            }
+          }
+        }
+      },
+      {
+        "effect": {
+          "type": "minecraft:add",
+          "value": 13
+        },
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "attacker",
+          "predicate": {
+            "movement": {
+              "horizontal_speed": {
+                "min": 7.0001,
+                "max": 8
+              }
+            }
+          }
+        }
+      },
+      {
+        "effect": {
+          "type": "minecraft:add",
+          "value": 16
+        },
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "attacker",
+          "predicate": {
+            "movement": {
+              "horizontal_speed": {
+                "min": 8.0001,
+                "max": 9
+              }
+            }
+          }
+        }
+      },
+      {
+        "effect": {
+          "type": "minecraft:add",
+          "value": 20
+        },
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "attacker",
+          "predicate": {
+            "movement": {
+              "horizontal_speed": {
+                "min": 9.0001,
+                "max": 10
+              }
+            }
+          }
+        }
+      },
+      {
+        "effect": {
+          "type": "minecraft:add",
+          "value": 28
+        },
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "attacker",
+          "predicate": {
+            "movement": {
+              "horizontal_speed": {
+                "min": 10.0001
+              }
+            }
+          }
+        }
+      }
+    ],
+    "minecraft:location_changed": [
+      {
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "this",
+          "predicate": {
+            "movement": {
+              "horizontal_speed": {
+                "min": 6
+              }
+            }
+          }
+        },
+        "effect": {
+          "type": "minecraft:attribute",
+          "attribute": "minecraft:attack_speed",
+          "id": "ic.katana",
+          "amount": 20,
+          "operation": "add_value"
+        }
+      }
+    ]
+  }
+}

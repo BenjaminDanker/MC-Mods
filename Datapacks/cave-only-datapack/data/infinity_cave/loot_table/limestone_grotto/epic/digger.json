@@ -1,0 +1,84 @@
+{
+  "pools": [
+    {
+      "rolls": 3,
+      "bonus_rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/epic_gear"
+        },
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/limestone/epic"
+        }
+      ]
+    },
+    {
+
+      "rolls": 2,
+      "entries": [
+                {
+          "type": "minecraft:item",
+          "weight": 2,
+          "name": "minecraft:cobbled_deepslate",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "min": 32,
+                "max": 64
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "weight": 1,
+          "name": "minecraft:netherite_upgrade_smithing_template",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "min": 1,
+                "max": 2
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:diamond_pickaxe",
+          "functions": [
+            {
+              "function": "enchant_with_levels",
+              "levels": 30,
+              "options": "#infinity_cave:valid",
+              "conditions": [
+                {
+                  "condition": "random_chance",
+                  "chance": 0.5
+                }
+              ]
+            },
+            {
+              "function": "minecraft:set_damage",
+              "damage": {
+                "min": 0.1,
+                "max": 0.9
+              }
+            }
+          ],
+          "conditions": [
+            {
+              "condition": "random_chance",
+              "chance": 0.75
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

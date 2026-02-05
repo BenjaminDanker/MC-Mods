@@ -1,0 +1,87 @@
+{
+  "pools": [
+    {
+      "rolls": 3,
+      "bonus_rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/epic_gear"
+        },
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/molten/epic"
+        }
+      ]
+    },
+    {
+      "rolls": 2,
+      "entries": [
+                {
+          "type": "minecraft:item",
+          "weight": 2,
+          "name": "minecraft:arrow",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "min": 8,
+                "max": 16
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "weight": 2,
+          "name": "minecraft:bone",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "min": 8,
+                "max": 16
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:bow",
+          "weight": 1,
+          "functions": [
+            {
+              "function": "enchant_with_levels",
+              "levels": 50,
+              "options": "#infinity_cave:valid"
+            },
+            {
+              "function": "set_enchantments",
+              "enchantments": {
+                "flame": 2 
+              }
+            },
+            {
+              "function": "set_damage",
+              "damage": {
+                "max": 0.5,
+                "min": 0.05
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "loot_table",
+          "value": "infinity_cave:custom_items/tipped_arrow_pool"
+        }
+      ]
+    }
+  ]
+}

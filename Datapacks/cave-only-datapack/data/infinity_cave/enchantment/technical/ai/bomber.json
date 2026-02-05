@@ -1,0 +1,122 @@
+{
+  "description": " ",
+  "supported_items": "#minecraft:enchantable/foot_armor",
+  "weight": 1,
+  "max_level": 1,
+  "min_cost": {
+    "base": 99999,
+    "per_level_above_first": 99999
+  },
+  "max_cost": {
+    "base": 99999,
+    "per_level_above_first": 99999
+  },
+  "anvil_cost": 99999,
+  "slots": [
+    "any"
+  ],
+  "effects": {
+    "minecraft:damage_immunity": [
+      {
+        "effect": {},
+        "requirements": {
+          "condition": "minecraft:damage_source_properties",
+          "predicate": {
+            "tags": [
+              {
+                "id": "is_explosion",
+                "expected": true
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "minecraft:tick": [
+      {
+        "effect": {
+          "type": "minecraft:spawn_particles",
+          "particle": {
+            "type": "minecraft:smoke"
+          },
+          "horizontal_position": {
+            "type": "in_bounding_box",
+            "offset": 0,
+            "scale": 2
+          },
+          "vertical_position": {
+            "type": "entity_position",
+            "offset": 1
+          },
+          "horizontal_velocity": {
+            "base": 0,
+            "movement_scale": 0.2
+          },
+          "vertical_velocity": {
+            "base": 0,
+            "movement_scale": 0.2
+          },
+          "speed": 0.4
+        },
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "this",
+          "predicate": {
+            "periodic_tick": 5
+          }
+        }
+      },
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/bomber/super_attack/get_data"
+        },
+        "requirements": [
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "type": "#infinity_cave:aggro",
+              "periodic_tick": 40,
+              "targeted_entity": {
+                "distance": {
+                  "absolute": {
+                    "max": 4
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/bomber/check"
+        },
+        "requirements": [
+          {
+            "condition": "random_chance",
+            "chance": {
+              "type": "minecraft:enchantment_level",
+              "amount": {
+                "type": "minecraft:linear",
+                "base": 0.5,
+                "per_level_above_first": 0.025
+              }
+            }
+          },
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "type": "#infinity_cave:aggro",
+              "periodic_tick": 60,
+              "targeted_entity": {}
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

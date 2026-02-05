@@ -1,0 +1,39 @@
+{
+  "criteria": {
+    "r": {
+      "trigger": "minecraft:player_interacted_with_entity",
+      "conditions": {
+        "entity": [
+          {
+            "condition": "minecraft:inverted",
+            "term": {
+              "condition": "minecraft:entity_properties",
+              "entity": "this",
+              "predicate": {
+                "vehicle": {
+                  "type": "minecraft:frog",
+                  "passenger": {
+                    "type": "minecraft:player"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "type": "minecraft:interaction",
+              "vehicle": {
+                "type": "minecraft:frog"
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "rewards": {
+    "function": "infinity_cave:mechanics/rideable_frog/start_riding"
+  }
+}

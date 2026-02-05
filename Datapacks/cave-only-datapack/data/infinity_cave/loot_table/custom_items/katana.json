@@ -1,0 +1,121 @@
+{
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+          {
+            "type": "minecraft:item",
+            "name": "minecraft:snowball",
+            "functions": [
+              {
+                "function": "minecraft:set_name",
+                "entity": "this",
+                "name": "Katana",
+                "target": "item_name"
+              },
+              {
+                "function": "minecraft:toggle_tooltips",
+                "toggles": {
+                  "attribute_modifiers": false
+                }
+              },
+              {
+                "function": "set_components",
+                "components": {
+                  "enchantments": {
+                    "infinity_cave:zkatana": 1
+                  },
+                  "enchantable": {
+                    "value": 20
+                  },
+                  "rarity":"epic",
+                  "minecraft:repair_cost": 99999,
+                  "max_damage": 2137,
+                  "minecraft:damage": 0,
+                  "minecraft:max_stack_size": 1,
+                  "minecraft:item_model": "infinity_cave:katana",
+                  "minecraft:custom_data": {
+                    "infinity_cave": {
+                      "item": "katana",
+                      "tier": 4,
+                      "cooldown": 10,
+                      "label": "important"
+                    }
+                  },
+                  "weapon": {
+                    "item_damage_per_attack": 1
+                  },
+                  "use_remainder": {
+                    "id": "command_block",
+                    "components": {
+                      "custom_data": {
+                        "cdlib": 1
+                      },
+                      "item_model": "infinity_cave:katana"
+                    }
+                  },
+                  "use_cooldown": {
+                    "seconds": 10,
+                    "cooldown_group": "infinity_cave:katana"
+                  },
+                  "minecraft:tool": {
+                    "damage_per_block": 2,
+                    "rules": [
+                      {
+                        "blocks": "minecraft:cobweb",
+                        "correct_for_drops": true,
+                        "speed": 15.0
+                      },
+                      {
+                        "blocks": "#minecraft:sword_efficient",
+                        "speed": 1.5
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "function": "minecraft:set_lore",
+                "lore": [
+                  {
+                    "text": "Right-click to launch forward, ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": "damage is increased based on ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": "the user's horizontal speed. ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": " "
+                  },
+                  {
+                    "text": "When in Main Hand:",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": " 8 Attack Damage ",
+                    "color": "dark_green",
+                    "italic": false
+                  },
+                  {
+                    "text": " 1.8 Attack Speed",
+                    "color": "dark_green",
+                    "italic": false
+                  }
+                ],
+                "mode": "append"
+              }
+            ]
+          }
+      ]
+    }
+  ]
+}

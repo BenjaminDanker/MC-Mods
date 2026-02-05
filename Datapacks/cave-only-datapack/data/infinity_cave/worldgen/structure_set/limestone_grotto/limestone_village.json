@@ -1,0 +1,14 @@
+{
+	"structures": [
+		{
+			"structure": "infinity_cave:limestone_grotto/limestone_village",
+			"weight": 1
+		}
+	],
+	"placement": {
+		"type": "minecraft:random_spread",
+		"salt": 95329636,
+		"spacing": 32,
+		"separation": 21
+	}
+}

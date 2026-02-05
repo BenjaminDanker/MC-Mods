@@ -1,0 +1,42 @@
+{
+    "display": {
+      "icon": {
+        "id": "minecraft:crossbow",
+        "components": {
+          "item_model": "infinity_cave:icicle_crossbow"
+        }
+      },
+      "title": "The Battlebox Experience",
+      "description": [
+        {
+          "text": "Dropped from a Legendary\n\nObtain the Icicle Crossbow"
+        }
+      ],
+      "show_toast": true,
+      "announce_to_chat": true,
+      "hidden": false
+    },
+    "parent": "infinity_cave:display/frozen_caves/ram_bear",
+    "criteria": {
+      "requirement": {
+        "trigger": "minecraft:inventory_changed",
+        "conditions": {
+          "items": [
+            {
+              "items": [
+                "minecraft:crossbow"
+              ],
+            "predicates": {
+              "minecraft:custom_data": {
+                "infinity_cave": {
+                  "item": "icicle_crossbow"
+                }
+              }
+            }
+            }
+          ]
+        }
+      }
+    }
+  }
+  

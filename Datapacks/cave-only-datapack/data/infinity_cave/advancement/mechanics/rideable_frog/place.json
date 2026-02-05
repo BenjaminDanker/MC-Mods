@@ -1,0 +1,29 @@
+{
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:item_used_on_block",
+      "conditions": {
+        "location": [
+          {
+            "condition": "minecraft:match_tool",
+            "predicate": {
+              "items": [
+                "minecraft:armor_stand"
+              ],
+              "predicates": {
+                "minecraft:custom_data": {
+                  "infinity_cave": {
+                    "item": "rideable_frog"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "rewards": {
+    "function": "infinity_cave:mechanics/rideable_frog/place"
+  }
+}

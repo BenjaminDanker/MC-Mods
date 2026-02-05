@@ -1,0 +1,1 @@
+function infinity_cave:mobs/sulfide_caves/tiers/legendary/set_data with storage infinity_cave:sulfide_caves data.legendary

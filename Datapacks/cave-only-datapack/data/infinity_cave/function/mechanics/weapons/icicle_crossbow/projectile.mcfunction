@@ -1,0 +1,1 @@
+$summon arrow ~ ~ ~ $(data)

@@ -1,0 +1,22 @@
+{
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:using_item",
+      "conditions": {
+        "item": {
+          "items": "minecraft:netherite_sword",
+          "predicates": {
+            "minecraft:custom_data": {
+              "infinity_cave": {
+                "item": "thunder_harpoon"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "rewards": {
+    "function": "infinity_cave:mechanics/weapons/thunder_harpoon/charge"
+  }
+}

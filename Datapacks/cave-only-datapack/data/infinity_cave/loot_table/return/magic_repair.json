@@ -1,0 +1,69 @@
+{
+    "pools": [
+      {
+        "rolls": 1,
+        "entries": [
+          {
+            "type": "minecraft:item",
+            "weight": 1,
+            "name": "minecraft:music_disc_5",
+            "functions": [
+              {
+                "function": "minecraft:set_components",
+                "components": {
+                  "!minecraft:jukebox_playable": {},
+                  "minecraft:consumable": {
+                    "consume_seconds": 9999999,
+                    "animation": "none"
+                  },
+                  "minecraft:max_stack_size": 99,
+                  "minecraft:item_model": "infinity_cave:magic_repair",
+                  "minecraft:custom_data": {
+                    "ic": "rc",
+                    "rc": "magic_repair"
+                  }
+                }
+              },
+              {
+                "function": "set_name",
+                "name": [
+                  {
+                    "text": "Magic Repair",
+                    "color": "gold",
+                    "italic": false
+                  }
+                ]
+              },
+              {
+                "function": "set_lore",
+                "lore": [
+                  {
+                    "text": "Right click to fully repair ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": "the armor you are wearing. ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": " ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": "Costs 10 levels. ",
+                    "color": "gray",
+                    "italic": false
+                  }
+                ],
+                "mode": "append"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+  

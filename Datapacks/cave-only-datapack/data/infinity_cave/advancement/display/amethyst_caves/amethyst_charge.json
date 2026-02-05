@@ -1,0 +1,44 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:snowball",
+      "components": {
+        "item_model": "infinity_cave:amethyst_charge_empty"
+      }
+    },
+    "title": "I Am No Longer Empty Inside",
+    "description": [
+      {
+        "text": "Obtain a charged Amethyst Charge"
+      }
+    ],
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "infinity_cave:display/amethyst_caves/amethyst_geode",
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "minecraft:snowball"
+            ],
+            "predicates": {
+              "minecraft:custom_data": {
+                "infinity_cave": {
+                  "item": "amethyst_charge",
+                  "amethyst_charge": {
+                    "charged": true
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

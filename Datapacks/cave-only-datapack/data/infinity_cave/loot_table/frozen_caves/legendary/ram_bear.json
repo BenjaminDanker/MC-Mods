@@ -1,0 +1,86 @@
+{
+  "pools": [
+    {
+      "rolls": 3,
+      "bonus_rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/legendary_gear"
+        },
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/frozen/legendary"
+        }
+      ]
+    },
+    {
+      "rolls": 2,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "weight": 1,
+          "name": "minecraft:book",
+          "functions": [
+            {
+              "function": "enchant_randomly",
+              "options": [
+                "infinity_cave:sprinter"
+              ]
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "weight": 2,
+          "name": "minecraft:cooked_salmon",
+          "functions": [
+            {
+              "function": "set_count",
+              "count": {
+                "max": 64,
+                "min": 32
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:mace",
+          "weight": 1,
+          "functions": [
+            {
+              "function": "enchant_with_levels",
+              "levels": 40,
+              "options": "#infinity_cave:valid"
+            },
+            {
+              "function": "set_damage",
+              "damage": {
+                "max": 0.5,
+                "min": 0.05
+              }
+            }
+          ],
+          "conditions": [
+            {
+              "condition": "random_chance",
+              "chance": 0.5
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:loot_table",
+          "value": "infinity_cave:refs/special_coal_ore"
+        }
+      ]
+    }
+  ]
+}

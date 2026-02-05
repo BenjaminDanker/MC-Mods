@@ -1,0 +1,1 @@
+function infinity_cave:mobs/frozen_caves/tiers/rare/set_data with storage infinity_cave:frozen_caves data.rare

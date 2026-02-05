@@ -1,0 +1,1 @@
+function infinity_cave:mobs/amethyst_caves/tiers/epic/set_data with storage infinity_cave:amethyst_caves data.epic

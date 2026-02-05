@@ -1,0 +1,45 @@
+{
+  "description": {
+    "translate": "Icicle Snipe"
+  },
+  "supported_items": "#minecraft:enchantable/bow",
+  "weight": 1,
+  "max_level": 1,
+  "min_cost": {
+    "base": 9999,
+    "per_level_above_first": 9999
+  },
+  "max_cost": {
+    "base": 9999,
+    "per_level_above_first": 9999
+  },
+  "anvil_cost": 9999,
+  "slots": [
+    "mainhand"
+  ],
+  "effects": {
+    "minecraft:damage": [
+      {
+        "effect": {
+          "type": "minecraft:set",
+          "value": 6
+        },
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "direct_attacker",
+          "predicate": {
+            "type": "#minecraft:arrows"
+          }
+        }
+      }
+    ],
+    "minecraft:projectile_spawned": [
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:mechanics/weapons/icicle_crossbow/fire"
+        }
+      }
+    ]
+  }
+}

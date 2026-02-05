@@ -1,0 +1,28 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:music_disc_5",
+      "components": {
+        "item_model": "infinity_cave:crumbling_potato"
+      }
+    },
+    "title": "Wait... Renewable... Sand? In Minecraft? FINALLY!",
+    "description": [
+      {
+        "text": "Obtain Sand from a Crumbling Potato"
+      }
+    ],
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "infinity_cave:display/sulfide_caves/huts",
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:recipe_crafted",
+      "conditions": {
+        "recipe_id": "infinity_cave:crumbling_potato_to_sand"
+      }
+    }
+  }
+}

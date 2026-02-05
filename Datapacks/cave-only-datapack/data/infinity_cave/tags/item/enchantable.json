@@ -1,0 +1,18 @@
+{
+    "values": [
+      "#minecraft:swords",
+      "#minecraft:shovels",
+      "#minecraft:pickaxes",
+      "#minecraft:axes",
+      "#minecraft:hoes",
+      "minecraft:bow",
+      "minecraft:crossbow",
+      "minecraft:trident",
+      "minecraft:book",
+      "minecraft:shield",
+      "minecraft:mace",
+      "#minecraft:trimmable_armor",
+      "snowball",
+      "fishing_rod"
+    ]
+  }

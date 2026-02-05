@@ -1,0 +1,40 @@
+{
+    "display": {
+      "icon": {
+        "id": "minecraft:zombie_spawn_egg"
+      },
+      "title": "Bro, Start Living",
+      "description": [
+        {
+          "text": "Obtain Smite Shot V"
+        }
+      ],
+      "show_toast": true,
+      "announce_to_chat": true,
+      "hidden": false
+    },
+    "parent": "infinity_cave:display/enchantlet/5",
+    "criteria": {
+      "requirement": {
+        "trigger": "minecraft:inventory_changed",
+        "conditions": {
+          "items": [
+            {
+              "items": "bow",
+              "predicates": {
+                "minecraft:enchantments": [
+                  {
+                    "enchantments": "infinity_cave:smite_shot",
+                    "levels": {
+                      "min": 5
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+  

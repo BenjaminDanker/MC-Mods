@@ -1,0 +1,145 @@
+{
+  "description": " ",
+  "supported_items": "#minecraft:enchantable/foot_armor",
+  "weight": 1,
+  "max_level": 1,
+  "min_cost": {
+    "base": 99999,
+    "per_level_above_first": 99999
+  },
+  "max_cost": {
+    "base": 99999,
+    "per_level_above_first": 99999
+  },
+  "anvil_cost": 99999,
+  "slots": [
+    "any"
+  ],
+  "effects": {
+    "minecraft:tick": [
+      {
+        "effect": {
+          "type": "minecraft:spawn_particles",
+          "particle": {
+            "type": "minecraft:firework"
+          },
+          "horizontal_position": {
+            "type": "in_bounding_box",
+            "offset": 0,
+            "scale": 2
+          },
+          "vertical_position": {
+            "type": "entity_position",
+            "offset": 1
+          },
+          "horizontal_velocity": {
+            "base": 0,
+            "movement_scale": 0.2
+          },
+          "vertical_velocity": {
+            "base": 0,
+            "movement_scale": 0.2
+          },
+          "speed": 0.4
+        },
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "this",
+          "predicate": {
+            "periodic_tick": 5
+          }
+        }
+      },
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/magician/teleport/get_y"
+        },
+        "requirements": [
+          {
+            "condition": "random_chance",
+            "chance": {
+              "type": "minecraft:enchantment_level",
+              "amount": {
+                "type": "minecraft:linear",
+                "base": 0.25,
+                "per_level_above_first": 0.025
+              }
+            }
+          },
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "type": "#infinity_cave:aggro",
+              "periodic_tick": 50,
+              "targeted_entity": {
+                "distance": {
+                  "absolute": {
+                    "max": 10
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/magician/fireball/shoot"
+        },
+        "requirements": [
+          {
+            "condition": "random_chance",
+            "chance": {
+              "type": "minecraft:enchantment_level",
+              "amount": {
+                "type": "minecraft:linear",
+                "base": 0.5,
+                "per_level_above_first": 0.025
+              }
+            }
+          },
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "type": "#infinity_cave:aggro",
+              "periodic_tick": 60,
+              "targeted_entity": {}
+            }
+          }
+        ]
+      },
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/magician/blizzard/shoot"
+        },
+        "requirements": [
+          {
+            "condition": "random_chance",
+            "chance": {
+              "type": "minecraft:enchantment_level",
+              "amount": {
+                "type": "minecraft:linear",
+                "base": 0.1,
+                "per_level_above_first": 0.0125
+              }
+            }
+          },
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "type": "#infinity_cave:aggro",
+              "periodic_tick": 100,
+              "targeted_entity": {}
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

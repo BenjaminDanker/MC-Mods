@@ -1,0 +1,11 @@
+{
+  "required": true,
+  "package": "com.silver.skyislands.specialitems.mixins",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "PlayerInventoryMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

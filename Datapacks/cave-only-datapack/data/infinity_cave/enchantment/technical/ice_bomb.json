@@ -1,0 +1,143 @@
+{
+  "description": {
+    "text": "DO NOT USE"
+  },
+  "supported_items": "#minecraft:enchantable/head_armor",
+  "weight": 1,
+  "max_level": 1,
+  "min_cost": {
+    "base": 99999,
+    "per_level_above_first": 99999
+  },
+  "max_cost": {
+    "base": 99999,
+    "per_level_above_first": 99999
+  },
+  "anvil_cost": 99999,
+  "slots": [
+    "any"
+  ],
+  "effects": {
+    "tick": [
+      {
+        "effect": {
+          "type": "minecraft:explode",
+          "attribute_to_user": false,
+          "damage_type": "minecraft:freeze",
+          "knockback_multiplier": {
+            "type": "minecraft:linear",
+            "base": 6,
+            "per_level_above_first": 0.025
+          },
+          "offset": [
+            0,
+            0,
+            0
+          ],
+          "radius": {
+            "type": "minecraft:linear",
+            "base": 6,
+            "per_level_above_first": 0.033
+          },
+          "create_fire": false,
+          "block_interaction": "none",
+          "small_particle": {
+            "type": "minecraft:gust_emitter_large"
+          },
+          "large_particle": {
+            "type": "minecraft:explosion_emitter"
+          },
+          "sound": "minecraft:entity.stray.death"
+        },
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "this",
+          "predicate": {
+            "flags": {
+              "is_on_ground": true
+            },
+            "periodic_tick": 160
+          }
+        }
+      },
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/chemist/kill"
+        },
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "this",
+          "predicate": {
+            "flags": {
+              "is_on_ground": true
+            },
+            "periodic_tick": 160
+          }
+        }
+      },
+      {
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "this",
+          "predicate": {
+            "flags": {
+              "is_on_ground": true
+            }
+          }
+        },
+        "effect": {
+          "type": "minecraft:spawn_particles",
+          "particle": {
+            "type": "minecraft:snowflake"
+          },
+          "horizontal_position": {
+            "type": "in_bounding_box",
+            "offset": 0,
+            "scale": 4
+          },
+          "vertical_position": {
+            "type": "entity_position",
+            "offset": 0.5
+          },
+          "horizontal_velocity": {
+            "base": 0,
+            "movement_scale": 0.2
+          },
+          "vertical_velocity": {
+            "base": 0,
+            "movement_scale": 0.2
+          },
+          "speed": 0.4
+        }
+      },
+      {
+        "effect": {
+          "type": "minecraft:spawn_particles",
+          "particle": {
+            "type": "minecraft:cloud"
+          },
+          "horizontal_position": {
+            "type": "entity_position",
+            "offset": 0,
+            "scale": 1
+          },
+          "vertical_position": {
+            "type": "entity_position",
+            "offset": 0,
+            "scale": 1
+          },
+          "horizontal_velocity": {
+            "base": 0,
+            "movement_scale": 0
+          },
+          "vertical_velocity": {
+            "base": 1,
+            "movement_scale": 1
+          },
+          "speed": 0.5
+        }
+      }
+    ]
+  }
+}

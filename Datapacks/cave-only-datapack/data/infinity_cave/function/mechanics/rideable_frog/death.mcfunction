@@ -1,0 +1,1 @@
+execute on passengers if entity @s[type=interaction] run kill @s

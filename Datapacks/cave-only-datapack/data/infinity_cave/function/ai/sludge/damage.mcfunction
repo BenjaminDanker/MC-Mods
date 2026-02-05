@@ -1,0 +1,1 @@
+$damage @s $(damage) infinity_cave:magic_bypass by @n[type=endermite]

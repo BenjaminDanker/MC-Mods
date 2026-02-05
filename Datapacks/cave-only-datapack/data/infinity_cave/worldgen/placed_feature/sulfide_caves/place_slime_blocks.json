@@ -1,0 +1,276 @@
+{
+  "feature": "infinity_cave:sulfide_caves/slime",
+  "placement": [
+    {
+      "type": "minecraft:count_on_every_layer",
+      "count": 15
+    },
+    {
+      "type": "minecraft:block_predicate_filter",
+      "predicate": {
+  "type": "minecraft:all_of",
+  "predicates": [
+    {
+      "type": "minecraft:all_of",
+      "predicates": [
+        {"type": "minecraft:matching_blocks", "offset": [0, 0, 0], "blocks": ["minecraft:air", "minecraft:void_air", "minecraft:cave_air", "minecraft:light"]},
+        {"type": "minecraft:matching_blocks", "offset": [0, 1, 0], "blocks": ["minecraft:air", "minecraft:void_air", "minecraft:cave_air", "minecraft:light"]},
+        {"type": "minecraft:matching_blocks", "offset": [0, 2, 0], "blocks": ["minecraft:air", "minecraft:void_air", "minecraft:cave_air", "minecraft:light"]},
+        {"type": "minecraft:matching_blocks", "offset": [0, 3, 0], "blocks": ["minecraft:air", "minecraft:void_air", "minecraft:cave_air", "minecraft:light"]},
+        {"type": "minecraft:matching_blocks", "offset": [0, 4, 0], "blocks": ["minecraft:air", "minecraft:void_air", "minecraft:cave_air", "minecraft:light"]},
+        {"type": "minecraft:matching_blocks", "offset": [0, 5, 0], "blocks": ["minecraft:air", "minecraft:void_air", "minecraft:cave_air", "minecraft:light"]},
+        {"type": "minecraft:matching_blocks", "offset": [0, 6, 0], "blocks": ["minecraft:air", "minecraft:void_air", "minecraft:cave_air", "minecraft:light"]},
+        {"type": "minecraft:matching_blocks", "offset": [0, 7, 0], "blocks": ["minecraft:air", "minecraft:void_air", "minecraft:cave_air", "minecraft:light"]},
+        {"type": "minecraft:matching_blocks", "offset": [0, 8, 0], "blocks": ["minecraft:air", "minecraft:void_air", "minecraft:cave_air", "minecraft:light"]},
+        {"type": "minecraft:matching_blocks", "offset": [0, 9, 0], "blocks": ["minecraft:air", "minecraft:void_air", "minecraft:cave_air", "minecraft:light"]},
+        {"type": "minecraft:matching_blocks", "offset": [0, 10, 0], "blocks": ["minecraft:air", "minecraft:void_air", "minecraft:cave_air", "minecraft:light"]}
+      ]
+    },
+    {
+      "type": "minecraft:any_of",
+      "predicates": [
+        {"type": "minecraft:matching_blocks", "offset": [0, 11, 0], "blocks": "#infinity_cave:base_stone_overworld"},
+        {"type": "minecraft:matching_blocks", "offset": [0, 12, 0], "blocks": "#infinity_cave:base_stone_overworld"},
+        {"type": "minecraft:matching_blocks", "offset": [0, 13, 0], "blocks": "#infinity_cave:base_stone_overworld"},
+        {"type": "minecraft:matching_blocks", "offset": [0, 14, 0], "blocks": "#infinity_cave:base_stone_overworld"},
+        {"type": "minecraft:matching_blocks", "offset": [0, 15, 0], "blocks": "#infinity_cave:base_stone_overworld"}
+      ]
+    },
+    {
+      "type": "minecraft:any_of",
+      "predicates": [
+        {
+          "type": "minecraft:all_of",
+          "predicates": [
+            {
+              "type": "minecraft:all_of",
+              "predicates": [
+                {"type": "minecraft:matching_blocks", "offset": [1, 11, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [2, 11, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [3, 11, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [4, 11, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [5, 11, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]}
+              ]
+            },
+            {
+              "type": "minecraft:all_of",
+              "predicates": [
+                {"type": "minecraft:matching_blocks", "offset": [1, 12, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [2, 12, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [3, 12, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [4, 12, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [5, 12, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]}
+              ]
+            },
+            {
+              "type": "minecraft:all_of",
+              "predicates": [
+                {"type": "minecraft:matching_blocks", "offset": [1, 13, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [2, 13, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [3, 13, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [4, 13, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [5, 13, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]}
+              ]
+            },
+            {
+              "type": "minecraft:all_of",
+              "predicates": [
+                {"type": "minecraft:matching_blocks", "offset": [1, 14, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [2, 14, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [3, 14, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [4, 14, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [5, 14, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]}
+              ]
+            },
+            {
+              "type": "minecraft:all_of",
+              "predicates": [
+                {"type": "minecraft:matching_blocks", "offset": [1, 15, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [2, 15, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [3, 15, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [4, 15, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [5, 15, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]}
+              ]
+            }
+          ]
+        },
+        {
+          "type": "minecraft:all_of",
+          "predicates": [
+            {
+              "type": "minecraft:all_of",
+              "predicates": [
+                {"type": "minecraft:matching_blocks", "offset": [-1, 11, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [-2, 11, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [-3, 11, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [-4, 11, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [-5, 11, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]}
+              ]
+            },
+            {
+              "type": "minecraft:all_of",
+              "predicates": [
+                {"type": "minecraft:matching_blocks", "offset": [-1, 12, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [-2, 12, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [-3, 12, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [-4, 12, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [-5, 12, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]}
+              ]
+            },
+            {
+              "type": "minecraft:all_of",
+              "predicates": [
+                {"type": "minecraft:matching_blocks", "offset": [-1, 13, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [-2, 13, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [-3, 13, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [-4, 13, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [-5, 13, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]}
+              ]
+            },
+            {
+              "type": "minecraft:all_of",
+              "predicates": [
+                {"type": "minecraft:matching_blocks", "offset": [-1, 14, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [-2, 14, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [-3, 14, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [-4, 14, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [-5, 14, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]}
+              ]
+            },
+            {
+              "type": "minecraft:all_of",
+              "predicates": [
+                {"type": "minecraft:matching_blocks", "offset": [-1, 15, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [-2, 15, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [-3, 15, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [-4, 15, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [-5, 15, 0], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]}
+              ]
+            }
+          ]
+        },
+        {
+          "type": "minecraft:all_of",
+          "predicates": [
+            {
+              "type": "minecraft:all_of",
+              "predicates": [
+                {"type": "minecraft:matching_blocks", "offset": [0, 11, 1], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 11, 2], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 11, 3], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 11, 4], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 11, 5], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]}
+              ]
+            },
+            {
+              "type": "minecraft:all_of",
+              "predicates": [
+                {"type": "minecraft:matching_blocks", "offset": [0, 12, 1], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 12, 2], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 12, 3], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 12, 4], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 12, 5], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]}
+              ]
+            },
+            {
+              "type": "minecraft:all_of",
+              "predicates": [
+                {"type": "minecraft:matching_blocks", "offset": [0, 13, 1], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 13, 2], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 13, 3], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 13, 4], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 13, 5], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]}
+              ]
+            },
+            {
+              "type": "minecraft:all_of",
+              "predicates": [
+                {"type": "minecraft:matching_blocks", "offset": [0, 14, 1], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 14, 2], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 14, 3], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 14, 4], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 14, 5], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]}
+              ]
+            },
+            {
+              "type": "minecraft:all_of",
+              "predicates": [
+                {"type": "minecraft:matching_blocks", "offset": [0, 15, 1], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 15, 2], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 15, 3], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 15, 4], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 15, 5], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]}
+              ]
+            }
+          ]
+        },
+        {
+          "type": "minecraft:all_of",
+          "predicates": [
+            {
+              "type": "minecraft:all_of",
+              "predicates": [
+                {"type": "minecraft:matching_blocks", "offset": [0, 11, -1], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 11, -2], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 11, -3], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 11, -4], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 11, -5], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]}
+              ]
+            },
+            {
+              "type": "minecraft:all_of",
+              "predicates": [
+                {"type": "minecraft:matching_blocks", "offset": [0, 12, -1], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 12, -2], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 12, -3], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 12, -4], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 12, -5], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]}
+              ]
+            },
+            {
+              "type": "minecraft:all_of",
+              "predicates": [
+                {"type": "minecraft:matching_blocks", "offset": [0, 13, -1], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 13, -2], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 13, -3], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 13, -4], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 13, -5], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]}
+              ]
+            },
+            {
+              "type": "minecraft:all_of",
+              "predicates": [
+                {"type": "minecraft:matching_blocks", "offset": [0, 14, -1], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 14, -2], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 14, -3], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 14, -4], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 14, -5], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]}
+              ]
+            },
+            {
+              "type": "minecraft:all_of",
+              "predicates": [
+                {"type": "minecraft:matching_blocks", "offset": [0, 15, -1], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 15, -2], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 15, -3], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 15, -4], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]},
+                {"type": "minecraft:matching_blocks", "offset": [0, 15, -5], "blocks": ["minecraft:air","minecraft:void_air","minecraft:cave_air","minecraft:light"]}
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+    },
+    {
+      "type": "minecraft:biome"
+    },
+    {
+      "type": "random_offset",
+      "xz_spread": 0,
+      "y_spread": -1
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "values": [
+    "minecraft:marker",
+    "minecraft:area_effect_cloud",
+    "minecraft:item",
+    "minecraft:item_display",
+    "#infinity_cave:aggro"
+  ]
+}

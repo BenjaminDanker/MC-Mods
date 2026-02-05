@@ -1,0 +1,39 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:mooshroom_spawn_egg"
+    },
+    "title": "Damn, That's One Angry Cow",
+    "description": [
+      {
+        "text": "Kill a Mooshroom mob!"
+      }
+    ],
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "infinity_cave:display/mushroom_gorge/mushroom_house",
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:player_killed_entity",
+      "conditions": {
+        "entity": [
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "type": "minecraft:mooshroom",
+              "team": "ic.mob_team",
+              "equipment": {
+                "chest": {
+                  "items": "#minecraft:trimmable_armor"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+          {
+            "type": "minecraft:item",
+            "weight": 1,
+            "name": "minecraft:chorus_fruit",
+            "functions": [
+              {
+                "function": "minecraft:set_components",
+                "components": {
+                  "item_model": "infinity_cave:enchanted_chorus_fruit",
+                  "minecraft:enchantment_glint_override": true,
+                  "minecraft:custom_data": {
+                    "infinity_cave": {
+                        "item": "enchanted_chorus_fruit"
+                    }
+                  },
+                  "item_name": {
+                    "text": "Enchanted Chorus Fruit",
+                    "italic": false
+                  },
+                  "rarity": "epic"
+                }
+              }
+            ]
+          }
+      ]
+    }
+  ]
+}

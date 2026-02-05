@@ -1,0 +1,81 @@
+{
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:suspicious_stew",
+          "functions": [
+            {
+              "function": "minecraft:set_stew_effect",
+              "effects": [
+                {
+                  "type": "minecraft:oozing",
+                  "duration": {
+                    "type": "minecraft:score",
+                    "target": "this",
+                    "score": "ic.progression",
+                    "scale": 0.05
+                  }
+                }
+              ]
+            },
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "max_stack_size": 64,
+                "item_name": "Oozing Beetroot",
+                "rarity": "uncommon",
+                "!use_remainder": {},
+                "lore": [
+                  {
+                    "text": "Grants Oozing to user, immunity ",
+                    "italic": false,
+                    "color": "gray"
+                  },
+                  {
+                    "text": "to Sulfide Caves toxic water ",
+                    "italic": false,
+                    "color": "gray"
+                  }
+                ],
+                "minecraft:custom_data": {
+                  "infinity_cave": {
+                    "item": "oozing_beetroot"
+                  }
+                },
+                "minecraft:item_model": "infinity_cave:oozing_beetroot",
+                "minecraft:consumable": {
+                  "consume_seconds": 1.5,
+                  "animation": "eat",
+                  "sound": "block.slime_block.place",
+                  "has_consume_particles": true,
+                  "on_consume_effects": [
+                    {
+                      "type": "apply_effects",
+                      "effects": [
+                        {
+                          "id": "oozing",
+                          "ambient": true,
+                          "amplifier": 0,
+                          "duration": 200,
+                          "show_icon": true,
+                          "show_particles": true
+                        }
+                      ]
+                    },
+                    {
+                      "type": "play_sound",
+                      "sound": "entity.slime.squish"
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

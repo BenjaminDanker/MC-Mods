@@ -1,0 +1,100 @@
+{
+    "pools": [
+        {
+            "rolls": 1,
+            "entries": [
+          {
+            "type": "minecraft:item",
+            "weight": 2,
+            "name": "minecraft:stone_sword",
+            "functions": [
+              {
+                "function": "minecraft:set_count",
+                "count": 1
+              },
+              {
+                "function": "minecraft:set_components",
+                "components": {
+                  "minecraft:attribute_modifiers": [
+                      {
+                        "type": "attack_speed",
+                        "slot": "mainhand",
+                        "id": "fiery_sword",
+                        "amount": -2.3,
+                        "operation": "add_value"
+                      },
+                      {
+                        "type": "attack_damage",
+                        "slot": "mainhand",
+                        "id": "fiery_sword",
+                        "amount": 6,
+                        "operation": "add_value"
+                      },
+                      {
+                        "type": "burning_time",
+                        "slot": "mainhand",
+                        "id": "fiery_sword",
+                        "amount": -10000,
+                        "operation": "add_value"
+                      }
+                    ],
+                    "tooltip_display": {
+                      "hidden_components": [
+                        "attribute_modifiers"
+                      ]
+                    },
+                  "max_damage": 1200,
+                  "minecraft:item_model": "infinity_cave:fiery_sword",
+                  "minecraft:custom_data": {
+                    "infinity_cave": {
+                      "item": "fiery_sword",
+                      "tier": 3,
+                      "label": "important"
+                    }
+                  }
+                }
+              },
+              {
+                "function": "set_name",
+                "name": [
+                  {
+                    "text": "Fiery Sword"
+                  }
+                ],
+                "target": "item_name"
+              },
+              {
+                "function": "minecraft:set_lore",
+                "lore": [
+                  {
+                    "text": "Burn Immunity",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": " "
+                  },
+                  {
+                    "text": "When in Main Hand:",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": " 7 Attack Damage ",
+                    "color": "dark_green",
+                    "italic": false
+                  },
+                  {
+                    "text": " 1.7 Attack Speed",
+                    "color": "dark_green",
+                    "italic": false
+                  }
+                ],
+                "mode": "append"
+              }
+            ]
+          }
+            ]
+        }
+    ]
+}

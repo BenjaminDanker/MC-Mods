@@ -1,0 +1,1 @@
+$summon tnt ~ ~1.5 ~ {block_state:{Name:"minecraft:air"},explosion_power:3b,fuse:0,owner:$(owner)}

@@ -1,0 +1,5 @@
+tag @s remove ic.marker
+scoreboard players set @s ic.animate 50
+
+summon area_effect_cloud ~ ~0.25 ~ {custom_particle:{type:"sculk_soul"},ReapplicationDelay:0,Radius:0.5f,RadiusPerTick:0.05f,RadiusOnUse:0f,Duration:50,DurationOnUse:0,Age:0,WaitTime:0}
+playsound minecraft:entity.evoker.prepare_attack hostile @a[distance=..25] ~ ~ ~ 1 0.7 1

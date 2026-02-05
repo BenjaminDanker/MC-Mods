@@ -1,0 +1,42 @@
+{
+  "name": "infinity_cave:railway/streets",
+  "elements": [
+    {
+      "element": {
+        "element_type": "minecraft:single_pool_element",
+        "projection": "rigid",
+        "location": "infinity_cave:railway/streets/straight",
+        "processors": "minecraft:empty"
+      },
+      "weight": 12
+    },
+    {
+      "element": {
+        "element_type": "minecraft:single_pool_element",
+        "projection": "rigid",
+        "location": "infinity_cave:railway/streets/curve",
+        "processors": "minecraft:empty"
+      },
+      "weight": 8
+    },
+    {
+      "element": {
+        "element_type": "minecraft:single_pool_element",
+        "projection": "rigid",
+        "location": "infinity_cave:railway/streets/middle",
+        "processors": "minecraft:empty"
+      },
+      "weight": 1
+    },
+    {
+      "element": {
+        "element_type": "minecraft:single_pool_element",
+        "projection": "rigid",
+        "location": "infinity_cave:railway/streets/black_tower",
+        "processors": "minecraft:empty"
+      },
+      "weight": 2
+    }
+  ],
+  "fallback": "minecraft:empty"
+}

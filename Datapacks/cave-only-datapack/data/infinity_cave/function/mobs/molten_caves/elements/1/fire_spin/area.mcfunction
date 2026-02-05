@@ -1,0 +1,1 @@
+execute as @a[distance=..20,gamemode=!creative,gamemode=!spectator] at @s run function infinity_cave:mobs/molten_caves/elements/1/fire_spin/fire_spiral

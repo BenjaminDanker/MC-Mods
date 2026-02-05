@@ -1,0 +1,30 @@
+{
+  "type": "minecraft:crafting_transmute",
+  "input": [
+    "minecraft:bow"
+  ],
+  "material": [
+    "minecraft:structure_block"
+  ],
+  "result": {
+    "id": "minecraft:bow",
+    "components": {
+      "minecraft:attribute_modifiers": [
+        {
+          "type": "minecraft:tempt_range",
+          "id": "infinity_cave:id",
+          "amount": 1,
+          "operation": "add_value",
+          "display": {
+            "type": "hidden"
+          }
+        }
+      ],
+      "minecraft:tooltip_display": {
+        "hidden_components": [
+          "minecraft:attribute_modifiers"
+        ]
+      }
+    }
+  }
+}

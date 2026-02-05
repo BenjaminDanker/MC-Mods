@@ -1,0 +1,1 @@
+playsound infinity_cave:sound_effect.frog_croak hostile @a[distance=..25] ~ ~ ~ 0.5 1 1 

@@ -1,0 +1,15 @@
+{
+    "values": [
+      "minecraft:magic",
+      "minecraft:indirect_magic",
+      "minecraft:fireball",
+      "minecraft:fireworks",
+      "minecraft:freeze",
+      "infinity_cave:bypass",
+      "infinity_cave:wave",
+      "minecraft:in_fire",
+      "minecraft:sonic_boom",
+      "minecraft:unattributed_fireball",
+      "minecraft:wither_skull"
+    ]
+  }

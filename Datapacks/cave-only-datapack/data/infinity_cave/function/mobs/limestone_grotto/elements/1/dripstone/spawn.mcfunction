@@ -1,0 +1,1 @@
+$execute positioned $(pos_x) $(pos_y) $(pos_z) align xyz run function infinity_cave:mobs/limestone_grotto/elements/1/dripstone/falling_block

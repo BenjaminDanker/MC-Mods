@@ -1,0 +1,100 @@
+{
+  "description": {
+    "text": "Bonk Diver"
+  },
+  "supported_items": "#minecraft:acacia_logs",
+  "weight": 1,
+  "max_level": 1,
+  "min_cost": {
+    "base": 9999,
+    "per_level_above_first": 0
+  },
+  "max_cost": {
+    "base": 9999,
+    "per_level_above_first": 0
+  },
+  "anvil_cost": 9999,
+  "slots": [
+    "armor"
+  ],
+  "effects": {
+    "minecraft:tick": [
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/digger/dig/check"
+        },
+        "requirements": [
+          {
+            "condition": "random_chance",
+            "chance": 0.3
+          },
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "periodic_tick": 10,
+              "type": "#infinity_cave:aggro",
+              "targeted_entity": {
+                "type": "minecraft:player"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/digger/still/check"
+        },
+        "requirements": [
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "effects": {
+                "minecraft:slowness": {
+                  "amplifier": 255,
+                  "duration": {
+                    "max": 1
+                  }
+                }
+              },
+              "type": "#infinity_cave:aggro",
+              "targeted_entity": {
+                "type": "minecraft:player"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/digger/place/build_up/check"
+        },
+        "requirements": [
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "periodic_tick": 10,
+              "type": "#infinity_cave:aggro",
+              "targeted_entity": {
+                "type": "minecraft:player",
+                "distance": {
+                  "absolute": {
+                    "min": 3
+                  },
+                  "horizontal": {
+                    "max": 4
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

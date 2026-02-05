@@ -1,0 +1,64 @@
+{
+  "pools": [
+    {
+      "rolls": 3,
+      "bonus_rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/epic_gear"
+        },
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/deep_dark/epic"
+        }
+      ]
+    },
+    {
+      "rolls": 2,
+      "entries": [
+                {
+          "type": "minecraft:item",
+          "weight": 2,
+          "name": "minecraft:cooked_porkchop",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "min": 4,
+                "max": 8
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "weight": 2,
+          "name": "minecraft:emerald_block",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "min": 2,
+                "max": 4
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "weight": 2,
+          "name": "minecraft:ominous_bottle",
+          "conditions": [
+            {
+              "condition": "random_chance",
+              "chance": 0.25
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

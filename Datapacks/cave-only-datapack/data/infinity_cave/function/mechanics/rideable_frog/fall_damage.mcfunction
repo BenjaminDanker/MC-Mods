@@ -1,0 +1,1 @@
+execute on passengers run attribute @s fall_damage_multiplier modifier remove infinity_cave:ridable_frog

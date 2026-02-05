@@ -1,0 +1,1 @@
+$summon armor_stand $(pos_x) $(pos_y) $(pos_z) {Invulnerable:1b,Small:1b,Invisible:1b,equipment:{saddle:{id:"minecraft:oak_button",count:1,components:{"minecraft:item_model":"air","minecraft:enchantments":{"infinity_cave:technical/damage_less_explosion":6}}}}}

@@ -1,0 +1,2 @@
+execute as @e[type=#infinity_cave:aggro] if score @s ic.uuid = #compare ic.int \
+ run function infinity_cave:mobs/limestone_grotto/elements/1/dripstone/spawn with storage infinity_cave:elements limestone_grotto.1.dripstone

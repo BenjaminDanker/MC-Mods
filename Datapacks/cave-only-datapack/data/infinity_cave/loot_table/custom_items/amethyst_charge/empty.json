@@ -1,0 +1,67 @@
+{
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:snowball",
+          "functions": [
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "max_stack_size": 1,
+                "minecraft:custom_data": {
+                  "infinity_cave": {
+                    "item": "amethyst_charge",
+                    "tier": 3,
+                    "cooldown": 3,
+                    "amethyst_charge": {}
+                  }
+                },
+                "use_remainder": {
+                  "id": "command_block",
+                  "components": {
+                    "custom_data": {
+                      "cdlib": 1
+                    },
+                    "item_model": "infinity_cave:amethyst_charge_empty"
+                  }
+                },
+                "minecraft:item_model": "infinity_cave:amethyst_charge_empty",
+                "enchantments": {
+                  "infinity_cave:technical/amethyst_charge": 1
+                },
+                "use_cooldown": {
+                  "seconds": 3,
+                  "cooldown_group": "ic:amethyst_charger"
+                }
+              }
+            },
+            {
+              "function": "minecraft:set_name",
+              "name": [
+                {
+                  "text": "Amethyst Charge",
+                  "color": "light_purple",
+                  "italic": false
+                }
+              ]
+            },
+            {
+              "function": "minecraft:set_lore",
+              "lore": [
+                {
+                  "text": "❌ Empty",
+                  "color": "red",
+                  "italic": false
+                }
+              ],
+              "mode": "append"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

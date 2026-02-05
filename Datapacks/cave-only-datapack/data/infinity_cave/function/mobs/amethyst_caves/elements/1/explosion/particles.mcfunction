@@ -1,0 +1,3 @@
+$summon area_effect_cloud $(pos_x) $(pos_y) $(pos_z) {custom_particle:{type:"flash"},ReapplicationDelay:0,Radius:0.5f,RadiusPerTick:0f,RadiusOnUse:0f,Duration:60,DurationOnUse:0f,Age:-10000,WaitTime:-10000,Passengers:[{id:"minecraft:area_effect_cloud",custom_particle:{type:"witch"},ReapplicationDelay:0,Radius:1f,RadiusPerTick:0f,RadiusOnUse:0f,Duration:60,DurationOnUse:0f,Age:-10000,WaitTime:-10000}]}
+
+$playsound minecraft:block.respawn_anchor.set_spawn hostile @a[distance=..50] $(pos_x) $(pos_y) $(pos_z) 1 0 1

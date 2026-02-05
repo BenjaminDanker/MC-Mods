@@ -1,0 +1,29 @@
+{
+    "values": [
+      "minecraft:binding_curse",
+      "minecraft:vanishing_curse",
+      "infinity_cave:zgilded_pickaxe",
+      "infinity_cave:curse_of_diminution",
+      "infinity_cave:curse_of_gigantism",
+      "infinity_cave:zkatana",
+      "infinity_cave:zlimestone_sword",
+      "infinity_cave:zender_sword",
+      "infinity_cave:zskeleton_bow",
+      "infinity_cave:zbonding_sword",
+      "infinity_cave:znimbus_nunchucks",
+      "infinity_cave:technical/molten_hammer",
+      "infinity_cave:technical/exp_bottle/1",
+      "infinity_cave:technical/exp_bottle/2",
+      "infinity_cave:technical/exp_bottle/3",
+      "infinity_cave:technical/icicle_crossbow",
+      "infinity_cave:technical/steel_battleaxe",
+      "infinity_cave:technical/bastion_piercer",
+      "infinity_cave:technical/frozen_boots",
+      "infinity_cave:technical/sonic_bow",
+      "infinity_cave:technical/amethyst_blade",
+      "infinity_cave:technical/ai/_all",
+      "infinity_cave:technical/ai/fire_archer",
+      "infinity_cave:technical/ai/ice_archer"
+    ],
+    "replace": false
+  }

@@ -1,0 +1,2 @@
+execute as @e[type=#infinity_cave:aggro] if score @s ic.uuid = #compare ic.int \
+ run function infinity_cave:mobs/sulfide_caves/elements/1/toxic_cloud/spawn with storage infinity_cave:elements sulfide_caves.1.toxic_cloud

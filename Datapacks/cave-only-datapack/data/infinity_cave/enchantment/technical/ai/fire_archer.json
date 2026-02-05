@@ -1,0 +1,180 @@
+{
+  "description": "Fire Arrows",
+  "supported_items": "#minecraft:enchantable/foot_armor",
+  "weight": 1,
+  "max_level": 1,
+  "min_cost": {
+    "base": 99999,
+    "per_level_above_first": 99999
+  },
+  "max_cost": {
+    "base": 99999,
+    "per_level_above_first": 99999
+  },
+  "anvil_cost": 99999,
+  "slots": [
+    "any"
+  ],
+  "effects": {
+    "minecraft:hit_block": [
+      {
+        "effect": {
+          "type": "minecraft:explode",
+          "damage_type": "minecraft:fireball",
+          "radius": {
+            "type": "minecraft:linear",
+            "base": 1,
+            "per_level_above_first": 0.5
+          },
+          "offset": [
+            0,
+            0.25,
+            0
+          ],
+          "block_interaction": "none",
+          "small_particle": {
+            "type": "minecraft:angry_villager"
+          },
+          "large_particle": {
+            "type": "minecraft:small_gust"
+          },
+          "sound": "block.furnace.fire_crackle",
+          "knockback_multiplier": 1,
+          "attribute_to_user": false,
+          "create_fire": false
+        },
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "this",
+          "predicate": {
+            "type": "arrow"
+          }
+        }
+      },
+      {
+        "effect": {
+          "type": "minecraft:explode",
+          "damage_type": "minecraft:fireball",
+          "radius": {
+            "type": "minecraft:linear",
+            "base": 2,
+            "per_level_above_first": 1
+          },
+          "offset": [
+            0,
+            0.25,
+            0
+          ],
+          "block_interaction": "none",
+          "small_particle": {
+            "type": "minecraft:flash",
+            "color": 16742400
+          },
+          "large_particle": {
+            "type": "minecraft:gust_emitter_large"
+          },
+          "sound": "entity.dragon_fireball.explode",
+          "knockback_multiplier": 2,
+          "attribute_to_user": false,
+          "create_fire": false
+        },
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "this",
+          "predicate": {
+            "type": "spectral_arrow"
+          }
+        }
+      }
+    ],
+    "minecraft:post_attack": [
+      {
+        "enchanted": "attacker",
+        "affected": "victim",
+        "effect": {
+          "type": "minecraft:explode",
+          "damage_type": "minecraft:fireball",
+          "radius": {
+            "type": "minecraft:linear",
+            "base": 1,
+            "per_level_above_first": 0.5
+          },
+          "offset": [
+            0,
+            1,
+            0
+          ],
+          "block_interaction": "none",
+          "small_particle": {
+            "type": "minecraft:angry_villager"
+          },
+          "large_particle": {
+            "type": "minecraft:small_gust"
+          },
+          "sound": "block.furnace.fire_crackle",
+          "knockback_multiplier": 1,
+          "attribute_to_user": false,
+          "create_fire": false
+        },
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "direct_attacker",
+          "predicate": {
+            "type": "arrow"
+          }
+        }
+      },
+      {
+        "enchanted": "attacker",
+        "affected": "victim",
+        "effect": {
+          "type": "minecraft:explode",
+          "damage_type": "minecraft:fireball",
+          "radius": {
+            "type": "minecraft:linear",
+            "base": 2,
+            "per_level_above_first": 1
+          },
+          "offset": [
+            0,
+            1,
+            0
+          ],
+          "block_interaction": "none",
+          "small_particle": {
+            "type": "minecraft:flash",
+            "color": 16742400
+          },
+          "large_particle": {
+            "type": "minecraft:gust_emitter_large"
+          },
+          "sound": "entity.dragon_fireball.explode",
+          "knockback_multiplier": 2,
+          "attribute_to_user": false,
+          "create_fire": false
+        },
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "direct_attacker",
+          "predicate": {
+            "type": "spectral_arrow"
+          }
+        }
+      }
+    ],
+    "minecraft:projectile_spawned": [
+      {
+        "effect": {
+          "type": "minecraft:ignite",
+          "duration": 100
+        }
+      },
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/fire_archer/shoot"
+        }
+      }
+    ]
+  }
+}

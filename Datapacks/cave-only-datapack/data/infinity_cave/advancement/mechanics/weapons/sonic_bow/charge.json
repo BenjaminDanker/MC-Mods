@@ -1,0 +1,24 @@
+{
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:using_item",
+      "conditions": {
+        "item": {
+          "items": [
+            "minecraft:bow"
+          ],
+          "predicates": {
+            "minecraft:custom_data": {
+              "infinity_cave": {
+                "item": "sonic_bow"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "rewards": {
+    "function": "infinity_cave:mechanics/weapons/sonic_bow/charge"
+  }
+}

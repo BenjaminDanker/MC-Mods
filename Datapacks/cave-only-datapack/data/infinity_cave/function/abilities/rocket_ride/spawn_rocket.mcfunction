@@ -1,0 +1,1 @@
+$summon firework_rocket ~ ~1.5 ~ {Motion:$(Motion),Life:0,LifeTime:18,ShotAtAngle:1b,Tags:["ic.rocket_ride"]}

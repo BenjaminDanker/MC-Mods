@@ -1,0 +1,1 @@
+$data modify storage infinity_cave:fire_archer data.temp_projectile set from storage infinity_cave:fire_archer projectiles[$(int)]

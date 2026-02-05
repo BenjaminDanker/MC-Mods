@@ -1,0 +1,1 @@
+execute as @n[type=snowball,tag=ic.cooldown] run function infinity_cave:mechanics/weapons/ender_sword/cooldown/mainhand/set_item with storage ic:cooldown item

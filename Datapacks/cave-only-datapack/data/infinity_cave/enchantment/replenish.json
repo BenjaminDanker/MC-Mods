@@ -1,0 +1,67 @@
+{
+  "description": {
+    "translate": "enchantment.infinity_cave.replenish",
+    "fallback": "Replenish"
+  },
+  "supported_items": "#infinity_cave:chest",
+  "weight": 6,
+  "max_level": 4,
+  "min_cost": {
+    "base": 12,
+    "per_level_above_first": 10
+  },
+  "max_cost": {
+    "base": 37,
+    "per_level_above_first": 10
+  },
+  "anvil_cost": 4,
+  "slots": [
+    "chest"
+  ],
+  "effects": {
+    "minecraft:post_attack": [
+      {
+        "enchanted": "victim",
+        "affected": "victim",
+        "effect": {
+          "type": "minecraft:apply_mob_effect",
+          "to_apply": [
+            "minecraft:regeneration"
+          ],
+          "min_duration": {
+            "type": "minecraft:linear",
+            "base": 0.05,
+            "per_level_above_first": 0.0434
+          },
+          "max_duration": {
+            "type": "minecraft:linear",
+            "base": 0.05,
+            "per_level_above_first": 0.0434
+          },
+          "min_amplifier": 127,
+          "max_amplifier": 127
+        },
+        "requirements": [
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "type": "minecraft:player"
+            }
+          },
+          {
+            "condition": "minecraft:random_chance",
+            "chance": {
+              "type": "minecraft:enchantment_level",
+              "amount": {
+                "type": "minecraft:linear",
+                "base": 0.15,
+                "per_level_above_first": 0.025
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

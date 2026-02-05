@@ -1,0 +1,64 @@
+{
+  "pools": [
+    {
+      "rolls": 3,
+      "bonus_rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/rare_gear"
+        },
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/limestone/rare"
+        },
+        {
+          "type": "minecraft:item",
+          "weight": 2,
+          "name": "minecraft:cooked_cod",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "min": 2,
+                "max": 5
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:fishing_rod",
+          "functions": [
+            {
+              "function": "enchant_with_levels",
+              "levels": 24,
+              "options": "#infinity_cave:valid",
+              "conditions": [
+                {
+                  "condition": "random_chance",
+                  "chance": 0.334
+                }
+              ]
+            },
+            {
+              "function": "minecraft:set_damage",
+              "damage": {
+                "min": 0.1,
+                "max": 0.9
+              }
+            }
+          ],
+          "conditions": [
+            {
+              "condition": "random_chance",
+              "chance": 0.667
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+    "type": "minecraft:random_selector",
+    "config": {
+      "features": [
+        {
+          "chance": 0.5,
+          "feature": {
+            "feature": {
+              "config": {
+                "state": {
+                  "Name": "minecraft:grass_block"
+                },
+                "target": {
+                  "Name": "minecraft:andesite"
+                },
+                "radius": 12
+              },
+              "type": "minecraft:netherrack_replace_blobs"
+            },
+            "placement": []
+          }
+        }
+      ],
+      "default": {
+        "feature": {
+          "config": {
+            "state": {
+              "Name": "minecraft:grass_block"
+            },
+            "target": {
+              "Name": "stone"
+            },
+            "radius": 12
+          },
+          "type": "minecraft:netherrack_replace_blobs"
+        },
+        "placement": []
+      }
+    }
+  }

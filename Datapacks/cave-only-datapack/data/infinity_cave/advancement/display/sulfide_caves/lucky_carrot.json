@@ -1,0 +1,41 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:music_disc_5",
+      "components": {
+        "item_model": "infinity_cave:lucky_carrot"
+      }
+    },
+    "title": "Foul but Fortunate",
+    "description": [
+      {
+        "text": "Eat a Lucky Carrot"
+      }
+    ],
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "infinity_cave:display/sulfide_caves/huts",
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "minecraft:suspicious_stew"
+            ],
+            "predicates": {
+              "minecraft:custom_data": {
+                "infinity_cave": {
+                  "item": "lucky_carrot"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

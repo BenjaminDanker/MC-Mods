@@ -1,0 +1,1 @@
+function infinity_cave:mobs/deep_dark/tiers/rare/set_data with storage infinity_cave:deep_dark data.rare

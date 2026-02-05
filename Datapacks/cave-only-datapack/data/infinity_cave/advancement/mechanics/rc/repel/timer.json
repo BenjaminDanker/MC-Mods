@@ -1,0 +1,26 @@
+{
+    "criteria": {
+      "requirement": {
+        "trigger": "minecraft:tick",
+        "conditions": {
+          "player": [
+            {
+              "condition": "minecraft:value_check",
+              "value": {
+                "type": "minecraft:score",
+                "target": {
+                  "type": "minecraft:context",
+                  "target": "this"
+                },
+                "score": "ic.repel"
+              },
+              "range": 36000
+            }
+          ]
+        }
+      }
+    },
+    "rewards": {
+      "function": "infinity_cave:mechanics/rc/repel/timer"
+    }
+  }

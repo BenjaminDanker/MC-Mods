@@ -1,0 +1,1 @@
+execute as @a[tag=ic.explosion_resistance] run function infinity_cave:mechanics/weapons/katana/remove

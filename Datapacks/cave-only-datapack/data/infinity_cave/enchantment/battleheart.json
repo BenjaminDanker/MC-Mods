@@ -1,0 +1,36 @@
+{
+  "description": {
+    "translate": "enchantment.infinity_cave.battleheart",
+      "fallback": "Battleheart"
+    },
+    "supported_items": "#minecraft:enchantable/chest_armor",
+    "weight": 6,
+    "max_level": 4,
+    "min_cost": {
+      "base": 15,
+      "per_level_above_first": 10
+    },
+    "max_cost": {
+      "base": 55,
+      "per_level_above_first": 10
+    },
+    "anvil_cost": 8,
+    "slots": [
+      "chest"
+    ],
+    "effects": {
+      "minecraft:attributes": [
+        {
+          "id": "ic.battleheart",
+          "attribute": "minecraft:attack_damage",
+          "amount": {
+            "type": "minecraft:linear",
+            "base": 0.5,
+            "per_level_above_first": 0.5
+          },
+          "operation": "add_value"
+        }
+      ]
+    }
+  }
+  

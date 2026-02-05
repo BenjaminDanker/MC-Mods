@@ -1,0 +1,71 @@
+give @p trial_spawner[block_entity_data={\
+id:"trial_spawner",\
+normal_config:{\
+  spawn_range:25,\
+  total_mobs:1,\
+  simultaneous_mobs:1,\
+  total_mobs_added_per_player:0,\
+  simultaneous_mobs_added_per_player:0,\
+  ticks_between_spawn:0,\
+  spawn_potentials:[{\
+    data:{\
+      entity:{\
+        id:"minecraft:armor_stand",\
+        Invulnerable:1b,\
+        Small:1b,\
+        Invisible:1b,\
+        Tags:["ic.ability","ic.marker","ic.legendary"],\
+        equipment:{\
+          saddle:{\
+            id:"minecraft:acacia_button",\
+            count:1,\
+            components:{\
+              "minecraft:enchantments":{\
+                "infinity_cave:technical/summon/legendary":1\
+              }\
+            }\
+          }\
+        }\
+      }\
+    },\
+    weight:1\
+  }]\
+},\
+ominous_config:{\
+  spawn_range:25,\
+  total_mobs:2,\
+  simultaneous_mobs:2,\
+  total_mobs_added_per_player:0,\
+  simultaneous_mobs_added_per_player:0,\
+  ticks_between_spawn:6000,\
+  spawn_potentials:[{\
+    data:{\
+      entity:{\
+        id:"minecraft:armor_stand",\
+        Invulnerable:1b,\
+        Small:1b,\
+        Invisible:1b,\
+        equipment:{\
+          saddle:{\
+            id:"minecraft:acacia_button",\
+            count:1,\
+            components:{\
+              "minecraft:enchantments":{\
+                "infinity_cave:technical/summon/legendary":1\
+              }\
+            }\
+          }\
+        }\
+      }\
+    },\
+    weight:1\
+  }],\
+  loot_tables_to_eject:[{\
+    data:"infinity_cave:trial_spawners/legendary",\
+    weight:1\
+  }]\
+},\
+required_player_range:2,\
+target_cooldown_length:48000,\
+ejecting_loot_table:"infinity_cave:trial_spawners/legendary"\
+}] 1

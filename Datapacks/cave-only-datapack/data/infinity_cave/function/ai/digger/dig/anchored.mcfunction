@@ -1,0 +1,1 @@
+execute anchored eyes positioned ^ ^ ^1 rotated as @p[gamemode=!spectator,gamemode=!creative] run function infinity_cave:ai/digger/dig/break

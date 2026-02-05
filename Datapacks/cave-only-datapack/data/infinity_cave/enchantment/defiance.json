@@ -1,0 +1,175 @@
+{
+    "description": {
+      "translate": "enchantment.infinity_cave.defiance",
+      "fallback": "Defiance"
+    },
+    "supported_items": "#infinity_cave:sharpness",
+    "exclusive_set": "#infinity_cave:exclusive_set/melee_weapons",
+    "weight": 8,
+    "max_level": 5,
+    "min_cost": {
+      "base": 12,
+      "per_level_above_first": 9
+    },
+    "max_cost": {
+      "base": 65,
+      "per_level_above_first": 9
+    },
+    "anvil_cost": 4,
+    "slots": ["mainhand"],
+    "effects": {
+      "minecraft:damage": [
+        {
+          "requirements": [
+            {
+              "condition": "minecraft:entity_properties",
+              "entity": "this",
+              "predicate": { "team": "ic.mob_team" }
+            },
+            {
+              "condition": "minecraft:value_check",
+              "value": { "type": "minecraft:score", "target": "attacker", "score": "ic.mob_count", "scale": 1 },
+              "range": 1
+            }
+          ],
+          "effect": { "type": "minecraft:add", "value": { "type": "minecraft:linear", "base": 0.5, "per_level_above_first": 0.5 } }
+        },
+        {
+          "requirements": [
+            {
+              "condition": "minecraft:entity_properties",
+              "entity": "this",
+              "predicate": { "team": "ic.mob_team" }
+            },
+            {
+              "condition": "minecraft:value_check",
+              "value": { "type": "minecraft:score", "target": "attacker", "score": "ic.mob_count", "scale": 1 },
+              "range": 2
+            }
+          ],
+          "effect": { "type": "minecraft:add", "value": { "type": "minecraft:linear", "base": 1, "per_level_above_first": 0.5 } }
+        },
+        {
+          "requirements": [
+            {
+              "condition": "minecraft:entity_properties",
+              "entity": "this",
+              "predicate": { "team": "ic.mob_team" }
+            },
+            {
+              "condition": "minecraft:value_check",
+              "value": { "type": "minecraft:score", "target": "attacker", "score": "ic.mob_count", "scale": 1 },
+              "range": 3
+            }
+          ],
+          "effect": { "type": "minecraft:add", "value": { "type": "minecraft:linear", "base": 1.5, "per_level_above_first": 0.5 } }
+        },
+        {
+          "requirements": [
+            {
+              "condition": "minecraft:entity_properties",
+              "entity": "this",
+              "predicate": { "team": "ic.mob_team" }
+            },
+            {
+              "condition": "minecraft:value_check",
+              "value": { "type": "minecraft:score", "target": "attacker", "score": "ic.mob_count", "scale": 1 },
+              "range": 4
+            }
+          ],
+          "effect": { "type": "minecraft:add", "value": { "type": "minecraft:linear", "base": 2, "per_level_above_first": 0.5 } }
+        },
+        {
+          "requirements": [
+            {
+              "condition": "minecraft:entity_properties",
+              "entity": "this",
+              "predicate": { "team": "ic.mob_team" }
+            },
+            {
+              "condition": "minecraft:value_check",
+              "value": { "type": "minecraft:score", "target": "attacker", "score": "ic.mob_count", "scale": 1 },
+              "range": 5
+            }
+          ],
+          "effect": { "type": "minecraft:add", "value": { "type": "minecraft:linear", "base": 2.5, "per_level_above_first": 0.5 } }
+        },
+        {
+          "requirements": [
+            {
+              "condition": "minecraft:entity_properties",
+              "entity": "this",
+              "predicate": { "team": "ic.mob_team" }
+            },
+            {
+              "condition": "minecraft:value_check",
+              "value": { "type": "minecraft:score", "target": "attacker", "score": "ic.mob_count", "scale": 1 },
+              "range": 6
+            }
+          ],
+          "effect": { "type": "minecraft:add", "value": { "type": "minecraft:linear", "base": 3, "per_level_above_first": 0.5 } }
+        },
+        {
+          "requirements": [
+            {
+              "condition": "minecraft:entity_properties",
+              "entity": "this",
+              "predicate": { "team": "ic.mob_team" }
+            },
+            {
+              "condition": "minecraft:value_check",
+              "value": { "type": "minecraft:score", "target": "attacker", "score": "ic.mob_count", "scale": 1 },
+              "range": 7
+            }
+          ],
+          "effect": { "type": "minecraft:add", "value": { "type": "minecraft:linear", "base": 3.5, "per_level_above_first": 0.5 } }
+        },
+        {
+          "requirements": [
+            {
+              "condition": "minecraft:entity_properties",
+              "entity": "this",
+              "predicate": { "team": "ic.mob_team" }
+            },
+            {
+              "condition": "minecraft:value_check",
+              "value": { "type": "minecraft:score", "target": "attacker", "score": "ic.mob_count", "scale": 1 },
+              "range": 8
+            }
+          ],
+          "effect": { "type": "minecraft:add", "value": { "type": "minecraft:linear", "base": 4, "per_level_above_first": 0.5 } }
+        },
+        {
+          "requirements": [
+            {
+              "condition": "minecraft:entity_properties",
+              "entity": "this",
+              "predicate": { "team": "ic.mob_team" }
+            },
+            {
+              "condition": "minecraft:value_check",
+              "value": { "type": "minecraft:score", "target": "attacker", "score": "ic.mob_count", "scale": 1 },
+              "range": 9
+            }
+          ],
+          "effect": { "type": "minecraft:add", "value": { "type": "minecraft:linear", "base": 4.5, "per_level_above_first": 0.5 } }
+        },
+        {
+          "requirements": [
+            {
+              "condition": "minecraft:entity_properties",
+              "entity": "this",
+              "predicate": { "team": "ic.mob_team" }
+            },
+            {
+              "condition": "minecraft:value_check",
+              "value": { "type": "minecraft:score", "target": "attacker", "score": "ic.mob_count", "scale": 1 },
+              "range": { "min": 10 }
+            }
+          ],
+          "effect": { "type": "minecraft:add", "value": { "type": "minecraft:linear", "base": 5, "per_level_above_first": 0.5 } }
+        }
+      ]
+    }
+  }
+  

@@ -1,0 +1,42 @@
+{
+    "feature": "infinity_cave:frozen_caves/litter",
+    "placement": [
+      {
+        "type": "minecraft:count",
+        "count": 25
+      },
+      {
+        "type": "minecraft:in_square"
+      },
+      {
+        "type": "minecraft:height_range",
+        "height": {
+          "type": "minecraft:uniform",
+          "min_inclusive": {
+            "above_bottom": -120
+          },
+          "max_inclusive": {
+            "absolute": -90
+          }
+        }
+      },
+      {
+        "type": "minecraft:environment_scan",
+        "allowed_search_condition": {
+          "type": "minecraft:matching_blocks",
+          "blocks": [
+            "minecraft:air"
+          ],
+          "offset": [0,1,0]
+        },
+        "direction_of_search": "down",
+        "max_steps": 16,
+        "target_condition": {
+          "type": "minecraft:solid"
+        }
+      },
+      {
+        "type": "minecraft:biome"
+      }
+    ]
+  }

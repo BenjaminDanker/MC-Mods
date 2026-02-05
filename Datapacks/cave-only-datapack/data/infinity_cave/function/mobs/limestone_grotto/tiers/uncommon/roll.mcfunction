@@ -1,0 +1,1 @@
+function infinity_cave:mobs/limestone_grotto/tiers/uncommon/set_data with storage infinity_cave:limestone_grotto data.uncommon

@@ -1,0 +1,81 @@
+{
+  "type": "minecraft:chest",
+  "pools": [
+    {
+      "rolls": {
+        "type": "minecraft:uniform",
+        "max": 3,
+        "min": 1
+      },
+      "entries": [
+        {
+          "type": "minecraft:loot_table",
+          "value": "infinity_cave:refs/limestone/uncommon"
+        }
+      ]
+    },
+    {
+      "bonus_rolls": 0,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "functions": [
+            {
+              "add": false,
+              "count": {
+                "type": "minecraft:uniform",
+                "max": 3,
+                "min": 1
+              },
+              "function": "minecraft:set_count"
+            }
+          ],
+          "name": "minecraft:diamond",
+          "weight": 2
+        },
+        {
+          "type": "minecraft:item",
+          "functions": [
+            {
+              "add": false,
+              "count": {
+                "type": "minecraft:uniform",
+                "max": 4,
+                "min": 1
+              },
+              "function": "minecraft:set_count"
+            }
+          ],
+          "name": "minecraft:cooked_beef",
+          "weight": 4
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:emerald_block"
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:diamond_helmet"
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:diamond_chestplate"
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:diamond_leggings"
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:diamond_boots"
+        }
+      ],
+      "rolls": {
+        "type": "minecraft:uniform",
+        "max": 3,
+        "min": 1
+      }
+    }
+  ],
+  "random_sequence": "infinity_cave:limestone_village/blacksmith"
+}

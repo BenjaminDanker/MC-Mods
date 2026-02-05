@@ -1,0 +1,41 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:stone_axe",
+      "components": {
+        "item_model": "infinity_cave:aqua_axe"
+      }
+    },
+    "title": "Aquaman Speaks to Fish...",
+    "description": [
+      {
+        "text": "Find an Aqua Axe"
+      }
+    ],
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "infinity_cave:display/limestone_grotto/sniper",
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "minecraft:stone_axe"
+            ],
+            "predicates": {
+              "minecraft:custom_data": {
+                "infinity_cave": {
+                  "item": "aqua_axe"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

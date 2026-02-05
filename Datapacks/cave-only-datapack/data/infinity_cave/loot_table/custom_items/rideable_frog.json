@@ -1,0 +1,54 @@
+{
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:armor_stand",
+          "functions": [
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "max_stack_size": 64,
+                "item_name": "Rideable Frog",
+                "rarity": "epic",
+                "lore": [
+                  {
+                    "text": "Place to Spawn a frog",
+                    "italic": false,
+                    "color": "gray"
+                  },
+                  {
+                    "text": "which is ridable, hold",
+                    "italic": false,
+                    "color": "gray"
+                  },
+                  {
+                    "text": "jump to charge up a leap ",
+                    "italic": false,
+                    "color": "gray"
+                  }
+                ],
+                "item_model": "infinity_cave:rideable_frog",
+                "entity_data": {
+                  "id": "armor_stand",
+                  "Tags": ["ic.rideable_frog"],
+                  "Invisible": true,
+                  "Invulnerable": true,
+                  "Silent": true
+                },
+                "custom_data": {
+                  "infinity_cave": {
+                    "item": "rideable_frog"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

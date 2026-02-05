@@ -1,0 +1,1 @@
+$summon area_effect_cloud ~ ~ ~ {custom_particle:{type:"dust",color:[0.522,0.012,0.561],scale:1.25},ReapplicationDelay:10,Radius:$(size),RadiusPerTick:-0.01f,RadiusOnUse:0f,Duration:140,DurationOnUse:0,potion_duration_scale:1f,potion_contents:{custom_effects:[{id:"minecraft:infested",amplifier:$(damage),duration:20,show_particles:0b,show_icon:0b,ambient:0b}]}}

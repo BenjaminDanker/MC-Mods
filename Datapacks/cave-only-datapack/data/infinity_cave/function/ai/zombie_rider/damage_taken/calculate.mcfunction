@@ -1,0 +1,1 @@
+$execute on vehicle run damage @s $(damage_taken) infinity_cave:magic_bypass

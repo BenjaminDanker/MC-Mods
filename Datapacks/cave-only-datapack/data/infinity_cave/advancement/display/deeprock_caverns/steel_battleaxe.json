@@ -1,0 +1,42 @@
+{
+    "display": {
+      "icon": {
+        "id": "minecraft:netherite_axe",
+        "components": {
+          "item_model": "infinity_cave:steel_battleaxe"
+        }
+      },
+      "title": "Erradicate All Shield Users",
+      "description": [
+        {
+          "text": "Dropped from a Legendary\n\nObtain the Steel Battleaxe"
+        }
+      ],
+      "show_toast": true,
+      "announce_to_chat": true,
+      "hidden": false
+    },
+    "parent": "infinity_cave:display/deeprock_caverns/bomber",
+    "criteria": {
+      "requirement": {
+        "trigger": "minecraft:inventory_changed",
+        "conditions": {
+          "items": [
+            {
+              "items": [
+                "minecraft:netherite_axe"
+              ],
+            "predicates": {
+              "minecraft:custom_data": {
+                "infinity_cave": {
+                  "item": "steel_battleaxe"
+                }
+              }
+            }
+            }
+          ]
+        }
+      }
+    }
+  }
+  

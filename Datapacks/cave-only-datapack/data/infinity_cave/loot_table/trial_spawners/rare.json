@@ -1,0 +1,72 @@
+{
+  "pools": [
+    {
+      "rolls": 3,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "weight": 1,
+          "name": "minecraft:splash_potion",
+          "functions": [
+            {
+              "function": "set_name",
+              "name": [
+                {
+                  "text": "Tier III Healing",
+                  "color": "aqua",
+                  "italic": false
+                }
+              ]
+            },
+            {
+              "function": "set_lore",
+              "lore": [
+                {
+                  "text": "Stacks up to 5",
+                  "color": "gray",
+                  "italic": false
+                }
+              ],
+              "mode": "append"
+            },
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "item_model": "infinity_cave:tier_three_potion",
+                "max_stack_size": 5,
+                "minecraft:potion_contents": {
+                  "custom_color": 16720161,
+                  "custom_effects": [
+                    {
+                      "id": "minecraft:instant_health",
+                      "amplifier": 1,
+                      "duration": 20
+                    },
+                    {
+                      "id": "minecraft:regeneration",
+                      "amplifier": 2,
+                      "duration": 100
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "item",
+          "name": "golden_apple",
+          "functions": [
+            {
+              "function": "set_count",
+              "count": {
+                "max": 4,
+                "min": 2
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,123 @@
+{
+  "description": " ",
+  "supported_items": "#minecraft:enchantable/foot_armor",
+  "weight": 1,
+  "max_level": 1,
+  "min_cost": {
+    "base": 99999,
+    "per_level_above_first": 99999
+  },
+  "max_cost": {
+    "base": 99999,
+    "per_level_above_first": 99999
+  },
+  "anvil_cost": 99999,
+  "slots": [
+    "any"
+  ],
+  "effects": {
+    "minecraft:tick": [
+      {
+        "requirements": {
+          "condition": "minecraft:inverted",
+          "term": {
+            "condition": "minecraft:any_of",
+            "terms": [
+              {
+                "condition": "minecraft:location_check",
+                "predicate": {
+                  "block": {
+                    "blocks": "minecraft:pitcher_crop",
+                    "state": {
+                      "age": "0",
+                      "half": "lower"
+                    }
+                  }
+                }
+              },
+              {
+                "condition": "minecraft:location_check",
+                "predicate": {
+                  "block": {
+                    "blocks": "minecraft:pitcher_crop",
+                    "state": {
+                      "age": "1",
+                      "half": "lower"
+                    }
+                  }
+                }
+              },
+              {
+                "condition": "minecraft:location_check",
+                "predicate": {
+                  "block": {
+                    "blocks": "minecraft:pitcher_crop",
+                    "state": {
+                      "age": "2",
+                      "half": "lower"
+                    }
+                  }
+                }
+              },
+              {
+                "condition": "minecraft:location_check",
+                "predicate": {
+                  "block": {
+                    "blocks": "minecraft:pitcher_crop",
+                    "state": {
+                      "age": "3",
+                      "half": "lower"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:mechanics/frostpale_plant/kill"
+        }
+      },
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:mechanics/frostpale_plant/check"
+        },
+        "requirements": [
+          {
+            "condition": "entity_properties",
+            "entity": "this",
+            "predicate": {
+                "periodic_tick": 200
+            }
+          },
+          {
+            "condition": "minecraft:any_of",
+            "terms": [
+              {
+                "condition": "minecraft:random_chance",
+                "chance": 0.02
+              },
+              {
+                "condition": "minecraft:all_of",
+                "terms": [
+                  {
+                    "condition": "minecraft:random_chance",
+                    "chance": 0.05
+                  },
+                  {
+                    "condition": "minecraft:location_check",
+                    "predicate": {
+                      "biomes": "infinity_cave:frozen_caves"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

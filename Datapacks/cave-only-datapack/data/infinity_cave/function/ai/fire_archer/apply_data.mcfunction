@@ -1,0 +1,1 @@
+$execute on origin run summon $(temp_projectile) ^ ^ ^ $(temp_nbt)

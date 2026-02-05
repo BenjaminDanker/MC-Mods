@@ -1,0 +1,121 @@
+{
+  "description": {
+    "translate": "enchantment.infinity_cave.shockwave_arrow",
+    "fallback": "Shockwave Arrow"
+  },
+  "supported_items": "#minecraft:enchantable/bow",
+  "weight": 6,
+  "max_level": 3,
+  "min_cost": {
+    "base": 16,
+    "per_level_above_first": 10
+  },
+  "max_cost": {
+    "base": 58,
+    "per_level_above_first": 10
+  },
+  "anvil_cost": 4,
+  "slots": [
+    "mainhand"
+  ],
+  "effects": {
+    "minecraft:hit_block": [
+      {
+        "effect": {
+          "type": "minecraft:explode",
+          "radius": {
+            "type": "minecraft:linear",
+            "base": 1,
+            "per_level_above_first": 1
+          },
+          "offset": [
+            0,
+            0.25,
+            0
+          ],
+          "block_interaction": "none",
+          "small_particle": {
+            "type": "minecraft:gust"
+          },
+          "large_particle": {
+            "type": "minecraft:gust_emitter_large"
+          },
+          "sound": "entity.generic.explode",
+          "knockback_multiplier": 1,
+          "attribute_to_user": true,
+          "create_fire": false
+        },
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "this",
+          "predicate": {
+            "type": "#minecraft:arrows"
+          }
+        }
+      }
+    ],
+    "minecraft:post_attack": [
+      {
+        "enchanted": "attacker",
+        "affected": "victim",
+        "effect": {
+          "type": "minecraft:all_of",
+          "effects": [
+            {
+              "type": "minecraft:damage_entity",
+              "damage_type": "infinity_cave:wave",
+              "min_damage": {
+                "type": "minecraft:linear",
+                "base": 2,
+                "per_level_above_first": 2
+              },
+              "max_damage": {
+                "type": "minecraft:linear",
+                "base": 2,
+                "per_level_above_first": 2
+              }
+            },
+            {
+              "type": "minecraft:play_sound",
+              "sound": "minecraft:entity.generic.explode",
+              "volume": 1.5,
+              "pitch": 0.75
+            },
+            {
+              "type": "minecraft:spawn_particles",
+              "particle": {
+                "type": "minecraft:gust_emitter_small"
+              },
+              "horizontal_position": {
+                "type": "entity_position",
+                "offset": 0,
+                "scale": 1
+              },
+              "vertical_position": {
+                "type": "entity_position",
+                "offset": 0,
+                "scale": 1
+              },
+              "horizontal_velocity": {
+                "base": 0,
+                "movement_scale": 1
+              },
+              "vertical_velocity": {
+                "base": 0,
+                "movement_scale": 1
+              },
+              "speed": 0
+            }
+          ]
+        },
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "direct_attacker",
+          "predicate": {
+            "type": "#minecraft:arrows"
+          }
+        }
+      }
+    ]
+  }
+}

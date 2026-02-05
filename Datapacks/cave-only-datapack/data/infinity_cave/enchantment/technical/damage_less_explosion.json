@@ -1,0 +1,57 @@
+{
+  "description": "Motion",
+  "supported_items": "minecraft:acacia_button",
+  "weight": 1,
+  "max_level": 1,
+  "min_cost": {
+    "base": 9999,
+    "per_level_above_first": 999
+  },
+  "max_cost": {
+    "base": 9999,
+    "per_level_above_first": 9999
+  },
+  "anvil_cost": 9999,
+  "slots": [
+    "any"
+  ],
+  "effects": {
+    "minecraft:tick": [
+      {
+        "effect": {
+          "type": "minecraft:explode",
+          "damage_type": "minecraft:explosion",
+          "radius": {
+            "type": "minecraft:linear",
+            "base": 1.5,
+            "per_level_above_first": 0.2
+          },
+          "block_interaction": "none",
+          "small_particle": {
+            "type": "minecraft:sonic_boom"
+          },
+          "large_particle": {
+            "type": "minecraft:witch"
+          },
+          "sound": {
+            "sound_id": "minecraft:entity.generic.explode",
+            "range": 15
+          },
+          "knockback_multiplier": {
+            "type": "minecraft:linear",
+            "base": 1,
+            "per_level_above_first": 0.1
+          },
+          "attribute_to_user": false,
+          "create_fire": false
+        }
+      },
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:enchantments/motion"
+        }
+      }
+    ]
+  }
+}

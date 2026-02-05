@@ -1,0 +1,130 @@
+{
+  "description": {
+    "translate": "Shield Smasher"
+  },
+  "supported_items": "#minecraft:enchantable/sharp_weapon",
+  "weight": 1,
+  "max_level": 1,
+  "min_cost": {
+    "base": 9999,
+    "per_level_above_first": 9999
+  },
+  "max_cost": {
+    "base": 9999,
+    "per_level_above_first": 9999
+  },
+  "anvil_cost": 9999,
+  "slots": [
+    "mainhand"
+  ],
+  "effects": {
+    "minecraft:post_attack": [
+      {
+        "enchanted": "attacker",
+        "affected": "victim",
+        "effect": {
+          "type": "minecraft:play_sound",
+          "sound": {
+            "sound_id": "item.shield.break",
+            "range": 10
+          },
+          "volume": 1,
+          "pitch": 1.5
+        },
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "this",
+          "predicate": {
+            "type": "#infinity_cave:all_living",
+            "slots": {
+              "weapon.offhand": {
+                "items": "minecraft:shield"
+              }
+            }
+          }
+        }
+      },
+      {
+        "enchanted": "attacker",
+        "affected": "victim",
+        "effect": {
+          "type": "minecraft:all_of",
+          "effects": [
+            {
+              "type": "minecraft:play_sound",
+              "sound": {
+                "sound_id": "block.anvil.destroy"
+              },
+              "volume": 0.5,
+              "pitch": 2
+            },
+            {
+              "type": "minecraft:run_function",
+              "function": "infinity_cave:mechanics/weapons/steel_battleaxe/res"
+            },
+            {
+              "type": "minecraft:spawn_particles",
+              "particle": {
+                "type": "minecraft:ash"
+              },
+              "horizontal_position": {
+                "type": "in_bounding_box",
+                "offset": 1,
+                "scale": 0.5
+              },
+              "vertical_position": {
+                "type": "in_bounding_box",
+                "offset": 1,
+                "scale": 0.5
+              },
+              "horizontal_velocity": {
+                "base": 0,
+                "movement_scale": 0
+              },
+              "vertical_velocity": {
+                "base": 0,
+                "movement_scale": 0
+              },
+              "speed": 0.5
+            }
+          ]
+        },
+        "requirements": [
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "effects": {
+                "minecraft:resistance": {}
+              }
+            }
+          },
+          {
+            "condition": "minecraft:random_chance",
+            "chance": 0.2
+          }
+        ]
+      }
+    ],
+    "minecraft:damage": [
+      {
+        "effect": {
+          "type": "minecraft:add",
+          "value": 15
+        },
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "this",
+          "predicate": {
+            "type": "#infinity_cave:all_living",
+            "slots": {
+              "weapon.offhand": {
+                "items": "minecraft:shield"
+              }
+            }
+          }
+        }
+      }
+    ]
+  }
+}

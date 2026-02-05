@@ -1,0 +1,115 @@
+{
+  "temperature": 1,
+  "downfall": 0,
+  "has_precipitation": false,
+  "effects": {
+    "sky_color": 12089650,
+    "fog_color": 12089650,
+    "water_color": 5541551,
+    "water_fog_color": 4898303,
+    "foliage_color": 7047737,
+    "grass_color": 6262085,
+    "mood_sound": {
+      "sound": "minecraft:ambient.cave",
+      "tick_delay": 6000,
+      "block_search_extent": 8,
+      "offset": 2
+    },
+    "music": [
+      {
+        "weight": 1,
+        "data": {
+          "sound": "minecraft:intentionally_empty",
+          "min_delay": 0,
+          "max_delay": 0,
+          "replace_current_music": false
+        }
+      }
+    ],
+    "particle": {
+      "options": {
+        "type": "ash"
+      },
+      "probability": 0.0125
+    }
+  },
+"spawn_costs": {},
+  "spawners": {},
+  "carvers": [],
+  "features": [
+    [
+      "infinity_cave:depths_63",
+      "infinity_cave:depths_79",
+      "infinity_cave:depths_95",
+      "infinity_cave:depths_111",
+      "infinity_cave:depths_127",
+      "minecraft:lake_lava_surface"
+    ],
+    [],
+    [],
+    [
+      "minecraft:monster_room",
+      "minecraft:monster_room_deep"
+    ],
+    [
+      "infinity_cave:limestone_grotto/place_floor",
+      "infinity_cave:limestone_grotto/place_raw_gold_block",
+      "infinity_cave:limestone_grotto/place_pebbles",
+      "infinity_cave:limestone_grotto/place_hanging_roots",
+      "infinity_cave:limestone_grotto/place_stalactite_ceiling",
+      "infinity_cave:limestone_grotto/place_water",
+      "infinity_cave:limestone_grotto/place_mud",
+      "infinity_cave:limestone_grotto/place_seagrass",
+      "infinity_cave:limestone_grotto/place_stalactite_floor",
+      "infinity_cave:generic/light/middle"
+    ],
+    [],
+    [
+      "minecraft:ore_dirt",
+      "minecraft:ore_gravel",
+      "minecraft:ore_granite_upper",
+      "minecraft:ore_granite_lower",
+      "minecraft:ore_diorite_upper",
+      "minecraft:ore_diorite_lower",
+      "minecraft:ore_andesite_upper",
+      "minecraft:ore_andesite_lower",
+      "minecraft:ore_tuff",
+      "minecraft:ore_coal_upper",
+      "minecraft:ore_coal_lower",
+      "minecraft:ore_iron_upper",
+      "minecraft:ore_iron_middle",
+      "minecraft:ore_iron_small",
+      "minecraft:ore_gold",
+      "minecraft:ore_gold_lower",
+      "minecraft:ore_redstone",
+      "minecraft:ore_redstone_lower",
+      "minecraft:ore_diamond",
+      "minecraft:ore_diamond_medium",
+      "minecraft:ore_diamond_large",
+      "minecraft:ore_diamond_buried",
+      "minecraft:ore_lapis",
+      "minecraft:ore_lapis_buried",
+      "minecraft:ore_copper",
+      "minecraft:underwater_magma",
+      "minecraft:disk_sand",
+      "minecraft:disk_clay",
+      "minecraft:disk_gravel"
+    ],
+    [],
+    [],
+    [
+      "minecraft:glow_lichen",
+      "minecraft:patch_tall_grass_2",
+      "minecraft:trees_plains",
+      "minecraft:flower_plains",
+      "minecraft:patch_grass_plain",
+      "minecraft:brown_mushroom_normal",
+      "minecraft:red_mushroom_normal",
+      "minecraft:patch_pumpkin",
+      "minecraft:warm_ocean_vegetation"
+    ],
+    [
+      "minecraft:freeze_top_layer"
+    ]
+  ]
+}

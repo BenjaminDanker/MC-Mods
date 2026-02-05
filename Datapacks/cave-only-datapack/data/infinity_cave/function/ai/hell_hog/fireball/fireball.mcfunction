@@ -1,0 +1,1 @@
+$summon fireball ~ ~-2 ~ {Motion:$(motion),ExplosionPower:3b,acceleration_power:0.2d}

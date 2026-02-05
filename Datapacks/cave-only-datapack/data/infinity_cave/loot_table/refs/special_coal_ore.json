@@ -1,0 +1,37 @@
+{
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:coal_ore",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": 1
+            },
+            {
+              "function": "set_name",
+              "name": [
+                {
+                  "text": "Special Coal Ore",
+                  "italic": false
+                }
+              ],
+              "target": "item_name"
+            },
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "minecraft:custom_data": {
+                  "id": "Special Coal Ore"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

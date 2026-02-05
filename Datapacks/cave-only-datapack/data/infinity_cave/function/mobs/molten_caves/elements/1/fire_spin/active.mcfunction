@@ -1,0 +1,1 @@
+function infinity_cave:particles/fire_spin/animate

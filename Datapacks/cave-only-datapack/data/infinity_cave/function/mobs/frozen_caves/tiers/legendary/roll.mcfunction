@@ -1,0 +1,1 @@
+function infinity_cave:mobs/frozen_caves/tiers/legendary/set_data with storage infinity_cave:frozen_caves data.legendary

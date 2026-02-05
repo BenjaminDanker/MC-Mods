@@ -1,0 +1,24 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:bookshelf"
+    },
+    "title": "The Lore Structure",
+    "description": [
+      {
+        "text": "Find loot in the Deep Temple structure!"
+      }
+    ],
+    "show_toast": true,
+    "announce_to_chat": true
+  },
+  "parent": "infinity_cave:display/root",
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:player_generates_container_loot",
+      "conditions": {
+        "loot_table": "infinity_cave:structures/deep_dark_temple"
+      }
+    }
+  }
+}

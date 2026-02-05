@@ -1,0 +1,2 @@
+execute as @e[type=#infinity_cave:aggro] if score @s ic.uuid = #compare ic.int \
+ run function infinity_cave:mobs/amethyst_caves/elements/1/explosion/detonate with storage infinity_cave:elements amethyst.1

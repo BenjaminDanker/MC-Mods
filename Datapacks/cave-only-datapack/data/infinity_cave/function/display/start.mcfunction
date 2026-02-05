@@ -1,0 +1,3 @@
+tellraw @s ["",{"color":"dark_gray","text":"["},{"color":"#4C7ED2","text":"Infinity Cave"},{"color":"dark_gray","text":"]"},{"bold":true,"color":"red","text":" Warning!"}," You are about to reach Infinity Cave territory, it is not recommended to go down here until later stages of the game. Full Diamond Armor is recommended, proceed with caution.",{"click_event":{"action":"open_url","url":"https://infinity-cave-wiki.vercel.app/"},"color":"gold","text":" [CLICK HERE FOR WIKI]"}]
+
+playsound minecraft:entity.ghast.scream hostile @s ~ ~ ~ 0.75 1 1

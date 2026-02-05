@@ -1,0 +1,23 @@
+{
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:consume_item",
+      "conditions": {
+        "item": {
+          "items": "minecraft:suspicious_stew",
+          "predicates": {
+                "custom_data": {
+                  "infinity_cave": {
+                   "item": "magic_mushroom",
+                   "shrink": true
+                  }
+                }
+          }
+        }
+      }
+    }
+  },
+  "rewards": {
+    "function": "infinity_cave:mechanics/food/magic_mushroom/shrink"
+  }
+}

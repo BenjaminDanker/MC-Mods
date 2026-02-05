@@ -1,0 +1,14 @@
+{
+	"structures": [
+		{
+			"structure": "infinity_cave:molten_caves/railway",
+			"weight": 1
+		}
+	],
+	"placement": {
+		"type": "minecraft:random_spread",
+		"salt": 142624494,
+		"spacing": 50,
+		"separation": 20
+	}
+}

@@ -1,0 +1,69 @@
+{
+  "description": {
+    "translate": "Distance Boost"
+  },
+  "supported_items": "#minecraft:enchantable/sharp_weapon",
+  "weight": 1,
+  "max_level": 1,
+  "min_cost": {
+    "base": 9999,
+    "per_level_above_first": 9999
+  },
+  "max_cost": {
+    "base": 9999,
+    "per_level_above_first": 9999
+  },
+  "anvil_cost": 9999,
+  "slots": [
+    "mainhand"
+  ],
+  "effects": {
+    "minecraft:post_attack": [
+      {
+        "enchanted": "attacker",
+        "affected": "victim",
+        "effect": {
+          "type": "minecraft:play_sound",
+          "sound": {
+            "sound_id": "enchant.thorns.hit",
+            "range": 10
+          },
+          "volume": 1,
+          "pitch": 0.75
+        },
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "attacker",
+          "predicate": {
+            "type": "#infinity_cave:all_living",
+            "distance": {
+              "absolute": {
+                "min": 3.5
+              }
+            }
+          }
+        }
+      }
+    ],
+    "minecraft:damage": [
+      {
+        "effect": {
+          "type": "minecraft:add",
+          "value": 15
+        },
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "attacker",
+          "predicate": {
+            "type": "#infinity_cave:all_living",
+            "distance": {
+              "absolute": {
+                "min": 3.5
+              }
+            }
+          }
+        }
+      }
+    ]
+  }
+}

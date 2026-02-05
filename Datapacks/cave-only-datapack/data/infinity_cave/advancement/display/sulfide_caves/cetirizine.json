@@ -1,0 +1,41 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:music_disc_5",
+      "components": {
+        "item_model": "infinity_cave:cetirizine"
+      }
+    },
+    "title": "There are Rumours of Hay Fever",
+    "description": [
+      {
+        "text": "Obtain Cetirizine"
+      }
+    ],
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "infinity_cave:display/sulfide_caves/sneezer",
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "minecraft:music_disc_11"
+            ],
+            "predicates": {
+              "minecraft:custom_data": {
+                "infinity_cave": {
+                  "item": "cetirizine"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

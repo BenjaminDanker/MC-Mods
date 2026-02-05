@@ -1,0 +1,1 @@
+execute on target run rotate @n[type=frog] facing entity @s

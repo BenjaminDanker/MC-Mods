@@ -1,0 +1,1 @@
+execute facing entity @p[distance=3..] feet positioned ^ ^ ^3 positioned ~ ~4 ~ if entity @s[distance=5.5..] run function infinity_cave:ai/jump/height

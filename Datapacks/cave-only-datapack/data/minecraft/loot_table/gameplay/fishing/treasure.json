@@ -1,0 +1,160 @@
+{
+  "type": "minecraft:fishing",
+  "pools": [
+    {
+      "bonus_rolls": 0,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:name_tag"
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:saddle"
+        },
+        {
+          "type": "minecraft:item",
+          "functions": [
+            {
+              "add": false,
+              "damage": {
+                "type": "minecraft:uniform",
+                "max": 0.25,
+                "min": 0
+              },
+              "function": "minecraft:set_damage"
+            },
+            {
+              "function": "minecraft:enchant_with_levels",
+              "levels": 30,
+              "options": "#minecraft:on_random_loot"
+            }
+          ],
+          "name": "minecraft:bow"
+        },
+        {
+          "type": "minecraft:item",
+          "functions": [
+            {
+              "add": false,
+              "damage": {
+                "type": "minecraft:uniform",
+                "max": 0.25,
+                "min": 0
+              },
+              "function": "minecraft:set_damage"
+            },
+            {
+              "function": "minecraft:enchant_with_levels",
+              "levels": 30,
+              "options": "#minecraft:on_random_loot"
+            }
+          ],
+          "name": "minecraft:fishing_rod"
+        },
+        {
+          "type": "minecraft:item",
+          "functions": [
+            {
+              "function": "minecraft:enchant_with_levels",
+              "levels": 30,
+              "options": "#minecraft:on_random_loot"
+            }
+          ],
+          "name": "minecraft:book"
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:nautilus_shell"
+        }
+      ],
+      "rolls": 1
+    },
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:trident",
+          "weight": 1,
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": 1
+            }
+          ],
+          "conditions": [
+            {
+              "condition": "minecraft:random_chance",
+              "chance": 0.25
+            }
+          ]
+        }
+      ],
+      "conditions": [
+        {
+          "condition": "minecraft:location_check",
+          "predicate": {
+            "biomes": "infinity_cave:sulfide_caves"
+          }
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:trident",
+          "weight": 1,
+          "functions": [
+            {
+              "function": "minecraft:set_enchantments",
+              "enchantments": {
+                "minecraft:riptide": {
+                  "type": "minecraft:uniform",
+                  "min": 1,
+                  "max": 4
+                }
+              }
+            },
+            {
+              "function": "minecraft:set_damage",
+              "damage": {
+                "type": "minecraft:uniform",
+                "min": 0.05,
+                "max": 0.75
+              }
+            }
+          ],
+          "conditions": [
+            {
+              "condition": "minecraft:random_chance",
+              "chance": 0.05
+            }
+          ]
+        },
+        {
+          "type": "minecraft:loot_table",
+          "value": "infinity_cave:custom_items/aqua_axe",
+          "weight": 1,
+          "conditions": [
+            {
+              "condition": "minecraft:random_chance",
+              "chance": 0.1
+            }
+          ]
+        }
+      ],
+      "conditions": [
+        {
+          "condition": "minecraft:location_check",
+          "predicate": {
+            "biomes": "infinity_cave:limestone_grotto"
+          }
+        }
+      ]
+    }
+  ],
+  "random_sequence": "minecraft:gameplay/fishing/treasure"
+}

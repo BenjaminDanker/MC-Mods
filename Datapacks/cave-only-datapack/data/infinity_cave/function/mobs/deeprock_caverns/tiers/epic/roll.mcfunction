@@ -1,0 +1,1 @@
+function infinity_cave:mobs/deeprock_caverns/tiers/epic/set_data with storage infinity_cave:deeprock_caverns data.epic

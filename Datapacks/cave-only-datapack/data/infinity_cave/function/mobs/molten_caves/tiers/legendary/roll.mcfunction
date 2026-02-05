@@ -1,0 +1,1 @@
+function infinity_cave:mobs/molten_caves/tiers/legendary/set_data with storage infinity_cave:molten_caves data.legendary

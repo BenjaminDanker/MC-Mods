@@ -1,0 +1,396 @@
+{
+  "description": {
+    "text": "DO NOT USE"
+  },
+  "supported_items": "#minecraft:enchantable/head_armor",
+  "weight": 1,
+  "max_level": 1,
+  "min_cost": {
+    "base": 99999,
+    "per_level_above_first": 99999
+  },
+  "max_cost": {
+    "base": 99999,
+    "per_level_above_first": 99999
+  },
+  "anvil_cost": 99999,
+  "slots": [
+    "any"
+  ],
+  "effects": {
+    "tick": [
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/chemist/destruct"
+        }
+      },
+      {
+        "effect": {
+          "type": "minecraft:explode",
+          "damage_type": "minecraft:explosion",
+          "radius": {
+            "type": "minecraft:linear",
+            "base": 1.5,
+            "per_level_above_first": 0.2
+          },
+          "block_interaction": "none",
+          "small_particle": {
+            "type": "minecraft:gust_emitter_small"
+          },
+          "large_particle": {
+            "type": "minecraft:witch"
+          },
+          "sound": {
+            "sound_id": "minecraft:block.respawn_anchor.deplete",
+            "range": 15
+          },
+          "knockback_multiplier": {
+            "type": "minecraft:linear",
+            "base": 1,
+            "per_level_above_first": 0.1
+          },
+          "attribute_to_user": false,
+          "create_fire": false
+        },
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "this",
+          "predicate": {
+            "flags": {
+              "is_on_ground": true
+            }
+          }
+        }
+      },
+      {
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "this",
+          "predicate": {
+            "flags": {
+              "is_on_ground": true
+            }
+          }
+        },
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/chemist/kill"
+        }
+      }
+    ],
+    "minecraft:location_changed": [
+      {
+        "effect": {
+          "type": "minecraft:spawn_particles",
+          "particle": {
+            "type": "minecraft:witch"
+          },
+          "horizontal_position": {
+            "type": "entity_position",
+            "offset": 0
+          },
+          "vertical_position": {
+            "type": "entity_position",
+            "offset": 0
+          },
+          "horizontal_velocity": {
+            "base": {
+              "type": "minecraft:uniform",
+              "min_inclusive": -2,
+              "max_exclusive": 2
+            },
+            "movement_scale": 1
+          },
+          "vertical_velocity": {
+            "base": {
+              "type": "minecraft:uniform",
+              "min_inclusive": -2,
+              "max_exclusive": 2
+            },
+            "movement_scale": 0.5
+          },
+          "speed": {
+            "type": "minecraft:uniform",
+            "min_inclusive": 0,
+            "max_exclusive": 2
+          }
+        }
+      },
+      {
+        "effect": {
+          "type": "minecraft:spawn_particles",
+          "particle": {
+            "type": "minecraft:witch"
+          },
+          "horizontal_position": {
+            "type": "entity_position",
+            "offset": 0
+          },
+          "vertical_position": {
+            "type": "entity_position",
+            "offset": 0
+          },
+          "horizontal_velocity": {
+            "base": {
+              "type": "minecraft:uniform",
+              "min_inclusive": -2,
+              "max_exclusive": 2
+            },
+            "movement_scale": 1
+          },
+          "vertical_velocity": {
+            "base": {
+              "type": "minecraft:uniform",
+              "min_inclusive": -2,
+              "max_exclusive": 2
+            },
+            "movement_scale": 0.5
+          },
+          "speed": {
+            "type": "minecraft:uniform",
+            "min_inclusive": 0,
+            "max_exclusive": 2
+          }
+        }
+      },
+      {
+        "effect": {
+          "type": "minecraft:spawn_particles",
+          "particle": {
+            "type": "minecraft:witch"
+          },
+          "horizontal_position": {
+            "type": "entity_position",
+            "offset": 0
+          },
+          "vertical_position": {
+            "type": "entity_position",
+            "offset": 0
+          },
+          "horizontal_velocity": {
+            "base": {
+              "type": "minecraft:uniform",
+              "min_inclusive": -2,
+              "max_exclusive": 2
+            },
+            "movement_scale": 1
+          },
+          "vertical_velocity": {
+            "base": {
+              "type": "minecraft:uniform",
+              "min_inclusive": -2,
+              "max_exclusive": 2
+            },
+            "movement_scale": 0.5
+          },
+          "speed": {
+            "type": "minecraft:uniform",
+            "min_inclusive": 0,
+            "max_exclusive": 2
+          }
+        }
+      },
+      {
+        "effect": {
+          "type": "minecraft:spawn_particles",
+          "particle": {
+            "type": "minecraft:witch"
+          },
+          "horizontal_position": {
+            "type": "entity_position",
+            "offset": 0
+          },
+          "vertical_position": {
+            "type": "entity_position",
+            "offset": 0
+          },
+          "horizontal_velocity": {
+            "base": {
+              "type": "minecraft:uniform",
+              "min_inclusive": -2,
+              "max_exclusive": 2
+            },
+            "movement_scale": 1
+          },
+          "vertical_velocity": {
+            "base": {
+              "type": "minecraft:uniform",
+              "min_inclusive": -2,
+              "max_exclusive": 2
+            },
+            "movement_scale": 0.5
+          },
+          "speed": {
+            "type": "minecraft:uniform",
+            "min_inclusive": 0,
+            "max_exclusive": 2
+          }
+        }
+      },
+      {
+        "effect": {
+          "type": "minecraft:spawn_particles",
+          "particle": {
+            "type": "minecraft:witch"
+          },
+          "horizontal_position": {
+            "type": "entity_position",
+            "offset": 0
+          },
+          "vertical_position": {
+            "type": "entity_position",
+            "offset": 0
+          },
+          "horizontal_velocity": {
+            "base": {
+              "type": "minecraft:uniform",
+              "min_inclusive": -2,
+              "max_exclusive": 2
+            },
+            "movement_scale": 1
+          },
+          "vertical_velocity": {
+            "base": {
+              "type": "minecraft:uniform",
+              "min_inclusive": -2,
+              "max_exclusive": 2
+            },
+            "movement_scale": 0.5
+          },
+          "speed": {
+            "type": "minecraft:uniform",
+            "min_inclusive": 0,
+            "max_exclusive": 2
+          }
+        }
+      },
+      {
+        "effect": {
+          "type": "minecraft:spawn_particles",
+          "particle": {
+            "type": "minecraft:witch"
+          },
+          "horizontal_position": {
+            "type": "entity_position",
+            "offset": 0
+          },
+          "vertical_position": {
+            "type": "entity_position",
+            "offset": 0
+          },
+          "horizontal_velocity": {
+            "movement_scale": 1
+          },
+          "vertical_velocity": {
+            "base": {
+              "type": "minecraft:uniform",
+              "min_inclusive": -2,
+              "max_exclusive": 2
+            },
+            "movement_scale": 0.5
+          },
+          "speed": {
+            "type": "minecraft:uniform",
+            "min_inclusive": 0,
+            "max_exclusive": 2
+          }
+        }
+      },
+      {
+        "effect": {
+          "type": "minecraft:spawn_particles",
+          "particle": {
+            "type": "minecraft:witch"
+          },
+          "horizontal_position": {
+            "type": "entity_position",
+            "offset": 0
+          },
+          "vertical_position": {
+            "type": "entity_position",
+            "offset": 0
+          },
+          "horizontal_velocity": {
+            "base": {
+              "type": "minecraft:uniform",
+              "min_inclusive": -2,
+              "max_exclusive": 2
+            },
+            "movement_scale": 1
+          },
+          "vertical_velocity": {
+            "base": {
+              "type": "minecraft:uniform",
+              "min_inclusive": -2,
+              "max_exclusive": 2
+            },
+            "movement_scale": 0.5
+          },
+          "speed": {
+            "type": "minecraft:uniform",
+            "min_inclusive": 0,
+            "max_exclusive": 2
+          }
+        }
+      },
+      {
+        "effect": {
+          "type": "minecraft:spawn_particles",
+          "particle": {
+            "type": "minecraft:witch"
+          },
+          "horizontal_position": {
+            "type": "entity_position",
+            "offset": 0
+          },
+          "vertical_position": {
+            "type": "entity_position",
+            "offset": 0
+          },
+          "horizontal_velocity": {
+            "movement_scale": 1
+          },
+          "vertical_velocity": {
+            "base": {
+              "type": "minecraft:uniform",
+              "min_inclusive": -2,
+              "max_exclusive": 2
+            },
+            "movement_scale": 0.5
+          },
+          "speed": {
+            "type": "minecraft:uniform",
+            "min_inclusive": 0,
+            "max_exclusive": 2
+          }
+        }
+      },
+      {
+        "effect": {
+          "type": "minecraft:spawn_particles",
+          "particle": {
+            "type": "minecraft:end_rod"
+          },
+          "horizontal_position": {
+            "type": "entity_position",
+            "offset": 0
+          },
+          "vertical_position": {
+            "type": "entity_position",
+            "offset": 0
+          },
+          "horizontal_velocity": {
+            "base": 0,
+            "movement_scale": 1
+          },
+          "vertical_velocity": {
+            "base": 0,
+            "movement_scale": 1
+          },
+          "speed": 0.1
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,18 @@
+{
+    "feature": "infinity_cave:molten_caves/lava_smoke",
+    "placement": [
+      {
+        "type": "minecraft:height_range",
+        "height": {
+          "absolute": -124
+        }
+      },
+      {
+        "type": "minecraft:count",
+        "count": 2
+      },
+      {
+        "type": "in_square"
+      }
+    ]
+  }

@@ -1,0 +1,14 @@
+{
+  "criteria": {
+    "tick": {
+      "trigger": "minecraft:tick",
+      "conditions": {
+        "player": [
+        ]
+      }
+    }
+  },
+  "rewards": {
+    "function": "infinity_cave:mechanics/rideable_frog/dismount"
+  }
+}

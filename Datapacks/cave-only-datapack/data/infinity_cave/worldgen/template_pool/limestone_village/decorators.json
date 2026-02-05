@@ -1,0 +1,33 @@
+{
+  "name": "infinity_cave:limestone_village/decorators",
+  "elements": [
+    {
+      "element": {
+        "element_type": "minecraft:single_pool_element",
+        "projection": "rigid",
+        "location": "infinity_cave:limestone_village/decorators/pillar1",
+        "processors": "minecraft:empty"
+      },
+      "weight": 2
+    },
+    {
+      "element": {
+        "element_type": "minecraft:single_pool_element",
+        "projection": "rigid",
+        "location": "infinity_cave:limestone_village/decorators/pillar2",
+        "processors": "minecraft:empty"
+      },
+      "weight": 6
+    },
+    {
+      "element": {
+        "element_type": "minecraft:single_pool_element",
+        "projection": "rigid",
+        "location": "infinity_cave:limestone_village/decorators/lamp_post",
+        "processors": "minecraft:empty"
+      },
+      "weight": 1
+    }
+  ],
+  "fallback": "infinity_cave:limestone_village/decorators"
+}

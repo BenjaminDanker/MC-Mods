@@ -1,0 +1,115 @@
+{
+  "description": {
+    "text": "DO NOT USE"
+  },
+  "supported_items": "#minecraft:enchantable/head_armor",
+  "weight": 1,
+  "max_level": 1,
+  "min_cost": {
+    "base": 99999,
+    "per_level_above_first": 99999
+  },
+  "max_cost": {
+    "base": 99999,
+    "per_level_above_first": 99999
+  },
+  "anvil_cost": 99999,
+  "slots": [
+    "any"
+  ],
+  "effects": {
+    "tick": [
+      {
+        "effect": {
+          "type": "minecraft:explode",
+          "damage_type": "minecraft:explosion",
+          "offset": [
+            0,
+            -0.5,
+            0
+          ],
+          "radius": {
+            "type": "minecraft:linear",
+            "base": 1,
+            "per_level_above_first": 0.2
+          },
+          "block_interaction": "none",
+          "small_particle": {
+            "type": "minecraft:gust_emitter_small"
+          },
+          "large_particle": {
+            "type": "minecraft:snowflake"
+          },
+          "sound": {
+            "sound_id": "minecraft:entity.generic.explode",
+            "range": 15
+          },
+          "knockback_multiplier": {
+            "type": "minecraft:linear",
+            "base": 1,
+            "per_level_above_first": 0.025
+          },
+          "attribute_to_user": false,
+          "create_fire": false
+        },
+        "requirements": {
+          "condition": "minecraft:inverted",
+          "term": {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "vehicle": {
+                "type": "minecraft:snowball"
+              }
+            }
+          }
+        }
+      },
+      {
+        "requirements": {
+          "condition": "minecraft:inverted",
+          "term": {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "vehicle": {
+                "type": "minecraft:snowball"
+              }
+            }
+          }
+        },
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/chemist/kill"
+        }
+      }
+    ],
+    "minecraft:location_changed": [
+      {
+        "effect": {
+          "type": "minecraft:spawn_particles",
+          "particle": {
+            "type": "minecraft:snowflake"
+          },
+          "horizontal_position": {
+            "type": "entity_position",
+            "offset": 0
+          },
+          "vertical_position": {
+            "type": "entity_position",
+            "offset": 0
+          },
+          "horizontal_velocity": {
+            "base": 0,
+            "movement_scale": 0
+          },
+          "vertical_velocity": {
+            "base": 0,
+            "movement_scale": 0
+          },
+          "speed": 0
+        }
+      }
+    ]
+  }
+}

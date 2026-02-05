@@ -1,0 +1,1 @@
+execute as @n[type=minecraft:breeze_wind_charge,distance=..4] at @s run function infinity_cave:ai/rapid_breeze/wind_charge/get_motion

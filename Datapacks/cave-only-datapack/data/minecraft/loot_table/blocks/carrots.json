@@ -1,0 +1,125 @@
+{
+  "type": "minecraft:block",
+  "functions": [
+    {
+      "function": "minecraft:explosion_decay"
+    }
+  ],
+  "pools": [
+    {
+      "rolls": 1,
+      "conditions": [
+        {
+          "condition": "minecraft:inverted",
+          "term": {
+            "condition": "minecraft:location_check",
+            "predicate": {
+              "biomes": "infinity_cave:sulfide_caves"
+            }
+          }
+        }
+      ],
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:carrot"
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "conditions": [
+        {
+          "condition": "minecraft:inverted",
+          "term": {
+            "condition": "minecraft:location_check",
+            "predicate": {
+              "biomes": "infinity_cave:sulfide_caves"
+            }
+          }
+        },
+        {
+          "block": "minecraft:carrots",
+          "condition": "minecraft:block_state_property",
+          "properties": {
+            "age": "7"
+          }
+        }
+      ],
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:carrot",
+          "functions": [
+            {
+              "function": "minecraft:apply_bonus",
+              "enchantment": "minecraft:fortune",
+              "formula": "minecraft:binomial_with_bonus_count",
+              "parameters": {
+                "extra": 3,
+                "probability": 0.5714286
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "conditions": [
+        {
+          "condition": "minecraft:location_check",
+          "predicate": {
+            "biomes": "infinity_cave:sulfide_caves"
+          }
+        },
+        {
+          "condition": "minecraft:block_state_property",
+          "block": "minecraft:carrots",
+          "properties": {
+            "age": "7"
+          }
+        }
+      ],
+      "entries": [
+        {
+          "type": "loot_table",
+          "value": "infinity_cave:custom_items/lucky_carrot"
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:carrot",
+          "functions": [
+            {
+              "function": "minecraft:apply_bonus",
+              "enchantment": "minecraft:fortune",
+              "formula": "minecraft:binomial_with_bonus_count",
+              "parameters": {
+                "extra": 3,
+                "probability": 0.5714286
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "conditions": [
+        {
+          "condition": "minecraft:location_check",
+          "predicate": {
+            "biomes": "infinity_cave:sulfide_caves"
+          }
+        }
+      ],
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:carrot"
+        }
+      ]
+    }
+  ],
+  "random_sequence": "minecraft:blocks/carrots"
+}

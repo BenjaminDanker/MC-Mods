@@ -1,0 +1,50 @@
+{
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:music_disc_11",
+          "weight": 2,
+          "functions": [
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "use_cooldown": {
+                    "seconds": 5,
+                    "cooldown_group": "infinity_cave:chemical_bomb"
+                },
+                "minecraft:consumable": {
+                  "sound": "entity.snowball.throw",
+                  "consume_seconds": 0,
+                  "animation": "none",
+                  "has_consume_particles": false
+                },
+                "max_stack_size": 16,
+                "minecraft:item_name": {
+                  "text": "Chemical Bomb"
+                },
+                "minecraft:item_model": "infinity_cave:chemical_bomb",
+                "minecraft:rarity": "uncommon",
+                "minecraft:lore": [
+                  {
+                    "text": "Throws a chemical bomb",
+                    "color": "gray",
+                    "italic": false
+                  }
+                ],
+                "!minecraft:jukebox_playable": {},
+                "minecraft:custom_data": {
+                  "infinity_cave": {
+                    "item": "chemical_bomb"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

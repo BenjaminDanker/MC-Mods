@@ -1,0 +1,135 @@
+{
+  "temperature": 0.8,
+  "downfall": 0.4,
+  "has_precipitation": false,
+  "effects": {
+    "sky_color": 10076657,
+    "fog_color": 2531945,
+    "water_color": 4697260,
+    "water_fog_color": 4697260,
+    "grass_color": 2243355,
+    "foliage_color": 2243355,
+    "dry_foliage_color": 2243355,
+    "mood_sound": {
+      "sound": "minecraft:ambient.warped_forest.additions",
+      "tick_delay": 6000,
+      "block_search_extent": 8,
+      "offset": 2
+    },
+    "additions_sound": {
+      "sound": "minecraft:ambient.crimson_forest.mood",
+      "tick_chance": 0.000005
+    },
+    "music": [
+      {
+        "weight": 1,
+        "data": {
+          "sound": "minecraft:intentionally_empty",
+          "min_delay": 0,
+          "max_delay": 0,
+          "replace_current_music": true
+        }
+      }
+    ],
+    "particle": {
+      "options": {
+        "type": "minecraft:mycelium"
+      },
+      "probability": 0.000125
+    }
+  },
+  "spawners": {
+    "ambient": [
+      {
+        "type": "minecraft:strider",
+        "weight": 1,
+        "minCount": 1,
+        "maxCount": 1
+      }
+    ],
+    "axolotls": [],
+    "creature": [],
+    "misc": [],
+    "monster": [],
+    "underground_water_creature": [],
+    "water_ambient": [],
+    "water_creature": []
+  },
+  "spawn_costs": {
+    "minecraft:strider": {
+      "energy_budget": 0.25,
+      "charge": 3
+    }
+  },
+  "carvers": [],
+  "features": [
+    [
+      "infinity_cave:depths_63",
+      "infinity_cave:depths_79",
+      "infinity_cave:depths_95",
+      "infinity_cave:depths_111",
+      "infinity_cave:depths_127",
+      "minecraft:lake_lava_surface"
+    ],
+    [],
+    [],
+    [
+      "minecraft:monster_room",
+      "minecraft:monster_room_deep"
+    ],
+    [
+      "infinity_cave:mushroom_gorge/place_floor",
+      "infinity_cave:mushroom_gorge/place_patch",
+      "infinity_cave:mushroom_gorge/place_side_shroom_up",
+      "infinity_cave:mushroom_gorge/place_side_shroom_down",
+      "infinity_cave:mushroom_gorge/brown_mushroom/place_big",
+      "infinity_cave:mushroom_gorge/red_mushroom/place_big",
+      "infinity_cave:mushroom_gorge/red_mushroom/place_middle",
+      "infinity_cave:mushroom_gorge/brown_mushroom/place_middle",
+      "infinity_cave:mushroom_gorge/place_shroomlight",
+      "infinity_cave:mushroom_gorge/place_nether_wart",
+      "infinity_cave:generic/light/strong"
+    ],
+    [],
+    [
+      "minecraft:ore_dirt",
+      "minecraft:ore_gravel",
+      "minecraft:ore_granite_upper",
+      "minecraft:ore_granite_lower",
+      "minecraft:ore_diorite_upper",
+      "minecraft:ore_diorite_lower",
+      "minecraft:ore_andesite_upper",
+      "minecraft:ore_andesite_lower",
+      "minecraft:ore_tuff",
+      "minecraft:ore_coal_upper",
+      "minecraft:ore_coal_lower",
+      "minecraft:ore_iron_upper",
+      "minecraft:ore_iron_middle",
+      "minecraft:ore_iron_small",
+      "minecraft:ore_gold",
+      "minecraft:ore_gold_lower",
+      "minecraft:ore_redstone",
+      "minecraft:ore_redstone_lower",
+      "minecraft:ore_diamond",
+      "minecraft:ore_diamond_medium",
+      "minecraft:ore_diamond_large",
+      "minecraft:ore_diamond_buried",
+      "minecraft:ore_lapis",
+      "minecraft:ore_lapis_buried",
+      "minecraft:ore_copper",
+      "minecraft:underwater_magma",
+      "minecraft:disk_sand",
+      "minecraft:disk_clay",
+      "minecraft:disk_gravel",
+      "minecraft:glow_lichen"
+    ],
+    [],
+    [
+    ],
+    [
+    ],
+    [
+      "minecraft:freeze_top_layer"
+    ]
+  ]
+}

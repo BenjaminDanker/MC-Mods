@@ -1,0 +1,26 @@
+{
+	"structures": [
+		{
+			"structure": "infinity_cave:amethyst_caves/trial_spawners/uncommon",
+			"weight": 50
+		},
+		{
+			"structure": "infinity_cave:amethyst_caves/trial_spawners/rare",
+			"weight": 10
+		},
+        		{
+			"structure": "infinity_cave:amethyst_caves/trial_spawners/epic",
+			"weight": 3
+		},
+		{
+			"structure": "infinity_cave:amethyst_caves/trial_spawners/legendary",
+			"weight": 1
+		}
+	],
+	"placement": {
+		"type": "minecraft:random_spread",
+		"salt": 89458389,
+		"spacing": 42,
+		"separation": 16
+	}
+}

@@ -1,0 +1,84 @@
+{
+    "pools": [
+      {
+        "rolls": 3,
+        "entries": [
+          {
+            "type": "minecraft:item",
+            "weight": 1,
+            "name": "minecraft:diamond",
+            "conditions": [
+              {
+                "condition": "random_chance",
+                "chance": 0.1
+              }
+            ]
+          },
+          {
+            "type": "minecraft:item",
+            "weight": 1,
+            "name": "minecraft:bucket",
+            "conditions": [
+              {
+                "condition": "random_chance",
+                "chance": 0.1
+              }
+            ]
+          },
+          {
+            "type": "minecraft:item",
+            "weight": 2,
+            "name": "minecraft:red_mushroom_block",
+            "functions": [
+              {
+                "function": "minecraft:set_count",
+                "count": {
+                  "min": 2,
+                  "max": 4
+                }
+              }
+            ]
+          },
+          {
+            "type": "minecraft:item",
+            "weight": 2,
+            "name": "minecraft:brown_mushroom_block",
+            "functions": [
+              {
+                "function": "minecraft:set_count",
+                "count": {
+                  "min": 2,
+                  "max": 4
+                }
+              }
+            ]
+          },
+          {
+            "type": "loot_table",
+            "value": "infinity_cave:custom_items/magic_mushroom_attacker",
+            "conditions": [
+              {
+                "condition": "random_chance", 
+                "chance": 0.075
+              }
+            ]
+          },
+          {
+            "type": "minecraft:item",
+            "weight": 2,
+            "name": "minecraft:iron_ingot",
+            "functions": [
+              {
+                "function": "minecraft:set_count",
+                "count": {
+                  "min": 1,
+                  "max": 2
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+  

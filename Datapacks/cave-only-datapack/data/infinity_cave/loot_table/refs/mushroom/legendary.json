@@ -1,0 +1,182 @@
+{
+    "pools": [
+      {
+        "rolls": 6,
+        "entries": [
+        {
+          "type": "minecraft:item",
+          "weight": 2,
+          "name": "minecraft:splash_potion",
+          "functions": [
+            {
+              "function": "set_name",
+              "name": [
+                {
+                  "text": "Tier V Healing",
+                  "color": "gold",
+                  "italic": false
+                }
+              ]
+            },
+            {
+              "function": "set_lore",
+              "lore": [
+                {
+                  "text": "Stacks up to 5",
+                  "color": "gray",
+                  "italic": false
+                }
+              ],
+              "mode": "append"
+            },
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "item_model": "infinity_cave:tier_five_potion",
+                "max_stack_size": 5,
+                "minecraft:potion_contents": {
+                  "custom_color": 14687012,
+                  "custom_effects": [
+                    {
+                      "id": "minecraft:instant_health",
+                      "amplifier": 2,
+                      "duration": 20
+                    },
+                    {
+                      "id": "minecraft:regeneration",
+                      "amplifier": 2,
+                      "duration": 300
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+          },
+        {
+          "type": "minecraft:loot_table",
+          "value": "infinity_cave:refs/weapons/bastion_piercer",
+          "weight": 2,
+          "functions": [
+            {
+              "function": "minecraft:enchant_with_levels",
+              "options": "#infinity_cave:valid",
+              "levels": 50,
+              "conditions": [
+                {
+                  "condition": "minecraft:random_chance",
+                  "chance": 0.2
+                }
+              ]
+            }
+          ],
+          "conditions": [
+            {
+              "condition": "minecraft:random_chance",
+              "chance": 0.125
+            }
+          ]
+        },
+          {
+            "type": "minecraft:item",
+            "weight": 2,
+            "name": "minecraft:diamond",
+            "functions": [
+              {
+                "function": "set_count",
+                "count": {
+                  "max": 12,
+                  "min": 6
+                }
+              }
+            ]
+          },
+          {
+            "type": "minecraft:item",
+            "weight": 1,
+            "name": "minecraft:mooshroom_spawn_egg"
+          },
+          {
+            "type": "loot_table",
+            "value": "infinity_cave:custom_items/magic_mushroom_attacker",
+            "functions": [
+              {
+                "function": "set_count",
+                "count": {
+                  "max": 6,
+                  "min": 3
+                }
+              }
+            ]
+          },
+          {
+            "type": "minecraft:item",
+            "weight": 2,
+            "name": "minecraft:netherite_scrap",
+            "functions": [
+              {
+                "function": "minecraft:set_count",
+                "count": {
+                  "min": 2,
+                  "max": 4
+                }
+              }
+            ]
+          },
+          {
+            "type": "minecraft:item",
+            "weight": 1,
+            "name": "minecraft:book",
+            "functions": [
+              {
+                "function": "enchant_randomly",
+                "options": [
+                  "infinity_cave:curse_of_gigantism"
+                ]
+              }
+            ]
+          },
+          {
+            "type": "minecraft:item",
+            "weight": 1,
+            "name": "minecraft:book",
+            "functions": [
+              {
+                "function": "enchant_randomly",
+                "options": [
+                  "infinity_cave:curse_of_diminution"
+                ]
+              }
+            ]
+          },
+          {
+            "type": "minecraft:item",
+            "weight": 1,
+            "name": "minecraft:book",
+            "functions": [
+              {
+                "function": "enchant_randomly",
+                "options": [
+                  "infinity_cave:nurished"
+                ]
+              }
+            ]
+          },
+          {
+            "type": "minecraft:item",
+            "weight": 1,
+            "name": "minecraft:book",
+            "functions": [
+              {
+                "function": "enchant_randomly",
+                "options": [
+                  "infinity_cave:lifesteal"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+  

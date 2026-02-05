@@ -1,0 +1,41 @@
+{
+    "display": {
+      "icon": {
+        "id": "minecraft:music_disc_5",
+        "components": {
+          "item_model": "infinity_cave:magic_mushroom"
+        }
+      },
+      "title": "I Am Not Going to Make This Joke.",
+      "description": [
+        {
+          "text": "Consume a Magic Mushroom"
+        }
+      ],
+      "show_toast": true,
+      "announce_to_chat": true,
+      "hidden": false
+    },
+    "parent": "infinity_cave:display/mushroom_gorge/mooshroom",
+    "criteria": {
+      "requirement": {
+        "trigger": "minecraft:consume_item",
+        "conditions": {
+          "item":
+            {
+              "items": [
+                "minecraft:suspicious_stew"
+              ],
+              "predicates": {
+              "minecraft:custom_data": {
+                "infinity_cave": {
+                  "item": "magic_mushroom"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  

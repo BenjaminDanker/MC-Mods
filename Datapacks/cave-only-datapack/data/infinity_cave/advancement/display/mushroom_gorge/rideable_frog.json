@@ -1,0 +1,54 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:stick",
+      "components": {
+        "item_model": "infinity_cave:rideable_frog"
+      }
+    },
+    "title": "BOING, BOING, BOING (HOLD SPACE)",
+    "description": [
+      {
+        "text": "Ride a Rideable Frog!"
+      }
+    ],
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "infinity_cave:display/mushroom_gorge/giant_frog",
+  "criteria": {
+    "r": {
+      "trigger": "minecraft:player_interacted_with_entity",
+      "conditions": {
+        "entity": [
+          {
+            "condition": "minecraft:inverted",
+            "term": {
+              "condition": "minecraft:entity_properties",
+              "entity": "this",
+              "predicate": {
+                "vehicle": {
+                  "type": "minecraft:frog",
+                  "passenger": {
+                    "type": "minecraft:player"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "type": "minecraft:interaction",
+              "vehicle": {
+                "type": "minecraft:frog"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,1 @@
+function infinity_cave:mobs/mushroom_gorge/tiers/legendary/set_data with storage infinity_cave:mushroom_gorge data.legendary

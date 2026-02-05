@@ -1,0 +1,1 @@
+$summon snowball ~ ~-0.25 ~ {Motion:$(motion),Passengers:[{id:"minecraft:armor_stand",Small:true,Invulnerable:1b,Invisible:true ,drop_chances:{mainhand:0.000,offhand:0.000,feet:0.000,legs:0.000,chest:0.000,head:0.000},DisabledSlots:4144959,equipment:{saddle:{id:"minecraft:iron_ingot",count:1,components:{"minecraft:enchantments":{"infinity_cave:technical/snowball":$(damage)}}}}}]}

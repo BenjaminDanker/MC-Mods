@@ -1,0 +1,1 @@
+execute as @e[type=#infinity_cave:all_living,distance=..3,team=!ic.mob_team] run function infinity_cave:particles/tornado/as

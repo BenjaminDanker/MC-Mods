@@ -1,0 +1,70 @@
+{
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:iron_boots",
+          "weight": 1,
+          "functions": [
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "minecraft:item_name": {
+                  "text": "Hardened Iron Boots"
+                },
+                "minecraft:rarity": "uncommon",
+                "minecraft:lore": [
+                  {
+                    "text": "More durable than Iron",
+                    "color": "gray",
+                    "italic": false
+                  }
+                ],
+                "minecraft:custom_data": {
+                  "infinity_cave": {
+                    "item": "hardened_iron_boots"
+                  }
+                },
+                "minecraft:max_damage": 343,
+                "minecraft:attribute_modifiers": [
+                  {
+                    "type": "minecraft:armor",
+                    "id": "infinity_cave:armor_boots",
+                    "amount": 2.5,
+                    "operation": "add_value",
+                    "slot": "feet"
+                  },
+                  {
+                    "type": "minecraft:armor_toughness",
+                    "id": "infinity_cave:toughness",
+                    "amount": 2,
+                    "operation": "add_value",
+                    "slot": "feet"
+                  },
+                  {
+                    "type": "minecraft:knockback_resistance",
+                    "id": "infinity_cave:kb_resistance_boots",
+                    "amount": 0.05,
+                    "operation": "add_value",
+                    "slot": "feet"
+                  }
+                ],
+                "minecraft:trim": {
+                  "material": "minecraft:iron",
+                  "pattern": "minecraft:flow"
+                },
+                "minecraft:tooltip_display": {
+                  "hidden_components": [
+                    "minecraft:trim"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

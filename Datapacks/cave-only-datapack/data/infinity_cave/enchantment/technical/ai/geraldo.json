@@ -1,0 +1,91 @@
+{
+  "description": {
+    "text": "Geraldo"
+  },
+  "supported_items": "#minecraft:acacia_logs",
+  "weight": 1,
+  "max_level": 1,
+  "min_cost": {
+    "base": 9999,
+    "per_level_above_first": 0
+  },
+  "max_cost": {
+    "base": 9999,
+    "per_level_above_first": 0
+  },
+  "anvil_cost": 9999,
+  "slots": [
+    "any"
+  ],
+  "effects": {
+    "minecraft:post_attack": [
+      {
+        "enchanted": "victim",
+        "affected": "victim",
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/zombie_rider/damage_taken/get_damage"
+        }
+      },
+      {
+        "enchanted": "attacker",
+        "affected": "victim",
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/geraldo/get_attack"
+        }
+      }
+    ],
+    "minecraft:tick": [
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/geraldo/no_rider"
+        },
+        "requirements": [
+          {
+            "condition": "minecraft:inverted",
+            "term": {
+              "condition": "minecraft:entity_properties",
+              "entity": "this",
+              "predicate": {
+                "vehicle": {
+                  "nbt": "{DeathTime:0s}"
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/geraldo/get_data"
+        },
+        "requirements": [
+          {
+            "condition": "minecraft:random_chance",
+            "chance": {
+              "type": "minecraft:enchantment_level",
+              "amount": {
+                "type": "minecraft:linear",
+                "base": 1,
+                "per_level_above_first": 0.05
+              }
+            }
+          },
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "periodic_tick": 50,
+              "targeted_entity": {
+                "type": "minecraft:player"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

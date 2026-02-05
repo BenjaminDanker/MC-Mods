@@ -1,0 +1,1 @@
+function infinity_cave:mobs/mushroom_gorge/tiers/epic/set_data with storage infinity_cave:mushroom_gorge data.epic

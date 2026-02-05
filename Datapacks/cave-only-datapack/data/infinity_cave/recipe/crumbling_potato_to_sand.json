@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:smelting",
+  "category": "misc",
+  "cookingtime": 60,
+  "experience": 0.1,
+  "group": "crumbling_potato",
+  "ingredient": "minecraft:jigsaw",
+  "result": {
+    "id": "minecraft:sand"
+  }
+}

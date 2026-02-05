@@ -1,0 +1,152 @@
+{
+    "pools": [
+      {
+        "rolls": {
+          "min": 2,
+          "max": 6
+        },
+        "bonus_rolls": 2,
+        "entries": [
+          {
+            "type": "minecraft:loot_table",
+            "value": "infinity_cave:custom_items/magic_mushroom",
+            "weight": 2
+          },
+          {
+            "type": "minecraft:loot_table",
+            "value": "infinity_cave:return/enchantlet_1",
+            "weight": 2,
+            "conditions": [
+                {
+                  "condition": "minecraft:random_chance",
+                  "chance": 0.5
+                }
+              ]
+          },
+          {
+            "type": "minecraft:loot_table",
+            "value": "infinity_cave:refs/misc/disc_pool",
+            "conditions": [
+              {
+                "condition": "minecraft:random_chance",
+                "chance": 0.075
+              }
+            ]
+          },
+          {
+            "type": "minecraft:loot_table",
+            "value": "infinity_cave:return/enchantlet_2",
+            "weight": 1,
+            "conditions": [
+                {
+                  "condition": "minecraft:random_chance",
+                  "chance": 0.25
+                }
+              ]
+          },
+          {
+            "type": "minecraft:loot_table",
+            "value": "infinity_cave:return/enchantlet_3",
+            "weight": 1,
+            "conditions": [
+              {
+                "condition": "minecraft:random_chance",
+                "chance": 0.08
+              }
+            ]
+          },
+          {
+            "type": "minecraft:item",
+            "weight": 4,
+            "name": "minecraft:brown_mushroom_block",
+            "functions": [
+              {
+                "function": "minecraft:set_count",
+                "count": {
+                  "min": 4,
+                  "max": 8
+                }
+              }
+            ]
+          },
+          {
+            "type": "minecraft:item",
+            "weight": 3,
+            "name": "minecraft:red_mushroom_block",
+            "functions": [
+              {
+                "function": "minecraft:set_count",
+                "count": {
+                  "min": 4,
+                  "max": 8
+                }
+              }
+            ]
+          },
+          {
+            "type": "minecraft:loot_table",
+            "value": "infinity_cave:return/enchantlet_4",
+            "weight": 1,
+            "conditions": [
+              {
+                "condition": "minecraft:random_chance",
+                "chance": 0.025
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "rolls": 1,
+        "entries": [
+                  {
+          "type": "item",
+          "weight": 1,
+          "name": "minecraft:written_book",
+          "functions": [
+            {
+              "function": "set_count",
+              "count": 1
+            },
+            {
+              "function": "set_components",
+              "components": {
+                "minecraft:written_book_content": {
+                  "title": "Mushroom Gorge Rumours",
+                  "author": "Frozytime",
+                  "generation": 0,
+                  "resolved": false,
+                  "pages": [
+                    [
+                      {
+                        "text": "Mushroom Gorge Info:",
+                        "bold": true
+                      },
+                      {
+                        "text": "\nMushroom Gorge is a \nspecial place, full of mushrooms and mysterious creatures. However, there are a few hidden mechanics here. Magic Mushrooms can contain any effect besides instant damage and health. Though, there is also a ",
+                        "bold": false
+                      },
+                      "special",
+                      {
+                        "text": " effect",
+                        "bold": false
+                      }
+                    ],
+                    "Certain Magic Mushrooms, may shrink or enlarge the player upon consumption, lasting for a random amount of time. Be aware, that having the Unluck effect prevents the player from returning to the original size. You do with this information, as you wish."
+                  ]
+                }
+              }
+            }
+          ]
+        }
+        ],
+        "conditions": [
+          {
+            "condition": "random_chance",
+            "chance": 0.2
+          }
+        ]
+      }
+    ]
+  }
+  

@@ -1,0 +1,26 @@
+{
+  "values": [
+    "minecraft:zombie",
+    "minecraft:wolf",
+    "minecraft:skeleton",
+    "minecraft:spider",
+    "minecraft:pillager",
+    "#infinity_cave:leapers",
+    "minecraft:ravager",
+    "minecraft:wither_skeleton",
+    "minecraft:vindicator",
+    "minecraft:iron_golem",
+    "minecraft:enderman",
+    "minecraft:zombified_piglin",
+    "minecraft:drowned",
+    "minecraft:evoker",
+    "minecraft:witch",
+    "minecraft:creeper",
+    "minecraft:ravager",
+    "minecraft:endermite",
+    "minecraft:zoglin",
+    "minecraft:polar_bear",
+    "minecraft:stray",
+    "minecraft:bogged"
+  ]
+}

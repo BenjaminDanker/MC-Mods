@@ -1,0 +1,88 @@
+{
+  "type": "minecraft:squeeze",
+  "argument": {
+    "type": "minecraft:add",
+    "argument1": 0,
+    "argument2": {
+      "type": "minecraft:cube",
+      "argument": {
+        "type": "minecraft:interpolated",
+        "argument": {
+          "type": "minecraft:add",
+          "argument1": -0.234375,
+          "argument2": {
+            "type": "minecraft:add",
+            "argument1": {
+              "type": "minecraft:y_clamped_gradient",
+              "from_y": -180,
+              "to_y": -140,
+              "from_value": 0.05,
+              "to_value": 0.005
+            },
+            "argument2": {
+              "type": "minecraft:add",
+              "argument1": 0,
+              "argument2": {
+                "type": "minecraft:add",
+                "argument1": -23.3375,
+                "argument2": {
+                  "type": "minecraft:mul",
+                  "argument1": {
+                    "type": "minecraft:y_clamped_gradient",
+                    "from_y": 30,
+                    "to_y": 41,
+                    "from_value": 1,
+                    "to_value": 0.93
+                  },
+                  "argument2": {
+                    "type": "minecraft:add",
+                    "argument1": 23.3875,
+                    "argument2": {
+                      "type": "minecraft:add",
+                      "argument1": {
+                        "type": "minecraft:square",
+                        "argument": {
+                          "type": "minecraft:y_clamped_gradient",
+                          "from_y": -124,
+                          "to_y": -60,
+                          "from_value": -1,
+                          "to_value": 1
+                        }
+                      },
+                      "argument2": {
+                        "type": "minecraft:range_choice",
+                        "input": "minecraft:y",
+                        "min_inclusive": -120,
+                        "max_exclusive": -56,
+                        "when_in_range": {
+                          "type": "minecraft:add",
+                          "argument1": {
+                            "type": "minecraft:clamp",
+                            "input": -1,
+                            "min": -0.7,
+                            "max": -0.1
+                          },
+                          "argument2": {
+                            "type": "minecraft:add",
+                            "argument1": {
+                              "type": "minecraft:noise",
+                              "noise": "infinity_cave:sphere_noise",
+                              "xz_scale": 2.5,
+                              "y_scale": 1.25
+                            },
+                            "argument2": 0.8
+                          }
+                        },
+                        "when_out_of_range": 2
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

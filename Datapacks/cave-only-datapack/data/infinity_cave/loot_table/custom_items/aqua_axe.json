@@ -1,0 +1,118 @@
+{
+    "pools": [
+        {
+            "rolls": 1,
+            "entries": [
+          {
+            "type": "minecraft:item",
+            "weight": 2,
+            "name": "minecraft:stone_axe",
+            "functions": [
+              {
+                "function": "minecraft:set_count",
+                "count": 1
+              },
+              {
+                "function": "minecraft:set_components",
+                "components": {
+                  "minecraft:attribute_modifiers": [
+                      {
+                        "type": "attack_speed",
+                        "slot": "mainhand",
+                        "id": "aqua_axe",
+                        "amount": -2.9,
+                        "operation": "add_value"
+                      },
+                      {
+                        "type": "attack_damage",
+                        "slot": "mainhand",
+                        "id": "aqua_axe",
+                        "amount": 8.5,
+                        "operation": "add_value"
+                      },
+                      {
+                        "type": "water_movement_efficiency",
+                        "slot": "mainhand",
+                        "id": "aqua_axe",
+                        "amount": 10,
+                        "operation": "add_value"
+                      }
+                    ],
+                    "tooltip_display": {
+                      "hidden_components": [
+                        "attribute_modifiers"
+                      ]
+                    },
+                  "max_damage": 1200,
+                  "minecraft:item_model": "infinity_cave:aqua_axe",
+                  "minecraft:custom_data": {
+                    "infinity_cave": {
+                      "item": "aqua_axe",
+                      "tier": 3,
+                      "label": "important"
+                    }
+                  },
+                  "minecraft:tool": {
+                    "rules": [
+                      {
+                        "blocks": "#minecraft:mineable/axe",
+                        "speed": 10
+                      }
+                    ],
+                    "default_mining_speed": 1,
+                    "damage_per_block": 1
+                  }
+                }
+              },
+              {
+                "function": "set_name",
+                "name": [
+                  {
+                    "text": "Aqua Axe"
+                  }
+                ],
+                "target": "item_name"
+              },
+              {
+                "function": "minecraft:set_lore",
+                "lore": [
+                  {
+                    "text": " "
+                  },
+                  {
+                    "text": "Moves faster in",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": "water when held ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": " "
+                  },
+                  {
+                    "text": "When in Main Hand:",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": " 9.5 Attack Damage ",
+                    "color": "dark_green",
+                    "italic": false
+                  },
+                  {
+                    "text": " 1.1 Attack Speed",
+                    "color": "dark_green",
+                    "italic": false
+                  }
+                ],
+                "mode": "append"
+              }
+            ]
+          }   
+            ]
+        }
+    ]
+}

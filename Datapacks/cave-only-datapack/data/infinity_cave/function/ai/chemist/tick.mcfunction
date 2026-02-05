@@ -1,0 +1,1 @@
+execute as @n[type=minecraft:splash_potion,tag=!ic.chemist_potion,distance=..4] on origin if entity @s[type=witch] at @s as @n[type=minecraft:splash_potion,tag=!ic.chemist_potion,distance=..4] positioned ~ ~0.75 ~ run function infinity_cave:ai/chemist/get_motion

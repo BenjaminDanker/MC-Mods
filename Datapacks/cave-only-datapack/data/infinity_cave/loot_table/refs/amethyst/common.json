@@ -1,0 +1,102 @@
+{
+  "pools": [
+    {
+      "rolls": 2,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "weight": 1,
+          "name": "minecraft:chorus_fruit"
+        },
+        {
+          "type": "minecraft:loot_table",
+          "weight": 1,
+          "value": "infinity_cave:custom_items/amethyst_charge/empty",
+          "conditions": [
+            {
+              "condition": "random_chance",
+              "chance": 0.025
+            }
+          ]
+        },
+          {
+            "type": "loot_table",
+            "value": "infinity_cave:custom_items/ender_sword",
+            "functions": [
+              {
+                "function": "enchant_with_levels",
+                "levels": 12,
+                "options": "#infinity_cave:valid"
+              }
+            ],
+            "conditions": [
+              {
+                "condition": "random_chance", 
+                "chance": 0.025
+              }
+            ]
+          },
+        {
+          "type": "minecraft:item",
+          "weight": 1,
+          "name": "minecraft:book",
+          "functions": [
+            {
+              "function": "minecraft:enchant_with_levels",
+              "options": "#infinity_cave:valid",
+              "levels": 30
+            }
+          ],
+          "conditions": [
+            {
+              "condition": "random_chance",
+              "chance": 0.025
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "weight": 3,
+          "name": "minecraft:amethyst_shard",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "min": 2,
+                "max": 4
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "weight": 2,
+          "name": "minecraft:amethyst_block",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "min": 2,
+                "max": 4
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "weight": 2,
+          "name": "minecraft:experience_bottle",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "min": 2,
+                "max": 5
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

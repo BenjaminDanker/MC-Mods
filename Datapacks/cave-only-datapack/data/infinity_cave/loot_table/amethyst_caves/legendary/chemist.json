@@ -1,0 +1,189 @@
+{
+  "pools": [
+    {
+      "rolls": 3,
+      "bonus_rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/legendary_gear"
+        },
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/amethyst/legendary"
+        },
+        {
+          "type": "minecraft:item",
+          "weight": 2,
+          "name": "minecraft:firework_rocket",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "min": 8,
+                "max": 16
+              }
+            },
+            {
+              "function": "set_components",
+              "components": {
+                "fireworks": {
+                  "flight_duration": 5
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "weight": 2,
+          "name": "minecraft:wind_charge",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "min": 12,
+                "max": 24
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:custom_items/chemical_bomb",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "min": 8,
+                "max": 16
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "rolls": 2,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:splash_potion",
+          "weight": 1,
+          "functions": [
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "custom_name": {
+                  "text": "Enhanced Strong Strength Potion",
+                  "italic": false
+                },
+                "rarity": "uncommon",
+                "minecraft:potion_contents": {
+                  "custom_color": 16106001,
+                  "custom_effects": [
+                    {
+                      "id": "minecraft:strength",
+                      "amplifier": 1,
+                      "duration": 3000,
+                      "ambient": true,
+                      "show_particles": true,
+                      "show_icon": true
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:splash_potion",
+          "weight": 1,
+          "functions": [
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "custom_name": {
+                  "text": "Enhanced Strong Swiftness Potion",
+                  "italic": false
+                },
+                "rarity": "uncommon",
+                "minecraft:potion_contents": {
+                  "custom_color": 3714509,
+                  "custom_effects": [
+                    {
+                      "id": "minecraft:speed",
+                      "amplifier": 1,
+                      "duration": 3000,
+                      "ambient": true,
+                      "show_particles": true,
+                      "show_icon": true
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:splash_potion",
+          "weight": 1,
+          "functions": [
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "minecraft:potion_contents": {
+                  "potion": "minecraft:long_turtle_master"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:splash_potion",
+          "weight": 1,
+          "functions": [
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "custom_name": {
+                  "text": "Enhanced Strong Resistance Potion",
+                  "italic": false
+                },
+                "rarity": "uncommon",
+                "minecraft:potion_contents": {
+                  "custom_color": 3355182,
+                  "custom_effects": [
+                    {
+                      "id": "minecraft:resistance",
+                      "amplifier": 1,
+                      "duration": 3000,
+                      "ambient": true,
+                      "show_particles": true,
+                      "show_icon": true
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:loot_table",
+          "value": "infinity_cave:refs/special_coal_ore"
+        }
+      ]
+    }
+  ]
+}

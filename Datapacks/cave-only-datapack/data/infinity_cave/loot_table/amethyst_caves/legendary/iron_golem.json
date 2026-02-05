@@ -1,0 +1,134 @@
+{
+  "pools": [
+    {
+      "rolls": 3,
+      "bonus_rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/legendary_gear"
+        },
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/amethyst/legendary"
+        }
+      ]
+    },
+    {
+      "rolls": 4,
+      "entries": [
+        {
+          "type": "minecraft:loot_table",
+          "weight": 1,
+          "value": "infinity_cave:custom_items/hardened_iron/helmet",
+          "functions": [
+            {
+              "function": "enchant_with_levels",
+              "levels": 40,
+              "options": "#infinity_cave:valid"
+            },
+            {
+              "function": "set_enchantments",
+              "enchantments": {
+                "mending": 1
+              },
+              "add": false,
+              "conditions": [
+                {
+                  "condition": "minecraft:random_chance",
+                  "chance": 0.5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "minecraft:loot_table",
+          "weight": 1,
+          "value": "infinity_cave:custom_items/hardened_iron/chestplate",
+          "functions": [
+            {
+              "function": "enchant_with_levels",
+              "levels": 40,
+              "options": "#infinity_cave:valid"
+            },
+            {
+              "function": "set_enchantments",
+              "enchantments": {
+                "mending": 1
+              },
+              "add": false,
+              "conditions": [
+                {
+                  "condition": "minecraft:random_chance",
+                  "chance": 0.5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "minecraft:loot_table",
+          "weight": 1,
+          "value": "infinity_cave:custom_items/hardened_iron/leggings",
+          "functions": [
+            {
+              "function": "enchant_with_levels",
+              "levels": 40,
+              "options": "#infinity_cave:valid"
+            },
+            {
+              "function": "set_enchantments",
+              "enchantments": {
+                "mending": 1
+              },
+              "add": false,
+              "conditions": [
+                {
+                  "condition": "minecraft:random_chance",
+                  "chance": 0.5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "minecraft:loot_table",
+          "weight": 1,
+          "value": "infinity_cave:custom_items/hardened_iron/boots",
+          "functions": [
+            {
+              "function": "enchant_with_levels",
+              "levels": 40,
+              "options": "#infinity_cave:valid"
+            },
+            {
+              "function": "set_enchantments",
+              "enchantments": {
+                "mending": 1
+              },
+              "add": false,
+              "conditions": [
+                {
+                  "condition": "minecraft:random_chance",
+                  "chance": 0.5
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:loot_table",
+          "value": "infinity_cave:refs/special_coal_ore"
+        }
+      ]
+    }
+  ]
+}

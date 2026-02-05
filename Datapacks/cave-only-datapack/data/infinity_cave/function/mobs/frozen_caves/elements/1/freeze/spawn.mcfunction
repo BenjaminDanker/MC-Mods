@@ -1,0 +1,1 @@
+$execute positioned $(pos_x) $(pos_y) $(pos_z) run fill ~1 ~-1 ~-1 ~-1 ~1 ~1 cobweb replace #infinity_cave:non_solid

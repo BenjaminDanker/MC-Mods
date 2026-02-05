@@ -1,0 +1,1 @@
+$item modify entity @s weapon.$(weapon) [{"function":"minecraft:set_item","item":"$(id)"},{"function":"minecraft:set_components","components":$(components)}]

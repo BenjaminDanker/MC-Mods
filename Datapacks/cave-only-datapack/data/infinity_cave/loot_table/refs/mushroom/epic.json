@@ -1,0 +1,95 @@
+{
+    "pools": [
+      {
+        "rolls": 5,
+        "entries": [
+          {
+            "type": "minecraft:item",
+            "weight": 2,
+            "name": "minecraft:diamond",
+            "functions": [
+              {
+                "function": "set_count",
+                "count": {
+                  "max": 8,
+                  "min": 4
+                }
+              }
+            ]
+          },
+          {
+            "type": "minecraft:item",
+            "weight": 1,
+            "name": "minecraft:mooshroom_spawn_egg"
+          },
+          {
+            "type": "loot_table",
+            "value": "infinity_cave:custom_items/magic_mushroom_attacker",
+            "functions": [
+              {
+                "function": "set_count",
+                "count": {
+                  "max": 4,
+                  "min": 2
+                }
+              }
+            ]
+          },
+          {
+            "type": "minecraft:item",
+            "weight": 2,
+            "name": "minecraft:netherite_scrap",
+            "functions": [
+              {
+                "function": "minecraft:set_count",
+                "count": {
+                  "min": 2,
+                  "max": 4
+                }
+              }
+            ]
+          },
+          {
+            "type": "minecraft:item",
+            "weight": 1,
+            "name": "minecraft:book",
+            "functions": [
+              {
+                "function": "enchant_randomly",
+                "options": [
+                  "infinity_cave:curse_of_gigantism"
+                ]
+              }
+            ]
+          },
+          {
+            "type": "minecraft:item",
+            "weight": 1,
+            "name": "minecraft:book",
+            "functions": [
+              {
+                "function": "enchant_randomly",
+                "options": [
+                  "infinity_cave:curse_of_diminution"
+                ]
+              }
+            ]
+          },
+          {
+            "type": "minecraft:item",
+            "weight": 1,
+            "name": "minecraft:book",
+            "functions": [
+              {
+                "function": "enchant_randomly",
+                "options": [
+                  "infinity_cave:nurished"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+  

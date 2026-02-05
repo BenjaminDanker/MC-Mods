@@ -1,0 +1,41 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:music_disc_5",
+      "components": {
+        "item_model": "infinity_cave:oozing_beetroot"
+      }
+    },
+    "title": "HAH! TAKE THAT GREEN WATER!",
+    "description": [
+      {
+        "text": "Eat an Oozing Beetroot"
+      }
+    ],
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "infinity_cave:display/sulfide_caves/huts",
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "minecraft:suspicious_stew"
+            ],
+            "predicates": {
+              "minecraft:custom_data": {
+                "infinity_cave": {
+                  "item": "oozing_beetroot"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

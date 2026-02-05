@@ -1,0 +1,108 @@
+{
+    "pools": [
+        {
+            "rolls": 1,
+            "entries": [
+          {
+            "type": "minecraft:item",
+            "weight": 2,
+            "name": "minecraft:snowball",
+            "functions": [
+              {
+                "function": "minecraft:set_name",
+                "entity": "this",
+                "name": "Nimbus Nunchucks",
+                "target": "item_name"
+              },
+              {
+                "function": "minecraft:toggle_tooltips",
+                "toggles": {
+                  "attribute_modifiers": false
+                }
+              },
+              {
+                "function": "set_components",
+                "components": {
+                  "enchantments": {
+                    "infinity_cave:znimbus_nunchucks": 1
+                  },
+                  "enchantable": {
+                    "value": 15
+                  },
+                  "use_cooldown": {
+                    "seconds": 60,
+                    "cooldown_group": "ic:nimbus_nunchucks"
+                  },
+                  "rarity":"rare",
+                  "minecraft:repair_cost": 99999,
+                  "max_damage": 1481,
+                  "minecraft:damage": 0,
+                  "minecraft:max_stack_size": 1,
+                  "minecraft:item_model": "infinity_cave:nimbus_nunchucks",
+                  "minecraft:custom_data": {
+                    "infinity_cave": {
+                      "item": "nimbus_nunchucks",
+                      "tier": 3,
+                      "cooldown": 60,
+                      "label": "important"
+                    }
+                  },
+                  "weapon": {
+                    "item_damage_per_attack": 1
+                  },
+                  "use_remainder": {
+                    "id": "command_block",
+                    "components": {
+                      "custom_data": {
+                        "cdlib": 1
+                      },
+                      "item_model": "infinity_cave:nimbus_nunchucks"
+                    }
+                  }
+                }
+              },
+              {
+                "function": "minecraft:set_lore",
+                "lore": [
+                  {
+                    "text": "Right Click to dispose all of your ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": "negative effects into a cloud in ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": "front of you. ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": " "
+                  },
+                  {
+                    "text": "When in Main Hand:",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": " 7 Attack Damage ",
+                    "color": "dark_green",
+                    "italic": false
+                  },
+                  {
+                    "text": " 2 Attack Speed",
+                    "color": "dark_green",
+                    "italic": false
+                  }
+                ],
+                "mode": "append"
+              }
+            ]
+          } 
+            ]
+        }
+    ]
+}

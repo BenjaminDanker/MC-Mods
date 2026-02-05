@@ -1,0 +1,73 @@
+{
+  "pools": [
+    {
+      "rolls": 3,
+      "bonus_rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/epic_gear"
+        },
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/amethyst/epic"
+        }
+      ]
+    },
+    {
+      "rolls": 2,
+      "entries": [
+        {
+          "type": "minecraft:loot_table",
+          "weight": 1,
+          "value": "infinity_cave:custom_items/hardened_iron/helmet",
+          "functions": [
+            {
+              "function": "enchant_with_levels",
+              "levels": 40,
+              "options": "#infinity_cave:valid"
+            }
+          ]
+        },
+        {
+          "type": "minecraft:loot_table",
+          "weight": 1,
+          "value": "infinity_cave:custom_items/hardened_iron/chestplate",
+          "functions": [
+            {
+              "function": "enchant_with_levels",
+              "levels": 40,
+              "options": "#infinity_cave:valid"
+            }
+          ]
+        },
+        {
+          "type": "minecraft:loot_table",
+          "weight": 1,
+          "value": "infinity_cave:custom_items/hardened_iron/leggings",
+          "functions": [
+            {
+              "function": "enchant_with_levels",
+              "levels": 40,
+              "options": "#infinity_cave:valid"
+            }
+          ]
+        },
+        {
+          "type": "minecraft:loot_table",
+          "weight": 1,
+          "value": "infinity_cave:custom_items/hardened_iron/boots",
+          "functions": [
+            {
+              "function": "enchant_with_levels",
+              "levels": 40,
+              "options": "#infinity_cave:valid"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

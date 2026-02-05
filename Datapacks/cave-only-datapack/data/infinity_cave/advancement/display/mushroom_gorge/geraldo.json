@@ -1,0 +1,39 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:camel_spawn_egg"
+    },
+    "title": "Everybody's Main Hero in BTD6",
+    "description": [
+      {
+        "text": "Kill Geraldo!"
+      }
+    ],
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "infinity_cave:display/mushroom_gorge/giant_frog",
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:player_killed_entity",
+      "conditions": {
+        "entity": [
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "type": "minecraft:camel",
+              "team": "ic.mob_team",
+              "equipment": {
+                "chest": {
+                  "items": "#minecraft:trimmable_armor"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

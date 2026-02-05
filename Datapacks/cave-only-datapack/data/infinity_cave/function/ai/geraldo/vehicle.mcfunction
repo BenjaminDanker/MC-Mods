@@ -1,0 +1,1 @@
+execute on passengers if entity @s[type=shulker] at @s positioned ~ ~1 ~ run function infinity_cave:ai/geraldo/gadgets/get_gadget

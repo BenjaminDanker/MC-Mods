@@ -1,0 +1,40 @@
+{
+    "display": {
+      "icon": {
+        "id": "minecraft:spider_eye"
+      },
+      "title": "The Predator Wins",
+      "description": [
+        {
+          "text": "Obtain Exoshot V"
+        }
+      ],
+      "show_toast": true,
+      "announce_to_chat": true,
+      "hidden": false
+    },
+    "parent": "infinity_cave:display/enchantlet/5",
+    "criteria": {
+      "requirement": {
+        "trigger": "minecraft:inventory_changed",
+        "conditions": {
+          "items": [
+            {
+              "items": "bow",
+              "predicates": {
+                "minecraft:enchantments": [
+                  {
+                    "enchantments": "infinity_cave:exoshot",
+                    "levels": {
+                      "min": 5
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+  

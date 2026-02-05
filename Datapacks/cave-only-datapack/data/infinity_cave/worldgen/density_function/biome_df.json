@@ -1,0 +1,61 @@
+{
+  "type": "minecraft:range_choice",
+  "input": {
+    "type": "minecraft:interpolated",
+    "argument": "minecraft:overworld/erosion"
+  },
+  "min_inclusive": -2,
+  "max_exclusive": -0.82,
+  "when_in_range": "infinity_cave:mushroom_gorge/valley",
+  "when_out_of_range": {
+    "type": "minecraft:range_choice",
+    "input": {
+      "type": "minecraft:interpolated",
+      "argument": "minecraft:overworld/erosion"
+    },
+    "min_inclusive": -0.75,
+    "max_exclusive": -0.5,
+    "when_in_range": "infinity_cave:frozen_caves/rugged",
+    "when_out_of_range": {
+      "type": "minecraft:range_choice",
+      "input": {
+        "type": "minecraft:interpolated",
+        "argument": "minecraft:overworld/erosion"
+      },
+      "min_inclusive": -0.5,
+      "max_exclusive": -0.22,
+      "when_in_range": "infinity_cave:amethyst_caves/sphere",
+      "when_out_of_range": {
+        "type": "minecraft:range_choice",
+        "input": {
+          "type": "minecraft:interpolated",
+          "argument": "minecraft:overworld/erosion"
+        },
+        "min_inclusive": -0.22,
+        "max_exclusive": 0.04,
+        "when_in_range": "infinity_cave:limestone_grotto/erosion",
+        "when_out_of_range": {
+          "type": "minecraft:range_choice",
+          "input": {
+            "type": "minecraft:interpolated",
+            "argument": "minecraft:overworld/erosion"
+          },
+          "min_inclusive": 0.04,
+          "max_exclusive": 0.23,
+          "when_in_range": "infinity_cave:sulfide_caves/corrode",
+          "when_out_of_range": {
+            "type": "minecraft:range_choice",
+            "input": {
+              "type": "minecraft:interpolated",
+              "argument": "minecraft:overworld/erosion"
+            },
+            "min_inclusive": 0.45,
+            "max_exclusive": 2,
+            "when_in_range": "infinity_cave:molten_caves/hell",
+            "when_out_of_range": "infinity_cave:caves/spaghetti_connector"
+          }
+        }
+      }
+    }
+  }
+}

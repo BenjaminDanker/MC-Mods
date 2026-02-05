@@ -1,0 +1,1 @@
+data modify entity @s SpellTicks set value 99999

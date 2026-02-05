@@ -1,0 +1,93 @@
+{
+    "pools": [
+      {
+        "rolls": 1,
+        "entries": [
+          {
+            "type": "minecraft:item",
+            "name": "minecraft:bow",
+            "functions": [
+              {
+                "function": "minecraft:set_count",
+                "count": 1
+              },
+              {
+                "function": "minecraft:set_components",
+                "components": {
+                  "max_damage": 2500,
+                  "minecraft:item_model": "infinity_cave:sonic_bow",
+                  "minecraft:custom_data": {
+                    "infinity_cave": {
+                      "item": "sonic_bow",
+                      "tier": 5,
+                      "label": "important"
+                    }
+                  }
+                }
+              },
+              {
+                "function": "minecraft:set_name",
+                "name": [
+                  {
+                    "text": "Supersonic Bow",
+                    "color": "gold",
+                    "italic": false
+                  }
+                ]
+              },
+              {
+                "function": "minecraft:set_lore",
+                "lore": [
+                  {
+                    "text": " "
+                  },
+                  {
+                    "text": "Bow is chargable and will gain ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": "momentum the longer charged ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": "gaining pierce at charge level ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": "2 or higher. ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": " ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": "If an enemy is close while ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": "shooting a charged shot, an ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": "explosion occurs instead. ",
+                    "color": "gray",
+                    "italic": false
+                  }
+                ],
+                "mode": "append"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+  

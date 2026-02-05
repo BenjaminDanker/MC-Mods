@@ -1,0 +1,47 @@
+{
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:enter_block",
+      "conditions": {
+        "player": [
+          {
+            "condition": "minecraft:location_check",
+            "predicate": {
+              "biomes": "infinity_cave:sulfide_caves"
+            }
+          },
+          {
+            "condition": "minecraft:inverted",
+            "term": {
+              "condition": "minecraft:any_of",
+              "terms": [
+                {
+                  "condition": "minecraft:entity_properties",
+                  "entity": "this",
+                  "predicate": {
+                    "effects": {
+                      "minecraft:oozing": {}
+                    }
+                  }
+                },
+                {
+                  "condition": "minecraft:entity_properties",
+                  "entity": "this",
+                  "predicate": {
+                    "effects": {
+                      "minecraft:poison": {}
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "block": "minecraft:water"
+      }
+    }
+  },
+  "rewards": {
+    "function": "infinity_cave:mechanics/sulfide_caves/toxic_water"
+  }
+}

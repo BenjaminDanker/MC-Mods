@@ -1,0 +1,1 @@
+execute on origin at @s run function infinity_cave:mechanics/weapons/molten_hammer/start_ray

@@ -1,0 +1,1393 @@
+{
+    "feature": "infinity_cave:amethyst_caves/crystal/big_ceiling",
+    "placement": [
+      {
+        "type": "minecraft:count",
+        "count": 2
+      },
+      {
+        "type": "minecraft:in_square"
+      },
+      {
+        "type": "minecraft:height_range",
+        "height": {
+          "type": "minecraft:uniform",
+          "min_inclusive": {
+            "above_bottom": -80
+          },
+          "max_inclusive": {
+            "absolute": -56
+          }
+        }
+      },
+      {
+        "type": "minecraft:environment_scan",
+        "allowed_search_condition": {
+          "type": "minecraft:matching_blocks",
+          "blocks": [
+            "minecraft:air"
+          ]
+        },
+        "direction_of_search": "up",
+        "max_steps": 12,
+        "target_condition": {
+          "type": "all_of",
+          "predicates": [
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    -2,
+                    1,
+                    -2
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    -2,
+                    1,
+                    -2
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    -1,
+                    1,
+                    -2
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    -1,
+                    1,
+                    -2
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    0,
+                    1,
+                    -2
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    0,
+                    1,
+                    -2
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    1,
+                    1,
+                    -2
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    1,
+                    1,
+                    -2
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    2,
+                    1,
+                    -2
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    2,
+                    1,
+                    -2
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    -2,
+                    1,
+                    -1
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    -2,
+                    1,
+                    -1
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    -1,
+                    1,
+                    -1
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    -1,
+                    1,
+                    -1
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    0,
+                    1,
+                    -1
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    0,
+                    1,
+                    -1
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    1,
+                    1,
+                    -1
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    1,
+                    1,
+                    -1
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    2,
+                    1,
+                    -1
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    2,
+                    1,
+                    -1
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    -2,
+                    1,
+                    0
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    -2,
+                    1,
+                    0
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    -1,
+                    1,
+                    0
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    -1,
+                    1,
+                    0
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    0,
+                    1,
+                    0
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    0,
+                    1,
+                    0
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    1,
+                    1,
+                    0
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    1,
+                    1,
+                    0
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    2,
+                    1,
+                    0
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    2,
+                    1,
+                    0
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    -2,
+                    1,
+                    1
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    -2,
+                    1,
+                    1
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    -1,
+                    1,
+                    1
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    -1,
+                    1,
+                    1
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    0,
+                    1,
+                    1
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    0,
+                    1,
+                    1
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    1,
+                    1,
+                    1
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    1,
+                    1,
+                    1
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    2,
+                    1,
+                    1
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    2,
+                    1,
+                    1
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    -2,
+                    1,
+                    2
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    -2,
+                    1,
+                    2
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    -1,
+                    1,
+                    2
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    -1,
+                    1,
+                    2
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    0,
+                    1,
+                    2
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    0,
+                    1,
+                    2
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    1,
+                    1,
+                    2
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    1,
+                    1,
+                    2
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    2,
+                    1,
+                    2
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    2,
+                    1,
+                    2
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    -2,
+                    2,
+                    -2
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    -2,
+                    2,
+                    -2
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    -1,
+                    2,
+                    -2
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    -1,
+                    2,
+                    -2
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    0,
+                    2,
+                    -2
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    0,
+                    2,
+                    -2
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    1,
+                    2,
+                    -2
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    1,
+                    2,
+                    -2
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    2,
+                    2,
+                    -2
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    2,
+                    2,
+                    -2
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    -2,
+                    2,
+                    -1
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    -2,
+                    2,
+                    -1
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    -1,
+                    2,
+                    -1
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    -1,
+                    2,
+                    -1
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    0,
+                    2,
+                    -1
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    0,
+                    2,
+                    -1
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    1,
+                    2,
+                    -1
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    1,
+                    2,
+                    -1
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    2,
+                    2,
+                    -1
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    2,
+                    2,
+                    -1
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    -2,
+                    2,
+                    0
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    -2,
+                    2,
+                    0
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    -1,
+                    2,
+                    0
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    -1,
+                    2,
+                    0
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    0,
+                    2,
+                    0
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    0,
+                    2,
+                    0
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    1,
+                    2,
+                    0
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    1,
+                    2,
+                    0
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    2,
+                    2,
+                    0
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    2,
+                    2,
+                    0
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    -2,
+                    2,
+                    1
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    -2,
+                    2,
+                    1
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    -1,
+                    2,
+                    1
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    -1,
+                    2,
+                    1
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    0,
+                    2,
+                    1
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    0,
+                    2,
+                    1
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    1,
+                    2,
+                    1
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    1,
+                    2,
+                    1
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    2,
+                    2,
+                    1
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    2,
+                    2,
+                    1
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    -2,
+                    2,
+                    2
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    -2,
+                    2,
+                    2
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    -1,
+                    2,
+                    2
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    -1,
+                    2,
+                    2
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    0,
+                    2,
+                    2
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    0,
+                    2,
+                    2
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    1,
+                    2,
+                    2
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    1,
+                    2,
+                    2
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "any_of",
+              "predicates": [
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "smooth_basalt"
+                  ],
+                  "offset": [
+                    2,
+                    2,
+                    2
+                  ]
+                },
+                {
+                  "type": "matching_blocks",
+                  "blocks": [
+                    "basalt"
+                  ],
+                  "offset": [
+                    2,
+                    2,
+                    2
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "type": "minecraft:biome"
+      }
+    ]
+  }

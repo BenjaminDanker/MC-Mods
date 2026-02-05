@@ -1,0 +1,64 @@
+{
+  "pools": [
+    {
+      "rolls": 3,
+      "bonus_rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/epic_gear"
+        },
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/limestone/epic"
+        }
+      ]
+    },
+    {
+
+      "rolls": 2,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "weight": 2,
+          "name": "minecraft:cooked_cod",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "min": 4,
+                "max": 8
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:fishing_rod",
+          "functions": [
+            {
+              "function": "enchant_with_levels",
+              "levels": 30,
+              "options": "#infinity_cave:valid",
+              "conditions": [
+                {
+                  "condition": "random_chance",
+                  "chance": 0.5
+                }
+              ]
+            },
+            {
+              "function": "minecraft:set_damage",
+              "damage": {
+                "min": 0.1,
+                "max": 0.9
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

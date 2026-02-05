@@ -1,0 +1,75 @@
+{
+  "description": {
+    "translate": "enchantment.infinity_cave.plunder",
+    "fallback": "Plunder"
+  },
+  "exclusive_set": "#infinity_cave:exclusive_set/melee_weapons",
+  "supported_items": "#minecraft:enchantable/weapon",
+  "weight": 10,
+  "max_level": 5,
+  "min_cost": {
+    "base": 5,
+    "per_level_above_first": 8
+  },
+  "max_cost": {
+    "base": 25,
+    "per_level_above_first": 8
+  },
+  "anvil_cost": 2,
+  "slots": [
+    "mainhand"
+  ],
+  "effects": {
+    "minecraft:damage": [
+      {
+        "effect": {
+          "type": "minecraft:add",
+          "value": {
+            "type": "minecraft:linear",
+            "base": 2.5,
+            "per_level_above_first": 2.5
+          }
+        },
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "this",
+          "predicate": {
+            "type": "#infinity_cave:plunder"
+          }
+        }
+      }
+    ],
+    "minecraft:post_attack": [
+      {
+        "enchanted": "attacker",
+        "affected": "victim",
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:enchantments/plunder"
+        },
+        "requirements": {
+          "condition": "minecraft:all_of",
+          "terms": [
+            {
+              "condition": "minecraft:random_chance",
+              "chance": 0.1
+            },
+            {
+              "condition": "minecraft:entity_properties",
+              "entity": "this",
+              "predicate": {
+                "type": "#minecraft:raiders"
+              }
+            },
+            {
+              "condition": "minecraft:damage_source_properties",
+              "predicate": {
+                "is_direct": true
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

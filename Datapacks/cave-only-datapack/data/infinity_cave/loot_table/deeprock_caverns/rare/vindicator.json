@@ -1,0 +1,65 @@
+{
+  "pools": [
+    {
+      "rolls": 3,
+      "bonus_rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/rare_gear"
+        },
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/deeprock/rare"
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:diamond_axe",
+          "functions": [
+            {
+              "function": "minecraft:enchant_with_levels",
+              "levels": 24,
+              "options": "#infinity_cave:valid"
+            }
+          ],
+          "conditions": [
+            {
+              "condition": "random_chance",
+              "chance": 0.33
+            }
+          ]
+        },
+        {
+          "type": "item",
+          "weight": 2,
+          "name": "minecraft:dark_oak_log",
+          "functions": [
+            {
+              "function": "set_count",
+              "count": {
+                "max": 4,
+                "min": 2
+              }
+            }
+          ]
+        },
+        {
+          "type": "item",
+          "weight": 2,
+          "name": "minecraft:name_tag",
+          "functions": [
+            {
+              "function": "set_count",
+              "count": {
+                "max": 4,
+                "min": 2
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

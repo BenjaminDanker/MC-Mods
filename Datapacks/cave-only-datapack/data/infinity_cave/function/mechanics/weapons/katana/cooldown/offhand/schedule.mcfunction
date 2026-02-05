@@ -1,0 +1,1 @@
+execute as @n[type=snowball,tag=ic.cooldown,distance=..3] at @s run function infinity_cave:mechanics/weapons/katana/cooldown/offhand/set_item with storage ic:cooldown item

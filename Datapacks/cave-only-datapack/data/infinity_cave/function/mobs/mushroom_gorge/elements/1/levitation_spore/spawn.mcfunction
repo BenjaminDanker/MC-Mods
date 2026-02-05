@@ -1,0 +1,3 @@
+$summon area_effect_cloud $(pos_x) $(pos_y) $(pos_z) {custom_particle:{type:"minecraft:dolphin"},ReapplicationDelay:60,Radius:5f,RadiusPerTick:0.0f,RadiusOnUse:0f,Duration:60,DurationOnUse:0,Age:-10000,WaitTime:-10000,potion_contents:{custom_effects:[{id:"minecraft:nausea",amplifier:0,duration:100,show_particles:1b,show_icon:1b,ambient:1b}]},Passengers:[{id:"minecraft:area_effect_cloud",custom_particle:{type:"minecraft:spore_blossom_air"},ReapplicationDelay:0,Radius:5f,RadiusPerTick:0f,RadiusOnUse:0f,Duration:60,DurationOnUse:0,Age:-10000,WaitTime:-10000}]}
+
+$execute positioned $(pos_x) $(pos_y) $(pos_z) as @e[type=#infinity_cave:shrink_or_enlarge,distance=..6] run effect give @s levitation 1 40 true

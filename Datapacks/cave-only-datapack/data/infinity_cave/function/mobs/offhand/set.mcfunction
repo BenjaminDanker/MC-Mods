@@ -1,0 +1,1 @@
+$data modify storage infinity_cave:mob data.offhand set from storage infinity_cave:mob data.offhand[$(offhand_entries)]

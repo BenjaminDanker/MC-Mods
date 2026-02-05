@@ -1,0 +1,364 @@
+{
+  "pools": [
+    {
+      "rolls": 6,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "weight": 2,
+          "name": "minecraft:book",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "min": 1,
+                "max": 2
+              }
+            },
+            {
+              "function": "minecraft:enchant_randomly",
+              "options": "minecraft:mending"
+            }
+          ]
+        },
+          {
+            "type": "loot_table",
+            "value": "infinity_cave:custom_items/cetirizine",
+            "functions": [
+              {
+                "function": "set_count",
+                "count": {
+                  "max": 8,
+                  "min": 4
+                }
+              }
+            ]
+          },
+          {
+            "type": "loot_table",
+            "value": "infinity_cave:custom_items/nimbus_nunchucks",
+            "functions": [
+              {
+                "function": "enchant_with_levels",
+                "levels": 22,
+                "options": "#infinity_cave:valid"
+              }
+            ],
+            "conditions": [
+              {
+                "condition": "random_chance", 
+                "chance": 0.5
+              }
+            ]
+          },
+          {
+            "type": "loot_table",
+            "value": "infinity_cave:custom_items/bonding_sword",
+            "functions": [
+              {
+                "function": "enchant_with_levels",
+                "levels": 50,
+                "options": "#infinity_cave:valid"
+              }
+            ],
+            "conditions": [
+              {
+                "condition": "random_chance", 
+                "chance": 0.5
+              }
+            ]
+          },
+        {
+          "type": "item",
+          "weight": 2,
+          "name": "minecraft:poisonous_potato",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "min": 2,
+                "max": 4
+              }
+            },
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "minecraft:food": {
+                  "nutrition": 10,
+                  "saturation": 10,
+                  "can_always_eat": true
+                },
+                "consumable": {
+                  "consume_seconds": 1,
+                  "on_consume_effects": [
+                    {
+                      "type": "minecraft:apply_effects",
+                      "effects": [
+                      {
+                          "id": "minecraft:haste",
+                          "amplifier": 1,
+                          "duration": 6000,
+                          "ambient": true,
+                          "show_particles": true,
+                          "show_icon": true
+                        },
+                        {
+                          "id": "minecraft:strength",
+                          "amplifier": 1,
+                          "duration": 6000,
+                          "ambient": true,
+                          "show_particles": true,
+                          "show_icon": true
+                        },
+                        {
+                          "id": "minecraft:health_boost",
+                          "amplifier": 0,
+                          "duration": 6000,
+                          "ambient": true,
+                          "show_particles": true,
+                          "show_icon": true
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "function": "set_name",
+              "name": [
+                {
+                  "text": "Nutricious Potato",
+                  "color": "gold",
+                  "italic": false
+                }
+              ]
+            },
+            {
+              "function": "set_lore",
+              "lore": [
+                {
+                  "text": "Grants Strength II, Haste II ",
+                  "color": "gray",
+                  "italic": false
+                },
+                {
+                  "text": "and Health Boost for 5 min. ",
+                  "color": "gray",
+                  "italic": false
+                }
+              ],
+              "mode": "append"
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:book",
+          "weight": 1,
+          "functions": [
+            {
+              "function": "minecraft:enchant_randomly",
+              "options": "infinity_cave:lifesteal",
+              "only_compatible": true
+            }
+          ],
+          "conditions": [
+            {
+              "condition": "minecraft:random_chance",
+              "chance": 0.25
+            }
+          ]
+        },
+        {
+          "type": "minecraft:loot_table",
+          "value": "infinity_cave:refs/weapons/acid_shield",
+          "weight": 2,
+          "functions": [
+            {
+              "function": "minecraft:enchant_with_levels",
+              "options": "#infinity_cave:valid",
+              "levels": 50,
+              "conditions": [
+                {
+                  "condition": "minecraft:random_chance",
+                  "chance": 0.2
+                }
+              ]
+            }
+          ],
+          "conditions": [
+            {
+              "condition": "minecraft:random_chance",
+              "chance": 0.125
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "weight": 1,
+          "name": "minecraft:netherite_helmet",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": 1
+            },
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "max_damage": 700,
+                "minecraft:attribute_modifiers": [
+                  {
+                    "type": "armor",
+                    "slot": "head",
+                    "id": "sulfide_helmet",
+                    "amount": 4,
+                    "operation": "add_value"
+                  },
+                  {
+                    "type": "armor_toughness",
+                    "slot": "head",
+                    "id": "sulfide_helmet",
+                    "amount": 3,
+                    "operation": "add_value"
+                  },
+                  {
+                    "type": "attack_speed",
+                    "slot": "head",
+                    "id": "sulfide_helmet",
+                    "amount": 0.1,
+                    "operation": "add_multiplied_base"
+                  }
+                ],
+                "minecraft:trim": {
+                  "material": "minecraft:emerald",
+                  "pattern": "minecraft:silence"
+                },
+                "minecraft:custom_data": {
+                  "ic": "sulfide_helmet"
+                }
+              }
+            },
+            {
+              "function": "minecraft:set_name",
+              "name": [
+                {
+                  "text": "Sulfide Helmet",
+                  "color": "gold",
+                  "italic": false
+                }
+              ]
+            },
+            {
+              "function": "minecraft:set_lore",
+              "lore": [
+                {
+                  "text": " "
+                },
+                {
+                  "text": "Striking an enemy with the ",
+                  "color": "gray",
+                  "italic": false
+                },
+                {
+                  "text": "Poison effect has a 10% to ",
+                  "color": "gray",
+                  "italic": false
+                },
+                {
+                  "text": "double its current duration. ",
+                  "color": "gray",
+                  "italic": false
+                }
+              ],
+              "mode": "append"
+            },
+            {
+              "function": "minecraft:enchant_with_levels",
+              "options": "#infinity_cave:valid",
+              "levels": 50
+            },
+            {
+              "function": "minecraft:set_enchantments",
+              "enchantments": {
+                "minecraft:protection": 4,
+                "minecraft:blast_protection": 2,
+                "unbreaking": 10,
+                "aqua_affinity": 1,
+                "minecraft:respiration": {
+                  "min": 2,
+                  "max": 10
+                }
+              }
+            }
+          ],
+          "conditions": [
+            {
+              "condition": "minecraft:random_chance",
+              "chance": 0.5
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "weight": 3,
+          "name": "minecraft:emerald",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "min": 10,
+                "max": 20
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "weight": 2,
+          "name": "minecraft:tipped_arrow",
+          "functions": [
+            {
+              "function": "minecraft:set_count",
+              "count": {
+                "min": 12,
+                "max": 24
+              }
+            },
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "minecraft:potion_contents": {
+                  "custom_color": 670482,
+                  "custom_effects": [
+                    {
+                      "id": "minecraft:slowness",
+                      "amplifier": 1,
+                      "duration": 200
+                    },
+                    {
+                      "id": "minecraft:wither",
+                      "amplifier": 2,
+                      "duration": 200,
+                      "show_particles": true
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "function": "minecraft:set_name",
+              "name": [
+                {
+                  "text": "Toxic Arrow",
+                  "color": "white",
+                  "italic": false
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

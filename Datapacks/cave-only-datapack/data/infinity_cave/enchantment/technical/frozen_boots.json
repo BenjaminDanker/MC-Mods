@@ -1,0 +1,54 @@
+{
+    "description": {
+      "translate": "Frozen Boots"
+    },
+    "supported_items": "#minecraft:enchantable/foot_armor",
+    "primary_items": "#minecraft:enchantable/foot_armor",
+    "weight": 1,
+    "max_level": 1,
+    "min_cost": {
+      "base": 9999,
+      "per_level_above_first": 0
+    },
+    "max_cost": {
+      "base": 9999,
+      "per_level_above_first": 0
+    },
+    "anvil_cost": 9999,
+    "slots": [
+      "feet"
+    ],
+    "effects": {
+      "minecraft:post_attack": [
+        {
+          "enchanted": "victim",
+          "affected": "attacker",
+          "effect": {
+            "type": "minecraft:all_of",
+            "effects": [
+              {
+                "type": "minecraft:apply_mob_effect",
+                "to_apply": "minecraft:slowness",
+                "min_duration": 40,
+                "max_duration": 80,
+                "min_amplifier": 0,
+                "max_amplifier": 2
+              }
+            ]
+          },
+          "requirements": {
+            "condition": "minecraft:random_chance",
+            "chance": {
+              "type": "minecraft:enchantment_level",
+              "amount": {
+                "type": "minecraft:linear",
+                "base": 0.25,
+                "per_level_above_first": 0
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+  

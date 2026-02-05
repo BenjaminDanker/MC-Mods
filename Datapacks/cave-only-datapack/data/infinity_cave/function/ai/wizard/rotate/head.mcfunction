@@ -1,0 +1,1 @@
+execute on passengers on passengers unless predicate {condition:"minecraft:entity_properties",entity:"this",predicate:{targeted_entity:{}}} on passengers run data modify entity @s Rotation set from entity @n[type=minecraft:wandering_trader] Rotation

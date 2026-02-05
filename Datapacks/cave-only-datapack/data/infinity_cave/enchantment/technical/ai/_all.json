@@ -1,0 +1,525 @@
+{
+  "description": {
+    "text": "Mob Power"
+  },
+  "supported_items": "#minecraft:acacia_logs",
+  "weight": 1,
+  "max_level": 1,
+  "min_cost": {
+    "base": 9999,
+    "per_level_above_first": 0
+  },
+  "max_cost": {
+    "base": 9999,
+    "per_level_above_first": 0
+  },
+  "anvil_cost": 9999,
+  "slots": [
+    "any"
+  ],
+  "effects": {
+    "minecraft:tick": [
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/item_protection"
+        },
+        "requirements": [
+          {
+            "condition": "entity_properties",
+            "entity": "this",
+            "predicate": {
+             "nbt": "{DeathTime:1s}"
+            }
+          }
+        ]
+      },
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/jump/check"
+        },
+        "requirements": [
+          {
+            "condition": "minecraft:value_check",
+            "value": {
+              "type": "minecraft:storage",
+              "storage": "infinity_cave:settings",
+              "path": "disable_jump_ai.initial"
+            },
+            "range": 0
+          },
+          {
+            "condition": "minecraft:random_chance",
+            "chance": {
+              "type": "minecraft:enchantment_level",
+              "amount": {
+                "type": "minecraft:linear",
+                "base": 0.4,
+                "per_level_above_first": 0.05
+              }
+            }
+          },
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "type": "#infinity_cave:jump_ai",
+              "periodic_tick": 20,
+              "flags": {
+                "is_on_ground": true
+              },
+              "targeted_entity": {
+                "type": "minecraft:player",
+                "flags": {
+                  "is_on_ground": true
+                },
+                "distance": {
+                  "absolute": {
+                    "min": 3,
+                    "max": 8
+                  },
+                  "horizontal": {
+                    "max": 4
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "effect": {
+          "type": "minecraft:all_of",
+          "effects": [
+            {
+              "type": "minecraft:apply_mob_effect",
+              "to_apply": "minecraft:absorption",
+              "min_duration": 90,
+              "max_duration": 90,
+              "min_amplifier": {
+                "type": "minecraft:linear",
+                "base": 0.5,
+                "per_level_above_first": 0.5
+              },
+              "max_amplifier": {
+                "type": "minecraft:linear",
+                "base": 0.5,
+                "per_level_above_first": 0.5
+              }
+            },
+            {
+              "type": "minecraft:apply_mob_effect",
+              "to_apply": "minecraft:instant_health",
+              "min_duration": 0.05,
+              "max_duration": 0.05,
+              "min_amplifier": {
+                "type": "minecraft:linear",
+                "base": 0.5,
+                "per_level_above_first": 0.5
+              },
+              "max_amplifier": {
+                "type": "minecraft:linear",
+                "base": 0.5,
+                "per_level_above_first": 0.5
+              }
+            },
+            {
+              "type": "minecraft:run_function",
+              "function": "infinity_cave:ai/golden_apple/eat"
+            }
+          ]
+        },
+        "requirements": [
+          {
+            "condition": "minecraft:inverted",
+            "term": {
+              "condition": "minecraft:entity_properties",
+              "entity": "this",
+              "predicate": {
+                "type": "#minecraft:undead"
+              }
+            }
+          },
+          {
+            "condition": "minecraft:random_chance",
+            "chance": {
+              "type": "minecraft:enchantment_level",
+              "amount": {
+                "type": "minecraft:linear",
+                "base": 0.15,
+                "per_level_above_first": 0.025
+              }
+            }
+          },
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "slots": {
+                "weapon.offhand": {
+                  "items": "minecraft:golden_apple"
+                }
+              },
+              "periodic_tick": 50,
+              "targeted_entity": {
+                "type": "minecraft:player"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "effect": {
+          "type": "minecraft:all_of",
+          "effects": [
+            {
+              "type": "minecraft:apply_mob_effect",
+              "to_apply": "minecraft:absorption",
+              "min_duration": 90,
+              "max_duration": 90,
+              "min_amplifier": {
+                "type": "minecraft:linear",
+                "base": 0.5,
+                "per_level_above_first": 0.5
+              },
+              "max_amplifier": {
+                "type": "minecraft:linear",
+                "base": 0.5,
+                "per_level_above_first": 0.5
+              }
+            },
+            {
+              "type": "minecraft:apply_mob_effect",
+              "to_apply": "minecraft:instant_damage",
+              "min_duration": 0.05,
+              "max_duration": 0.05,
+              "min_amplifier": {
+                "type": "minecraft:linear",
+                "base": 0.5,
+                "per_level_above_first": 0.5
+              },
+              "max_amplifier": {
+                "type": "minecraft:linear",
+                "base": 0.5,
+                "per_level_above_first": 0.5
+              }
+            },
+            {
+              "type": "minecraft:run_function",
+              "function": "infinity_cave:ai/golden_apple/eat"
+            }
+          ]
+        },
+        "requirements": [
+          {
+            "condition": "minecraft:random_chance",
+            "chance": {
+              "type": "minecraft:enchantment_level",
+              "amount": {
+                "type": "minecraft:linear",
+                "base": 1,
+                "per_level_above_first": 0.05
+              }
+            }
+          },
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "type": "#minecraft:undead",
+              "slots": {
+                "weapon.offhand": {
+                  "items": "minecraft:golden_apple"
+                }
+              },
+              "periodic_tick": 50,
+              "targeted_entity": {
+                "type": "minecraft:player"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/wind_charge/throw"
+        },
+        "requirements": [
+          {
+            "condition": "minecraft:random_chance",
+            "chance": {
+              "type": "minecraft:enchantment_level",
+              "amount": {
+                "type": "minecraft:linear",
+                "base": 0.15,
+                "per_level_above_first": 0.05
+              }
+            }
+          },
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "type": "#infinity_cave:aggro",
+              "slots": {
+                "weapon.offhand": {
+                  "items": "minecraft:wind_charge"
+                }
+              },
+              "periodic_tick": 25,
+              "targeted_entity": {
+                "type": "minecraft:player"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "effect": {
+          "type": "minecraft:all_of",
+          "effects": [
+            {
+              "type": "minecraft:run_function",
+              "function": "infinity_cave:ai/cobweb/delete"
+            },
+            {
+              "type": "minecraft:apply_mob_effect",
+              "to_apply": "minecraft:slowness",
+              "min_duration": 1.5,
+              "max_duration": 1.5,
+              "min_amplifier": 4,
+              "max_amplifier": 4
+            },
+            {
+              "type": "minecraft:play_sound",
+              "sound": "block.cobweb.break",
+              "volume": 1,
+              "pitch": 0.0001
+            }
+          ]
+        },
+        "requirements": [
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "location": {
+                "block": {
+                  "blocks": "minecraft:cobweb"
+                }
+              },
+              "periodic_tick": 20
+            }
+          },
+          {
+            "condition": "minecraft:random_chance",
+            "chance": {
+              "type": "minecraft:enchantment_level",
+              "amount": {
+                "type": "minecraft:linear",
+                "base": 0.02,
+                "per_level_above_first": 0.01
+              }
+            }
+          }
+        ]
+      },
+      {
+        "effect": {
+          "type": "minecraft:all_of",
+          "effects": [
+            {
+              "type": "minecraft:play_sound",
+              "sound": {
+                "sound_id": "minecraft:entity.zombie_villager.converted",
+                "range": 10
+              },
+              "volume": 0.5,
+              "pitch": 2
+            },
+            {
+              "type": "minecraft:spawn_particles",
+              "particle": {
+                "type": "minecraft:angry_villager"
+              },
+              "horizontal_position": {
+                "type": "entity_position",
+                "offset": 0
+              },
+              "vertical_position": {
+                "type": "entity_position",
+                "offset": 2
+              },
+              "horizontal_velocity": {
+                "base": 0,
+                "movement_scale": 0
+              },
+              "vertical_velocity": {
+                "base": 0,
+                "movement_scale": 0
+              },
+              "speed": 0.1
+            },
+            {
+              "type": "minecraft:summon_entity",
+              "entity": "minecraft:skeleton",
+              "join_team": true
+            }
+          ]
+        },
+        "requirements": [
+          {
+            "condition": "minecraft:random_chance",
+            "chance": {
+              "type": "minecraft:enchantment_level",
+              "amount": {
+                "type": "minecraft:linear",
+                "base": 0.005,
+                "per_level_above_first": 0.005
+              }
+            }
+          },
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "type": "#minecraft:skeletons",
+              "periodic_tick": 20,
+              "targeted_entity": {
+                "type": "minecraft:player"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "effect": {
+          "type": "minecraft:all_of",
+          "effects": [
+            {
+              "type": "minecraft:play_sound",
+              "sound": {
+                "sound_id": "minecraft:entity.zombie_villager.converted",
+                "range": 10
+              },
+              "volume": 0.5,
+              "pitch": 2
+            },
+            {
+              "type": "minecraft:spawn_particles",
+              "particle": {
+                "type": "minecraft:angry_villager"
+              },
+              "horizontal_position": {
+                "type": "entity_position",
+                "offset": 0
+              },
+              "vertical_position": {
+                "type": "entity_position",
+                "offset": 2
+              },
+              "horizontal_velocity": {
+                "base": 0,
+                "movement_scale": 0
+              },
+              "vertical_velocity": {
+                "base": 0,
+                "movement_scale": 0
+              },
+              "speed": 0.1
+            },
+            {
+              "type": "minecraft:summon_entity",
+              "entity": "minecraft:zombie",
+              "join_team": true
+            }
+          ]
+        },
+        "requirements": [
+          {
+            "condition": "minecraft:random_chance",
+            "chance": {
+              "type": "minecraft:enchantment_level",
+              "amount": {
+                "type": "minecraft:linear",
+                "base": 0.005,
+                "per_level_above_first": 0.005
+              }
+            }
+          },
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "type": "#infinity_cave:can_spawn_zombies",
+              "periodic_tick": 20,
+              "targeted_entity": {
+                "type": "minecraft:player"
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "minecraft:damage_protection": [
+      {
+        "effect": {
+          "type": "minecraft:add",
+          "value": {
+            "type": "minecraft:linear",
+            "base": 1,
+            "per_level_above_first": 0.5
+          }
+        },
+        "requirements": {
+          "condition": "minecraft:damage_source_properties",
+          "predicate": {
+            "source_entity": {
+              "slots": {
+                "weapon.mainhand": {
+                  "items": "minecraft:mace"
+                }
+              }
+            }
+          }
+        }
+      }
+    ],
+    "minecraft:damage_immunity": [
+      {
+        "effect": {},
+        "requirements": [
+          {
+            "condition": "minecraft:damage_source_properties",
+            "predicate": {
+              "tags": [
+                {
+                  "id": "minecraft:is_projectile",
+                  "expected": true
+                }
+              ]
+            }
+          },
+          {
+            "condition": "minecraft:any_of",
+            "terms": [
+              {
+                "condition": "minecraft:entity_properties",
+                "entity": "this",
+                "predicate": {
+                  "slots": {
+                    "weapon.offhand": {
+                      "items": "minecraft:ender_eye"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

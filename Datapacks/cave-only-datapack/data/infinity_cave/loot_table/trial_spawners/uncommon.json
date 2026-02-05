@@ -1,0 +1,63 @@
+{
+  "pools": [
+    {
+      "rolls": 2,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "weight": 1,
+          "name": "minecraft:splash_potion",
+          "functions": [
+            {
+              "function": "set_name",
+              "name": [
+                {
+                  "text": "Tier II Healing",
+                  "color": "aqua",
+                  "italic": false
+                }
+              ]
+            },
+            {
+              "function": "set_lore",
+              "lore": [
+                {
+                  "text": "Stacks up to 5",
+                  "color": "gray",
+                  "italic": false
+                }
+              ],
+              "mode": "append"
+            },
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "item_model": "infinity_cave:tier_two_potion",
+                "minecraft:potion_contents": "minecraft:strong_healing"
+              }
+            },
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "minecraft:max_stack_size": 5
+              }
+            }
+          ]
+        },
+        {
+          "type": "item",
+          "name": "golden_apple",
+          "functions": [
+            {
+              "function": "set_count",
+              "count": {
+                "max": 2,
+                "min": 1
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

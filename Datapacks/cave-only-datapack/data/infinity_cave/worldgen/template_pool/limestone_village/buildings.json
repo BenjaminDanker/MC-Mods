@@ -1,0 +1,57 @@
+{
+  "name": "infinity_cave:limestone_village/buildings",
+  "elements": [
+    {
+      "element": {
+        "element_type": "minecraft:single_pool_element",
+        "projection": "rigid",
+        "location": "infinity_cave:limestone_village/buildings/blacksmith",
+        "processors": "minecraft:empty"
+      },
+      "weight": 2
+    },
+    {
+      "element": {
+        "element_type": "minecraft:single_pool_element",
+        "projection": "rigid",
+        "location": "infinity_cave:limestone_village/buildings/brown_mooshroom_pen",
+        "processors": "minecraft:empty"
+      },
+      "weight": 2
+    },
+    {
+      "element": {
+        "element_type": "minecraft:single_pool_element",
+        "projection": "rigid",
+        "location": "infinity_cave:limestone_village/buildings/house1",
+        "processors": "minecraft:empty"
+      },
+      "weight": 4
+    },
+    {
+      "element": {
+        "element_type": "minecraft:single_pool_element",
+        "projection": "rigid",
+        "location": "infinity_cave:limestone_village/buildings/house2",
+        "processors": "minecraft:empty"
+      },
+      "weight": 6
+    },
+    {
+      "element": {
+        "element_type": "minecraft:single_pool_element",
+        "projection": "rigid",
+        "location": "infinity_cave:limestone_village/buildings/house3",
+        "processors": "minecraft:empty"
+      },
+      "weight": 5
+    },
+    {
+      "element": {
+        "element_type": "minecraft:empty_pool_element"
+      },
+      "weight": 18
+    }
+  ],
+  "fallback": "minecraft:empty"
+}

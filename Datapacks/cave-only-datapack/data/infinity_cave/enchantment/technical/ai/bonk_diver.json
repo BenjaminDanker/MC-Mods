@@ -1,0 +1,179 @@
+{
+  "description": {
+    "text": "Bonk Diver"
+  },
+  "supported_items": "#minecraft:acacia_logs",
+  "weight": 1,
+  "max_level": 1,
+  "min_cost": {
+    "base": 9999,
+    "per_level_above_first": 0
+  },
+  "max_cost": {
+    "base": 9999,
+    "per_level_above_first": 0
+  },
+  "anvil_cost": 9999,
+  "slots": [
+    "armor"
+  ],
+  "effects": {
+    "minecraft:damage_immunity": [
+      {
+        "effect": {},
+        "requirements": {
+          "condition": "minecraft:damage_source_properties",
+          "predicate": {
+            "tags": [
+              {
+                "id": "infinity_cave:elytra_immune",
+                "expected": true
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "minecraft:tick": [
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/bonk_diver/ground_jump/set_motion"
+        },
+        "requirements": [
+          {
+            "condition": "minecraft:random_chance",
+            "chance": {
+              "type": "minecraft:enchantment_level",
+              "amount": {
+                "type": "minecraft:linear",
+                "base": 0.5,
+                "per_level_above_first": 0.05
+              }
+            }
+          },
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "type": "#infinity_cave:aggro",
+              "flags": {
+                "is_on_ground": true
+              },
+              "periodic_tick": 50,
+              "targeted_entity": {
+                "type": "minecraft:player",
+                "distance": {
+                  "horizontal": {
+                    "min": 8
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/bonk_diver/flying/check"
+        },
+        "requirements": [
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "periodic_tick": 18,
+              "type": "#infinity_cave:aggro",
+              "flags": {
+                "is_on_ground": false
+              }
+            }
+          }
+        ]
+      },
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/bonk_diver/ground_pound/set_motion"
+        },
+        "requirements": [
+          {
+            "condition": "minecraft:inverted",
+            "term": {
+              "condition": "minecraft:entity_scores",
+              "entity": "this",
+              "scores": {
+                "ic.ai": 1
+              }
+            }
+          },
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "type": "#infinity_cave:aggro",
+              "targeted_entity": {
+                "type": "minecraft:player",
+                "distance": {
+                  "absolute": {
+                    "min": 5
+                  },
+                  "horizontal": {
+                    "max": 4
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "requirements": [
+          {
+            "condition": "minecraft:inverted",
+            "term": {
+              "condition": "minecraft:entity_scores",
+              "entity": "this",
+              "scores": {
+                "ic.ai": 0
+              }
+            }
+          },
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "flags": { "is_on_ground": false
+            },
+              "targeted_entity": {
+                "distance": { "absolute": { "max": 4 } }
+              },
+              "movement": { "vertical_speed": { "min": 4} }
+            }
+          }
+        ],
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/bonk_diver/mace/hit"
+        }
+      },
+            {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:ai/bonk_diver/on_ground"
+        },
+        "requirements": [
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "flags": { "is_on_ground": true
+            }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

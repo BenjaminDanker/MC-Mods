@@ -1,0 +1,29 @@
+{
+    "type": "minecraft:disk",
+    "config": {
+      "state_provider": {
+        "fallback": {
+          "type": "minecraft:weighted_state_provider",
+          "entries": [
+            {
+              "weight": 1,
+              "data": {
+                "Name": "minecraft:mushroom_stem"
+              }
+            }
+          ]
+        },
+        "rules": []
+      },
+      "radius": {
+        "type": "minecraft:uniform",
+        "min_inclusive": 1,
+        "max_inclusive": 3
+      },
+      "half_height": 0,
+      "target": {
+        "type": "minecraft:matching_blocks",
+        "blocks": "#minecraft:air"
+      }
+    }
+  }

@@ -1,0 +1,1 @@
+function infinity_cave:mobs/amethyst_caves/tiers/rare/set_data with storage infinity_cave:amethyst_caves data.rare

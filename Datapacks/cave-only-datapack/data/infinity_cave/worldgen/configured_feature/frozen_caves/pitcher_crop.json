@@ -1,0 +1,20 @@
+{
+  "type": "minecraft:replace_single_block",
+  "config": {
+    "targets": [
+      {
+        "target": {
+          "predicate_type": "minecraft:block_match",
+          "block": "air"
+        },
+        "state": {
+          "Name": "minecraft:pitcher_crop",
+          "Properties": {
+            "age": "4",
+            "half": "lower"
+          }
+        }
+      }
+    ]
+  }
+}

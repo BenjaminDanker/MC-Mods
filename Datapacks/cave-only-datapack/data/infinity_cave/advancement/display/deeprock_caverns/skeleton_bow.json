@@ -1,0 +1,42 @@
+{
+    "display": {
+      "icon": {
+        "id": "minecraft:brush",
+        "components": {
+          "item_model": "infinity_cave:skeleton_bow"
+        }
+      },
+      "title": "\"Spoopy Scawy Skewetons\"!",
+      "description": [
+        {
+          "text": "Dropped from a Legendary Skeleton"
+        }
+      ],
+      "show_toast": true,
+      "announce_to_chat": true,
+      "hidden": false
+    },
+    "parent": "infinity_cave:display/deeprock_caverns/bomber",
+    "criteria": {
+      "requirement": {
+        "trigger": "minecraft:inventory_changed",
+        "conditions": {
+          "items": [
+            {
+              "items": [
+                "minecraft:bow"
+              ],
+            "predicates": {
+              "minecraft:custom_data": {
+                "infinity_cave": {
+                  "item": "skeleton_bow"
+                }
+              }
+            }
+            }
+          ]
+        }
+      }
+    }
+  }
+  

@@ -1,0 +1,1 @@
+$damage @s $(damage) minecraft:mob_attack by @n[type=minecraft:polar_bear]

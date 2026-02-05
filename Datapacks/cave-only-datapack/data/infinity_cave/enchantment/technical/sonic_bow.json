@@ -1,0 +1,30 @@
+{
+  "description": {
+    "translate": "Soul Tearer"
+  },
+  "supported_items": "#minecraft:enchantable/bow",
+  "weight": 1,
+  "max_level": 1,
+  "min_cost": {
+    "base": 9999,
+    "per_level_above_first": 9999
+  },
+  "max_cost": {
+    "base": 9999,
+    "per_level_above_first": 9999
+  },
+  "anvil_cost": 9999,
+  "slots": [
+    "mainhand"
+  ],
+  "effects": {
+    "minecraft:projectile_spawned": [
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:mechanics/weapons/sonic_bow/shoot"
+        }
+      }
+    ]
+  }
+}

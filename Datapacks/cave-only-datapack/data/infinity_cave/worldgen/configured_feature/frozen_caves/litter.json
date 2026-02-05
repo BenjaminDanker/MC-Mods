@@ -1,0 +1,72 @@
+{
+  "type": "minecraft:random_patch",
+  "config": {
+    "tries": 64,
+    "xz_spread": 7,
+    "y_spread": 3,
+    "feature": {
+      "placement": [
+        {
+          "type": "random_offset",
+          "xz_spread": 0,
+          "y_spread": 1
+        },
+        {
+          "type": "block_predicate_filter",
+          "predicate": {
+            "type": "matching_blocks",
+            "blocks": [
+              "minecraft:air"
+            ]
+          }
+        }
+      ],
+      "feature": {
+        "type": "minecraft:simple_block",
+        "config": {
+          "to_place": {
+            "type": "minecraft:weighted_state_provider",
+            "entries": [
+              {
+                "weight": 1,
+                "data": {
+                  "Name": "minecraft:leaf_litter",
+                  "Properties": {
+                    "segment_amount": "4"
+                  }
+                }
+              },
+              {
+                "weight": 1,
+                "data": {
+                  "Name": "minecraft:leaf_litter",
+                  "Properties": {
+                    "segment_amount": "3"
+                  }
+                }
+              },
+              {
+                "weight": 2,
+                "data": {
+                  "Name": "minecraft:leaf_litter",
+                  "Properties": {
+                    "segment_amount": "2"
+                  }
+                }
+              },
+              {
+                "weight": 3,
+                "data": {
+                  "Name": "minecraft:leaf_litter",
+                  "Properties": {
+                    "segment_amount": "1"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

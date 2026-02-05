@@ -1,0 +1,117 @@
+{
+  "pools": [
+    {
+      "rolls": 3,
+      "bonus_rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/epic_gear"
+        },
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:refs/molten/epic"
+        }
+      ]
+    },
+    {
+      "rolls": 2,
+      "entries": [
+        {
+          "type": "minecraft:loot_table",
+          "weight": 2,
+          "value": "infinity_cave:custom_items/fiery_flesh",
+          "functions": [
+            {
+              "function": "set_count",
+              "count": {
+                "max": 5,
+                "min": 2
+              }
+            }
+          ]
+        },
+        {
+          "type": "minecraft:item",
+          "weight": 1,
+          "name": "minecraft:golden_sword",
+          "functions": [
+            {
+              "function": "enchant_with_levels",
+              "levels": 40,
+              "options": "#infinity_cave:valid"
+            },
+            {
+              "function": "minecraft:set_components",
+              "components": {
+                "item_name": {
+                  "text": "Sharpened Golden Sword"
+                },
+                "rarity": "epic",
+                "minecraft:max_damage": 1439,
+                "minecraft:attribute_modifiers": [
+                  {
+                    "type": "minecraft:attack_damage",
+                    "id": "infinity_cave:attack_damage",
+                    "amount": 8.5,
+                    "operation": "add_value",
+                    "slot": "mainhand",
+                    "display": {
+                      "type": "override",
+                      "value": {
+                        "text": " 8 Attack Damage",
+                        "color": "dark_green"
+                      }
+                    }
+                  },
+                  {
+                    "type": "minecraft:attack_speed",
+                    "id": "infinity_cave:attack_speed",
+                    "amount": 1.6,
+                    "operation": "add_value",
+                    "slot": "mainhand",
+                    "display": {
+                      "type": "override",
+                      "value": {
+                        "text": " 1.6 Attack Speed ",
+                        "color": "dark_green"
+                      }
+                    }
+                  },
+                  {
+                    "type": "minecraft:attack_damage",
+                    "id": "infinity_cave:attack_damage_remove",
+                    "amount": -1,
+                    "operation": "add_value",
+                    "slot": "mainhand",
+                    "display": {
+                      "type": "hidden"
+                    }
+                  },
+                  {
+                    "type": "minecraft:attack_speed",
+                    "id": "infinity_cave:attack_speed_remove",
+                    "amount": -4,
+                    "operation": "add_value",
+                    "slot": "mainhand",
+                    "display": {
+                      "type": "hidden"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "conditions": [
+            {
+              "condition": "random_chance",
+              "chance": 0.5
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

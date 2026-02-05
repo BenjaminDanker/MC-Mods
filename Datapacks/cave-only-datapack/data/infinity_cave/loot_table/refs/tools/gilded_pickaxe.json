@@ -1,0 +1,119 @@
+{
+    "pools": [
+      {
+        "rolls": 1,
+        "entries": [
+          {
+            "type": "minecraft:item",
+            "name": "minecraft:netherite_pickaxe",
+            "functions": [
+                {
+                  "function": "minecraft:set_enchantments",
+                  "enchantments": {
+                    "infinity_cave:zgilded_pickaxe": 1
+                  }
+                },
+              {
+                "function": "minecraft:set_count",
+                "count": 1
+              },
+              {
+                "function": "minecraft:set_components",
+                "components": {
+                  "minecraft:attribute_modifiers": [
+                      {
+                        "type": "block_break_speed",
+                        "slot": "mainhand",
+                        "id": "gilded_pickaxe",
+                        "amount": 1.25,
+                        "operation": "add_value"
+                      },
+                      {
+                        "type": "attack_damage",
+                        "slot": "mainhand",
+                        "id": "gilded_pickaxe",
+                        "amount": 10,
+                        "operation": "add_value"
+                      },
+                      {
+                        "type": "attack_speed",
+                        "slot": "mainhand",
+                        "id": "gilded_pickaxe",
+                        "amount": -3,
+                        "operation": "add_value"
+                      }
+                    ],
+                    "tooltip_display": {
+                      "hidden_components": [
+                        "attribute_modifiers"
+                      ]
+                    },
+                  "minecraft:item_model": "infinity_cave:gilded_pickaxe",
+                  "minecraft:custom_data": {
+                    "infinity_cave": {
+                      "item": "gilded_pickaxe"
+                    }
+                  }
+                }
+              },
+              {
+                "function": "minecraft:set_name",
+                "name": [
+                  {
+                    "text": "Gilded Pickaxe",
+                    "color": "gold",
+                    "italic": false
+                  }
+                ]
+              },
+              {
+                "function": "minecraft:set_lore",
+                "lore": [
+                  {
+                    "text": "Instantly mines all generic ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": "stone types in a 3x3 area, ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": "small chance to drop gold. ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": "Shift to mine normally. ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": " "
+                  },
+                  {
+                    "text": "When in Main Hand:",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": " 11 Attack Damage",
+                    "color": "dark_green",
+                    "italic": false
+                  },
+                  {
+                    "text": " 1 Attack Speed",
+                    "color": "dark_green",
+                    "italic": false
+                  }
+                ],
+                "mode": "append"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+  

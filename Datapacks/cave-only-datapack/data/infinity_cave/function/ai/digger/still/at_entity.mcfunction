@@ -1,0 +1,1 @@
+execute at @s if block ^ ^-2 ^1 #infinity_cave:non_solid positioned ^ ^-2 ^1 run function infinity_cave:ai/digger/still/place

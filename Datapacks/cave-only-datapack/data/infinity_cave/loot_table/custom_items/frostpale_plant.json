@@ -1,0 +1,274 @@
+{
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:alternatives",
+          "children": [
+            {
+              "type": "minecraft:item",
+              "name": "minecraft:armor_stand",
+              "functions": [
+                {
+                  "function": "minecraft:set_components",
+                  "components": {
+                    "item_name": "Frostpale Plant",
+                    "rarity": "common",
+                    "item_model": "infinity_cave:frostpale_crop",
+                    "entity_data": {
+                      "id": "armor_stand",
+                      "Tags": [
+                        "ic.frostpale_plant"
+                      ],
+                      "attributes": [
+                        {
+                          "base": 0.2,
+                          "id": "scale"
+                        }
+                      ],
+                      "Invisible": true,
+                      "Silent": true,
+                      "Invulnerable": true
+                    },
+                    "minecraft:custom_data": {
+                      "infinity_cave": {
+                        "item": "frostpale_plant"
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "minecraft:item",
+              "name": "minecraft:armor_stand",
+              "conditions": [
+                {
+                  "block": "minecraft:pitcher_crop",
+                  "condition": "minecraft:block_state_property",
+                  "properties": {
+                    "age": "1",
+                    "half": "lower"
+                  }
+                }
+              ],
+              "functions": [
+                {
+                  "function": "minecraft:set_components",
+                  "components": {
+                    "item_name": "Frostpale Plant",
+                    "rarity": "common",
+                    "item_model": "infinity_cave:frostpale_plant",
+                    "entity_data": {
+                      "id": "armor_stand",
+                      "Tags": [
+                        "ic.frostpale_plant"
+                      ],
+                      "attributes": [
+                        {
+                          "base": 0.2,
+                          "id": "scale"
+                        }
+                      ],
+                      "Invisible": true,
+                      "Silent": true,
+                      "Invulnerable": true
+                    },
+                    "minecraft:custom_data": {
+                      "infinity_cave": {
+                        "item": "frostpale_plant"
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "minecraft:item",
+              "name": "minecraft:armor_stand",
+              "conditions": [
+                {
+                  "block": "minecraft:pitcher_crop",
+                  "condition": "minecraft:block_state_property",
+                  "properties": {
+                    "age": "2",
+                    "half": "lower"
+                  }
+                }
+              ],
+              "functions": [
+                {
+                  "function": "minecraft:set_components",
+                  "components": {
+                    "item_name": "Frostpale Plant",
+                    "rarity": "common",
+                    "item_model": "infinity_cave:frostpale_plant",
+                    "entity_data": {
+                      "id": "armor_stand",
+                      "Tags": [
+                        "ic.frostpale_plant"
+                      ],
+                      "attributes": [
+                        {
+                          "base": 0.2,
+                          "id": "scale"
+                        }
+                      ],
+                      "Invisible": true,
+                      "Silent": true,
+                      "Invulnerable": true
+                    },
+                    "minecraft:custom_data": {
+                      "infinity_cave": {
+                        "item": "frostpale_plant"
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "minecraft:item",
+              "name": "minecraft:armor_stand",
+              "conditions": [
+                {
+                  "block": "minecraft:pitcher_crop",
+                  "condition": "minecraft:block_state_property",
+                  "properties": {
+                    "age": "3",
+                    "half": "lower"
+                  }
+                }
+              ],
+              "functions": [
+                {
+                  "function": "minecraft:set_components",
+                  "components": {
+                    "item_name": "Frostpale Plant",
+                    "rarity": "common",
+                    "item_model": "infinity_cave:frostpale_plant",
+                    "entity_data": {
+                      "id": "armor_stand",
+                      "Tags": [
+                        "ic.frostpale_plant"
+                      ],
+                      "attributes": [
+                        {
+                          "base": 0.2,
+                          "id": "scale"
+                        }
+                      ],
+                      "Invisible": true,
+                      "Silent": true,
+                      "Invulnerable": true
+                    },
+                    "minecraft:custom_data": {
+                      "infinity_cave": {
+                        "item": "frostpale_plant"
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "minecraft:item",
+              "name": "minecraft:armor_stand",
+              "conditions": [
+                {
+                  "block": "minecraft:pitcher_crop",
+                  "condition": "minecraft:block_state_property",
+                  "properties": {
+                    "age": "4",
+                    "half": "lower"
+                  }
+                }
+              ],
+              "functions": [
+                {
+                  "function": "minecraft:set_components",
+                  "components": {
+                    "item_name": "Frostpale Plant",
+                    "rarity": "common",
+                    "item_model": "infinity_cave:frostpale_plant",
+                    "entity_data": {
+                      "id": "armor_stand",
+                      "Tags": [
+                        "ic.frostpale_plant"
+                      ],
+                      "attributes": [
+                        {
+                          "base": 0.2,
+                          "id": "scale"
+                        }
+                      ],
+                      "Invisible": true,
+                      "Silent": true,
+                      "Invulnerable": true
+                    },
+                    "minecraft:custom_data": {
+                      "infinity_cave": {
+                        "item": "frostpale_plant"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:structure_block",
+          "functions": [
+            {
+              "function": "set_components",
+              "components": {
+                "item_name": {
+                  "text": "Frostpale Essence",
+                  "italic": false
+                },
+                "rarity": "uncommon",
+                "item_model": "infinity_cave:frostpale_essence",
+                "lore": [
+                  {
+                    "text": "Put this in a crafting grid",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": "with a bow to Frostpale a bow",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": "for the next arrow. ",
+                    "color": "gray",
+                    "italic": false
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "conditions": [
+        {
+          "block": "minecraft:pitcher_crop",
+          "condition": "minecraft:block_state_property",
+          "properties": {
+            "age": "4",
+            "half": "lower"
+          }
+        }
+      ]
+    }
+  ]
+}

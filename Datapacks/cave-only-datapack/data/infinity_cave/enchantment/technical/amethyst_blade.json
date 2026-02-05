@@ -1,0 +1,105 @@
+{
+  "description": {
+    "translate": "Soul Tearer"
+  },
+  "supported_items": "#minecraft:enchantable/sharp_weapon",
+  "weight": 1,
+  "max_level": 1,
+  "min_cost": {
+    "base": 9999,
+    "per_level_above_first": 9999
+  },
+  "max_cost": {
+    "base": 9999,
+    "per_level_above_first": 9999
+  },
+  "anvil_cost": 9999,
+  "slots": [
+    "mainhand"
+  ],
+  "effects": {
+    "minecraft:post_attack": [
+      {
+        "enchanted": "attacker",
+        "affected": "victim",
+        "effect": {
+          "type": "minecraft:all_of",
+          "effects": [
+            {
+              "type": "minecraft:run_function",
+              "function": "infinity_cave:mechanics/weapons/amethyst_blade/get_data"
+            }
+          ]
+        },
+        "requirements": {
+          "condition": "minecraft:entity_properties",
+          "entity": "this",
+          "predicate": {
+            "type": "#infinity_cave:all_living"
+          }
+        }
+      },
+      {
+        "enchanted": "attacker",
+        "affected": "victim",
+        "effect": {
+          "type": "minecraft:all_of",
+          "effects": [
+            {
+              "type": "minecraft:play_sound",
+              "sound": {
+                "sound_id": "block.beacon.deactivate"
+              },
+              "volume": 0.5,
+              "pitch": 1
+            },
+            {
+              "type": "minecraft:run_function",
+              "function": "infinity_cave:mechanics/weapons/amethyst_blade/regen"
+            },
+            {
+              "type": "minecraft:spawn_particles",
+              "particle": {
+                "type": "minecraft:witch"
+              },
+              "horizontal_position": {
+                "type": "in_bounding_box",
+                "offset": 1,
+                "scale": 0.5
+              },
+              "vertical_position": {
+                "type": "in_bounding_box",
+                "offset": 1,
+                "scale": 0.5
+              },
+              "horizontal_velocity": {
+                "base": 0,
+                "movement_scale": 0
+              },
+              "vertical_velocity": {
+                "base": 9,
+                "movement_scale": 0
+              },
+              "speed": 0.1
+            }
+          ]
+        },
+        "requirements": [
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "effects": {
+                "minecraft:regeneration": {}
+              }
+            }
+          },
+          {
+            "condition": "minecraft:random_chance",
+            "chance": 0.2
+          }
+        ]
+      }
+    ]
+  }
+}

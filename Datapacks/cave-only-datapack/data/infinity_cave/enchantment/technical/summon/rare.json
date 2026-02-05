@@ -1,0 +1,446 @@
+{
+  "description": {
+    "text": "Summon Power (DO NOT USE)"
+  },
+  "supported_items": "#minecraft:acacia_logs",
+  "weight": 1,
+  "max_level": 1,
+  "min_cost": {
+    "base": 9999,
+    "per_level_above_first": 0
+  },
+  "max_cost": {
+    "base": 9999,
+    "per_level_above_first": 0
+  },
+  "anvil_cost": 9999,
+  "slots": [
+    "any"
+  ],
+  "effects": {
+    "minecraft:tick": [
+      {
+        "requirements": [
+          {
+            "condition": "minecraft:location_check",
+            "predicate": {
+              "biomes": [
+                "infinity_cave:amethyst_caves"
+              ]
+            }
+          },
+          {
+            "condition": "minecraft:inverted",
+            "term": {
+              "condition": "minecraft:entity_scores",
+              "entity": "this",
+              "scores": {
+                "ic.animate": {
+                  "min": -2147483648,
+                  "max": 2147483648
+                }
+              }
+            }
+          }
+        ],
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:mobs/amethyst_caves/tiers/rare/pre"
+        }
+      },
+      {
+        "requirements": [
+          {
+            "condition": "minecraft:location_check",
+            "predicate": {
+              "biomes": [
+                "infinity_cave:amethyst_caves"
+              ]
+            }
+          },
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "periodic_tick": 50
+            }
+          }
+        ],
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:mobs/amethyst_caves/tiers/rare/roll"
+        }
+      },
+      {
+        "requirements": [
+          {
+            "condition": "minecraft:location_check",
+            "predicate": {
+              "biomes": [
+                "infinity_cave:limestone_grotto"
+              ]
+            }
+          },
+          {
+            "condition": "minecraft:inverted",
+            "term": {
+              "condition": "minecraft:entity_scores",
+              "entity": "this",
+              "scores": {
+                "ic.animate": {
+                  "min": -2147483648,
+                  "max": 2147483648
+                }
+              }
+            }
+          }
+        ],
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:mobs/limestone_grotto/tiers/rare/pre"
+        }
+      },
+      {
+        "requirements": [
+          {
+            "condition": "minecraft:location_check",
+            "predicate": {
+              "biomes": [
+                "infinity_cave:limestone_grotto"
+              ]
+            }
+          },
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "periodic_tick": 50
+            }
+          }
+        ],
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:mobs/limestone_grotto/tiers/rare/roll"
+        }
+      },
+      {
+        "requirements": [
+          {
+            "condition": "minecraft:location_check",
+            "predicate": {
+              "biomes": [
+                "infinity_cave:sulfide_caves"
+              ]
+            }
+          },
+          {
+            "condition": "minecraft:inverted",
+            "term": {
+              "condition": "minecraft:entity_scores",
+              "entity": "this",
+              "scores": {
+                "ic.animate": {
+                  "min": -2147483648,
+                  "max": 2147483648
+                }
+              }
+            }
+          }
+        ],
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:mobs/sulfide_caves/tiers/rare/pre"
+        }
+      },
+      {
+        "requirements": [
+          {
+            "condition": "minecraft:location_check",
+            "predicate": {
+              "biomes": [
+                "infinity_cave:sulfide_caves"
+              ]
+            }
+          },
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "periodic_tick": 50
+            }
+          }
+        ],
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:mobs/sulfide_caves/tiers/rare/roll"
+        }
+      },
+      {
+        "requirements": [
+          {
+            "condition": "minecraft:location_check",
+            "predicate": {
+              "biomes": [
+                "infinity_cave:sulfide_caves"
+              ]
+            }
+          },
+          {
+            "condition": "minecraft:inverted",
+            "term": {
+              "condition": "minecraft:entity_scores",
+              "entity": "this",
+              "scores": {
+                "ic.animate": {
+                  "min": -2147483648,
+                  "max": 2147483648
+                }
+              }
+            }
+          }
+        ],
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:mobs/molten_caves/tiers/rare/pre"
+        }
+      },
+      {
+        "requirements": [
+          {
+            "condition": "minecraft:location_check",
+            "predicate": {
+              "biomes": [
+                "infinity_cave:molten_caves"
+              ]
+            }
+          },
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "periodic_tick": 50
+            }
+          }
+        ],
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:mobs/molten_caves/tiers/rare/roll"
+        }
+      },
+      {
+        "requirements": [
+          {
+            "condition": "minecraft:location_check",
+            "predicate": {
+              "biomes": [
+                "infinity_cave:deeprock_caverns"
+              ]
+            }
+          },
+          {
+            "condition": "minecraft:inverted",
+            "term": {
+              "condition": "minecraft:entity_scores",
+              "entity": "this",
+              "scores": {
+                "ic.animate": {
+                  "min": -2147483648,
+                  "max": 2147483648
+                }
+              }
+            }
+          }
+        ],
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:mobs/deeprock_caverns/tiers/rare/pre"
+        }
+      },
+      {
+        "requirements": [
+          {
+            "condition": "minecraft:location_check",
+            "predicate": {
+              "biomes": [
+                "infinity_cave:deeprock_caverns"
+              ]
+            }
+          },
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "periodic_tick": 50
+            }
+          }
+        ],
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:mobs/deeprock_caverns/tiers/rare/roll"
+        }
+      },
+      {
+        "requirements": [
+          {
+            "condition": "minecraft:location_check",
+            "predicate": {
+              "biomes": [
+                "infinity_cave:frozen_caves"
+              ]
+            }
+          },
+          {
+            "condition": "minecraft:inverted",
+            "term": {
+              "condition": "minecraft:entity_scores",
+              "entity": "this",
+              "scores": {
+                "ic.animate": {
+                  "min": -2147483648,
+                  "max": 2147483648
+                }
+              }
+            }
+          }
+        ],
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:mobs/frozen_caves/tiers/rare/pre"
+        }
+      },
+      {
+        "requirements": [
+          {
+            "condition": "minecraft:location_check",
+            "predicate": {
+              "biomes": [
+                "infinity_cave:frozen_caves"
+              ]
+            }
+          },
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "periodic_tick": 50
+            }
+          }
+        ],
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:mobs/frozen_caves/tiers/rare/roll"
+        }
+      },
+      {
+        "requirements": [
+          {
+            "condition": "minecraft:location_check",
+            "predicate": {
+              "biomes": [
+                "minecraft:deep_dark"
+              ]
+            }
+          },
+          {
+            "condition": "minecraft:inverted",
+            "term": {
+              "condition": "minecraft:entity_scores",
+              "entity": "this",
+              "scores": {
+                "ic.animate": {
+                  "min": -2147483648,
+                  "max": 2147483648
+                }
+              }
+            }
+          }
+        ],
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:mobs/deep_dark/tiers/rare/pre"
+        }
+      },
+      {
+        "requirements": [
+          {
+            "condition": "minecraft:location_check",
+            "predicate": {
+              "biomes": [
+                "minecraft:deep_dark"
+              ]
+            }
+          },
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "periodic_tick": 50
+            }
+          }
+        ],
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:mobs/deep_dark/tiers/rare/roll"
+        }
+      },
+      {
+        "requirements": [
+          {
+            "condition": "minecraft:location_check",
+            "predicate": {
+              "biomes": [
+                "infinity_cave:mushroom_gorge"
+              ]
+            }
+          },
+          {
+            "condition": "minecraft:inverted",
+            "term": {
+              "condition": "minecraft:entity_scores",
+              "entity": "this",
+              "scores": {
+                "ic.animate": {
+                  "min": -2147483648,
+                  "max": 2147483648
+                }
+              }
+            }
+          }
+        ],
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:mobs/mushroom_gorge/tiers/rare/pre"
+        }
+      },
+      {
+        "requirements": [
+          {
+            "condition": "minecraft:location_check",
+            "predicate": {
+              "biomes": [
+                "infinity_cave:mushroom_gorge"
+              ]
+            }
+          },
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "periodic_tick": 50
+            }
+          }
+        ],
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:mobs/mushroom_gorge/tiers/rare/roll"
+        }
+      },
+      {
+        "effect": {
+          "type": "minecraft:run_function",
+          "function": "infinity_cave:mobs/timer"
+        }
+      }
+    ]
+  }
+}

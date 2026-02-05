@@ -1,0 +1,125 @@
+{
+    "pools": [
+        {
+            "rolls": 1,
+            "entries": [
+          {
+            "type": "minecraft:item",
+            "weight": 2,
+            "name": "minecraft:snowball",
+            "functions": [
+              {
+                "function": "minecraft:set_name",
+                "entity": "this",
+                "name": "Bonding Sword",
+                "target": "item_name"
+              },
+              {
+                "function": "set_components",
+                "components": {
+                  "minecraft:custom_data": {
+                    "infinity_cave": {
+                      "item": "bonding_sword",
+                      "tier": 3,
+                      "cooldown": 10,
+                      "label": "important"
+                    }
+                  },
+                  "enchantments": {
+                    "infinity_cave:zbonding_sword": 1
+                  },
+                  "enchantable": {
+                    "value": 15
+                  },
+                  "rarity":"rare",
+                  "minecraft:repair_cost": 99999,
+                  "max_damage": 1481,
+                  "minecraft:damage": 0,
+                  "minecraft:max_stack_size": 1,
+                  "minecraft:item_model": "infinity_cave:bonding_sword",
+                  "weapon": {
+                    "item_damage_per_attack": 1
+                  },
+                  "use_remainder": {
+                    "id": "command_block",
+                    "components": {
+                      "minecraft:custom_data": {
+                        "infinity_cave": {
+                          "item": "bonding_sword",
+                          "tier": 3,
+                          "cooldown": 10
+                        }
+                      },
+                      "item_model": "infinity_cave:bonding_sword"
+                    }
+                  },
+                  "tooltip_display": {
+                    "hidden_components": [
+                    ] 
+                  },
+                  "use_cooldown": {
+                    "seconds": 10,
+                    "cooldown_group": "ic:bonding_sword"
+                  },
+                  "minecraft:tool": {
+                    "damage_per_block": 2,
+                    "rules": [
+                      {
+                        "blocks": "minecraft:cobweb",
+                        "correct_for_drops": true,
+                        "speed": 15.0
+                      },
+                      {
+                        "blocks": "#minecraft:sword_efficient",
+                        "speed": 1.5
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "function": "minecraft:toggle_tooltips",
+                "toggles": {
+                  "attribute_modifiers": false
+                }
+              },
+              {
+                "function": "minecraft:set_lore",
+                "lore": [
+                  {
+                    "text": "Right Click to heal ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": "4 hearts ",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": " "
+                  },
+                  {
+                    "text": "When in Main Hand:",
+                    "color": "gray",
+                    "italic": false
+                  },
+                  {
+                    "text": " 6.5 Attack Damage ",
+                    "color": "dark_green",
+                    "italic": false
+                  },
+                  {
+                    "text": " 1.6 Attack Speed",
+                    "color": "dark_green",
+                    "italic": false
+                  }
+                ],
+                "mode": "append"
+              }
+            ]
+          }
+            ]
+        }
+    ]
+}

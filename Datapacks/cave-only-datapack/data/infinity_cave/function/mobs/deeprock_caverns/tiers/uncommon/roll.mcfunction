@@ -1,0 +1,1 @@
+function infinity_cave:mobs/deeprock_caverns/tiers/uncommon/set_data with storage infinity_cave:deeprock_caverns data.uncommon

@@ -1,0 +1,49 @@
+[
+  {
+    "function": "minecraft:set_enchantments",
+    "enchantments": {
+      "infinity_cave:technical/ai/_ranged": 1
+    },
+    "add": true,
+    "conditions": [
+      {
+        "condition": "minecraft:entity_properties",
+        "entity": "this",
+        "predicate": {
+          "type": "#infinity_cave:ranged"
+        }
+      }
+    ]
+  },
+  {
+    "function": "minecraft:set_enchantments",
+    "enchantments": {
+      "minecraft:vanishing_curse": 1
+    },
+    "add": true,
+    "conditions": [
+      {
+        "condition": "minecraft:entity_properties",
+        "entity": "this",
+        "predicate": {
+          "type": "allay"
+        }
+      }
+    ]
+  },
+    {
+      "function": "minecraft:enchant_with_levels",
+                "options": "#infinity_cave:valid",
+      "levels": {
+        "min": 14,
+        "max": {
+          "min": 22,
+          "max": {
+            "min": 23,
+            "max": 26
+          }
+        }
+      }
+    }
+  ]
+  

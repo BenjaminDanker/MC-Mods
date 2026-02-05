@@ -1,0 +1,10 @@
+{
+  "criteria": {
+    "tick": {
+      "trigger": "minecraft:tick"
+    }
+  },
+  "rewards": {
+    "function": "infinity_cave:mechanics/weapons/katana/cooldown/mainhand/schedule"
+  }
+}

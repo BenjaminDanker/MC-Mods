@@ -1,0 +1,1 @@
+function infinity_cave:mechanics/rc/amethyst_charge/exp/set with storage ic:cooldown item.components."minecraft:custom_data".infinity_cave.amethyst_charge

@@ -1,0 +1,19 @@
+{
+  "values": [
+    "minecraft:zombie",
+    "minecraft:skeleton",
+    "minecraft:spider",
+    "minecraft:pillager",
+    "minecraft:ravager",
+    "minecraft:slime",
+    "minecraft:wither_skeleton",
+    "minecraft:vindicator",
+    "minecraft:iron_golem",
+    "minecraft:zombified_piglin",
+    "minecraft:drowned",
+    "minecraft:evoker",
+    "minecraft:witch",
+    "minecraft:creeper",
+    "minecraft:ravager"
+  ]
+}

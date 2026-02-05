@@ -1,0 +1,42 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:splash_potion",
+      "components": {
+        "item_model": "infinity_cave:tier_two_potion"
+      }
+    },
+    "title": "Tricky Trials!",
+    "description": [
+      {
+        "text": "Find an Uncommon Trial Spawner (replenishes every 10 minutes!"
+      }
+    ],
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "infinity_cave:display/root",
+  "criteria": {
+    "requirement": {
+      "trigger": "location",
+      "conditions": {
+        "player": [
+          {
+            "condition": "minecraft:location_check",
+            "predicate": {
+              "structures": [
+                "infinity_cave:limestone_grotto/trial_spawners/uncommon",
+                "infinity_cave:sulfide_caves/trial_spawners/uncommon",
+                "infinity_cave:molten_caves/trial_spawners/uncommon",
+                "infinity_cave:mushroom_gorge/trial_spawners/uncommon",
+                "infinity_cave:frozen_caves/trial_spawners/uncommon",
+                "infinity_cave:amethyst_caves/trial_spawners/uncommon"
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}
