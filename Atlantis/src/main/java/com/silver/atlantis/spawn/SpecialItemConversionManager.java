@@ -10,6 +10,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.registry.Registries;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.Identifier;
@@ -27,6 +28,8 @@ import java.util.UUID;
  * Mirrors the Sky-Islands pattern: PlayerInventory.markDirty -> queue player UUID -> rate-limited scan on END_SERVER_TICK.
  */
 public final class SpecialItemConversionManager {
+
+    private static final String MPDS_OCEAN_DEFEATED_TAG = "mpds_ocean_defeated";
 
     private static final Set<UUID> PENDING_PLAYERS = new HashSet<>();
     private static final Map<UUID, Long> NEXT_ALLOWED_TICK = new HashMap<>();
@@ -99,6 +102,8 @@ public final class SpecialItemConversionManager {
             return;
         }
 
+        tryMarkOceanDefeatedOnce(player);
+
         int toConsume = crafts * threshold;
         consumeSpecialDrops(player, toConsume);
 
@@ -120,6 +125,31 @@ public final class SpecialItemConversionManager {
             }
 
             remaining -= give;
+        }
+    }
+
+    private static void tryMarkOceanDefeatedOnce(ServerPlayerEntity player) {
+        if (player == null || player.getCommandTags().contains(MPDS_OCEAN_DEFEATED_TAG)) {
+            return;
+        }
+
+        MinecraftServer server = player.getServer();
+        if (server == null) {
+            return;
+        }
+
+        String playerName = player.getNameForScoreboard();
+        ServerCommandSource source = server.getCommandSource();
+
+        try {
+            int defeated = server.getCommandManager().executeWithPrefix(source, "mpdsdefeated " + playerName + " ocean true");
+            int soulbound = server.getCommandManager().executeWithPrefix(source, "mpdssoulboundmax " + playerName + " 1");
+
+            if (defeated > 0 && soulbound > 0) {
+                player.addCommandTag(MPDS_OCEAN_DEFEATED_TAG);
+            }
+        } catch (Exception e) {
+            AtlantisMod.LOGGER.error("Failed to update MPDS ocean defeated flag for {}", playerName, e);
         }
     }
 

@@ -4,6 +4,7 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.entity.ItemEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
 
 import org.slf4j.Logger;
@@ -18,6 +19,8 @@ import java.util.UUID;
 
 public final class SpecialItemConversionManager {
     private static final Logger LOGGER = LoggerFactory.getLogger(SpecialItemConversionManager.class);
+
+    private static final String MPDS_SKYISLAND_DEFEATED_TAG = "mpds_skyisland_defeated";
 
     private static SpecialItemsConfig config;
 
@@ -95,6 +98,8 @@ public final class SpecialItemConversionManager {
             return false;
         }
 
+        tryMarkSkyIslandDefeatedOnce(player);
+
         int toConsume = crafts * feathersPerArrow;
         consumeSpecialFeathers(player, toConsume);
 
@@ -114,6 +119,31 @@ public final class SpecialItemConversionManager {
         }
 
         return true;
+    }
+
+    private static void tryMarkSkyIslandDefeatedOnce(ServerPlayerEntity player) {
+        if (player == null || player.getCommandTags().contains(MPDS_SKYISLAND_DEFEATED_TAG)) {
+            return;
+        }
+
+        MinecraftServer server = player.getServer();
+        if (server == null) {
+            return;
+        }
+
+        String playerName = player.getNameForScoreboard();
+        ServerCommandSource source = server.getCommandSource();
+
+        try {
+            int defeated = server.getCommandManager().executeWithPrefix(source, "mpdsdefeated " + playerName + " skyisland true");
+            int soulbound = server.getCommandManager().executeWithPrefix(source, "mpdssoulboundmax " + playerName + " 1");
+
+            if (defeated > 0 && soulbound > 0) {
+                player.addCommandTag(MPDS_SKYISLAND_DEFEATED_TAG);
+            }
+        } catch (Exception e) {
+            LOGGER.error("Failed to update MPDS skyisland defeated flag for {}", playerName, e);
+        }
     }
 
     private static int countSpecialFeathers(ServerPlayerEntity player) {
