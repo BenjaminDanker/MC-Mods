@@ -9,6 +9,7 @@
     "EndGatewayBlockMixin",
     "GlassBottleItemMixin",
     "ItemEntityMixin",
+    "EndPortalBlockCollisionMixin",
     "EndPortalBlockMixin",
     "MinecraftServerAccessor",
     "NoiseChunkGeneratorMixin",

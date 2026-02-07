@@ -69,9 +69,13 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Stream;
 
 /**
  * Coordinates the End reset lifecycle. A tick-based state machine keeps the behaviour deterministic and
@@ -94,6 +98,9 @@ public class EndResetManager {
     private boolean resetIntervalElapsed;
     private boolean warningWindowExceeded;
 
+    private static final int VANILLA_END_REDIRECT_DELAY_TICKS = 1;
+    private final Map<UUID, Integer> pendingVanillaEndRedirects = new ConcurrentHashMap<>();
+
     private static final BlockPos END_PLATFORM_BASE = new BlockPos(100, 49, 0);
     private static final Vec3d END_PLATFORM_SPAWN = Vec3d.ofCenter(END_PLATFORM_BASE).add(0.0, 1.0, 0.0);
     private static final float END_PLATFORM_YAW = 180.0F;
@@ -114,9 +121,14 @@ public class EndResetManager {
     }
 
     public void onServerStopped(MinecraftServer server) {
+        RegistryKey<World> activeKeyToKeep = activeEndWorldKey;
         if (persistentState != null) {
+            activeKeyToKeep = persistentState.getActiveDimensionKey();
             persistentState.save(server);
         }
+
+        cleanupStaleEndDimensions(server, activeKeyToKeep);
+        WorldSeedOverrides.clear();
         this.persistentState = null;
         this.countdownActive = false;
         this.warningSent = false;
@@ -129,6 +141,8 @@ public class EndResetManager {
         }
 
         cachedConfig = configManager.getConfig();
+
+        processPendingVanillaEndRedirects(server);
 
         updateResetScheduleFlags();
 
@@ -392,11 +406,63 @@ public class EndResetManager {
             return;
         }
 
-    EnderFightMod.LOGGER.info("Redirecting player {} from {} into custom End {}", player.getName().getString(), destination.getRegistryKey().getValue(), activeEndWorldKey.getValue());
+        UUID playerId = player.getUuid();
+        pendingVanillaEndRedirects.putIfAbsent(playerId, VANILLA_END_REDIRECT_DELAY_TICKS);
+        EnderFightMod.LOGGER.info(
+            "Queued player {} for vanilla End -> custom End redirect in {} tick(s) (target={})",
+            player.getName().getString(),
+            VANILLA_END_REDIRECT_DELAY_TICKS,
+            activeEndWorldKey.getValue()
+        );
+    }
 
-        ensureEndSpawnPlatform(targetWorld);
-        TeleportTarget target = new TeleportTarget(targetWorld, END_PLATFORM_SPAWN, Vec3d.ZERO, END_PLATFORM_YAW, 0.0F, TeleportTarget.NO_OP);
-        player.teleportTo(target);
+    private void processPendingVanillaEndRedirects(MinecraftServer server) {
+        if (pendingVanillaEndRedirects.isEmpty() || server == null) {
+            return;
+        }
+
+        var iterator = pendingVanillaEndRedirects.entrySet().iterator();
+        while (iterator.hasNext()) {
+            var entry = iterator.next();
+            UUID playerId = entry.getKey();
+            int remaining = entry.getValue() == null ? 0 : entry.getValue();
+
+            if (remaining > 0) {
+                entry.setValue(remaining - 1);
+                continue;
+            }
+
+            iterator.remove();
+
+            ServerPlayerEntity player = server.getPlayerManager().getPlayer(playerId);
+            if (player == null) {
+                continue;
+            }
+
+            ServerWorld currentWorld = player.getCommandSource().getWorld();
+            if (currentWorld == null || !World.END.equals(currentWorld.getRegistryKey())) {
+                continue;
+            }
+
+            if (activeEndWorldKey == null || activeEndWorldKey.equals(World.END)) {
+                continue;
+            }
+
+            ServerWorld targetWorld = server.getWorld(activeEndWorldKey);
+            if (targetWorld == null || targetWorld == currentWorld) {
+                continue;
+            }
+
+            EnderFightMod.LOGGER.info(
+                "Redirecting player {} from vanilla End into custom End {} (delayed)",
+                player.getName().getString(),
+                activeEndWorldKey.getValue()
+            );
+
+            ensureEndSpawnPlatform(targetWorld);
+            TeleportTarget target = new TeleportTarget(targetWorld, END_PLATFORM_SPAWN, Vec3d.ZERO, END_PLATFORM_YAW, 0.0F, TeleportTarget.NO_OP);
+            player.teleportTo(target);
+        }
     }
 
     private void handlePlayerJoin(ServerPlayNetworkHandler handler, PacketSender sender, MinecraftServer server) {
@@ -471,6 +537,7 @@ public class EndResetManager {
         }
 
         ServerPlayerEntity player = handler.player;
+        pendingVanillaEndRedirects.remove(player.getUuid());
         RegistryKey<World> worldKey = player.getCommandSource().getWorld().getRegistryKey();
 
         boolean managedEnd = PortalInterceptor.isManagedEndDimension(worldKey);
@@ -662,6 +729,7 @@ public class EndResetManager {
         }
         accessor.getWorlds().remove(oldKey);
         deleteWorldDirectory(server, oldKey);
+        WorldSeedOverrides.removeSeedOverride(oldKey);
 
         activeEndWorldKey = newWorldKey;
         return true;
@@ -815,6 +883,86 @@ public class EndResetManager {
         return null;
     }
 
+    private void cleanupStaleEndDimensions(MinecraftServer server, RegistryKey<World> activeKeyToKeep) {
+        if (server == null) {
+            return;
+        }
+
+        Path worldRoot = server.getSavePath(WorldSavePath.ROOT);
+        Path baseDir = worldRoot.resolve("dimensions").resolve(EnderFightMod.MOD_ID);
+        if (!Files.isDirectory(baseDir)) {
+            return;
+        }
+
+        Path keepDir = null;
+        if (activeKeyToKeep != null) {
+            try {
+                keepDir = DimensionType.getSaveDirectory(activeKeyToKeep, worldRoot);
+            } catch (RuntimeException ex) {
+                EnderFightMod.LOGGER.debug("Unable to resolve active End save directory for {}", activeKeyToKeep.getValue(), ex);
+            }
+        }
+
+        final Path keepDirFinal = keepDir;
+
+        try (Stream<Path> children = Files.list(baseDir)) {
+            List<Path> candidates = children
+                .filter(Files::isDirectory)
+                .filter(path -> path.getFileName().toString().startsWith("daily_end_"))
+                .filter(path -> keepDirFinal == null || !path.normalize().equals(keepDirFinal.normalize()))
+                .toList();
+
+            for (Path candidate : candidates) {
+                deleteDirectoryWithRetries(candidate, 3);
+            }
+
+            if (!candidates.isEmpty()) {
+                EnderFightMod.LOGGER.info("Pruned {} stale Ender-Fight dimension folders under {}", candidates.size(), baseDir);
+            }
+        } catch (IOException ex) {
+            EnderFightMod.LOGGER.warn("Failed scanning Ender-Fight dimension folders under {}", baseDir, ex);
+        }
+    }
+
+    private void deleteDirectoryWithRetries(Path directory, int attempts) {
+        for (int attempt = 1; attempt <= attempts; attempt++) {
+            try {
+                deleteDirectoryRecursively(directory);
+                return;
+            } catch (IOException ex) {
+                if (attempt >= attempts) {
+                    EnderFightMod.LOGGER.error("Failed to delete directory {} after {} attempts", directory, attempts, ex);
+                    return;
+                }
+                try {
+                    Thread.sleep(250L);
+                } catch (InterruptedException interruptedException) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+        }
+    }
+
+    private void deleteDirectoryRecursively(Path directory) throws IOException {
+        if (!Files.exists(directory)) {
+            return;
+        }
+        Files.walkFileTree(directory, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                Files.deleteIfExists(file);
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+                Files.deleteIfExists(dir);
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
+
     protected void deleteWorldDirectory(MinecraftServer server, RegistryKey<World> worldKey) {
         Path worldRoot = server.getSavePath(WorldSavePath.ROOT);
         Path directory = DimensionType.getSaveDirectory(worldKey, worldRoot);
@@ -824,19 +972,7 @@ public class EndResetManager {
         }
 
         try {
-            Files.walkFileTree(directory, new SimpleFileVisitor<>() {
-                @Override
-                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                    Files.delete(file);
-                    return FileVisitResult.CONTINUE;
-                }
-
-                @Override
-                public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
-                    Files.delete(dir);
-                    return FileVisitResult.CONTINUE;
-                }
-            });
+            deleteDirectoryRecursively(directory);
             EnderFightMod.LOGGER.info("Deleted End dimension folder at {}", directory);
         } catch (IOException ex) {
             EnderFightMod.LOGGER.error("Failed to delete End dimension directory {}", directory, ex);

@@ -55,16 +55,17 @@ public abstract class EndPortalBlockMixin {
             inPortalBlock = below.getBlock() instanceof net.minecraft.block.EndPortalBlock;
         }
 
-        // Check if standing in or directly above an End portal block
-        if (inPortalBlock) {
-            EnderFightMod.LOGGER.info("End portal collision detected for player {} at {}", player.getName().getString(), pos);
-            
-            // Try to intercept and redirect
-            if (PortalInterceptor.tryInterceptEndPortal(player)) {
-                EnderFightMod.LOGGER.info("Portal interception successful, redirecting {} away from End portal", player.getName().getString());
-            } else {
-                EnderFightMod.LOGGER.debug("Portal interception did not trigger for {}", player.getName().getString());
-            }
+        boolean shouldAttemptRedirect = PortalInterceptor.onEndPortalPresenceTick(player, inPortalBlock);
+        if (!shouldAttemptRedirect) {
+            return;
+        }
+
+        EnderFightMod.LOGGER.info("End portal entry detected for player {} at {}", player.getName().getString(), pos);
+
+        if (PortalInterceptor.tryInterceptEndPortal(player)) {
+            EnderFightMod.LOGGER.info("Portal interception successful, redirecting {} away from End portal", player.getName().getString());
+        } else {
+            EnderFightMod.LOGGER.debug("Portal interception did not trigger for {}", player.getName().getString());
         }
     }
 }

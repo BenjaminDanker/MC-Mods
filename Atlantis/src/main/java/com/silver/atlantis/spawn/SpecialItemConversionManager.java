@@ -133,7 +133,7 @@ public final class SpecialItemConversionManager {
             return;
         }
 
-        MinecraftServer server = player.getServer();
+        MinecraftServer server = player.getCommandSource().getServer();
         if (server == null) {
             return;
         }
@@ -142,12 +142,9 @@ public final class SpecialItemConversionManager {
         ServerCommandSource source = server.getCommandSource();
 
         try {
-            int defeated = server.getCommandManager().executeWithPrefix(source, "mpdsdefeated " + playerName + " ocean true");
-            int soulbound = server.getCommandManager().executeWithPrefix(source, "mpdssoulboundmax " + playerName + " 1");
-
-            if (defeated > 0 && soulbound > 0) {
-                player.addCommandTag(MPDS_OCEAN_DEFEATED_TAG);
-            }
+            server.getCommandManager().executeWithPrefix(source, "/mpdsdefeated " + playerName + " ocean true");
+            server.getCommandManager().executeWithPrefix(source, "/mpdssoulboundmax " + playerName + " 1");
+            player.addCommandTag(MPDS_OCEAN_DEFEATED_TAG);
         } catch (Exception e) {
             AtlantisMod.LOGGER.error("Failed to update MPDS ocean defeated flag for {}", playerName, e);
         }

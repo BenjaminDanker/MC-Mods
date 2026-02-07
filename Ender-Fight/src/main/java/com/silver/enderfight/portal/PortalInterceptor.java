@@ -2,6 +2,7 @@ package com.silver.enderfight.portal;
 
 import net.fabricmc.fabric.api.entity.event.v1.ServerEntityWorldChangeEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
@@ -28,9 +29,17 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class PortalInterceptor {
     private static ConfigManager configManager;
     private static final long REDIRECT_COOLDOWN_MS = 3_000L;
+    private static final long EXIT_REQUIRED_OUTSIDE_MS = 1_000L;
     private static final String END_EXIT_TAG = "ender_exit";
     private static final Map<UUID, Long> recentRedirects = new ConcurrentHashMap<>();
     private static final Set<UUID> suppressedRedirects = ConcurrentHashMap.newKeySet();
+
+    // End portal collision gating: require a clean re-entry after being outside for a moment.
+    private static final Map<UUID, Boolean> lastEndPortalPresence = new ConcurrentHashMap<>();
+    private static final Set<UUID> endPortalPresenceInitialized = ConcurrentHashMap.newKeySet();
+    private static final Set<UUID> endPortalExitRequired = ConcurrentHashMap.newKeySet();
+    private static final Map<UUID, Long> endPortalOutsideSince = new ConcurrentHashMap<>();
+
     private static volatile boolean trackingLookupAttempted;
     private static Class<?> portalTrackingClass;
     private static Method trackingSetLastMethod;
@@ -58,6 +67,16 @@ public final class PortalInterceptor {
 
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> recentRedirects.clear());
 
+        ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
+            lastEndPortalPresence.clear();
+            endPortalPresenceInitialized.clear();
+            endPortalExitRequired.clear();
+            endPortalOutsideSince.clear();
+            suppressedRedirects.clear();
+        });
+
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> clearEndPortalTracking(handler.getPlayer()));
+
         ServerEntityWorldChangeEvents.AFTER_PLAYER_CHANGE_WORLD.register((player, origin, destination) -> {
             EnderFightMod.LOGGER.info("AFTER_PLAYER_CHANGE_WORLD event fired: {} {} -> {} (player now at {}, {}, {})", 
                 player.getName().getString(), 
@@ -79,6 +98,86 @@ public final class PortalInterceptor {
             EnderFightMod.LOGGER.info("Processing portal teleport for {}", player.getName().getString());
             handlePortalTeleport(player, origin.getRegistryKey(), destination.getRegistryKey(), eventConfig);
         });
+    }
+
+    private static void clearEndPortalTracking(ServerPlayerEntity player) {
+        if (player == null) {
+            return;
+        }
+        UUID playerId = player.getUuid();
+        lastEndPortalPresence.remove(playerId);
+        endPortalPresenceInitialized.remove(playerId);
+        endPortalExitRequired.remove(playerId);
+        endPortalOutsideSince.remove(playerId);
+        recentRedirects.remove(playerId);
+        suppressedRedirects.remove(playerId);
+    }
+
+    /**
+     * Tracks whether a player is currently in an End portal block and returns true only when this tick
+     * represents a clean outside -> inside transition that should be eligible for redirect.
+     *
+     * Behaviour:
+     * - If the first observed state is already "inside portal", mark the player as requiring an exit.
+     * - While exit is required, the player must remain outside the portal for 1 second before redirects
+     *   can trigger on the next entry.
+     */
+    public static boolean onEndPortalPresenceTick(ServerPlayerEntity player, boolean inPortalBlock) {
+        if (player == null) {
+            return false;
+        }
+
+        UUID playerId = player.getUuid();
+        long now = System.currentTimeMillis();
+
+        boolean initialized = endPortalPresenceInitialized.contains(playerId);
+        boolean wasInPortal = Boolean.TRUE.equals(lastEndPortalPresence.get(playerId));
+
+        if (!initialized) {
+            endPortalPresenceInitialized.add(playerId);
+            lastEndPortalPresence.put(playerId, inPortalBlock);
+            if (inPortalBlock) {
+                endPortalExitRequired.add(playerId);
+                endPortalOutsideSince.remove(playerId);
+                EnderFightMod.LOGGER.info(
+                    "Player {} detected inside End portal on first tick; requiring exit for {}ms before redirect",
+                    player.getName().getString(),
+                    EXIT_REQUIRED_OUTSIDE_MS
+                );
+            }
+            return false;
+        }
+
+        if (inPortalBlock) {
+            lastEndPortalPresence.put(playerId, true);
+            endPortalOutsideSince.remove(playerId);
+            if (!wasInPortal) {
+                // Enter edge
+                return !endPortalExitRequired.contains(playerId);
+            }
+            return false;
+        }
+
+        // Outside portal
+        lastEndPortalPresence.put(playerId, false);
+
+        if (endPortalExitRequired.contains(playerId)) {
+            Long since = endPortalOutsideSince.get(playerId);
+            if (since == null) {
+                endPortalOutsideSince.put(playerId, now);
+            } else if (now - since >= EXIT_REQUIRED_OUTSIDE_MS) {
+                endPortalExitRequired.remove(playerId);
+                endPortalOutsideSince.remove(playerId);
+                EnderFightMod.LOGGER.info(
+                    "Player {} exited End portal long enough; redirect eligible on next entry",
+                    player.getName().getString()
+                );
+            }
+        } else {
+            endPortalOutsideSince.remove(playerId);
+        }
+
+        return false;
     }
 
     private static void installPortalHook(MinecraftServer server, EndControlConfig config) {
@@ -111,6 +210,27 @@ public final class PortalInterceptor {
                     player.getName().getString());
             return false;
         }
+
+        // If this player is mid-handoff via MCServerPortals (e.g. logging in while standing in a portal),
+        // do not intercept the collision-based End exit detection or they can bounce back immediately.
+        try {
+            Class<?> serverPortalsModClass = Class.forName("de.michiruf.serverportals.ServerPortalsMod");
+            UUID playerId = player.getUuid();
+
+            boolean skipForPending = invokeServerPortalsBoolean(serverPortalsModClass, "hasPendingPortalTeleport", playerId);
+            boolean skipForQueued = invokeServerPortalsBoolean(serverPortalsModClass, "hasQueuedLoginHandoff", playerId);
+            if (skipForPending || skipForQueued) {
+                EnderFightMod.LOGGER.debug(
+                        "Skipping End portal collision redirect for {} - MCServerPortals handoff pending={}, queued={}",
+                        player.getName().getString(),
+                        skipForPending,
+                        skipForQueued
+                );
+                return false;
+            }
+        } catch (Exception e) {
+            EnderFightMod.LOGGER.debug("Could not check MCServerPortals pending/queued state (collision): {}", e.getMessage());
+        }
         
         // Check cooldown
         long now = System.currentTimeMillis();
@@ -137,29 +257,36 @@ public final class PortalInterceptor {
     protected static boolean shouldRedirect(RegistryKey<World> origin, RegistryKey<World> destination) {
         boolean originManagedEnd = isManagedEndDimension(origin);
         boolean destinationOverworld = World.OVERWORLD.equals(destination);
-        boolean originCustomEnd = isCustomEndDimension(origin);
-        boolean destinationVanillaEnd = World.END.equals(destination);
-        boolean originVanillaEnd = World.END.equals(origin);
-
-        boolean exitToOverworld = originManagedEnd && destinationOverworld;
-        boolean exitCustomToVanilla = originCustomEnd && destinationVanillaEnd;
-        boolean vanillaExitToOverworld = originVanillaEnd && destinationOverworld;
-
-        boolean shouldRedirect = exitToOverworld || exitCustomToVanilla || vanillaExitToOverworld;
+        boolean shouldRedirect = originManagedEnd && destinationOverworld;
 
         EnderFightMod.LOGGER.info(
-            "shouldRedirect check: {} -> {} = {} (originManagedEnd={}, destinationOverworld={}, originCustomEnd={}, destinationVanillaEnd={}, vanillaExit={})",
+            "shouldRedirect check: {} -> {} = {} (originManagedEnd={}, destinationOverworld={})",
             origin.getValue(),
             destination.getValue(),
             shouldRedirect,
             originManagedEnd,
-            destinationOverworld,
-            originCustomEnd,
-            destinationVanillaEnd,
-            vanillaExitToOverworld
+            destinationOverworld
         );
 
         return shouldRedirect;
+    }
+
+    public static boolean isEndPortalExitRequired(ServerPlayerEntity player) {
+        if (player == null) {
+            return false;
+        }
+        return endPortalExitRequired.contains(player.getUuid());
+    }
+
+    public static boolean isPortalRedirectEnabled() {
+        if (configManager == null) {
+            return false;
+        }
+        EndControlConfig cfg = configManager.getConfig();
+        if (cfg == null || !cfg.portalRedirectEnabled()) {
+            return false;
+        }
+        return normalizeCommand(cfg.portalRedirectCommand()) != null;
     }
 
     /**

@@ -126,7 +126,7 @@ public final class SpecialItemConversionManager {
             return;
         }
 
-        MinecraftServer server = player.getServer();
+        MinecraftServer server = player.getCommandSource().getServer();
         if (server == null) {
             return;
         }
@@ -135,12 +135,9 @@ public final class SpecialItemConversionManager {
         ServerCommandSource source = server.getCommandSource();
 
         try {
-            int defeated = server.getCommandManager().executeWithPrefix(source, "mpdsdefeated " + playerName + " skyisland true");
-            int soulbound = server.getCommandManager().executeWithPrefix(source, "mpdssoulboundmax " + playerName + " 1");
-
-            if (defeated > 0 && soulbound > 0) {
-                player.addCommandTag(MPDS_SKYISLAND_DEFEATED_TAG);
-            }
+            server.getCommandManager().executeWithPrefix(source, "/mpdsdefeated " + playerName + " skyisland true");
+            server.getCommandManager().executeWithPrefix(source, "/mpdssoulboundmax " + playerName + " 1");
+            player.addCommandTag(MPDS_SKYISLAND_DEFEATED_TAG);
         } catch (Exception e) {
             LOGGER.error("Failed to update MPDS skyisland defeated flag for {}", playerName, e);
         }
