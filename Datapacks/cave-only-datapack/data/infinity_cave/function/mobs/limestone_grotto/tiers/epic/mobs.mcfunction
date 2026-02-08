@@ -83,12 +83,12 @@ data modify storage infinity_cave:limestone_grotto data.epic set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.melee\",\"epic\"",\
       "name": "Drowned",\
       "enchant": 4,\
@@ -259,12 +259,12 @@ data modify storage infinity_cave:limestone_grotto data.epic set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.ranged\",\"epic\"",\
       "name": "Skeleton",\
       "enchant": 4,\
@@ -378,12 +378,12 @@ data modify storage infinity_cave:limestone_grotto data.epic set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.melee\",\"epic\"",\
       "name": "Spider",\
       "enchant": 4,\
@@ -490,12 +490,12 @@ data modify storage infinity_cave:limestone_grotto data.epic set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.melee\",\"epic\"",\
       "name": "Vindicator",\
       "enchant": 4,\
@@ -616,12 +616,12 @@ data modify storage infinity_cave:limestone_grotto data.epic set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 1,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.melee\",\"epic\"",\
       "name": "Ninja",\
       "enchant": 4,\
@@ -744,9 +744,9 @@ data modify storage infinity_cave:limestone_grotto data.epic set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
       "passengers": [\
@@ -868,9 +868,9 @@ data modify storage infinity_cave:limestone_grotto data.epic set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
       "passengers": [{}], \
@@ -980,12 +980,12 @@ data modify storage infinity_cave:limestone_grotto data.epic set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.melee\",\"epic\"",\
       "name": "Slime",\
       "enchant": 1,\

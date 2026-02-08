@@ -121,12 +121,12 @@ data modify storage infinity_cave:amethyst_caves data.rare set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.melee\",\"rare\"",\
       "name": "Zombie",\
       "enchant": 3,\
@@ -320,12 +320,12 @@ data modify storage infinity_cave:amethyst_caves data.rare set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.ranged\",\"rare\"",\
       "name": "Skeleton",\
       "enchant": 3,\
@@ -462,12 +462,12 @@ data modify storage infinity_cave:amethyst_caves data.rare set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.melee\",\"rare\"",\
       "name": "Spider",\
       "enchant": 3,\
@@ -724,12 +724,12 @@ data modify storage infinity_cave:amethyst_caves data.rare set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.ranged\",\"rare\"",\
       "name": "Pillager",\
       "enchant": 3,\
@@ -859,12 +859,12 @@ data modify storage infinity_cave:amethyst_caves data.rare set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.melee\",\"rare\"",\
       "name": "Iron Golem",\
       "enchant": 3,\
@@ -994,12 +994,12 @@ data modify storage infinity_cave:amethyst_caves data.rare set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.melee\",\"rare\"",\
       "name": "Enderman",\
       "enchant": 3,\
@@ -1131,12 +1131,12 @@ data modify storage infinity_cave:amethyst_caves data.rare set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.melee\",\"rare\"",\
       "name": "Sludge",\
       "enchant": 3,\
@@ -1250,9 +1250,9 @@ data modify storage infinity_cave:amethyst_caves data.rare set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
       "passengers": [\
@@ -1407,12 +1407,12 @@ data modify storage infinity_cave:amethyst_caves data.rare set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.ranged\",\"rare\"",\
       "name": "Chemist",\
       "enchant": 3,\
@@ -1544,12 +1544,12 @@ data modify storage infinity_cave:amethyst_caves data.rare set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.ranged\",\"ic.magician\",\"rare\"",\
       "name": "Magician",\
       "enchant": 3,\

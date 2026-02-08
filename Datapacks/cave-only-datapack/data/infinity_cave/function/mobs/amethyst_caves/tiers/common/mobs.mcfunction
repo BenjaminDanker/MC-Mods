@@ -113,12 +113,12 @@ data modify storage infinity_cave:amethyst_caves data.common set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.melee\",\"common\"",\
       "name": "Zombie",\
       "enchant": 1,\
@@ -304,12 +304,12 @@ data modify storage infinity_cave:amethyst_caves data.common set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.ranged\",\"common\"",\
       "name": "Skeleton",\
       "enchant": 1,\
@@ -438,12 +438,12 @@ data modify storage infinity_cave:amethyst_caves data.common set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.melee\",\"common\"",\
       "name": "Spider",\
       "enchant": 1,\
@@ -670,12 +670,12 @@ data modify storage infinity_cave:amethyst_caves data.common set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.ranged\",\"common\"",\
       "name": "Pillager",\
       "enchant": 1,\
@@ -797,12 +797,12 @@ data modify storage infinity_cave:amethyst_caves data.common set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.melee\",\"common\"",\
       "name": "Iron Golem",\
       "enchant": 1,\
@@ -924,12 +924,12 @@ data modify storage infinity_cave:amethyst_caves data.common set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.melee\",\"common\"",\
       "name": "Enderman",\
       "enchant": 1,\
@@ -1052,12 +1052,12 @@ data modify storage infinity_cave:amethyst_caves data.common set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.melee\",\"common\"",\
       "name": "Sludge",\
       "enchant": 1,\
@@ -1171,9 +1171,9 @@ data modify storage infinity_cave:amethyst_caves data.common set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
       "passengers": [\
@@ -1306,12 +1306,12 @@ data modify storage infinity_cave:amethyst_caves data.common set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.ranged\",\"common\"",\
       "name": "Chemist",\
       "enchant": 1,\

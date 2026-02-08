@@ -99,12 +99,12 @@ data modify storage infinity_cave:frozen_caves data.legendary set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.ranged\",\"legendary\"",\
       "name": "Vex",\
       "enchant": 4,\
@@ -219,9 +219,9 @@ data modify storage infinity_cave:frozen_caves data.legendary set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
       "passengers": [\
@@ -359,9 +359,9 @@ data modify storage infinity_cave:frozen_caves data.legendary set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
       "passengers": [\
@@ -569,12 +569,12 @@ data modify storage infinity_cave:frozen_caves data.legendary set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.ranged\",\"legendary\"",\
       "name": "Ice Archer",\
       "enchant": 1,\

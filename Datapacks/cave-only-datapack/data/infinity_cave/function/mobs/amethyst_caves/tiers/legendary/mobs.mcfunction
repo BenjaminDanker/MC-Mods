@@ -122,12 +122,12 @@ data modify storage infinity_cave:amethyst_caves data.legendary set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.melee\",\"legendary\"",\
       "name": "Enderman",\
       "enchant": 5,\
@@ -259,12 +259,12 @@ data modify storage infinity_cave:amethyst_caves data.legendary set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.melee\",\"legendary\"",\
       "name": "Sludge",\
       "enchant": 5,\
@@ -378,9 +378,9 @@ data modify storage infinity_cave:amethyst_caves data.legendary set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
       "passengers": [\
@@ -535,12 +535,12 @@ data modify storage infinity_cave:amethyst_caves data.legendary set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.ranged\",\"legendary\"",\
       "name": "Chemist",\
       "enchant": 5,\
@@ -672,12 +672,12 @@ data modify storage infinity_cave:amethyst_caves data.legendary set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.ranged\",\"ic.magician\",\"legendary\"",\
       "name": "Magician",\
       "enchant": 5,\

@@ -98,12 +98,12 @@ data modify storage infinity_cave:deeprock_caverns data.common set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.melee\",\"common\"",\
       "name": "Zombie",\
       "enchant": 1,\
@@ -274,12 +274,12 @@ data modify storage infinity_cave:deeprock_caverns data.common set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.ranged\",\"common\"",\
       "name": "Skeleton",\
       "enchant": 1,\
@@ -393,12 +393,12 @@ data modify storage infinity_cave:deeprock_caverns data.common set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.melee\",\"common\"",\
       "name": "Spider",\
       "enchant": 1,\
@@ -569,12 +569,12 @@ data modify storage infinity_cave:deeprock_caverns data.common set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.ranged\",\"common\"",\
       "name": "Pillager",\
       "enchant": 1,\
@@ -681,12 +681,12 @@ data modify storage infinity_cave:deeprock_caverns data.common set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.melee\",\"common\"",\
       "name": "Iron Golem",\
       "enchant": 1,\
@@ -793,12 +793,12 @@ data modify storage infinity_cave:deeprock_caverns data.common set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.melee\",\"common\"",\
       "name": "Wither Skeleton",\
       "enchant": 1,\
@@ -905,12 +905,12 @@ data modify storage infinity_cave:deeprock_caverns data.common set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.melee\",\"common\"",\
       "name": "Vindicator",\
       "enchant": 1,\
@@ -1031,12 +1031,12 @@ data modify storage infinity_cave:deeprock_caverns data.common set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 1,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.melee\",\"common\"",\
       "name": "Ninja",\
       "enchant": 1,\
@@ -1143,12 +1143,12 @@ data modify storage infinity_cave:deeprock_caverns data.common set value {\
       ],\
       "effects": [{\
         "id": "minecraft:invisibility",\
-        "amplifier": "1b",\
+        "amplifier": 1,\
         "duration": 0,\
-        "show_particles": "0b"\
+        "show_particles": false\
       }],\
       "silent": 0,\
-      "passengers": {}, \
+      "passengers": [], \
       "tags": "\"ic.ability\",\"ic.melee\",\"common\"",\
       "name": "Cave Spider",\
       "enchant": 1,\
