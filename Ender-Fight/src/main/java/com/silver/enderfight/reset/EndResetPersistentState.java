@@ -113,14 +113,23 @@ public final class EndResetPersistentState {
     public static EndResetPersistentState load(MinecraftServer server) {
         Path path = resolveStatePath(server);
         if (!Files.exists(path)) {
+            EnderFightMod.LOGGER.info("No End reset state file at {}; using defaults", path);
             return new EndResetPersistentState();
         }
 
         try (BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
             SerializableState saved = GSON.fromJson(reader, SerializableState.class);
             if (saved == null) {
+                EnderFightMod.LOGGER.warn("End reset state file {} was empty/unreadable JSON; using defaults", path);
                 return new EndResetPersistentState();
             }
+            EnderFightMod.LOGGER.info(
+                "Loaded End reset state from {} (lastResetEpochMillis={}, activeDimensionId={}, currentEndSeed={})",
+                path,
+                saved.lastResetEpochMillis,
+                saved.activeDimensionId,
+                saved.currentEndSeed
+            );
             return new EndResetPersistentState(saved.lastResetEpochMillis, saved.currentEndSeed, saved.activeDimensionId, saved.offlineEndPlayers);
         } catch (IOException | JsonParseException ex) {
             EnderFightMod.LOGGER.warn("Unable to read End reset state from {}; using defaults", path, ex);

@@ -117,6 +117,9 @@ public class EndResetManager {
         this.persistentState = EndResetPersistentState.load(server);
         this.cachedConfig = configManager.getConfig();
         this.activeEndWorldKey = persistentState.getActiveDimensionKey();
+        // NOTE: Do not delete dimension folders on startup.
+        // By the time SERVER_STARTED fires, Minecraft has already created ServerWorld instances
+        // for every registered dimension; deleting their folders here causes save failures on stop.
         ensureActiveEndWorld(server);
     }
 
@@ -863,7 +866,7 @@ public class EndResetManager {
     private RegistryKey<World> createNextDimensionKey(long seed) {
         String timestamp = DIMENSION_KEY_FORMATTER.format(Instant.now());
         String suffix = Long.toUnsignedString(seed, 16);
-    Identifier id = Identifier.of(EnderFightMod.MOD_ID, "daily_end_" + timestamp + "_" + suffix);
+        Identifier id = Identifier.of(EnderFightMod.MOD_ID, "daily_end_" + timestamp + "_" + suffix);
         return RegistryKey.of(RegistryKeys.WORLD, id);
     }
 
@@ -896,52 +899,97 @@ public class EndResetManager {
 
         Path keepDir = null;
         if (activeKeyToKeep != null) {
-            try {
-                keepDir = DimensionType.getSaveDirectory(activeKeyToKeep, worldRoot);
-            } catch (RuntimeException ex) {
-                EnderFightMod.LOGGER.debug("Unable to resolve active End save directory for {}", activeKeyToKeep.getValue(), ex);
+            Identifier activeId = activeKeyToKeep.getValue();
+            if (activeId != null && EnderFightMod.MOD_ID.equals(activeId.getNamespace())) {
+                // Avoid DimensionType#getSaveDirectory here to reduce risk of path mismatches on Windows.
+                keepDir = baseDir.resolve(activeId.getPath());
             }
         }
 
-        final Path keepDirFinal = keepDir;
+        final Path keepDirFinal = keepDir == null ? null : keepDir.toAbsolutePath().normalize();
 
         try (Stream<Path> children = Files.list(baseDir)) {
-            List<Path> candidates = children
+            List<Path> childrenList = children
                 .filter(Files::isDirectory)
                 .filter(path -> path.getFileName().toString().startsWith("daily_end_"))
-                .filter(path -> keepDirFinal == null || !path.normalize().equals(keepDirFinal.normalize()))
                 .toList();
 
+            // If we cannot resolve the active directory reliably, do NOT delete everything.
+            // Keep the newest folder instead to avoid forcing an End regen every restart.
+            Path newestToKeep = null;
+            if (keepDirFinal == null && !childrenList.isEmpty()) {
+                newestToKeep = childrenList.stream()
+                    .max((a, b) -> {
+                        try {
+                            return Files.getLastModifiedTime(a).compareTo(Files.getLastModifiedTime(b));
+                        } catch (IOException ex) {
+                            // Fall back to lexicographic ordering when timestamps are unavailable.
+                            return a.getFileName().toString().compareTo(b.getFileName().toString());
+                        }
+                    })
+                    .orElse(null);
+            }
+
+            final Path newestToKeepFinal = newestToKeep == null ? null : newestToKeep.toAbsolutePath().normalize();
+
+            List<Path> candidates = childrenList.stream()
+                .filter(path -> {
+                    Path normalized = path.toAbsolutePath().normalize();
+                    if (keepDirFinal != null && normalized.equals(keepDirFinal)) {
+                        return false;
+                    }
+                    return newestToKeepFinal == null || !normalized.equals(newestToKeepFinal);
+                })
+                .toList();
+
+            int deleted = 0;
+            int failed = 0;
             for (Path candidate : candidates) {
-                deleteDirectoryWithRetries(candidate, 3);
+                boolean success = deleteDirectoryWithRetries(candidate, 3);
+                if (success) {
+                    deleted++;
+                } else {
+                    failed++;
+                }
             }
 
             if (!candidates.isEmpty()) {
-                EnderFightMod.LOGGER.info("Pruned {} stale Ender-Fight dimension folders under {}", candidates.size(), baseDir);
+                EnderFightMod.LOGGER.info(
+                    "Pruned Ender-Fight stale dimension folders under {} (attempted={}, deleted={}, failed={})",
+                    baseDir,
+                    candidates.size(),
+                    deleted,
+                    failed
+                );
             }
         } catch (IOException ex) {
             EnderFightMod.LOGGER.warn("Failed scanning Ender-Fight dimension folders under {}", baseDir, ex);
         }
     }
 
-    private void deleteDirectoryWithRetries(Path directory, int attempts) {
+    private boolean deleteDirectoryWithRetries(Path directory, int attempts) {
         for (int attempt = 1; attempt <= attempts; attempt++) {
             try {
                 deleteDirectoryRecursively(directory);
-                return;
+                if (!Files.exists(directory)) {
+                    return true;
+                }
+                throw new IOException("Directory still exists after deletion attempt: " + directory);
             } catch (IOException ex) {
                 if (attempt >= attempts) {
                     EnderFightMod.LOGGER.error("Failed to delete directory {} after {} attempts", directory, attempts, ex);
-                    return;
+                    return false;
                 }
                 try {
                     Thread.sleep(250L);
                 } catch (InterruptedException interruptedException) {
                     Thread.currentThread().interrupt();
-                    return;
+                    return false;
                 }
             }
         }
+
+        return !Files.exists(directory);
     }
 
     private void deleteDirectoryRecursively(Path directory) throws IOException {
@@ -971,11 +1019,9 @@ public class EndResetManager {
             return;
         }
 
-        try {
-            deleteDirectoryRecursively(directory);
+        boolean deleted = deleteDirectoryWithRetries(directory, 3);
+        if (deleted && !Files.exists(directory)) {
             EnderFightMod.LOGGER.info("Deleted End dimension folder at {}", directory);
-        } catch (IOException ex) {
-            EnderFightMod.LOGGER.error("Failed to delete End dimension directory {}", directory, ex);
         }
     }
 
