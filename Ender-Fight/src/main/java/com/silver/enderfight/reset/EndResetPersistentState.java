@@ -61,6 +61,13 @@ public final class EndResetPersistentState {
         return id == null ? World.END : RegistryKey.of(RegistryKeys.WORLD, id);
     }
 
+    public void setActiveDimensionKey(RegistryKey<World> dimensionKey) {
+        if (dimensionKey == null) {
+            return;
+        }
+        this.activeDimensionId = dimensionKey.getValue().toString();
+    }
+
     public void updateOnReset(long epochMillis, long newSeed, RegistryKey<World> dimensionKey) {
         this.lastResetEpochMillis = epochMillis;
         this.currentEndSeed = newSeed;

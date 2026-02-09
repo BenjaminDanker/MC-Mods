@@ -67,6 +67,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -85,6 +86,9 @@ public class EndResetManager {
     private static final int WALL_CLOCK_CHECK_INTERVAL_TICKS = 20;
     private static final DateTimeFormatter DIMENSION_KEY_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmmss").withZone(ZoneOffset.UTC);
     private static final String DRAGON_BOSS_BAR_FIELD_NAME = "field_13119"; // obfuscated getter for EnderDragonFight#bossBar
+
+    private static final Identifier STABLE_END_ID = Identifier.of(EnderFightMod.MOD_ID, "daily_end_active");
+    private static final RegistryKey<World> STABLE_END_WORLD_KEY = RegistryKey.of(RegistryKeys.WORLD, STABLE_END_ID);
 
     private final ConfigManager configManager;
 
@@ -113,6 +117,33 @@ public class EndResetManager {
         ServerPlayConnectionEvents.DISCONNECT.register(this::handlePlayerDisconnect);
     }
 
+    public void onServerStarting(MinecraftServer server) {
+        if (server == null) {
+            return;
+        }
+
+        // Important: SERVER_STARTING fires before worlds are fully created.
+        // This is the safest place to remove stale dimensions so Minecraft won't recreate their
+        // empty directories or attempt to save them later.
+        EndResetPersistentState state = EndResetPersistentState.load(server);
+
+        // If the previous implementation used timestamped daily_end_* ids, migrate the active one to a
+        // single stable id so we can truly retire old dimensions instead of accumulating persistent defs.
+        migrateActiveEndToStableDirectory(server, state);
+
+        RegistryKey<World> activeKeyToKeep = state.getActiveDimensionKey();
+
+        // If any prior build produced duplicate entries in the DIMENSION registry's raw-id tables,
+        // Minecraft can crash on shutdown while serializing registries. Rebuild the tables up front.
+        MutableRegistry<DimensionOptions> dimensionRegistry = locateDimensionRegistry(server);
+        if (dimensionRegistry != null) {
+            rebuildDimensionRegistryIndices(dimensionRegistry);
+        }
+
+        unregisterStaleEndDimensions(server, activeKeyToKeep);
+        cleanupStaleEndDimensions(server, activeKeyToKeep);
+    }
+
     public void onServerStarted(MinecraftServer server) {
         this.persistentState = EndResetPersistentState.load(server);
         this.cachedConfig = configManager.getConfig();
@@ -123,13 +154,31 @@ public class EndResetManager {
         ensureActiveEndWorld(server);
     }
 
-    public void onServerStopped(MinecraftServer server) {
+    public void onServerStopping(MinecraftServer server) {
+        if (server == null) {
+            return;
+        }
+
         RegistryKey<World> activeKeyToKeep = activeEndWorldKey;
         if (persistentState != null) {
             activeKeyToKeep = persistentState.getActiveDimensionKey();
             persistentState.save(server);
         }
 
+        // Remove old dimension definitions and loaded worlds so Minecraft does not keep recreating
+        // empty daily_end_* folders and trying to save them.
+        unregisterStaleEndDimensions(server, activeKeyToKeep);
+    }
+
+    public void onServerStopped(MinecraftServer server) {
+        RegistryKey<World> activeKeyToKeep = activeEndWorldKey;
+        if (persistentState != null) {
+            activeKeyToKeep = persistentState.getActiveDimensionKey();
+            // State is already persisted during SERVER_STOPPING; keep this as a last-resort fallback.
+            persistentState.save(server);
+        }
+
+        // Filesystem cleanup is safe after worlds have been closed.
         cleanupStaleEndDimensions(server, activeKeyToKeep);
         WorldSeedOverrides.clear();
         this.persistentState = null;
@@ -715,14 +764,43 @@ public class EndResetManager {
 
         DimensionOptions newOptions = new DimensionOptions(template.dimensionTypeEntry(), generator);
         RegistryKey<World> newWorldKey = createNextDimensionKey(newSeed);
-        registerDimensionOptions(dimensionRegistry, newWorldKey, newOptions);
 
         MinecraftServerAccessor accessor = (MinecraftServerAccessor) server;
+
+        // In-place rebuild when using a stable world key.
+        if (newWorldKey.equals(oldKey)) {
+            try {
+                oldWorld.close();
+            } catch (IOException ex) {
+                EnderFightMod.LOGGER.warn("Encountered error while closing old End world", ex);
+            }
+            accessor.getWorlds().remove(oldKey);
+            WorldSeedOverrides.removeSeedOverride(oldKey);
+
+            // Replace the dimension definition with the new generator WITHOUT remove+add.
+            // Remove+add leaves behind stale rawIdToEntry entries and causes Duplicate key crashes on shutdown.
+            replaceDimensionOptionsInPlace(dimensionRegistry, oldKey, newOptions);
+
+            // Remove old chunk data so the new seed takes effect.
+            deleteWorldDirectory(server, oldKey);
+
+            ServerWorld newWorld = instantiateEndWorld(server, accessor, oldKey, newOptions, newSeed);
+            EnderFightMod.LOGGER.info("Rebuilt End world {} with requested seed {}, actual world seed: {}",
+                oldKey.getValue(), newSeed, newWorld.getSeed());
+            accessor.getWorlds().put(oldKey, newWorld);
+            initializeEndDragonFight(newWorld);
+
+            activeEndWorldKey = oldKey;
+            return true;
+        }
+
+        // Legacy path: different keys.
+        registerDimensionOptions(dimensionRegistry, newWorldKey, newOptions);
+
         ServerWorld newWorld = instantiateEndWorld(server, accessor, newWorldKey, newOptions, newSeed);
-        EnderFightMod.LOGGER.info("Created End world {} with requested seed {}, actual world seed: {}", 
+        EnderFightMod.LOGGER.info("Created End world {} with requested seed {}, actual world seed: {}",
             newWorldKey.getValue(), newSeed, newWorld.getSeed());
         accessor.getWorlds().put(newWorldKey, newWorld);
-        
         initializeEndDragonFight(newWorld);
 
         try {
@@ -731,11 +809,266 @@ public class EndResetManager {
             EnderFightMod.LOGGER.warn("Encountered error while closing old End world", ex);
         }
         accessor.getWorlds().remove(oldKey);
+        unregisterDimensionOptions(dimensionRegistry, oldKey);
         deleteWorldDirectory(server, oldKey);
         WorldSeedOverrides.removeSeedOverride(oldKey);
 
         activeEndWorldKey = newWorldKey;
         return true;
+    }
+
+    private void unregisterStaleEndDimensions(MinecraftServer server, RegistryKey<World> activeKeyToKeep) {
+        MutableRegistry<DimensionOptions> dimensionRegistry = locateDimensionRegistry(server);
+        if (dimensionRegistry == null) {
+            return;
+        }
+
+        String keepPath = null;
+        if (activeKeyToKeep != null && activeKeyToKeep.getValue() != null && EnderFightMod.MOD_ID.equals(activeKeyToKeep.getValue().getNamespace())) {
+            keepPath = activeKeyToKeep.getValue().getPath();
+        }
+
+        final String keepPathFinal = keepPath;
+
+        List<RegistryKey<World>> toRemove = new ArrayList<>();
+        if (dimensionRegistry instanceof SimpleRegistry<DimensionOptions> simpleRegistry) {
+            @SuppressWarnings("unchecked")
+            SimpleRegistryAccessor<DimensionOptions> accessor = (SimpleRegistryAccessor<DimensionOptions>) (Object) simpleRegistry;
+
+            for (Object keyObj : accessor.getKeyToEntry().keySet()) {
+                if (!(keyObj instanceof RegistryKey<?> dimKey)) {
+                    continue;
+                }
+
+                Identifier id = dimKey.getValue();
+                if (id == null) {
+                    continue;
+                }
+                if (!EnderFightMod.MOD_ID.equals(id.getNamespace())) {
+                    continue;
+                }
+                String path = id.getPath();
+                if (!path.startsWith("daily_end_")) {
+                    continue;
+                }
+                if (keepPathFinal != null && keepPathFinal.equals(path)) {
+                    continue;
+                }
+                toRemove.add(RegistryKey.of(RegistryKeys.WORLD, id));
+            }
+        } else {
+            EnderFightMod.LOGGER.warn("Dimension registry is not a SimpleRegistry; cannot unregister stale dimension defs safely");
+            return;
+        }
+
+        if (toRemove.isEmpty()) {
+            return;
+        }
+
+        int removedWorlds = 0;
+        int removedDimensions = 0;
+
+        MinecraftServerAccessor accessor = (MinecraftServerAccessor) server;
+        for (RegistryKey<World> key : toRemove) {
+            ServerWorld world = accessor.getWorlds().get(key);
+            if (world != null) {
+                try {
+                    world.close();
+                } catch (IOException ex) {
+                    EnderFightMod.LOGGER.debug("Error closing stale End world {} during shutdown", key.getValue(), ex);
+                }
+                accessor.getWorlds().remove(key);
+                WorldSeedOverrides.removeSeedOverride(key);
+                removedWorlds++;
+            }
+
+            if (unregisterDimensionOptions(dimensionRegistry, key)) {
+                removedDimensions++;
+            }
+        }
+
+        // Make the DIMENSION registry internally consistent after removals.
+        rebuildDimensionRegistryIndices(dimensionRegistry);
+
+        EnderFightMod.LOGGER.info(
+            "Unregistered stale Ender-Fight dimensions (candidates={}, removedWorlds={}, removedDimensionDefs={})",
+            toRemove.size(),
+            removedWorlds,
+            removedDimensions
+        );
+    }
+
+    private boolean unregisterDimensionOptions(MutableRegistry<DimensionOptions> registry, RegistryKey<World> worldKey) {
+        if (registry == null || worldKey == null) {
+            return false;
+        }
+
+        RegistryKey<DimensionOptions> dimensionKey = RegistryKey.of(RegistryKeys.DIMENSION, worldKey.getValue());
+        if (!registry.contains(dimensionKey)) {
+            return false;
+        }
+
+        if (registry instanceof SimpleRegistry<DimensionOptions> simpleRegistry) {
+            @SuppressWarnings("unchecked")
+            SimpleRegistryAccessor<DimensionOptions> accessor = (SimpleRegistryAccessor<DimensionOptions>) (Object) simpleRegistry;
+            boolean wasFrozen = accessor.getFrozen();
+            if (wasFrozen) {
+                accessor.setFrozen(false);
+            }
+            try {
+                // SimpleRegistry has no public removal API in this version; remove the entry from the backing maps.
+                @SuppressWarnings("unchecked")
+                Map<RegistryKey<DimensionOptions>, RegistryEntry.Reference<DimensionOptions>> keyToEntry =
+                    (Map<RegistryKey<DimensionOptions>, RegistryEntry.Reference<DimensionOptions>>) (Map<?, ?>) accessor.getKeyToEntry();
+
+                @SuppressWarnings("unchecked")
+                Map<Identifier, RegistryEntry.Reference<DimensionOptions>> idToEntry =
+                    (Map<Identifier, RegistryEntry.Reference<DimensionOptions>>) (Map<?, ?>) accessor.getIdToEntry();
+
+                RegistryEntry.Reference<DimensionOptions> removed = keyToEntry.remove(dimensionKey);
+                idToEntry.remove(worldKey.getValue());
+
+                if (removed != null) {
+                    DimensionOptions value = removed.value();
+                    int rawId = accessor.getEntryToRawId().getInt(value);
+                    accessor.getEntryToRawId().removeInt(value);
+                    accessor.getValueToEntry().remove(value);
+                    Map<DimensionOptions, RegistryEntry.Reference<DimensionOptions>> intrusive = accessor.getIntrusiveValueToEntry();
+                    if (intrusive != null) {
+                        intrusive.remove(value);
+                    }
+                }
+            } finally {
+                if (wasFrozen) {
+                    accessor.setFrozen(true);
+                }
+            }
+            return !registry.contains(dimensionKey);
+        }
+
+        // Non-SimpleRegistry implementations cannot be safely mutated here.
+        return false;
+    }
+
+    private void replaceDimensionOptionsInPlace(MutableRegistry<DimensionOptions> registry,
+                                                RegistryKey<World> worldKey,
+                                                DimensionOptions newOptions) {
+        if (registry == null || worldKey == null || newOptions == null) {
+            return;
+        }
+
+        RegistryKey<DimensionOptions> dimensionKey = RegistryKey.of(RegistryKeys.DIMENSION, worldKey.getValue());
+        if (!(registry instanceof SimpleRegistry<DimensionOptions> simpleRegistry)) {
+            // Fallback: best-effort. (Should not happen in normal dedicated server runtime.)
+            unregisterDimensionOptions(registry, worldKey);
+            registerDimensionOptions(registry, worldKey, newOptions);
+            return;
+        }
+
+        @SuppressWarnings("unchecked")
+        SimpleRegistryAccessor<DimensionOptions> accessor = (SimpleRegistryAccessor<DimensionOptions>) (Object) simpleRegistry;
+        boolean wasFrozen = accessor.getFrozen();
+        if (wasFrozen) {
+            accessor.setFrozen(false);
+        }
+        try {
+            @SuppressWarnings("unchecked")
+            Map<RegistryKey<DimensionOptions>, RegistryEntry.Reference<DimensionOptions>> keyToEntry =
+                (Map<RegistryKey<DimensionOptions>, RegistryEntry.Reference<DimensionOptions>>) (Map<?, ?>) accessor.getKeyToEntry();
+
+            RegistryEntry.Reference<DimensionOptions> existing = keyToEntry.get(dimensionKey);
+            if (existing == null) {
+                // Not present yet.
+                registerDimensionOptions(registry, worldKey, newOptions);
+                return;
+            }
+
+            DimensionOptions oldValue = existing.value();
+
+            // Update the reference value (no new entries created).
+            SimpleRegistryAccessor.invokeSetValue(newOptions, existing);
+
+            // Keep maps consistent.
+            accessor.getValueToEntry().remove(oldValue);
+            accessor.getValueToEntry().put(newOptions, existing);
+            Map<DimensionOptions, RegistryEntry.Reference<DimensionOptions>> intrusive = accessor.getIntrusiveValueToEntry();
+            if (intrusive != null) {
+                intrusive.remove(oldValue);
+                intrusive.put(newOptions, existing);
+            }
+
+            int rawId = accessor.getEntryToRawId().getInt(oldValue);
+            accessor.getEntryToRawId().removeInt(oldValue);
+            accessor.getEntryToRawId().put(newOptions, rawId);
+        } finally {
+            if (wasFrozen) {
+                accessor.setFrozen(true);
+            }
+        }
+    }
+
+    private void rebuildDimensionRegistryIndices(MutableRegistry<DimensionOptions> registry) {
+        if (!(registry instanceof SimpleRegistry<DimensionOptions> simpleRegistry)) {
+            return;
+        }
+
+        @SuppressWarnings("unchecked")
+        SimpleRegistryAccessor<DimensionOptions> accessor = (SimpleRegistryAccessor<DimensionOptions>) (Object) simpleRegistry;
+
+        boolean wasFrozen = accessor.getFrozen();
+        if (wasFrozen) {
+            accessor.setFrozen(false);
+        }
+
+        try {
+            // Rebuild the raw-id tables from keyToEntry, which contains exactly one entry per key.
+            @SuppressWarnings("unchecked")
+            Map<RegistryKey<DimensionOptions>, RegistryEntry.Reference<DimensionOptions>> keyToEntry =
+                (Map<RegistryKey<DimensionOptions>, RegistryEntry.Reference<DimensionOptions>>) (Map<?, ?>) accessor.getKeyToEntry();
+
+            ArrayList<RegistryEntry.Reference<DimensionOptions>> entries = new ArrayList<>(keyToEntry.values());
+            entries.sort(Comparator.comparing(ref -> {
+                if (ref == null) {
+                    return "";
+                }
+                return String.valueOf(ref.registryKey().getValue());
+            }));
+
+            accessor.getRawIdToEntry().clear();
+            accessor.getEntryToRawId().clear();
+            accessor.getValueToEntry().clear();
+
+            @SuppressWarnings("unchecked")
+            Map<Identifier, RegistryEntry.Reference<DimensionOptions>> idToEntry =
+                (Map<Identifier, RegistryEntry.Reference<DimensionOptions>>) (Map<?, ?>) accessor.getIdToEntry();
+            idToEntry.clear();
+
+            Map<DimensionOptions, RegistryEntry.Reference<DimensionOptions>> intrusive = accessor.getIntrusiveValueToEntry();
+            if (intrusive != null) {
+                intrusive.clear();
+            }
+
+            for (int rawId = 0; rawId < entries.size(); rawId++) {
+                RegistryEntry.Reference<DimensionOptions> ref = entries.get(rawId);
+                if (ref == null) {
+                    continue;
+                }
+
+                accessor.getRawIdToEntry().add(ref);
+
+                DimensionOptions value = ref.value();
+                accessor.getEntryToRawId().put(value, rawId);
+                accessor.getValueToEntry().put(value, ref);
+                if (intrusive != null) {
+                    intrusive.put(value, ref);
+                }
+                idToEntry.put(ref.registryKey().getValue(), ref);
+            }
+        } finally {
+            if (wasFrozen) {
+                accessor.setFrozen(true);
+            }
+        }
     }
 
     private NoiseChunkGenerator createEndChunkGenerator(MinecraftServer server, long seed) {
@@ -864,10 +1197,76 @@ public class EndResetManager {
     }
 
     private RegistryKey<World> createNextDimensionKey(long seed) {
-        String timestamp = DIMENSION_KEY_FORMATTER.format(Instant.now());
-        String suffix = Long.toUnsignedString(seed, 16);
-        Identifier id = Identifier.of(EnderFightMod.MOD_ID, "daily_end_" + timestamp + "_" + suffix);
-        return RegistryKey.of(RegistryKeys.WORLD, id);
+        // Use a stable custom dimension id so old dimensions do not accumulate in the world's dynamic
+        // registry (which causes Minecraft to recreate empty folders every boot).
+        return STABLE_END_WORLD_KEY;
+    }
+
+    private RegistryKey<World> normalizeActiveEndKey(RegistryKey<World> key) {
+        if (key == null) {
+            return STABLE_END_WORLD_KEY;
+        }
+
+        Identifier id = key.getValue();
+        if (id == null) {
+            return STABLE_END_WORLD_KEY;
+        }
+
+        if (EnderFightMod.MOD_ID.equals(id.getNamespace()) && id.getPath().startsWith("daily_end_")) {
+            return STABLE_END_WORLD_KEY;
+        }
+
+        return key;
+    }
+
+    private void migrateActiveEndToStableDirectory(MinecraftServer server, EndResetPersistentState state) {
+        if (server == null || state == null) {
+            return;
+        }
+
+        RegistryKey<World> active = state.getActiveDimensionKey();
+        if (active == null || active.getValue() == null) {
+            return;
+        }
+
+        Identifier id = active.getValue();
+        if (!EnderFightMod.MOD_ID.equals(id.getNamespace())) {
+            return;
+        }
+        if (!id.getPath().startsWith("daily_end_")) {
+            return;
+        }
+        if (STABLE_END_ID.equals(id)) {
+            return;
+        }
+
+        Path worldRoot = server.getSavePath(WorldSavePath.ROOT);
+        Path baseDir = worldRoot.resolve("dimensions").resolve(EnderFightMod.MOD_ID);
+        Path from = baseDir.resolve(id.getPath());
+        Path to = baseDir.resolve(STABLE_END_ID.getPath());
+        if (!Files.exists(from)) {
+            // Nothing to migrate on disk; still normalize the active key.
+            state.setActiveDimensionKey(STABLE_END_WORLD_KEY);
+            state.save(server);
+            return;
+        }
+        if (Files.exists(to)) {
+            EnderFightMod.LOGGER.warn("Stable End directory {} already exists; not migrating {}", to, from);
+            state.setActiveDimensionKey(STABLE_END_WORLD_KEY);
+            state.save(server);
+            return;
+        }
+
+        try {
+            Files.createDirectories(baseDir);
+            Files.move(from, to);
+            EnderFightMod.LOGGER.info("Migrated active End directory {} -> {}", from, to);
+            state.setActiveDimensionKey(STABLE_END_WORLD_KEY);
+            state.save(server);
+        } catch (IOException ex) {
+            EnderFightMod.LOGGER.warn("Failed migrating active End directory {} -> {}", from, to, ex);
+            return;
+        }
     }
 
     private MutableRegistry<DimensionOptions> locateDimensionRegistry(MinecraftServer server) {

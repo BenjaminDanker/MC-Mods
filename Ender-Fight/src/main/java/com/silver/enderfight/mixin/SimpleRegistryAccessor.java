@@ -1,6 +1,7 @@
 package com.silver.enderfight.mixin;
 
 import it.unimi.dsi.fastutil.objects.Reference2IntMap;
+import it.unimi.dsi.fastutil.objects.ObjectList;
 import net.minecraft.registry.SimpleRegistry;
 import net.minecraft.registry.entry.RegistryEntry;
 import org.jetbrains.annotations.Nullable;
@@ -12,11 +13,20 @@ import java.util.Map;
 
 @Mixin(SimpleRegistry.class)
 public interface SimpleRegistryAccessor<T> {
+    @Accessor("keyToEntry")
+    Map<?, RegistryEntry.Reference<T>> getKeyToEntry();
+
+    @Accessor("idToEntry")
+    Map<?, RegistryEntry.Reference<T>> getIdToEntry();
+
     @Accessor("valueToEntry")
     Map<T, RegistryEntry.Reference<T>> getValueToEntry();
 
     @Accessor("entryToRawId")
     Reference2IntMap<T> getEntryToRawId();
+
+    @Accessor("rawIdToEntry")
+    ObjectList<RegistryEntry.Reference<T>> getRawIdToEntry();
 
     @Accessor("frozen")
     boolean getFrozen();

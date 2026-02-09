@@ -34,7 +34,9 @@ public final class EnderFightMod implements ModInitializer {
         endResetManager = new EndResetManager(configManager);
 
         // Register lifecycle hooks once so subsystem setup is centralised.
+        ServerLifecycleEvents.SERVER_STARTING.register(server -> endResetManager.onServerStarting(server));
         ServerLifecycleEvents.SERVER_STARTED.register(server -> endResetManager.onServerStarted(server));
+        ServerLifecycleEvents.SERVER_STOPPING.register(server -> endResetManager.onServerStopping(server));
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> endResetManager.onServerStopped(server));
         ServerTickEvents.END_SERVER_TICK.register(this::handleServerTick);
 
