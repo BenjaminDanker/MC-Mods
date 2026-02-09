@@ -48,16 +48,29 @@ public final class ConfigManager {
             range = defaults.portalRedirectRange();
         }
 
-        String command = loaded.portalRedirectCommand();
-        if (command == null || command.isBlank()) {
-            command = defaults.portalRedirectCommand();
-            WardenFightMod.LOGGER.info("Config missing portal redirect command; defaulting to '{}'", command);
+        String targetServer = loaded.portalRedirectTargetServer();
+        if (targetServer == null || targetServer.isBlank()) {
+            targetServer = defaults.portalRedirectTargetServer();
+            WardenFightMod.LOGGER.info("Config missing portal redirect target server; defaulting to '{}'", targetServer);
+        }
+
+        String secret = loaded.portalRequestSecret();
+        if (secret == null || secret.isBlank()) {
+            secret = defaults.portalRequestSecret();
+            WardenFightMod.LOGGER.info("Config missing portal request secret; defaulting to '{}'", secret);
+        }
+
+        String targetPortal = loaded.portalRedirectTargetPortal();
+        if (targetPortal == null) {
+            targetPortal = "";
         }
 
         if (enabled != loaded.portalRedirectEnabled()
             || range != loaded.portalRedirectRange()
-            || (loaded.portalRedirectCommand() == null || loaded.portalRedirectCommand().isBlank())) {
-            WardenControlConfig updated = new WardenControlConfig(enabled, range, command);
+            || (loaded.portalRedirectTargetServer() == null || loaded.portalRedirectTargetServer().isBlank())
+            || (loaded.portalRequestSecret() == null || loaded.portalRequestSecret().isBlank())
+            || loaded.portalRedirectTargetPortal() == null) {
+            WardenControlConfig updated = new WardenControlConfig(enabled, range, targetServer, targetPortal, secret);
             this.config = updated;
             save();
             return updated;

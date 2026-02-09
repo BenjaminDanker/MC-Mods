@@ -3,6 +3,10 @@ package com.silver.witherfight.beacon;
 import com.silver.witherfight.WitherFightMod;
 import com.silver.witherfight.config.ConfigManager;
 import com.silver.witherfight.config.WitherControlConfig;
+import com.silver.wakeuplobby.portal.PortalRequestPayload;
+import com.silver.wakeuplobby.portal.PortalRequestPayloadCodec;
+import com.silver.wakeuplobby.portal.PortalRequestSigner;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.block.BeaconBlock;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
@@ -86,30 +90,32 @@ public final class BeaconRedirector {
     }
 
     private static boolean executeRedirect(ServerPlayerEntity player, WitherControlConfig config, ServerWorld world) {
-        String command = normalizeCommand(config.portalRedirectCommand());
-        if (command == null) {
-            WitherFightMod.LOGGER.warn("Beacon redirect command missing; skipping redirect for {}", player.getName().getString());
+        String targetServer = config.portalRedirectTargetServer();
+        if (targetServer == null || targetServer.isBlank()) {
+            WitherFightMod.LOGGER.warn("Beacon redirect target server missing; skipping redirect for {}", player.getName().getString());
             return false;
         }
 
-        var server = world.getServer();
-
-        String targetName = extractServerName(command);
-        if (targetName == null) {
-            targetName = "another server";
+        String secret = config.portalRequestSecret();
+        if (secret == null || secret.isBlank()) {
+            WitherFightMod.LOGGER.warn("portalRequestSecret is blank; cannot send portal request for {}", player.getName().getString());
+            return false;
         }
-        player.sendMessage(Text.literal("Redirecting you to " + targetName + "..."), false);
 
-        String finalCommand = command.startsWith("/") ? command : "/" + command;
-        server.execute(() -> {
-            try {
-                WitherFightMod.LOGGER.info("Executing beacon redirect command '{}' for {}", finalCommand, player.getName().getString());
-                server.getCommandManager().executeWithPrefix(player.getCommandSource(), finalCommand);
-            } catch (Exception ex) {
-                WitherFightMod.LOGGER.error("Error executing beacon redirect command '{}'", finalCommand, ex);
-            }
-        });
+        player.sendMessage(Text.literal("Redirecting you to " + targetServer + "..."), false);
 
+        String destinationPortal = config.portalRedirectTargetPortal();
+        if (destinationPortal == null) {
+            destinationPortal = "";
+        }
+
+        long issuedAtMs = System.currentTimeMillis();
+        String nonce = PortalRequestPayloadCodec.generateNonce();
+        byte[] unsigned = PortalRequestPayloadCodec.encodeUnsigned(player.getUuid(), targetServer, destinationPortal, issuedAtMs, nonce);
+        byte[] signature = PortalRequestSigner.hmacSha256(secret, unsigned);
+        byte[] signed = PortalRequestPayloadCodec.encodeSigned(player.getUuid(), targetServer, destinationPortal, issuedAtMs, nonce, signature);
+        ServerPlayNetworking.send(player, new PortalRequestPayload(signed));
+        WitherFightMod.LOGGER.info("Sent beacon redirect portal request for {} -> {}", player.getName().getString(), targetServer);
         return true;
     }
 
@@ -124,43 +130,8 @@ public final class BeaconRedirector {
         WitherFightMod.LOGGER.info("Removed beacon at {} after redirecting {}", beaconPos, player.getName().getString());
     }
 
-    private static String normalizeCommand(String configured) {
-        if (configured == null) {
-            return null;
-        }
 
-        String trimmed = configured.trim();
-        if (trimmed.isEmpty()) {
-            return null;
-        }
-        return trimmed;
-    }
 
-    private static String extractServerName(String command) {
-        if (command == null || command.isEmpty()) {
-            return null;
-        }
 
-        int firstQuote = command.indexOf('"');
-        if (firstQuote >= 0) {
-            int secondQuote = command.indexOf('"', firstQuote + 1);
-            if (secondQuote > firstQuote) {
-                return extractServerName(command.substring(firstQuote + 1, secondQuote));
-            }
-        }
 
-        String normalized = command;
-        if (normalized.startsWith("/")) {
-            normalized = normalized.substring(1);
-        }
-
-        String[] parts = normalized.trim().split("\\s+");
-        if (parts.length >= 3 && "wl".equals(parts[0]) && "portal".equals(parts[1])) {
-            return parts[2];
-        }
-        if (parts.length == 1) {
-            return parts[0];
-        }
-        return null;
-    }
 }

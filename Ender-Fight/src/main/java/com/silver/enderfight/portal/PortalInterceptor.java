@@ -1,7 +1,11 @@
 package com.silver.enderfight.portal;
 
+import com.silver.wakeuplobby.portal.PortalRequestPayload;
+import com.silver.wakeuplobby.portal.PortalRequestPayloadCodec;
+import com.silver.wakeuplobby.portal.PortalRequestSigner;
 import net.fabricmc.fabric.api.entity.event.v1.ServerEntityWorldChangeEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.server.MinecraftServer;
@@ -30,7 +34,7 @@ public final class PortalInterceptor {
     private static ConfigManager configManager;
     private static final long REDIRECT_COOLDOWN_MS = 3_000L;
     private static final long EXIT_REQUIRED_OUTSIDE_MS = 1_000L;
-    private static final String END_EXIT_TAG = "ender_exit";
+    private static final String END_EXIT_TAG = "";
     private static final Map<UUID, Long> recentRedirects = new ConcurrentHashMap<>();
     private static final Set<UUID> suppressedRedirects = ConcurrentHashMap.newKeySet();
 
@@ -53,7 +57,7 @@ public final class PortalInterceptor {
         
         EnderFightMod.LOGGER.info("PortalInterceptor.register() called");
         EnderFightMod.LOGGER.info("Portal redirect enabled: {}", config.portalRedirectEnabled());
-        EnderFightMod.LOGGER.info("Portal redirect command: {}", config.portalRedirectCommand());
+        EnderFightMod.LOGGER.info("Portal redirect target server: {}", config.portalRedirectTargetServer());
 
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             EndControlConfig startConfig = configManager.getConfig();
@@ -181,13 +185,13 @@ public final class PortalInterceptor {
     }
 
     private static void installPortalHook(MinecraftServer server, EndControlConfig config) {
-        String command = normalizeCommand(config.portalRedirectCommand());
-        if (command == null) {
-            EnderFightMod.LOGGER.warn("Portal interception enabled but no redirect command or target server configured");
+        String targetServer = config.portalRedirectTargetServer();
+        if (targetServer == null || targetServer.isBlank()) {
+            EnderFightMod.LOGGER.warn("Portal interception enabled but no redirect target server configured");
             return;
         }
 
-        EnderFightMod.LOGGER.info("Portal interception active; End exit portals will execute '{}'", command);
+        EnderFightMod.LOGGER.info("Portal interception active; End exit portals will request proxy transfer to '{}'", targetServer);
     }
 
     /**
@@ -286,21 +290,32 @@ public final class PortalInterceptor {
         if (cfg == null || !cfg.portalRedirectEnabled()) {
             return false;
         }
-        return normalizeCommand(cfg.portalRedirectCommand()) != null;
+        String targetServer = cfg.portalRedirectTargetServer();
+        return targetServer != null && !targetServer.isBlank();
     }
 
     /**
-     * Sends the player to the configured upstream server by executing the portal redirect command.
-     * Mirrors the exact approach used by MCServerPortals.
+     * Sends the player to the configured upstream server by requesting a signed transfer via WakeUpLobby.
      */
     protected static boolean redirectPlayer(Entity entity, EndControlConfig config) {
-        String command = normalizeCommand(config.portalRedirectCommand());
-        if (command == null) {
-            EnderFightMod.LOGGER.warn("Portal redirect command missing; skipping redirect for {}", entity.getName().getString());
+        String targetServer = config.portalRedirectTargetServer();
+        if (targetServer == null || targetServer.isBlank()) {
+            EnderFightMod.LOGGER.warn("Portal redirect target server missing; skipping redirect for {}", entity.getName().getString());
             return false;
         }
 
-        EnderFightMod.LOGGER.info("Redirect triggered for {} using command '{}'", entity.getName().getString(), command);
+        String secret = config.portalRequestSecret();
+        if (secret == null || secret.isBlank()) {
+            EnderFightMod.LOGGER.warn("portalRequestSecret is blank; cannot send portal request for {}", entity.getName().getString());
+            return false;
+        }
+
+        String destinationPortal = config.portalRedirectTargetPortal();
+        if (destinationPortal == null) {
+            destinationPortal = "";
+        }
+
+        EnderFightMod.LOGGER.info("Redirect triggered for {} -> {} via signed portal request", entity.getName().getString(), targetServer);
 
         // Check if entity is a ServerPlayerEntity
         if (!(entity instanceof net.minecraft.server.network.ServerPlayerEntity player)) {
@@ -308,61 +323,22 @@ public final class PortalInterceptor {
             return false;
         }
 
-        var server = entity.getEntityWorld().getServer();
-        if (server == null) {
-            EnderFightMod.LOGGER.warn("Unable to redirect {}; server handle missing", entity.getName().getString());
+        player.sendMessage(Text.literal("Redirecting you to " + targetServer + "..."), false);
+
+        try {
+            long issuedAtMs = System.currentTimeMillis();
+            String nonce = PortalRequestPayloadCodec.generateNonce();
+            byte[] unsigned = PortalRequestPayloadCodec.encodeUnsigned(player.getUuid(), targetServer.trim(), destinationPortal, issuedAtMs, nonce);
+            byte[] signature = PortalRequestSigner.hmacSha256(secret.trim(), unsigned);
+            byte[] signed = PortalRequestPayloadCodec.encodeSigned(player.getUuid(), targetServer.trim(), destinationPortal, issuedAtMs, nonce, signature);
+            ServerPlayNetworking.send(player, new PortalRequestPayload(signed));
+            EnderFightMod.LOGGER.info("Sent Ender-Fight portal request for {} -> {}", player.getName().getString(), targetServer);
+        } catch (Exception ex) {
+            EnderFightMod.LOGGER.error("Failed sending Ender-Fight portal request for {}", player.getName().getString(), ex);
             return false;
         }
 
-        String displayName = extractServerName(command);
-        if (displayName == null) {
-            displayName = "next server";
-        }
-        player.sendMessage(Text.literal("Redirecting you to " + displayName + "..."), false);
-        EnderFightMod.LOGGER.info("Queued command execution on main thread for {}", entity.getName().getString());
-
-        // Execute the command on the server's main thread to ensure proper context
-        server.execute(() -> {
-            try {
-                String commandWithSlash = command.startsWith("/") ? command : "/" + command;
-                EnderFightMod.LOGGER.info("Executing command on main thread: {}", commandWithSlash);
-                server.getCommandManager().executeWithPrefix(player.getCommandSource(), commandWithSlash);
-                EnderFightMod.LOGGER.info("Command execution completed for portal redirect");
-            } catch (Exception e) {
-                EnderFightMod.LOGGER.error("Error executing portal command: {}", command, e);
-            }
-        });
-
         return true;
-    }
-    
-    /**
-     * Extracts the target server name from the configured command.
-     * Expected formats: "wl portal SERVER" or "wl portal SERVER TOKEN"
-     */
-    private static String extractServerName(String command) {
-        if (command == null || command.isEmpty()) {
-            return null;
-        }
-        
-        String normalized = command.trim();
-        if (normalized.startsWith("/")) {
-            normalized = normalized.substring(1);
-        }
-        
-        String[] parts = normalized.split("\\s+");
-        
-        // Format: "wl portal <server> [token]"
-        if (parts.length >= 3 && "wl".equals(parts[0]) && "portal".equals(parts[1])) {
-            return parts[2];
-        }
-        
-        // Fallback: if format is just "<server>", use it directly
-        if (parts.length == 1) {
-            return parts[0];
-        }
-        
-        return null;
     }
     
     /**
@@ -422,20 +398,6 @@ public final class PortalInterceptor {
             return;
         }
         suppressedRedirects.add(player.getUuid());
-    }
-
-    private static String normalizeCommand(String configuredCommand) {
-        if (configuredCommand == null) {
-            return null;
-        }
-        String command = configuredCommand.trim();
-        if (command.isEmpty()) {
-            return null;
-        }
-        if (!command.startsWith("/")) {
-            command = "/" + command;
-        }
-        return command;
     }
 
     private static void markPortalExit(ServerPlayerEntity player) {

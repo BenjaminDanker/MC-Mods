@@ -7,6 +7,7 @@ package com.silver.enderfight.config;
 public final class EndControlConfig {
     public static final int DEFAULT_CUSTOM_BREATH_TRACKING_USES = 5;
     public static final String DEFAULT_CUSTOM_BREATH_ID = "special_dragon_breath";
+    public static final String DEFAULT_PORTAL_REQUEST_SECRET = "silver";
 
     public static EndControlConfig createDefault() {
         return new EndControlConfig(
@@ -17,8 +18,10 @@ public final class EndControlConfig {
             true,
             DEFAULT_CUSTOM_BREATH_TRACKING_USES,
             DEFAULT_CUSTOM_BREATH_ID,
-            true,
-            "proxycommand \"wl portal destion_server token\""
+            false,
+            "",
+            "",
+            DEFAULT_PORTAL_REQUEST_SECRET
         );
     }
 
@@ -30,7 +33,9 @@ public final class EndControlConfig {
     private final int customBreathTrackingUsesDefault;
     private final String customBreathId;
     private final boolean portalRedirectEnabled;
-    private final String portalRedirectCommand;
+    private final String portalRedirectTargetServer;
+    private final String portalRedirectTargetPortal;
+    private final String portalRequestSecret;
 
     public EndControlConfig(
         double resetIntervalHours,
@@ -41,7 +46,9 @@ public final class EndControlConfig {
         int customBreathTrackingUsesDefault,
         String customBreathId,
         boolean portalRedirectEnabled,
-        String portalRedirectCommand
+        String portalRedirectTargetServer,
+        String portalRedirectTargetPortal,
+        String portalRequestSecret
     ) {
         this.resetIntervalHours = resetIntervalHours;
         this.resetWarningSeconds = resetWarningSeconds;
@@ -51,7 +58,9 @@ public final class EndControlConfig {
         this.customBreathTrackingUsesDefault = customBreathTrackingUsesDefault;
         this.customBreathId = customBreathId;
         this.portalRedirectEnabled = portalRedirectEnabled;
-        this.portalRedirectCommand = portalRedirectCommand;
+        this.portalRedirectTargetServer = portalRedirectTargetServer;
+        this.portalRedirectTargetPortal = portalRedirectTargetPortal;
+        this.portalRequestSecret = portalRequestSecret;
     }
 
     public double resetIntervalHours() {
@@ -86,8 +95,16 @@ public final class EndControlConfig {
         return portalRedirectEnabled;
     }
 
-    public String portalRedirectCommand() {
-        return portalRedirectCommand;
+    public String portalRedirectTargetServer() {
+        return portalRedirectTargetServer;
+    }
+
+    public String portalRedirectTargetPortal() {
+        return portalRedirectTargetPortal;
+    }
+
+    public String portalRequestSecret() {
+        return portalRequestSecret;
     }
 
     public long resetIntervalTicks() {

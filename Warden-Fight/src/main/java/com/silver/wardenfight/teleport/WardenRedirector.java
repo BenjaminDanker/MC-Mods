@@ -3,6 +3,10 @@ package com.silver.wardenfight.teleport;
 import com.silver.wardenfight.WardenFightMod;
 import com.silver.wardenfight.config.ConfigManager;
 import com.silver.wardenfight.config.WardenControlConfig;
+import com.silver.wakeuplobby.portal.PortalRequestPayload;
+import com.silver.wakeuplobby.portal.PortalRequestPayloadCodec;
+import com.silver.wakeuplobby.portal.PortalRequestSigner;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
@@ -35,12 +39,6 @@ public final class WardenRedirector {
         int range = Math.max(1, config.portalRedirectRange());
         WardenFightMod.LOGGER.info("Warden died at {} in world {}; evaluating nearby players", deathPos, world.getRegistryKey().getValue());
 
-        String command = normalizeCommand(config.portalRedirectCommand());
-        if (command == null) {
-            WardenFightMod.LOGGER.warn("Warden redirect command missing; skipping redirect");
-            return;
-        }
-
         List<ServerPlayerEntity> targets = world.getPlayers(isWithinSquare(deathPos, range));
         WardenFightMod.LOGGER.info("Found {} eligible players within {} blocks of {}", targets.size(), range, deathPos);
         if (targets.isEmpty()) {
@@ -53,26 +51,39 @@ public final class WardenRedirector {
             return;
         }
 
-        String finalCommand = command.startsWith("/") ? command : "/" + command;
-        String targetName = extractServerName(command);
-        if (targetName == null) {
-            targetName = "another server";
+        final String targetServer = config.portalRedirectTargetServer();
+        if (targetServer == null || targetServer.isBlank()) {
+            WardenFightMod.LOGGER.warn("Warden redirect target server missing; skipping");
+            return;
         }
+
+        final String secret = config.portalRequestSecret();
+        if (secret == null || secret.isBlank()) {
+            WardenFightMod.LOGGER.warn("portalRequestSecret is blank; cannot send portal requests");
+            return;
+        }
+
+        String destinationPortalCandidate = config.portalRedirectTargetPortal();
+        final String destinationPortal = destinationPortalCandidate != null ? destinationPortalCandidate : "";
 
         for (ServerPlayerEntity player : targets) {
             if (player.isRemoved()) {
                 continue;
             }
 
-            player.sendMessage(Text.literal("Warden defeated! Redirecting you to " + targetName + "..."), false);
-            ServerPlayerEntity commandPlayer = player;
-            WardenFightMod.LOGGER.info("Queueing warden redirect for {} using '{}'", commandPlayer.getName().getString(), finalCommand);
+            player.sendMessage(Text.literal("Warden defeated! Redirecting you to " + targetServer + "..."), false);
+            ServerPlayerEntity requestPlayer = player;
             server.execute(() -> {
                 try {
-                    WardenFightMod.LOGGER.info("Executing warden redirect command '{}' for {}", finalCommand, commandPlayer.getName().getString());
-                    server.getCommandManager().executeWithPrefix(commandPlayer.getCommandSource(), finalCommand);
+                    long issuedAtMs = System.currentTimeMillis();
+                    String nonce = PortalRequestPayloadCodec.generateNonce();
+                    byte[] unsigned = PortalRequestPayloadCodec.encodeUnsigned(requestPlayer.getUuid(), targetServer, destinationPortal, issuedAtMs, nonce);
+                    byte[] signature = PortalRequestSigner.hmacSha256(secret, unsigned);
+                    byte[] signed = PortalRequestPayloadCodec.encodeSigned(requestPlayer.getUuid(), targetServer, destinationPortal, issuedAtMs, nonce, signature);
+                    ServerPlayNetworking.send(requestPlayer, new PortalRequestPayload(signed));
+                    WardenFightMod.LOGGER.info("Sent warden redirect portal request for {} -> {}", requestPlayer.getName().getString(), targetServer);
                 } catch (Exception ex) {
-                    WardenFightMod.LOGGER.error("Error executing warden redirect command '{}'", finalCommand, ex);
+                    WardenFightMod.LOGGER.error("Error sending warden redirect portal request for {}", requestPlayer.getName().getString(), ex);
                 }
             });
         }
@@ -88,45 +99,5 @@ public final class WardenRedirector {
             int dy = Math.abs(player.getBlockY() - center.getY());
             return dx <= range && dz <= range && dy <= range;
         };
-    }
-
-    private static String normalizeCommand(String configured) {
-        if (configured == null) {
-            return null;
-        }
-
-        String trimmed = configured.trim();
-        if (trimmed.isEmpty()) {
-            return null;
-        }
-        return trimmed;
-    }
-
-    private static String extractServerName(String command) {
-        if (command == null || command.isEmpty()) {
-            return null;
-        }
-
-        int firstQuote = command.indexOf('"');
-        if (firstQuote >= 0) {
-            int secondQuote = command.indexOf('"', firstQuote + 1);
-            if (secondQuote > firstQuote) {
-                return extractServerName(command.substring(firstQuote + 1, secondQuote));
-            }
-        }
-
-        String normalized = command;
-        if (normalized.startsWith("/")) {
-            normalized = normalized.substring(1);
-        }
-
-        String[] parts = normalized.trim().split("\\s+");
-        if (parts.length >= 3 && "wl".equals(parts[0]) && "portal".equals(parts[1])) {
-            return parts[2];
-        }
-        if (parts.length == 1) {
-            return parts[0];
-        }
-        return null;
     }
 }

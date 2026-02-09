@@ -8,26 +8,42 @@ public final class WitherControlConfig {
     public static WitherControlConfig createDefault() {
         return new WitherControlConfig(
             true,
-            "proxycommand \"wl portal vanilla2 silver\""
+            "desert",
+            "",
+            "silver"
         );
     }
 
     private final boolean portalRedirectEnabled;
-    private final String portalRedirectCommand;
+    private final String portalRedirectTargetServer;
+    private final String portalRedirectTargetPortal;
+    private final String portalRequestSecret;
 
     public WitherControlConfig(
         boolean portalRedirectEnabled,
-        String portalRedirectCommand
+        String portalRedirectTargetServer,
+        String portalRedirectTargetPortal,
+        String portalRequestSecret
     ) {
         this.portalRedirectEnabled = portalRedirectEnabled;
-        this.portalRedirectCommand = portalRedirectCommand;
+        this.portalRedirectTargetServer = portalRedirectTargetServer;
+        this.portalRedirectTargetPortal = portalRedirectTargetPortal;
+        this.portalRequestSecret = portalRequestSecret;
     }
 
     public boolean portalRedirectEnabled() {
         return portalRedirectEnabled;
     }
 
-    public String portalRedirectCommand() {
-        return portalRedirectCommand;
+    public String portalRedirectTargetServer() {
+        return portalRedirectTargetServer;
+    }
+
+    public String portalRedirectTargetPortal() {
+        return portalRedirectTargetPortal;
+    }
+
+    public String portalRequestSecret() {
+        return portalRequestSecret;
     }
 }

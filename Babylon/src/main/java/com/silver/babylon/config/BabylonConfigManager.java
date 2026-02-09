@@ -36,6 +36,17 @@ public final class BabylonConfigManager {
                 LOGGER.warn("Babylon config at {} parsed to null; using defaults", path.toAbsolutePath());
                 return new BabylonConfig();
             }
+
+            boolean changed = false;
+            if (cfg.portalRedirectTargetPortal == null) {
+                cfg.portalRedirectTargetPortal = "";
+                changed = true;
+            }
+
+            if (changed) {
+                save(cfg);
+            }
+
             LOGGER.info("Loaded Babylon config from {}", path.toAbsolutePath());
             return cfg;
         } catch (Exception e) {

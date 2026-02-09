@@ -2,6 +2,11 @@ package com.silver.babylon;
 
 import com.silver.babylon.config.BabylonConfig;
 import com.silver.babylon.config.BabylonConfigManager;
+import com.silver.wakeuplobby.portal.PortalRequestPayload;
+import com.silver.wakeuplobby.portal.PortalRequestPayloadCodec;
+import com.silver.wakeuplobby.portal.PortalRequestSigner;
+import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.component.DataComponentTypes;
@@ -47,15 +52,21 @@ public final class BabylonMod implements ModInitializer {
     public void onInitialize() {
         this.config = new BabylonConfigManager().loadOrCreate();
 
+        try {
+            PayloadTypeRegistry.playS2C().register(PortalRequestPayload.PACKET_ID, PortalRequestPayload.codec);
+        } catch (IllegalArgumentException ex) {
+            LOGGER.debug("Portal request payload type already registered; skipping duplicate registration");
+        }
+
         ServerTickEvents.END_SERVER_TICK.register(this::tick);
 
         LOGGER.info(
-            "Babylon loaded region=({}, {}, {})..({}, {}, {}) entryDelaySeconds={} particleSeconds={} teleportCommand='{}'",
+            "Babylon loaded region=({}, {}, {})..({}, {}, {}) entryDelaySeconds={} particleSeconds={} targetServer='{}'",
             config.region.minX, config.region.minY, config.region.minZ,
             config.region.maxX, config.region.maxY, config.region.maxZ,
             config.entryDelaySeconds,
             config.particleSeconds,
-            config.teleportCommand
+            config.portalRedirectTargetServer
         );
     }
 
@@ -278,7 +289,10 @@ public final class BabylonMod implements ModInitializer {
         String playerName = player.getNameForScoreboard();
         ServerCommandSource source = server.getCommandSource();
 
-        String cmd = normalizeCommand(config.teleportCommand);
+        final String targetServer = config.portalRedirectTargetServer;
+        final String secret = config.portalRequestSecret;
+        String destinationPortalCandidate = config.portalRedirectTargetPortal;
+        final String destinationPortal = destinationPortalCandidate != null ? destinationPortalCandidate : "";
 
         server.execute(() -> {
             try {
@@ -295,11 +309,18 @@ public final class BabylonMod implements ModInitializer {
                 server.getCommandManager().executeWithPrefix(source, c4);
                 server.getCommandManager().executeWithPrefix(source, c5);
 
-                if (cmd != null && !cmd.isBlank()) {
-                    LOGGER.info("Running teleport command for {} as player: '{}'", playerName, cmd);
-                    server.getCommandManager().executeWithPrefix(player.getCommandSource(), cmd);
+                if (targetServer == null || targetServer.isBlank()) {
+                    LOGGER.warn("Target server is blank; skipping redirect for {}", playerName);
+                } else if (secret == null || secret.isBlank()) {
+                    LOGGER.warn("portalRequestSecret is blank; cannot send portal request for {}", playerName);
                 } else {
-                    LOGGER.warn("Teleport command is blank; nothing to run for {}", playerName);
+                    long issuedAtMs = System.currentTimeMillis();
+                    String nonce = PortalRequestPayloadCodec.generateNonce();
+                    byte[] unsigned = PortalRequestPayloadCodec.encodeUnsigned(player.getUuid(), targetServer, destinationPortal, issuedAtMs, nonce);
+                    byte[] signature = PortalRequestSigner.hmacSha256(secret, unsigned);
+                    byte[] signed = PortalRequestPayloadCodec.encodeSigned(player.getUuid(), targetServer, destinationPortal, issuedAtMs, nonce, signature);
+                    ServerPlayNetworking.send(player, new PortalRequestPayload(signed));
+                    LOGGER.info("Sent Babylon portal request for {} -> {}", playerName, targetServer);
                 }
 
                 LOGGER.info("{} stage1 done", playerName);

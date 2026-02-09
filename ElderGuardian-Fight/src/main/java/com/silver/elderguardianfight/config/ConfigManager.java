@@ -39,17 +39,39 @@ public final class ConfigManager {
     }
 
     private ElderGuardianControlConfig coerceConfig(ElderGuardianControlConfig loaded) {
-        if (loaded.portalRedirectCommand() == null || loaded.portalRedirectCommand().isBlank()) {
-            String defaultCommand = ElderGuardianControlConfig.createDefault().portalRedirectCommand();
-            ElderGuardianFightMod.LOGGER.info("Config missing portal redirect command; defaulting to '{}'", defaultCommand);
-            ElderGuardianControlConfig updated = new ElderGuardianControlConfig(
-                loaded.portalRedirectEnabled(),
-                defaultCommand
-            );
+        ElderGuardianControlConfig defaults = ElderGuardianControlConfig.createDefault();
+
+        boolean enabled = loaded.portalRedirectEnabled();
+
+        String targetServer = loaded.portalRedirectTargetServer();
+        if (targetServer == null || targetServer.isBlank()) {
+            targetServer = defaults.portalRedirectTargetServer();
+            ElderGuardianFightMod.LOGGER.info("Config missing portal redirect target server; defaulting to '{}'", targetServer);
+        }
+
+        String secret = loaded.portalRequestSecret();
+        if (secret == null || secret.isBlank()) {
+            secret = defaults.portalRequestSecret();
+            ElderGuardianFightMod.LOGGER.info("Config missing portal request secret; defaulting to '{}'", secret);
+        }
+
+        String targetPortal = loaded.portalRedirectTargetPortal();
+        if (targetPortal == null) {
+            targetPortal = "";
+        }
+
+        boolean changed = enabled != loaded.portalRedirectEnabled()
+            || (loaded.portalRedirectTargetServer() == null || loaded.portalRedirectTargetServer().isBlank())
+            || (loaded.portalRequestSecret() == null || loaded.portalRequestSecret().isBlank())
+            || loaded.portalRedirectTargetPortal() == null;
+
+        if (changed) {
+            ElderGuardianControlConfig updated = new ElderGuardianControlConfig(enabled, targetServer, targetPortal, secret);
             this.config = updated;
             save();
             return updated;
         }
+
         return loaded;
     }
 

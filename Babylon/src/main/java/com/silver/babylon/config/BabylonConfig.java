@@ -3,7 +3,9 @@ package com.silver.babylon.config;
 public final class BabylonConfig {
     public Region region = new Region();
     public String notWorthyMessage = "You are not worthy";
-    public String teleportCommand = "/wl portal magic silver";
+    public String portalRedirectTargetServer = "magic";
+    public String portalRedirectTargetPortal = "";
+    public String portalRequestSecret = "silver";
     public int entryDelaySeconds = 1;
     public int particleSeconds = 3;
 

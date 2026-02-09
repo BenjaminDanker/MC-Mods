@@ -48,10 +48,29 @@ public final class ConfigManager {
     private EndControlConfig coerceConfig(EndControlConfig loaded) {
         boolean changed = false;
 
-        String portalRedirectCommand = loaded.portalRedirectCommand();
-        if (portalRedirectCommand == null || portalRedirectCommand.isBlank()) {
-            portalRedirectCommand = EndControlConfig.createDefault().portalRedirectCommand();
-            EnderFightMod.LOGGER.info("Config missing portal redirect command; defaulting to '{}'", portalRedirectCommand);
+        boolean portalRedirectEnabled = loaded.portalRedirectEnabled();
+
+        String portalRedirectTargetServer = loaded.portalRedirectTargetServer();
+        if (portalRedirectTargetServer == null) {
+            portalRedirectTargetServer = "";
+        }
+
+        String portalRedirectTargetPortal = loaded.portalRedirectTargetPortal();
+        if (portalRedirectTargetPortal == null) {
+            portalRedirectTargetPortal = "";
+            changed = true;
+        }
+
+        String portalRequestSecret = loaded.portalRequestSecret();
+        if (portalRequestSecret == null || portalRequestSecret.isBlank()) {
+            portalRequestSecret = EndControlConfig.DEFAULT_PORTAL_REQUEST_SECRET;
+            EnderFightMod.LOGGER.info("Config missing portal request secret; defaulting to '{}'", portalRequestSecret);
+            changed = true;
+        }
+
+        if (portalRedirectEnabled && portalRedirectTargetServer.isBlank()) {
+            EnderFightMod.LOGGER.warn("Portal redirect is enabled but portalRedirectTargetServer is blank; disabling redirect until configured");
+            portalRedirectEnabled = false;
             changed = true;
         }
 
@@ -81,8 +100,10 @@ public final class ConfigManager {
             loaded.customBreathEnabled(),
             usesDefault,
             customBreathId,
-            loaded.portalRedirectEnabled(),
-            portalRedirectCommand
+            portalRedirectEnabled,
+            portalRedirectTargetServer,
+            portalRedirectTargetPortal,
+            portalRequestSecret
         );
         this.config = updated;
         save();

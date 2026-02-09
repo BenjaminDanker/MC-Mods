@@ -6,9 +6,11 @@ import com.silver.enderfight.dragon.DragonBreathModifier;
 import com.silver.enderfight.portal.PortalInterceptor;
 import com.silver.enderfight.portal.RespawnRedirectHandler;
 import com.silver.enderfight.command.EnderFightCommands;
+import com.silver.wakeuplobby.portal.PortalRequestPayload;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.minecraft.server.MinecraftServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,6 +29,12 @@ public final class EnderFightMod implements ModInitializer {
     @Override
     public void onInitialize() {
         LOGGER.info("Initializing Ender Fight mod");
+
+        try {
+            PayloadTypeRegistry.playS2C().register(PortalRequestPayload.PACKET_ID, PortalRequestPayload.codec);
+        } catch (IllegalArgumentException ex) {
+            LOGGER.debug("Portal request payload type already registered; skipping duplicate registration");
+        }
 
         configManager = new ConfigManager();
         configManager.load();

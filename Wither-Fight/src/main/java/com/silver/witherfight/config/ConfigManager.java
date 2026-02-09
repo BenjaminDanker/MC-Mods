@@ -20,28 +20,18 @@ import java.nio.file.Path;
 public final class ConfigManager {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final String CONFIG_FILE_NAME = "witherfight.json";
-    private static final String LEGACY_CONFIG_FILE_NAME = "endcontrol.json";
 
     private final Path configPath;
-    private final Path legacyConfigPath;
     private WitherControlConfig config;
 
     public ConfigManager() {
         Path configDir = FabricLoader.getInstance().getConfigDir();
         this.configPath = configDir.resolve(CONFIG_FILE_NAME);
-        this.legacyConfigPath = configDir.resolve(LEGACY_CONFIG_FILE_NAME);
     }
 
     public void load() {
         if (Files.exists(configPath)) {
             this.config = readConfig(configPath);
-            return;
-        }
-
-        if (Files.exists(legacyConfigPath)) {
-            WitherFightMod.LOGGER.info("Found legacy config at {}, importing into {}", legacyConfigPath, configPath);
-            this.config = readConfig(legacyConfigPath);
-            save();
             return;
         }
 
@@ -51,17 +41,39 @@ public final class ConfigManager {
     }
 
     private WitherControlConfig coerceConfig(WitherControlConfig loaded) {
-        if (loaded.portalRedirectCommand() == null || loaded.portalRedirectCommand().isBlank()) {
-            String defaultCommand = WitherControlConfig.createDefault().portalRedirectCommand();
-            WitherFightMod.LOGGER.info("Config missing portal redirect command; defaulting to '{}'", defaultCommand);
-            WitherControlConfig updated = new WitherControlConfig(
-                loaded.portalRedirectEnabled(),
-                defaultCommand
-            );
+        WitherControlConfig defaults = WitherControlConfig.createDefault();
+
+        boolean enabled = loaded.portalRedirectEnabled();
+
+        String targetServer = loaded.portalRedirectTargetServer();
+        if (targetServer == null || targetServer.isBlank()) {
+            targetServer = defaults.portalRedirectTargetServer();
+            WitherFightMod.LOGGER.info("Config missing portal redirect target server; defaulting to '{}'", targetServer);
+        }
+
+        String secret = loaded.portalRequestSecret();
+        if (secret == null || secret.isBlank()) {
+            secret = defaults.portalRequestSecret();
+            WitherFightMod.LOGGER.info("Config missing portal request secret; defaulting to '{}'", secret);
+        }
+
+        String targetPortal = loaded.portalRedirectTargetPortal();
+        if (targetPortal == null) {
+            targetPortal = "";
+        }
+
+        boolean changed = enabled != loaded.portalRedirectEnabled()
+            || (loaded.portalRedirectTargetServer() == null || loaded.portalRedirectTargetServer().isBlank())
+            || (loaded.portalRequestSecret() == null || loaded.portalRequestSecret().isBlank())
+            || loaded.portalRedirectTargetPortal() == null;
+
+        if (changed) {
+            WitherControlConfig updated = new WitherControlConfig(enabled, targetServer, targetPortal, secret);
             this.config = updated;
             save();
             return updated;
         }
+
         return loaded;
     }
 

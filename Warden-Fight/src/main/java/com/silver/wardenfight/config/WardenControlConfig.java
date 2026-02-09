@@ -8,18 +8,24 @@ public final class WardenControlConfig {
         return new WardenControlConfig(
             true,
             10,
-            "proxycommand \"wl portal warden silver\""
+            "warden",
+            "",
+            "silver"
         );
     }
 
     private final boolean portalRedirectEnabled;
     private final int portalRedirectRange;
-    private final String portalRedirectCommand;
+    private final String portalRedirectTargetServer;
+    private final String portalRedirectTargetPortal;
+    private final String portalRequestSecret;
 
-    public WardenControlConfig(boolean portalRedirectEnabled, int portalRedirectRange, String portalRedirectCommand) {
+    public WardenControlConfig(boolean portalRedirectEnabled, int portalRedirectRange, String portalRedirectTargetServer, String portalRedirectTargetPortal, String portalRequestSecret) {
         this.portalRedirectEnabled = portalRedirectEnabled;
         this.portalRedirectRange = portalRedirectRange;
-        this.portalRedirectCommand = portalRedirectCommand;
+        this.portalRedirectTargetServer = portalRedirectTargetServer;
+        this.portalRedirectTargetPortal = portalRedirectTargetPortal;
+        this.portalRequestSecret = portalRequestSecret;
     }
 
     public boolean portalRedirectEnabled() {
@@ -30,7 +36,15 @@ public final class WardenControlConfig {
         return portalRedirectRange;
     }
 
-    public String portalRedirectCommand() {
-        return portalRedirectCommand;
+    public String portalRedirectTargetServer() {
+        return portalRedirectTargetServer;
+    }
+
+    public String portalRedirectTargetPortal() {
+        return portalRedirectTargetPortal;
+    }
+
+    public String portalRequestSecret() {
+        return portalRequestSecret;
     }
 }

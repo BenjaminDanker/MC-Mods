@@ -7,23 +7,37 @@ public final class ElderGuardianControlConfig {
     public static ElderGuardianControlConfig createDefault() {
         return new ElderGuardianControlConfig(
             true,
-            "proxycommand \"wl portal elderguardian silver\""
+            "elderguardian",
+            "",
+            "silver"
         );
     }
 
     private final boolean portalRedirectEnabled;
-    private final String portalRedirectCommand;
+    private final String portalRedirectTargetServer;
+    private final String portalRedirectTargetPortal;
+    private final String portalRequestSecret;
 
-    public ElderGuardianControlConfig(boolean portalRedirectEnabled, String portalRedirectCommand) {
+    public ElderGuardianControlConfig(boolean portalRedirectEnabled, String portalRedirectTargetServer, String portalRedirectTargetPortal, String portalRequestSecret) {
         this.portalRedirectEnabled = portalRedirectEnabled;
-        this.portalRedirectCommand = portalRedirectCommand;
+        this.portalRedirectTargetServer = portalRedirectTargetServer;
+        this.portalRedirectTargetPortal = portalRedirectTargetPortal;
+        this.portalRequestSecret = portalRequestSecret;
     }
 
     public boolean portalRedirectEnabled() {
         return portalRedirectEnabled;
     }
 
-    public String portalRedirectCommand() {
-        return portalRedirectCommand;
+    public String portalRedirectTargetServer() {
+        return portalRedirectTargetServer;
+    }
+
+    public String portalRedirectTargetPortal() {
+        return portalRedirectTargetPortal;
+    }
+
+    public String portalRequestSecret() {
+        return portalRequestSecret;
     }
 }
