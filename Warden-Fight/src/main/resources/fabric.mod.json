@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "wardenfight",
+  "version": "${version}",
+  "name": "Warden Fight",
+  "description": "Controls the Warden fight and custom teleport",
+  "authors": [
+    "BenjaminDanker"
+  ],
+  "contact": {
+    "homepage": "",
+    "sources": ""
+  },
+  "license": "MIT",
+  "icon": "",
+  "environment": "server",
+  "entrypoints": {
+    "main": [
+      "com.silver.wardenfight.WardenFightMod"
+    ]
+  },
+  "mixins": [
+    "wardenfight.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "fabric": "*",
+    "minecraft": ">=1.21",
+    "java": ">=21"
+  }
+}

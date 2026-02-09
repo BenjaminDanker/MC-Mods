@@ -19,7 +19,7 @@ import java.nio.file.Path;
  */
 public final class ConfigManager {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final String CONFIG_FILE_NAME = "endcontrol.json";
+    private static final String CONFIG_FILE_NAME = "enderfight.json";
 
     private final Path configPath;
     private EndControlConfig config;

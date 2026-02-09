@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.silver.wardenfight.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "WardenEntityMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

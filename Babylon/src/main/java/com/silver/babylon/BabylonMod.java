@@ -69,12 +69,12 @@ public final class BabylonMod implements ModInitializer {
             return;
         }
 
-        for (ServerPlayerEntity player : overworld.getPlayers()) {
+        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
             if (player == null) {
                 continue;
             }
 
-            if (player.getCommandTags().contains(TAG_STAGE1_DONE)) {
+            if (!(player.getEntityWorld() instanceof ServerWorld world)) {
                 continue;
             }
 
@@ -82,35 +82,42 @@ public final class BabylonMod implements ModInitializer {
             boolean inRegion = config.region.contains(pos.getX(), pos.getY(), pos.getZ());
 
             if (!inRegion) {
-                zone.remove(player.getUuid());
+                ZoneState previous = zone.remove(player.getUuid());
+                if (previous != null) {
+                    LOGGER.info("{} left region at {}", player.getNameForScoreboard(), pos);
+                }
 
                 if (player.getCommandTags().contains(TAG_STAGE1_PROCESSING)) {
-                    handleLeftRegionWhileProcessing(server, overworld, player);
+                    handleLeftRegionWhileProcessing(server, world, player);
                 } else {
                     stage1.remove(player.getUuid());
                 }
                 continue;
             }
 
+            if (!zone.containsKey(player.getUuid())) {
+                LOGGER.info("{} entered region at {} (entryDelaySeconds={})", player.getNameForScoreboard(), pos, config.entryDelaySeconds);
+            }
+
             if (player.getCommandTags().contains(TAG_STAGE1_PROCESSING)) {
                 Stage1State state = stage1.get(player.getUuid());
                 if (state == null) {
                     cancelProcessing(player);
-                    zone.put(player.getUuid(), new ZoneState(overworld.getTime(), false, 0));
+                    zone.put(player.getUuid(), new ZoneState(world.getTime(), false, 0));
                     continue;
                 }
 
-                runParticles(overworld, player);
-                if (overworld.getTime() >= state.teleportAtTick) {
+                runParticles(world, player);
+                if (world.getTime() >= state.teleportAtTick) {
                     finishAndTeleport(server, player);
                 }
                 continue;
             }
 
             ZoneState zoneState = zone.computeIfAbsent(player.getUuid(),
-                u -> new ZoneState(overworld.getTime(), false, 0));
+                u -> new ZoneState(world.getTime(), false, 0));
 
-            long nowTick = overworld.getTime();
+            long nowTick = world.getTime();
             long entryDelayTicks = Math.max(0, config.entryDelaySeconds) * 20L;
             if (nowTick - zoneState.enteredAtTick < entryDelayTicks) {
                 continue;
@@ -124,8 +131,10 @@ public final class BabylonMod implements ModInitializer {
             zone.put(player.getUuid(), zoneState);
 
             if (hasAllFour(player)) {
-                startProcessing(overworld, player);
+                LOGGER.info("{} is worthy; starting processing", player.getNameForScoreboard());
+                startProcessing(world, player);
             } else if (!zoneState.notWorthyShown) {
+                LOGGER.info("{} is not worthy; sending message", player.getNameForScoreboard());
                 player.sendMessage(Text.literal(config.notWorthyMessage).formatted(Formatting.RED), true);
                 zone.put(player.getUuid(), new ZoneState(zoneState.enteredAtTick, true, zoneState.lastEligibilityCheckTick));
             }
@@ -146,6 +155,7 @@ public final class BabylonMod implements ModInitializer {
         long nowTick = world.getTime();
         long delayTicks = Math.max(1, config.particleSeconds) * 20L;
         stage1.put(player.getUuid(), new Stage1State(nowTick + delayTicks, consumed));
+        LOGGER.info("{} processing started; teleport in {}s", player.getNameForScoreboard(), Math.max(1, config.particleSeconds));
         runParticles(world, player);
     }
 
@@ -272,17 +282,27 @@ public final class BabylonMod implements ModInitializer {
 
         server.execute(() -> {
             try {
-                server.getCommandManager().executeWithPrefix(source, "mpdsstage1 " + playerName + " true");
-                server.getCommandManager().executeWithPrefix(source, "mpdsremovecustomid " + playerName + " id " + ID_OCEAN);
-                server.getCommandManager().executeWithPrefix(source, "mpdsremovecustomid " + playerName + " id " + ID_SKY);
-                server.getCommandManager().executeWithPrefix(source, "mpdsremovecustomid " + playerName + " id " + ID_DESERT);
-                server.getCommandManager().executeWithPrefix(source, "mpdsremovecustomid " + playerName + " id " + ID_CAVE);
+                String c1 = "mpdsstage1 " + playerName + " true";
+                String c2 = "mpdsremovecustomid " + playerName + " id " + ID_OCEAN;
+                String c3 = "mpdsremovecustomid " + playerName + " id " + ID_SKY;
+                String c4 = "mpdsremovecustomid " + playerName + " id " + ID_DESERT;
+                String c5 = "mpdsremovecustomid " + playerName + " id " + ID_CAVE;
+
+                LOGGER.info("Running stage1 commands for {}: '{}', '{}', '{}', '{}', '{}'", playerName, c1, c2, c3, c4, c5);
+                server.getCommandManager().executeWithPrefix(source, c1);
+                server.getCommandManager().executeWithPrefix(source, c2);
+                server.getCommandManager().executeWithPrefix(source, c3);
+                server.getCommandManager().executeWithPrefix(source, c4);
+                server.getCommandManager().executeWithPrefix(source, c5);
 
                 if (cmd != null && !cmd.isBlank()) {
+                    LOGGER.info("Running teleport command for {} as player: '{}'", playerName, cmd);
                     server.getCommandManager().executeWithPrefix(player.getCommandSource(), cmd);
+                } else {
+                    LOGGER.warn("Teleport command is blank; nothing to run for {}", playerName);
                 }
 
-                player.addCommandTag(TAG_STAGE1_DONE);
+                LOGGER.info("{} stage1 done", playerName);
             } catch (Exception e) {
                 LOGGER.error("Stage1 teleport failed for {}", playerName, e);
             }
