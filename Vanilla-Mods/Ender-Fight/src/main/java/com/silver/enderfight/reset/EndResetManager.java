@@ -378,6 +378,19 @@ public class EndResetManager {
         teleportPlayersToOverworld(server, players, notification, "End reset");
     }
 
+    public void teleportPlayerToOverworld(ServerPlayerEntity player, Text message, String logContext) {
+        if (player == null) {
+            return;
+        }
+
+        MinecraftServer server = player.getCommandSource().getServer();
+        if (server == null) {
+            return;
+        }
+
+        teleportPlayersToOverworld(server, java.util.List.of(player), message, logContext);
+    }
+
     private void teleportPlayersToOverworld(MinecraftServer server, List<ServerPlayerEntity> players, Text message, String logContext) {
         if (players.isEmpty()) {
             return;

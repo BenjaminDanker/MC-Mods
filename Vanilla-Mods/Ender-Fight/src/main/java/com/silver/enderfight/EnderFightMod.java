@@ -4,6 +4,7 @@ import com.silver.enderfight.config.ConfigManager;
 import com.silver.enderfight.reset.EndResetManager;
 import com.silver.enderfight.dragon.DragonBreathModifier;
 import com.silver.enderfight.portal.PortalInterceptor;
+import com.silver.enderfight.portal.ReturnOverworldHandler;
 import com.silver.enderfight.portal.RespawnRedirectHandler;
 import com.silver.enderfight.command.EnderFightCommands;
 import com.silver.wakeuplobby.portal.PortalRequestPayload;
@@ -36,6 +37,12 @@ public final class EnderFightMod implements ModInitializer {
             LOGGER.debug("Portal request payload type already registered; skipping duplicate registration");
         }
 
+        try {
+            PayloadTypeRegistry.playC2S().register(ReturnOverworldHandler.PACKET_ID, ReturnOverworldHandler.codec);
+        } catch (IllegalArgumentException ex) {
+            LOGGER.debug("Return-overworld payload type already registered; skipping duplicate registration");
+        }
+
         configManager = new ConfigManager();
         configManager.load();
 
@@ -54,6 +61,7 @@ public final class EnderFightMod implements ModInitializer {
             LOGGER.error("Skipping dragon breath customization; Minecraft class linkage failed: {}", linkageError.toString());
         }
         PortalInterceptor.register(configManager);
+        ReturnOverworldHandler.register();
         RespawnRedirectHandler.register();
         EnderFightCommands.register();
     }
