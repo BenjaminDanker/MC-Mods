@@ -1,6 +1,7 @@
 package com.silver.atlantis.spawn;
 
 import com.silver.atlantis.AtlantisMod;
+import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.NbtComponent;
 import net.minecraft.entity.Entity;
@@ -15,39 +16,50 @@ import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 import java.util.Random;
 
 public final class SpecialDropManager {
 
+    private static boolean initialized;
+
     private SpecialDropManager() {
     }
 
-    public static int markRandomSpecialMobs(List<Entity> spawnedEntities, Random random) {
-        int target = SpawnSpecialConfig.SPECIAL_MOBS_PER_RUN;
-        if (target <= 0 || spawnedEntities == null || spawnedEntities.isEmpty()) {
-            return 0;
+    public static void init() {
+        if (initialized) {
+            return;
+        }
+        initialized = true;
+
+        ServerLivingEntityEvents.AFTER_DEATH.register((entity, source) -> tryDropIfSpecial(entity));
+        AtlantisMod.LOGGER.info("Atlantis special-drop death tracking enabled");
+    }
+
+    public static void markSpecialDropAmount(Entity entity, int amount) {
+        if (entity == null || amount <= 0) {
+            return;
         }
 
-        List<LivingEntity> living = new ArrayList<>();
-        for (Entity e : spawnedEntities) {
-            if (e instanceof LivingEntity le) {
-                living.add(le);
+        String longTag = SpawnSpecialConfig.SPECIAL_DROP_AMOUNT_TAG_PREFIX + amount;
+        boolean added = entity.addCommandTag(longTag);
+        if (added) {
+            if (SpawnSpecialConfig.SPECIAL_DROP_DEBUG_LOGS) {
+                AtlantisMod.LOGGER.info("[SpecialDropTag] entity={} amount={} tag={}", entity.getType(), amount, longTag);
             }
+            return;
         }
 
-        if (living.isEmpty()) {
-            return 0;
+        String compactTag = SpawnSpecialConfig.SPECIAL_DROP_AMOUNT_TAG_PREFIX_COMPACT + amount;
+        if (entity.addCommandTag(compactTag)) {
+            if (SpawnSpecialConfig.SPECIAL_DROP_DEBUG_LOGS) {
+                AtlantisMod.LOGGER.info("[SpecialDropTag] entity={} amount={} tag={} (fallback)", entity.getType(), amount, compactTag);
+            }
+            return;
         }
 
-        Collections.shuffle(living, random);
-        int count = Math.min(target, living.size());
-        for (int i = 0; i < count; i++) {
-            living.get(i).addCommandTag(SpawnSpecialConfig.SPECIAL_MOB_TAG);
+        if (!entity.addCommandTag(compactTag)) {
+            AtlantisMod.LOGGER.warn("Failed to add special-drop amount tag to {} (amount={})", entity.getType(), amount);
         }
-        return count;
     }
 
     public static void tryDropIfSpecial(LivingEntity entity) {
@@ -55,22 +67,66 @@ public final class SpecialDropManager {
             return;
         }
 
-        if (!entity.getCommandTags().contains(SpawnSpecialConfig.SPECIAL_MOB_TAG)) {
+        int specialAmount = readSpecialDropAmount(entity);
+        boolean atlantisSpawned = entity.getCommandTags().contains(SpawnSpecialConfig.ATLANTIS_SPAWNED_MOB_TAG);
+
+        if (specialAmount <= 0) {
+            if (SpawnSpecialConfig.SPECIAL_DROP_DEBUG_LOGS) {
+                AtlantisMod.LOGGER.info(
+                    "[SpecialDropDeath] entity={} atlantisSpawned={} hasAmountTag={} amount={} -> no special drop",
+                    entity.getType(),
+                    atlantisSpawned,
+                    false,
+                    specialAmount
+                );
+            }
             return;
         }
 
-        entity.removeCommandTag(SpawnSpecialConfig.SPECIAL_MOB_TAG);
-
-        ItemStack stack = createSpecialDropStack();
+        ItemStack stack = createSpecialDropStack(specialAmount);
         if (stack.isEmpty()) {
             return;
         }
 
         ItemEntity item = new ItemEntity(world, entity.getX(), entity.getBodyY(0.6), entity.getZ(), stack);
         world.spawnEntity(item);
+        if (SpawnSpecialConfig.SPECIAL_DROP_DEBUG_LOGS) {
+            AtlantisMod.LOGGER.info(
+                "[SpecialDropDeath] entity={} atlantisSpawned={} hasAmountTag={} dropped={} ",
+                entity.getType(),
+                atlantisSpawned,
+                true,
+                specialAmount
+            );
+        }
     }
 
-    private static ItemStack createSpecialDropStack() {
+    private static int readSpecialDropAmount(LivingEntity entity) {
+        int amount = 0;
+        String longPrefix = SpawnSpecialConfig.SPECIAL_DROP_AMOUNT_TAG_PREFIX;
+        String compactPrefix = SpawnSpecialConfig.SPECIAL_DROP_AMOUNT_TAG_PREFIX_COMPACT;
+        for (String tag : entity.getCommandTags()) {
+            amount = Math.max(amount, parseAmountTag(tag, longPrefix));
+            amount = Math.max(amount, parseAmountTag(tag, compactPrefix));
+        }
+        return Math.max(0, amount);
+    }
+
+    private static int parseAmountTag(String tag, String prefix) {
+        if (prefix == null || prefix.isBlank() || tag == null || !tag.startsWith(prefix)) {
+            return 0;
+        }
+
+        String raw = tag.substring(prefix.length());
+        try {
+            int parsed = Integer.parseInt(raw);
+            return Math.max(0, parsed);
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
+    }
+
+    private static ItemStack createSpecialDropStack(int countOverride) {
         Identifier id = Identifier.tryParse(SpawnSpecialConfig.SPECIAL_DROP_ITEM_ID);
         if (id == null) {
             AtlantisMod.LOGGER.warn("Invalid special drop item id: {}", SpawnSpecialConfig.SPECIAL_DROP_ITEM_ID);
@@ -83,7 +139,7 @@ public final class SpecialDropManager {
             return ItemStack.EMPTY;
         }
 
-        int count = Math.max(1, SpawnSpecialConfig.SPECIAL_DROP_ITEM_COUNT);
+        int count = Math.max(1, countOverride);
         ItemStack stack = new ItemStack(item, count);
 
         String displayName = SpawnSpecialConfig.SPECIAL_DROP_DISPLAY_NAME;

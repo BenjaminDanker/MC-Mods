@@ -89,11 +89,16 @@ public final class ConstructCommandManager {
                 yOffsetOverride,
                 defaults.maxEntitiesToProcessPerTick(),
                 defaults.playerEjectMarginBlocks(),
+                defaults.playerEjectTeleportOffsetBlocks(),
                 defaults.pasteFlushEveryBlocks(),
                 defaults.tickTimeBudgetNanos(),
                 defaults.undoTickTimeBudgetNanos(),
                 defaults.undoFlushEveryBlocks(),
-                defaults.maxFluidNeighborUpdatesPerTick()
+                defaults.maxFluidNeighborUpdatesPerTick(),
+                defaults.expectedTickNanos(),
+                defaults.adaptiveScaleSmoothing(),
+                defaults.adaptiveScaleMin(),
+                defaults.adaptiveScaleMax()
             );
         boolean started = constructService.start(source, config, world, center);
         if (!started) {

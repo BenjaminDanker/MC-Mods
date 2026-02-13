@@ -4,7 +4,6 @@
   "package": "com.silver.atlantis.spawn.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
-    "LivingEntityMixin",
     "PlayerInventoryMixin"
   ],
   "injectors": {

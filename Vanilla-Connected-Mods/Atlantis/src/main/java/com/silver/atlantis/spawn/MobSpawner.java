@@ -12,6 +12,7 @@ import net.minecraft.entity.attribute.EntityAttributes;
 import net.minecraft.entity.effect.StatusEffect;
 import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.mob.MobEntity;
+import net.minecraft.entity.mob.CreeperEntity;
 import net.minecraft.entity.mob.ZombieEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.registry.Registries;
@@ -21,6 +22,8 @@ import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.Optional;
 
 /**
@@ -81,6 +84,12 @@ public final class MobSpawner {
 
                 // Ensure structure-spawned mobs never despawn naturally.
                 mob.setPersistent();
+            }
+
+            entity.addCommandTag(SpawnSpecialConfig.ATLANTIS_SPAWNED_MOB_TAG);
+
+            if (customization.specialDropAmount() > 0) {
+                SpecialDropManager.markSpecialDropAmount(entity, customization.specialDropAmount());
             }
 
             // Custom name
@@ -162,6 +171,79 @@ public final class MobSpawner {
         if (customization.isBaby() && mob instanceof ZombieEntity zombie) {
             zombie.setBaby(true);
         }
+
+        if (mob instanceof CreeperEntity creeper) {
+            applyCreeperCustomizations(creeper, customization);
+        }
+    }
+
+    private static void applyCreeperCustomizations(CreeperEntity creeper, MobCustomization customization) {
+        if (creeper == null || customization == null) {
+            return;
+        }
+
+        if (customization.creeperPowered()) {
+            setCreeperChargedReflective(creeper, true);
+        }
+
+        int explosionRadius = customization.creeperExplosionRadius();
+        if (explosionRadius >= 3) {
+            setCreeperExplosionRadiusReflective(creeper, explosionRadius);
+        }
+    }
+
+    private static void setCreeperExplosionRadiusReflective(CreeperEntity creeper, int radius) {
+        if (creeper == null) {
+            return;
+        }
+
+        int clamped = Math.max(3, radius);
+        String[] fieldNames = new String[] {"explosionRadius", "field_7225"};
+        for (String fieldName : fieldNames) {
+            try {
+                Field field = CreeperEntity.class.getDeclaredField(fieldName);
+                field.setAccessible(true);
+                field.setInt(creeper, clamped);
+                return;
+            } catch (Exception ignored) {
+            }
+        }
+
+        AtlantisMod.LOGGER.warn("Unable to set creeper explosion radius via reflection (radius={})", clamped);
+    }
+
+    private static void setCreeperChargedReflective(CreeperEntity creeper, boolean charged) {
+        if (creeper == null) {
+            return;
+        }
+
+        String[] methodNames = new String[] {"setCharged", "method_7502"};
+        for (String methodName : methodNames) {
+            try {
+                Method method = CreeperEntity.class.getDeclaredMethod(methodName, boolean.class);
+                method.setAccessible(true);
+                method.invoke(creeper, charged);
+                return;
+            } catch (Exception ignored) {
+            }
+        }
+
+        // Final fallback: write tracked charged field directly if available.
+        String[] fieldNames = new String[] {"CHARGED", "field_7224"};
+        for (String fieldName : fieldNames) {
+            try {
+                Field field = CreeperEntity.class.getDeclaredField(fieldName);
+                field.setAccessible(true);
+                Object trackedData = field.get(null);
+                if (trackedData != null) {
+                    creeper.getDataTracker().set((net.minecraft.entity.data.TrackedData<Boolean>) trackedData, charged);
+                    return;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
+        AtlantisMod.LOGGER.warn("Unable to set creeper charged state via reflection (charged={})", charged);
     }
 
     private static void applyAttribute(LivingEntity entity, String attributeId, double value) {

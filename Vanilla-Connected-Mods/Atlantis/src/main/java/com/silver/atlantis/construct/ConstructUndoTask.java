@@ -5,6 +5,9 @@ import com.silver.atlantis.construct.undo.UndoMetadataIO;
 import com.silver.atlantis.construct.undo.UndoPaths;
 import com.silver.atlantis.construct.undo.UndoRunMetadata;
 import com.silver.atlantis.construct.undo.UndoSliceFile;
+import com.silver.atlantis.construct.state.ConstructRunState;
+import com.silver.atlantis.construct.state.ConstructRunStateIO;
+import com.silver.atlantis.construct.state.ConstructStatePaths;
 import com.silver.atlantis.protect.ProtectionManager;
 import com.sk89q.worldedit.EditSession;
 import com.sk89q.worldedit.WorldEdit;
@@ -120,6 +123,8 @@ final class ConstructUndoTask implements ConstructJob {
     private long lastSlowLogNanos;
     private static final long SLOW_LOG_COOLDOWN_NANOS = 5_000_000_000L;
     private static final long SLOW_OP_NANOS = 50_000_000L; // 50ms
+    private long lastTickStartNanos;
+    private double adaptiveWorkScale = 1.0d;
 
     private static final int UNDO_FLUSH_EVERY_BLOCKS_DEFAULT = 2048;
     private int undoFlushEveryBlocks;
@@ -163,6 +168,8 @@ final class ConstructUndoTask implements ConstructJob {
 
     private boolean undoFullyCompleted;
     private boolean protectionUnregistered;
+    private boolean fluidTickGuardActive;
+    private boolean fluidTickGuardUsingRunBounds;
 
     private int waitTicks;
 
@@ -208,11 +215,14 @@ final class ConstructUndoTask implements ConstructJob {
 
     @Override
     public boolean tick(MinecraftServer ignored) {
+        long tickStartNanos = System.nanoTime();
+        updateAdaptiveWorkScale(tickStartNanos);
+
         // Undo can be visually overwhelming; throttle per-tick work via config so changes stream in slower.
         long configured = config.undoTickTimeBudgetNanos();
         long baseBudget = config.tickTimeBudgetNanos();
         long undoBudget = configured > 0 ? Math.min(configured, baseBudget) : Math.min(baseBudget, 3_000_000L);
-        long deadline = System.nanoTime() + Math.max(250_000L, undoBudget);
+        long deadline = tickStartNanos + scaledBudget(Math.max(250_000L, undoBudget));
 
         while (System.nanoTime() < deadline && stage != Stage.DONE) {
             switch (stage) {
@@ -270,6 +280,7 @@ final class ConstructUndoTask implements ConstructJob {
                     protectionUnregistered = false;
 
                     undoCenter = new BlockPos(metadata.rawCenterX(), metadata.rawCenterY(), metadata.rawCenterZ());
+                    activateFluidTickGuardFromRunBounds();
                     stage = Stage.CLEANUP_MOBS;
                 }
 
@@ -281,7 +292,7 @@ final class ConstructUndoTask implements ConstructJob {
                         entitiesProcessedIndex = 0;
                     }
 
-                    entitiesProcessedIndex = EntityCleanup.discardSome(entitiesToProcess, entitiesProcessedIndex, config.maxEntitiesToProcessPerTick());
+                    entitiesProcessedIndex = EntityCleanup.discardSome(entitiesToProcess, entitiesProcessedIndex, scaledCap(config.maxEntitiesToProcessPerTick()));
                     if (entitiesProcessedIndex >= entitiesToProcess.size()) {
                         entitiesToProcess = null;
                         stage = Stage.CLEANUP_ITEMS;
@@ -302,7 +313,7 @@ final class ConstructUndoTask implements ConstructJob {
                         entitiesProcessedIndex = 0;
                     }
 
-                    entitiesProcessedIndex = EntityCleanup.discardSome(entitiesToProcess, entitiesProcessedIndex, config.maxEntitiesToProcessPerTick());
+                    entitiesProcessedIndex = EntityCleanup.discardSome(entitiesToProcess, entitiesProcessedIndex, scaledCap(config.maxEntitiesToProcessPerTick()));
                     if (entitiesProcessedIndex >= entitiesToProcess.size()) {
                         entitiesToProcess = null;
                         send("Undo: restoring blocks (bottom -> top)...");
@@ -312,7 +323,8 @@ final class ConstructUndoTask implements ConstructJob {
 
                 case LOAD_SLICE -> {
                     closeEditSession();
-                    releaseChunkTickets();
+                    // Keep chunk tickets across slices (same as construct) to avoid unload/reload thrash
+                    // when consecutive Y-slices touch the same X/Z chunks.
                     currentSlice = null;
                     blockPalette = null;
                     blockPaletteIsAir = null;
@@ -382,6 +394,7 @@ final class ConstructUndoTask implements ConstructJob {
                     }
 
                     currentSlice = data;
+                    updateFluidTickGuardFromSliceBoundsIfNeeded();
 
                     com.sk89q.worldedit.world.World weWorld = FabricAdapter.adapt(world);
                     editSession = WorldEdit.getInstance().newEditSessionBuilder()
@@ -468,7 +481,7 @@ final class ConstructUndoTask implements ConstructJob {
                         }
                     }
 
-                    int maxToStart = Math.max(1, config.maxChunksToLoadPerTick());
+                    int maxToStart = scaledPositiveCap(config.maxChunksToLoadPerTick());
                     int started = 0;
 
                     while (System.nanoTime() < deadline && started < maxToStart && chunksToLoad != null && !chunksToLoad.isEmpty()) {
@@ -490,6 +503,17 @@ final class ConstructUndoTask implements ConstructJob {
                         } catch (Exception e) {
                             AtlantisMod.LOGGER.debug("Undo chunk preload ticket failed at {}: {}", pos, e.getMessage());
                         }
+                    }
+
+                    if (started > 0 && com.silver.atlantis.spawn.SpawnMobConfig.DIAGNOSTIC_LOGS) {
+                        AtlantisMod.LOGGER.info(
+                            "[UndoTickets] runId={} sliceIndex={} addedThisTick={} totalActiveLoads={} totalTicketKeys={}",
+                            runId,
+                            sliceIndex,
+                            started,
+                            activeChunkLoads.size(),
+                            chunkTicketKeys.size()
+                        );
                     }
 
                     if (!activeChunkLoads.isEmpty()) {
@@ -796,7 +820,7 @@ final class ConstructUndoTask implements ConstructJob {
                         break;
                     }
 
-                    int maxPerTick = config.maxFluidNeighborUpdatesPerTick();
+                    int maxPerTick = scaledCap(config.maxFluidNeighborUpdatesPerTick());
                     if (maxPerTick <= 0) {
                         // Disabled; skip the pulse stage.
                         postFluidIndex = postFluidQueue.size();
@@ -842,7 +866,9 @@ final class ConstructUndoTask implements ConstructJob {
                             continue;
                         }
 
-                        world.scheduleFluidTick(fluidPos, fluidState.getFluid(), 1);
+                        if (!UndoFluidTickGuard.INSTANCE.shouldSuppress(world, fluidPos)) {
+                            world.scheduleFluidTick(fluidPos, fluidState.getFluid(), 1);
+                        }
                         updatedThisTick++;
                         postFluidUpdated++;
                     }
@@ -881,6 +907,7 @@ final class ConstructUndoTask implements ConstructJob {
                     }
 
                     int removedThisTick = 0;
+                    int maxArtifactRemovalsThisTick = scaledPositiveCap(MAX_ARTIFACT_REMOVALS_PER_TICK);
                     while (System.nanoTime() < deadline && cleanupX <= currentSlice.maxX()) {
                         cleanupPos.set(cleanupX, cleanupY, cleanupZ);
                         cleanupScanned++;
@@ -934,7 +961,7 @@ final class ConstructUndoTask implements ConstructJob {
                             }
 
                             removedThisTick++;
-                            if (removedThisTick >= MAX_ARTIFACT_REMOVALS_PER_TICK) {
+                            if (removedThisTick >= maxArtifactRemovalsThisTick) {
                                 break;
                             }
                         }
@@ -1023,7 +1050,7 @@ final class ConstructUndoTask implements ConstructJob {
                         break;
                     }
 
-                    int maxPerTick = config.maxFluidNeighborUpdatesPerTick();
+                    int maxPerTick = scaledCap(config.maxFluidNeighborUpdatesPerTick());
                     if (maxPerTick <= 0) {
                         cleanupFluidIndex = cleanupFluidQueue.size();
                         break;
@@ -1036,7 +1063,7 @@ final class ConstructUndoTask implements ConstructJob {
 
                         var state = world.getBlockState(fluidPos);
                         var fluidState = state.getFluidState();
-                        if (!fluidState.isEmpty()) {
+                        if (!fluidState.isEmpty() && !UndoFluidTickGuard.INSTANCE.shouldSuppress(world, fluidPos)) {
                             fluidState.onScheduledTick(world, fluidPos, state);
                             updatedThisTick++;
                         }
@@ -1087,7 +1114,152 @@ final class ConstructUndoTask implements ConstructJob {
             }
         }
 
+        if (stage == Stage.DONE) {
+            deactivateFluidTickGuard();
+        }
         return stage == Stage.DONE;
+    }
+
+    private void activateFluidTickGuardFromRunBounds() {
+        if (world == null || metadata == null) {
+            return;
+        }
+
+        Path resolvedRunDir = (runDir != null) ? runDir : UndoPaths.runDir(metadata.runId());
+        Path stateFile = ConstructStatePaths.stateFile(resolvedRunDir);
+        if (!Files.exists(stateFile)) {
+            return;
+        }
+
+        try {
+            ConstructRunState state = ConstructRunStateIO.read(stateFile);
+            if (!metadata.dimension().equals(state.dimension())) {
+                return;
+            }
+
+            Integer minX = state.overallMinX();
+            Integer minY = state.overallMinY();
+            Integer minZ = state.overallMinZ();
+            Integer maxX = state.overallMaxX();
+            Integer maxY = state.overallMaxY();
+            Integer maxZ = state.overallMaxZ();
+            if (minX == null || minY == null || minZ == null || maxX == null || maxY == null || maxZ == null) {
+                return;
+            }
+
+            UndoFluidTickGuard.INSTANCE.activate(
+                world.getRegistryKey().getValue().toString(),
+                minX,
+                minY,
+                minZ,
+                maxX,
+                maxY,
+                maxZ
+            );
+            fluidTickGuardActive = true;
+            fluidTickGuardUsingRunBounds = true;
+            AtlantisMod.LOGGER.info(
+                "Undo fluid guard active (run bounds): dim={} x=[{}..{}] y=[{}..{}] z=[{}..{}]",
+                world.getRegistryKey().getValue(),
+                Math.min(minX, maxX),
+                Math.max(minX, maxX),
+                Math.min(minY, maxY),
+                Math.max(minY, maxY),
+                Math.min(minZ, maxZ),
+                Math.max(minZ, maxZ)
+            );
+        } catch (Exception e) {
+            AtlantisMod.LOGGER.warn("Failed to activate undo fluid tick guard from run state {}: {}", stateFile, e.getMessage());
+        }
+    }
+
+    private void updateFluidTickGuardFromSliceBoundsIfNeeded() {
+        if (fluidTickGuardUsingRunBounds || world == null || currentSlice == null) {
+            return;
+        }
+
+        UndoFluidTickGuard.INSTANCE.activate(
+            world.getRegistryKey().getValue().toString(),
+            currentSlice.minX(),
+            currentSlice.minY(),
+            currentSlice.minZ(),
+            currentSlice.maxX(),
+            currentSlice.maxY(),
+            currentSlice.maxZ()
+        );
+        fluidTickGuardActive = true;
+        AtlantisMod.LOGGER.info(
+            "Undo fluid guard active (slice bounds): dim={} x=[{}..{}] y=[{}..{}] z=[{}..{}]",
+            world.getRegistryKey().getValue(),
+            Math.min(currentSlice.minX(), currentSlice.maxX()),
+            Math.max(currentSlice.minX(), currentSlice.maxX()),
+            Math.min(currentSlice.minY(), currentSlice.maxY()),
+            Math.max(currentSlice.minY(), currentSlice.maxY()),
+            Math.min(currentSlice.minZ(), currentSlice.maxZ()),
+            Math.max(currentSlice.minZ(), currentSlice.maxZ())
+        );
+    }
+
+    private void deactivateFluidTickGuard() {
+        if (!fluidTickGuardActive) {
+            return;
+        }
+
+        UndoFluidTickGuard.INSTANCE.clear();
+        fluidTickGuardActive = false;
+        fluidTickGuardUsingRunBounds = false;
+        AtlantisMod.LOGGER.info("Undo fluid guard cleared.");
+    }
+
+    private void updateAdaptiveWorkScale(long tickStartNanos) {
+        if (lastTickStartNanos <= 0L) {
+            lastTickStartNanos = tickStartNanos;
+            return;
+        }
+
+        long expectedTickNanos = Math.max(1L, config.expectedTickNanos());
+        long observedTickNanos = tickStartNanos - lastTickStartNanos;
+        lastTickStartNanos = tickStartNanos;
+
+        if (observedTickNanos <= 0L) {
+            return;
+        }
+
+        double rawScale = (double) expectedTickNanos / (double) observedTickNanos;
+        rawScale = clamp(rawScale, config.adaptiveScaleMin(), config.adaptiveScaleMax());
+
+        double smoothing = clamp(config.adaptiveScaleSmoothing(), 0.0d, 1.0d);
+        adaptiveWorkScale = adaptiveWorkScale + ((rawScale - adaptiveWorkScale) * smoothing);
+        adaptiveWorkScale = clamp(adaptiveWorkScale, config.adaptiveScaleMin(), config.adaptiveScaleMax());
+    }
+
+    private long scaledBudget(long baseBudgetNanos) {
+        long safeBase = Math.max(250_000L, baseBudgetNanos);
+        return Math.max(250_000L, Math.round(safeBase * adaptiveWorkScale));
+    }
+
+    private int scaledCap(int basePerTick) {
+        if (basePerTick <= 0) {
+            return basePerTick;
+        }
+        return Math.max(1, (int) Math.round(basePerTick * adaptiveWorkScale));
+    }
+
+    private int scaledPositiveCap(int basePerTick) {
+        return Math.max(1, scaledCap(basePerTick));
+    }
+
+    private static double clamp(double value, double min, double max) {
+        if (min > max) {
+            return value;
+        }
+        if (value < min) {
+            return min;
+        }
+        if (value > max) {
+            return max;
+        }
+        return value;
     }
 
     @Override
@@ -1098,6 +1270,7 @@ final class ConstructUndoTask implements ConstructJob {
         // Best-effort cleanup
         closeEditSession();
         releaseChunkTickets();
+        deactivateFluidTickGuard();
     }
 
     @Override
@@ -1105,6 +1278,7 @@ final class ConstructUndoTask implements ConstructJob {
         send("Undo cancelled" + (reason != null && !reason.isBlank() ? (": " + reason) : "."));
         closeEditSession();
         releaseChunkTickets();
+        deactivateFluidTickGuard();
     }
 
     private void releaseChunkTickets() {
@@ -1113,6 +1287,8 @@ final class ConstructUndoTask implements ConstructJob {
             chunkTicketKeys.clear();
             return;
         }
+
+        int ticketCount = chunkTicketKeys.size();
 
         try {
             for (long key : chunkTicketKeys) {
@@ -1123,6 +1299,14 @@ final class ConstructUndoTask implements ConstructJob {
         } catch (Exception e) {
             AtlantisMod.LOGGER.warn("Failed to release undo chunk tickets: {}", e.getMessage());
         } finally {
+            if (com.silver.atlantis.spawn.SpawnMobConfig.DIAGNOSTIC_LOGS) {
+                AtlantisMod.LOGGER.info(
+                    "[UndoTickets] runId={} released={} remainingActiveLoadsBeforeClear={}",
+                    runId,
+                    ticketCount,
+                    activeChunkLoads.size()
+                );
+            }
             activeChunkLoads.clear();
             chunkTicketKeys.clear();
         }

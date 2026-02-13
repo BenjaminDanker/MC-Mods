@@ -10,11 +10,14 @@ public final class SpawnSpecialConfig {
     private SpawnSpecialConfig() {
     }
 
-    /** How many spawned mobs per /structuremob run get marked as special (0 disables). */
-    public static final int SPECIAL_MOBS_PER_RUN = 6;
+    /** Scoreboard tag applied to all Atlantis structure-spawned mobs. */
+    public static final String ATLANTIS_SPAWNED_MOB_TAG = "atlantis_spawned_mob";
 
-    /** Scoreboard tag used to mark special mobs. */
-    public static final String SPECIAL_MOB_TAG = "atlantis_special_drop";
+    /** Command tag prefix storing special drop amount on a spawned mob. */
+    public static final String SPECIAL_DROP_AMOUNT_TAG_PREFIX = "atlantis_special_drop_amount=";
+
+    /** Compact fallback prefix for amount tags when long tags are rejected by the platform. */
+    public static final String SPECIAL_DROP_AMOUNT_TAG_PREFIX_COMPACT = "asd=";
 
     /** What item special mobs should drop when they die. */
     public static final String SPECIAL_DROP_ITEM_ID = "minecraft:heart_of_the_sea";
@@ -24,6 +27,9 @@ public final class SpawnSpecialConfig {
 
     /** How many of the item to drop. */
     public static final int SPECIAL_DROP_ITEM_COUNT = 1;
+
+    /** Enables verbose logs for special-drop roll, tagging, and death-drop behavior. */
+    public static final boolean SPECIAL_DROP_DEBUG_LOGS = true;
 
     /** Marker key stored in SPECIAL_DROP_CUSTOM_DATA_SNBT so the inventory converter can reliably identify special drops. */
     public static final String SPECIAL_DROP_MARKER_KEY = "atlantis_special";
@@ -35,7 +41,37 @@ public final class SpawnSpecialConfig {
     public static final String SPECIAL_DROP_CUSTOM_DATA_SNBT = "{atlantis_special:1b}";
 
     /** How many special dropped items convert into 1 Special Sea Lantern. */
-    public static final int SPECIAL_ITEMS_PER_SEA_LANTERN = 16;
+    public static final int SPECIAL_ITEMS_PER_SEA_LANTERN = 256;
+
+    /** Target number of conversions achievable from a full dungeon clear (approximate). */
+    public static final double TARGET_CONVERSIONS_PER_FULL_CLEAR = 3.0;
+
+    /** Expected boss count per full clear used for drop scaling estimates. */
+    public static final int EXPECTED_BOSS_MOBS_PER_RUN = 1;
+
+    /** Extra scaling applied to boss special-drop amounts. */
+    public static final double BOSS_SPECIAL_DROP_MULTIPLIER = 5.0;
+
+    /** Minimum special-drop item count per spawned boss (applied during global allocation). */
+    public static final int BOSS_SPECIAL_DROP_MIN = 30;
+
+    /** Random variance applied to special-drop amount roll. */
+    public static final double SPECIAL_DROP_RANDOMNESS_PERCENT = 20.0;
+
+    /** Minimum chance for any eligible spawned mob to receive a special drop amount. */
+    public static final double SPECIAL_DROP_BASE_CHANCE = 0.06;
+
+    /** Maximum special-drop chance for non-boss mobs at top difficulty. */
+    public static final double SPECIAL_DROP_MAX_CHANCE_NON_BOSS = 0.78;
+
+    /** Maximum special-drop chance for boss mobs at top difficulty. */
+    public static final double SPECIAL_DROP_MAX_CHANCE_BOSS = 1.00;
+
+    /** Maximum amount for non-boss special drops at top difficulty. */
+    public static final int SPECIAL_DROP_MAX_AMOUNT_NON_BOSS = 16;
+
+    /** Maximum amount for boss special drops at top difficulty. */
+    public static final int SPECIAL_DROP_MAX_AMOUNT_BOSS = 20;
 
     /** Output item id for conversion reward. */
     public static final String SPECIAL_SEA_LANTERN_ITEM_ID = "minecraft:sea_lantern";

@@ -365,11 +365,16 @@ public final class CycleService {
                 CycleConfig.CONSTRUCT_Y_OFFSET_BLOCKS,
                 defaults.maxEntitiesToProcessPerTick(),
                 defaults.playerEjectMarginBlocks(),
+                defaults.playerEjectTeleportOffsetBlocks(),
                 defaults.pasteFlushEveryBlocks(),
                 defaults.tickTimeBudgetNanos(),
                 defaults.undoTickTimeBudgetNanos(),
                 defaults.undoFlushEveryBlocks(),
-                defaults.maxFluidNeighborUpdatesPerTick()
+                defaults.maxFluidNeighborUpdatesPerTick(),
+                defaults.expectedTickNanos(),
+                defaults.adaptiveScaleSmoothing(),
+                defaults.adaptiveScaleMin(),
+                defaults.adaptiveScaleMax()
             );
 
             boolean started = constructService.start(actor, runCfg, overworld, new BlockPos(cx, cy, cz));

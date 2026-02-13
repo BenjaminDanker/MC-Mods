@@ -7,7 +7,9 @@
     "ServerPlayerInteractionManagerMixin",
     "ExplosionMixin",
     "PistonHandlerMixin",
-    "FireBlockMixin"
+    "FireBlockMixin",
+    "FlowableFluidMixin",
+    "ScheduledTickViewMixin"
   ],
   "injectors": {
     "defaultRequire": 1

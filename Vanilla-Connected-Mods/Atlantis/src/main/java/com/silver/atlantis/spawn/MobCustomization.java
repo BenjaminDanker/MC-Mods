@@ -19,6 +19,9 @@ public record MobCustomization(
     Map<String, Double> attributes,
     Map<String, EquipmentEntry> equipment,
     List<EffectData> effects,
+    int specialDropAmount,
+    boolean creeperPowered,
+    int creeperExplosionRadius,
     boolean isBaby,
     String customName,
     boolean glowing
@@ -50,6 +53,9 @@ public record MobCustomization(
         private final Map<String, Double> attributes = new HashMap<>();
         private final Map<String, EquipmentEntry> equipment = new HashMap<>();
         private final List<EffectData> effects = new ArrayList<>();
+        private int specialDropAmount = 0;
+        private boolean creeperPowered = false;
+        private int creeperExplosionRadius = 0;
         private boolean isBaby = false;
         private String customName = null;
         private boolean glowing = false;
@@ -101,6 +107,21 @@ public record MobCustomization(
             return this;
         }
 
+        public Builder specialDropAmount(int specialDropAmount) {
+            this.specialDropAmount = specialDropAmount;
+            return this;
+        }
+
+        public Builder creeperPowered(boolean creeperPowered) {
+            this.creeperPowered = creeperPowered;
+            return this;
+        }
+
+        public Builder creeperExplosionRadius(int creeperExplosionRadius) {
+            this.creeperExplosionRadius = Math.max(0, creeperExplosionRadius);
+            return this;
+        }
+
         public Builder baby(boolean isBaby) {
             this.isBaby = isBaby;
             return this;
@@ -120,6 +141,9 @@ public record MobCustomization(
             return new MobCustomization(
                 entityId, x, y, z, yaw, pitch,
                 health, maxHealth, attributes, equipment, effects,
+                specialDropAmount,
+                creeperPowered,
+                creeperExplosionRadius,
                 isBaby, customName, glowing
             );
         }

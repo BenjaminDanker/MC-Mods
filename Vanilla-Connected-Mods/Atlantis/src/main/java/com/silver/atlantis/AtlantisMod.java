@@ -1,3 +1,5 @@
+// This mod is a mess and I don't care
+
 package com.silver.atlantis;
 
 import com.silver.atlantis.construct.ConstructCommandManager;
@@ -11,6 +13,7 @@ import com.silver.atlantis.heightcap.HeightCapService;
 import com.silver.atlantis.protect.ProtectionBootstrap;
 import com.silver.atlantis.protect.ProtectionService;
 import com.silver.atlantis.spawn.SpawnCommandManager;
+import com.silver.atlantis.spawn.SpecialDropManager;
 import com.silver.atlantis.spawn.SpecialItemConversionManager;
 import net.fabricmc.api.ModInitializer;
 import org.slf4j.Logger;
@@ -44,6 +47,7 @@ public final class AtlantisMod implements ModInitializer {
 		protectionService.register();
 		ProtectionBootstrap.loadAllPersisted();
 		heightCapService.register();
+		SpecialDropManager.init();
 		spawnManager.register();
 		SpecialItemConversionManager.init();
 		flatAreaSearchService.register();

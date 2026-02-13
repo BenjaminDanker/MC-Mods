@@ -52,9 +52,11 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -171,8 +173,14 @@ final class ConstructTask implements ConstructJob {
 
     private int waitTicks = 0;
 
+    // Last known valid X/Z where a player was outside the protected construct area.
+    // Used to return them to where they came from before trying generic fallback destinations.
+    private final Map<UUID, BlockPos> lastKnownOutsideByPlayer = new HashMap<>();
+
     // Progress logging (useful when the command invoker disconnects).
     private long lastProgressLogNanos;
+    private long lastTickStartNanos;
+    private double adaptiveWorkScale = 1.0d;
 
     ConstructTask(ServerCommandSource source, ConstructConfig config, ServerWorld world, BlockPos targetCenter, Executor ioExecutor) {
         this.requesterId = source.getPlayer() != null ? source.getPlayer().getUuid() : null;
@@ -228,11 +236,16 @@ final class ConstructTask implements ConstructJob {
             resumeState.yOffsetBlocks(),
             config.maxEntitiesToProcessPerTick(),
             config.playerEjectMarginBlocks(),
+            config.playerEjectTeleportOffsetBlocks(),
             config.pasteFlushEveryBlocks(),
             config.tickTimeBudgetNanos(),
             config.undoTickTimeBudgetNanos(),
             config.undoFlushEveryBlocks(),
-            config.maxFluidNeighborUpdatesPerTick()
+            config.maxFluidNeighborUpdatesPerTick(),
+            config.expectedTickNanos(),
+            config.adaptiveScaleSmoothing(),
+            config.adaptiveScaleMin(),
+            config.adaptiveScaleMax()
         );
         this.world = world;
         this.targetCenter = new BlockPos(resumeState.rawCenterX(), resumeState.rawCenterY(), resumeState.rawCenterZ());
@@ -451,7 +464,9 @@ final class ConstructTask implements ConstructJob {
 
     @Override
     public boolean tick(MinecraftServer server) {
-        long deadline = System.nanoTime() + config.tickTimeBudgetNanos();
+        long tickStartNanos = System.nanoTime();
+        updateAdaptiveWorkScale(tickStartNanos);
+        long deadline = tickStartNanos + scaledBudget(config.tickTimeBudgetNanos());
 
         maybeLogProgress(server);
 
@@ -641,7 +656,8 @@ final class ConstructTask implements ConstructJob {
 
                     // Request a few chunk loads per tick without blocking the server thread.
                     int requestedThisTick = 0;
-                    while (!chunksToLoad.isEmpty() && requestedThisTick < config.maxChunksToLoadPerTick() && System.nanoTime() < deadline) {
+                    int maxChunksThisTick = scaledCap(config.maxChunksToLoadPerTick());
+                    while (!chunksToLoad.isEmpty() && requestedThisTick < maxChunksThisTick && System.nanoTime() < deadline) {
                         ChunkPos pos = chunksToLoad.removeFirst();
                         long key = ChunkPos.toLong(pos.x, pos.z);
 
@@ -650,6 +666,18 @@ final class ConstructTask implements ConstructJob {
                         chunkTicketKeys.add(key);
                         loadedChunkKeys.add(key);
                         requestedThisTick++;
+                    }
+
+                    if (requestedThisTick > 0 && com.silver.atlantis.spawn.SpawnMobConfig.DIAGNOSTIC_LOGS) {
+                        AtlantisMod.LOGGER.info(
+                            "[ConstructTickets] runId={} slice={}/{} addedThisTick={} totalActiveLoads={} totalTicketKeys={}",
+                            undoRunId,
+                            (sliceIndex + 1),
+                            slices.size(),
+                            requestedThisTick,
+                            activeChunkLoads.size(),
+                            chunkTicketKeys.size()
+                        );
                     }
 
                     // Poll completion; do not proceed to paste until all requested chunks are actually loaded.
@@ -973,7 +1001,7 @@ final class ConstructTask implements ConstructJob {
                         entitiesProcessedIndex = 0;
                     }
 
-                    entitiesProcessedIndex = EntityCleanup.discardSome(entitiesToProcess, entitiesProcessedIndex, config.maxEntitiesToProcessPerTick());
+                    entitiesProcessedIndex = EntityCleanup.discardSome(entitiesToProcess, entitiesProcessedIndex, scaledCap(config.maxEntitiesToProcessPerTick()));
                     if (entitiesProcessedIndex >= entitiesToProcess.size()) {
                         entitiesToProcess = null;
                         stage = Stage.CLEANUP_ITEMS;
@@ -994,7 +1022,7 @@ final class ConstructTask implements ConstructJob {
                         entitiesProcessedIndex = 0;
                     }
 
-                    entitiesProcessedIndex = EntityCleanup.discardSome(entitiesToProcess, entitiesProcessedIndex, config.maxEntitiesToProcessPerTick());
+                    entitiesProcessedIndex = EntityCleanup.discardSome(entitiesToProcess, entitiesProcessedIndex, scaledCap(config.maxEntitiesToProcessPerTick()));
                     if (entitiesProcessedIndex >= entitiesToProcess.size()) {
                         entitiesToProcess = null;
                         releaseChunkTickets();
@@ -1056,6 +1084,53 @@ final class ConstructTask implements ConstructJob {
         ));
     }
 
+    private void updateAdaptiveWorkScale(long tickStartNanos) {
+        if (lastTickStartNanos <= 0L) {
+            lastTickStartNanos = tickStartNanos;
+            return;
+        }
+
+        long expectedTickNanos = Math.max(1L, config.expectedTickNanos());
+        long observedTickNanos = tickStartNanos - lastTickStartNanos;
+        lastTickStartNanos = tickStartNanos;
+
+        if (observedTickNanos <= 0L) {
+            return;
+        }
+
+        double rawScale = (double) expectedTickNanos / (double) observedTickNanos;
+        rawScale = clamp(rawScale, config.adaptiveScaleMin(), config.adaptiveScaleMax());
+
+        double smoothing = clamp(config.adaptiveScaleSmoothing(), 0.0d, 1.0d);
+        adaptiveWorkScale = adaptiveWorkScale + ((rawScale - adaptiveWorkScale) * smoothing);
+        adaptiveWorkScale = clamp(adaptiveWorkScale, config.adaptiveScaleMin(), config.adaptiveScaleMax());
+    }
+
+    private long scaledBudget(long baseBudgetNanos) {
+        long safeBase = Math.max(250_000L, baseBudgetNanos);
+        return Math.max(250_000L, Math.round(safeBase * adaptiveWorkScale));
+    }
+
+    private int scaledCap(int basePerTick) {
+        if (basePerTick <= 0) {
+            return basePerTick;
+        }
+        return Math.max(1, (int) Math.round(basePerTick * adaptiveWorkScale));
+    }
+
+    private static double clamp(double value, double min, double max) {
+        if (min > max) {
+            return value;
+        }
+        if (value < min) {
+            return min;
+        }
+        if (value > max) {
+            return max;
+        }
+        return value;
+    }
+
     @Override
     public void onError(MinecraftServer server, Throwable throwable) {
         send(server, "Construct crashed: " + throwable.getClass().getSimpleName() + ": " + (throwable.getMessage() != null ? throwable.getMessage() : "(no message)"));
@@ -1079,6 +1154,8 @@ final class ConstructTask implements ConstructJob {
             return;
         }
 
+        int ticketCount = chunkTicketKeys.size();
+
         try {
             for (long key : chunkTicketKeys) {
                 int cx = ChunkPos.getPackedX(key);
@@ -1088,6 +1165,14 @@ final class ConstructTask implements ConstructJob {
         } catch (Exception e) {
             AtlantisMod.LOGGER.warn("Failed to release chunk tickets: {}", e.getMessage());
         } finally {
+            if (com.silver.atlantis.spawn.SpawnMobConfig.DIAGNOSTIC_LOGS) {
+                AtlantisMod.LOGGER.info(
+                    "[ConstructTickets] runId={} released={} remainingActiveLoadsBeforeClear={}",
+                    undoRunId,
+                    ticketCount,
+                    activeChunkLoads.size()
+                );
+            }
             chunkTicketKeys.clear();
             activeChunkLoads.clear();
         }
@@ -1335,6 +1420,7 @@ final class ConstructTask implements ConstructJob {
             double x = player.getX();
             double z = player.getZ();
             if (x < minX || x > maxX || z < minZ || z > maxZ) {
+                lastKnownOutsideByPlayer.put(player.getUuid(), player.getBlockPos());
                 continue;
             }
 
@@ -1342,8 +1428,34 @@ final class ConstructTask implements ConstructJob {
         }
     }
 
+    private static boolean isInsideProtectedXZ(BlockPos pos, int protectedMinX, int protectedMaxX, int protectedMinZ, int protectedMaxZ) {
+        return pos.getX() >= protectedMinX
+            && pos.getX() <= (protectedMaxX + 1)
+            && pos.getZ() >= protectedMinZ
+            && pos.getZ() <= (protectedMaxZ + 1);
+    }
+
     private void teleportPlayerSafelyOutside(ServerPlayerEntity player, int protectedMinX, int protectedMaxX, int protectedMinZ, int protectedMaxZ) {
-        int margin = Math.max(8, config.playerEjectMarginBlocks());
+        int margin = Math.max(1, config.playerEjectTeleportOffsetBlocks());
+        UUID playerId = player.getUuid();
+
+        BlockPos best = null;
+        BlockPos returnPos = lastKnownOutsideByPlayer.get(playerId);
+        if (returnPos != null) {
+            BlockPos safeReturn = findSafeTeleportPos(returnPos.getX(), returnPos.getZ());
+            if (safeReturn != null && !isInsideProtectedXZ(safeReturn, protectedMinX, protectedMaxX, protectedMinZ, protectedMaxZ)) {
+                best = safeReturn;
+            }
+        }
+
+        int bestMobCount = Integer.MAX_VALUE;
+
+        if (best != null) {
+            bestMobCount = world.getEntitiesByClass(MobEntity.class,
+                new Box(best).expand(16.0, 8.0, 16.0),
+                e -> true
+            ).size();
+        }
 
         // Candidate positions just outside each side of the build.
         int px = player.getBlockX();
@@ -1361,12 +1473,13 @@ final class ConstructTask implements ConstructJob {
             new BlockPos(px, 0, maxZ)
         };
 
-        BlockPos best = null;
-        int bestMobCount = Integer.MAX_VALUE;
-
         for (BlockPos candidate : candidates) {
             BlockPos safe = findSafeTeleportPos(candidate.getX(), candidate.getZ());
             if (safe == null) {
+                continue;
+            }
+
+            if (isInsideProtectedXZ(safe, protectedMinX, protectedMaxX, protectedMinZ, protectedMaxZ)) {
                 continue;
             }
 
@@ -1390,23 +1503,29 @@ final class ConstructTask implements ConstructJob {
             BlockPos spawn = (server.getSpawnPoint() != null)
                 ? server.getSpawnPoint().getPos()
                 : BlockPos.ORIGIN;
-            best = findSafeTeleportPos(spawn.getX(), spawn.getZ());
+            BlockPos spawnSafe = findSafeTeleportPos(spawn.getX(), spawn.getZ());
+            if (spawnSafe != null && !isInsideProtectedXZ(spawnSafe, protectedMinX, protectedMaxX, protectedMinZ, protectedMaxZ)) {
+                best = spawnSafe;
+            }
         }
 
         if (best == null) {
             return;
         }
 
+        int cappedY = Math.min(best.getY(), 310);
+
         player.teleport(
             world,
             best.getX() + 0.5,
-            best.getY(),
+            cappedY,
             best.getZ() + 0.5,
             EnumSet.noneOf(PositionFlag.class),
             player.getYaw(),
             player.getPitch(),
             false
         );
+        lastKnownOutsideByPlayer.put(playerId, best);
         player.sendMessage(Text.literal("Build is in progress. You were moved outside the build area."), false);
     }
 
@@ -1418,6 +1537,10 @@ final class ConstructTask implements ConstructJob {
         // Heightmaps break with an artificial bedrock roof (they will report the roof as the "top"),
         // so instead scan down to find a solid ground block, then try to place the player above it.
         int bottomY = world.getBottomY();
+        int maxTeleportFeetY = Math.min(world.getTopYInclusive() - 1, 310);
+        if (maxTeleportFeetY <= bottomY) {
+            return null;
+        }
         int scanStartY = Math.min(world.getTopYInclusive(), world.getSeaLevel() - 2);
 
         int groundY = bottomY;
@@ -1441,6 +1564,9 @@ final class ConstructTask implements ConstructJob {
         // Search a reasonable vertical band to handle odd terrain/blocks.
         for (int dy = 0; dy <= 24; dy++) {
             int y = topY + dy;
+            if (y > maxTeleportFeetY) {
+                break;
+            }
             BlockPos feet = new BlockPos(x, y, z);
             BlockPos head = feet.up();
             BlockPos below = feet.down();
@@ -1461,6 +1587,9 @@ final class ConstructTask implements ConstructJob {
         // If the upward scan failed, also try slightly below the heightmap (cliffs/caves/overhangs).
         for (int dy = -1; dy >= -32; dy--) {
             int y = topY + dy;
+            if (y > maxTeleportFeetY) {
+                continue;
+            }
             BlockPos feet = new BlockPos(x, y, z);
             BlockPos head = feet.up();
             BlockPos below = feet.down();
