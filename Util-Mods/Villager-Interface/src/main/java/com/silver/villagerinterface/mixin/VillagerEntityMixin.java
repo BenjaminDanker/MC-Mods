@@ -49,8 +49,16 @@ public abstract class VillagerEntityMixin implements CustomVillagerData {
         }
 
         VillagerEntity villager = (VillagerEntity) (Object) this;
+        if (villager.getEntityWorld().isClient()) {
+            return;
+        }
+
         villager.setAiDisabled(true);
         villager.setVelocity(Vec3d.ZERO);
+
+        if (villager.hasVehicle()) {
+            villager.stopRiding();
+        }
     }
 
     @Inject(method = "writeCustomData(Lnet/minecraft/storage/WriteView;)V", at = @At("HEAD"))

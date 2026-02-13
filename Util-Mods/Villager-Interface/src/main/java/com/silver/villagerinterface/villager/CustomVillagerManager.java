@@ -176,6 +176,9 @@ public final class CustomVillagerManager {
             Vec3d target = position.toVec3d();
             Vec3d current = new Vec3d(villager.getX(), villager.getY(), villager.getZ());
             if (current.squaredDistanceTo(target) > 0.25) {
+                if (villager.hasVehicle()) {
+                    villager.stopRiding();
+                }
                 villager.refreshPositionAndAngles(target.x, target.y, target.z, entry.yaw(), entry.pitch());
                 villager.setVelocity(Vec3d.ZERO);
             }

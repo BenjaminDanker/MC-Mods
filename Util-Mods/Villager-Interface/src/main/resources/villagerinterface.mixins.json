@@ -3,6 +3,7 @@
   "package": "com.silver.villagerinterface.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "EntityMixin",
     "PlayerManagerMixin",
     "ServerPlayNetworkHandlerMixin",
     "VillagerEntityMixin"
