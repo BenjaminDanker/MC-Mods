@@ -19,6 +19,10 @@ public final class SpawnMobControlService {
                 return;
             }
 
+            if (SpawnProtectionManager.INSTANCE.isAllowedEntityInProtectedBounds(mob)) {
+                return;
+            }
+
             if (SpawnProtectionManager.INSTANCE.isWithinProtectedBounds(world, mob.getBlockPos())) {
                 mob.discard();
             }
@@ -34,6 +38,10 @@ public final class SpawnMobControlService {
             }
 
             for (MobEntity mob : SpawnProtectionManager.INSTANCE.getMobsWithinProtectedBounds(world)) {
+                if (SpawnProtectionManager.INSTANCE.isAllowedEntityInProtectedBounds(mob)) {
+                    continue;
+                }
+
                 mob.discard();
             }
         });

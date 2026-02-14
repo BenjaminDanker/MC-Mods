@@ -1,7 +1,16 @@
 package com.silver.spawnprotect.protect;
 
 import com.silver.spawnprotect.SpawnProtectMod;
+import net.minecraft.entity.Entity;
 import net.minecraft.entity.mob.MobEntity;
+import net.minecraft.entity.passive.AbstractDonkeyEntity;
+import net.minecraft.entity.passive.AbstractHorseEntity;
+import net.minecraft.entity.passive.CamelEntity;
+import net.minecraft.entity.passive.CatEntity;
+import net.minecraft.entity.passive.LlamaEntity;
+import net.minecraft.entity.passive.TraderLlamaEntity;
+import net.minecraft.entity.passive.VillagerEntity;
+import net.minecraft.entity.passive.WolfEntity;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
@@ -101,6 +110,21 @@ public final class SpawnProtectionManager {
         }
 
         return world.getEntitiesByClass(MobEntity.class, snapshot.protectedBox(), ANY_MOB);
+    }
+
+    public boolean isAllowedEntityInProtectedBounds(Entity entity) {
+        if (entity == null) {
+            return false;
+        }
+
+        return entity instanceof VillagerEntity
+            || entity instanceof AbstractHorseEntity
+            || entity instanceof AbstractDonkeyEntity
+            || entity instanceof LlamaEntity
+            || entity instanceof TraderLlamaEntity
+            || entity instanceof CamelEntity
+            || entity instanceof CatEntity
+            || (entity instanceof WolfEntity wolf && wolf.isTamed());
     }
 
     private boolean isAllowedBypass(ServerPlayerEntity player) {

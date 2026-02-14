@@ -24,6 +24,10 @@ public abstract class EntityMixin {
             return;
         }
 
+        if (SpawnProtectionManager.INSTANCE.isAllowedEntityInProtectedBounds((Entity) (Object) this)) {
+            return;
+        }
+
         if (SpawnProtectionManager.INSTANCE.isWithinProtectedBounds(world, pos)) {
             cir.setReturnValue(false);
         }
