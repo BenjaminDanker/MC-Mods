@@ -144,6 +144,10 @@ public final class ProtectionManager {
         return false;
     }
 
+    public synchronized boolean isInteriorProtected(ServerWorld world, BlockPos pos) {
+        return isPlaceProtected(world, pos);
+    }
+
     public synchronized boolean isAnyProtected(ServerWorld world, BlockPos pos) {
         if (world == null || pos == null) {
             return false;
