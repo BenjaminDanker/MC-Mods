@@ -40,10 +40,14 @@ import java.util.stream.Stream;
 public final class ConversationManager {
     private static final Set<String> EXIT_KEYWORDS = Set.of("!exit");
     private static final String SYSTEM_FALLBACK_PROMPT = "You have amnesia.";
+    private static final int INTERACT_COOLDOWN_TICKS = 60;
+    private static final int COOLDOWN_MESSAGE_INTERVAL_TICKS = 20;
 
     private final CustomVillagerManager villagerManager;
     private final Map<UUID, ConversationSession> sessions = new ConcurrentHashMap<>();
     private final Map<UUID, Integer> lastHandledTick = new ConcurrentHashMap<>();
+    private final Map<UUID, Integer> interactCooldownUntilTick = new ConcurrentHashMap<>();
+    private final Map<UUID, Integer> lastCooldownMessageTick = new ConcurrentHashMap<>();
     private final HttpClient httpClient = HttpClient.newHttpClient();
     private final Gson gson = new Gson();
 
@@ -60,13 +64,19 @@ public final class ConversationManager {
 
     public boolean startConversation(ServerPlayerEntity player, VillagerEntity villager) {
         ConversationSession existing = sessions.get(player.getUuid());
-        if (existing != null) {
-            endConversation(player, "Conversation ended.");
-        }
-
         VillagerConfigEntry entry = villagerManager.getEntryForVillager(villager);
         if (entry == null) {
             return false;
+        }
+
+        if (isInteractionCoolingDown(player)) {
+            return true;
+        }
+
+        applyInteractionCooldown(player);
+
+        if (existing != null) {
+            endConversation(player, "Conversation ended.");
         }
 
         VillagerInterfaceConfig config = getConfig();
@@ -124,6 +134,8 @@ public final class ConversationManager {
         UUID playerId = handler.getPlayer().getUuid();
         sessions.remove(playerId);
         lastHandledTick.remove(playerId);
+        interactCooldownUntilTick.remove(playerId);
+        lastCooldownMessageTick.remove(playerId);
     }
 
     public void onServerTick(MinecraftServer server) {
@@ -221,6 +233,27 @@ public final class ConversationManager {
             id = Identifier.of("minecraft", "overworld");
         }
         return RegistryKey.of(RegistryKeys.WORLD, id);
+    }
+
+    private boolean isInteractionCoolingDown(ServerPlayerEntity player) {
+        int currentTick = player.getEntityWorld().getServer().getTicks();
+        Integer cooldownUntil = interactCooldownUntilTick.get(player.getUuid());
+        if (cooldownUntil == null || currentTick >= cooldownUntil) {
+            return false;
+        }
+
+        Integer lastMessageTick = lastCooldownMessageTick.get(player.getUuid());
+        if (lastMessageTick == null || currentTick - lastMessageTick >= COOLDOWN_MESSAGE_INTERVAL_TICKS) {
+            player.sendMessage(Text.literal("Please wait a moment before talking again.").formatted(Formatting.DARK_GRAY), true);
+            lastCooldownMessageTick.put(player.getUuid(), currentTick);
+        }
+
+        return true;
+    }
+
+    private void applyInteractionCooldown(ServerPlayerEntity player) {
+        int currentTick = player.getEntityWorld().getServer().getTicks();
+        interactCooldownUntilTick.put(player.getUuid(), currentTick + INTERACT_COOLDOWN_TICKS);
     }
 
     private void sendVillagerLine(ServerPlayerEntity player, VillagerConfigEntry entry, String line) {
