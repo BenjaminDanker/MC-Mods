@@ -162,6 +162,7 @@ public final class CustomVillagerManager {
         applyCustomId(villager, entry.id());
         refreshVillagerState(villager, entry);
         world.spawnEntity(villager);
+        refreshVillagerState(villager, entry);
         VillagerInterfaceMod.LOGGER.info("Spawned villager '{}' in {}", entry.id(), entry.dimension());
     }
 
@@ -182,10 +183,19 @@ public final class CustomVillagerManager {
                 villager.refreshPositionAndAngles(target.x, target.y, target.z, entry.yaw(), entry.pitch());
                 villager.setVelocity(Vec3d.ZERO);
             }
+
+            applyRotation(villager, entry.yaw(), entry.pitch());
         }
 
         villager.setAiDisabled(true);
         villager.setPersistent();
+    }
+
+    private void applyRotation(VillagerEntity villager, float yaw, float pitch) {
+        villager.setYaw(yaw);
+        villager.setPitch(pitch);
+        villager.setBodyYaw(yaw);
+        villager.setHeadYaw(yaw);
     }
 
     private void applyCustomId(VillagerEntity villager, String id) {
