@@ -1,0 +1,19 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "com.silver.spawnprotect.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "ServerPlayerInteractionManagerMixin",
+    "ExplosionMixin",
+    "PistonHandlerMixin",
+    "FireBlockMixin",
+    "FlowableFluidMixin",
+    "ScheduledTickViewMixin",
+    "ServerPlayerEntityMixin",
+    "EntityMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
