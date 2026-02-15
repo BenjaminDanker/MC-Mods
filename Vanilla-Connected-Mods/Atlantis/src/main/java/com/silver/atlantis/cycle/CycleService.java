@@ -18,6 +18,9 @@ import java.nio.file.Path;
 
 public final class CycleService {
 
+    private static final long DAY_MILLIS = 24L * 60L * 60L * 1000L;
+    private static final long MAX_ELIGIBLE_TICK_GAP_MILLIS = 5_000L;
+
     private final FlatAreaSearchService searchService;
     private final ConstructService constructService;
     private final SpawnCommandManager spawnCommandManager;
@@ -25,6 +28,8 @@ public final class CycleService {
     private final Path stateFile;
 
     private CycleState state;
+    private long lastUndoCountdownCheckMillis = -1L;
+    private long lastUndoCountdownCheckNanos = -1L;
 
     public CycleService(FlatAreaSearchService searchService, ConstructService constructService, SpawnCommandManager spawnCommandManager) {
         this.searchService = searchService;
@@ -301,6 +306,7 @@ public final class CycleService {
 
         CycleState.Stage stage = parseStage(state.stage());
         if (stage == CycleState.Stage.IDLE) {
+            resetUndoCountdownCheck();
             if (!ignoreSchedule && state.nextRunAtEpochMillis() > 0 && now < state.nextRunAtEpochMillis()) {
                 return false;
             }
@@ -318,6 +324,7 @@ public final class CycleService {
         }
 
         if (stage == CycleState.Stage.WAIT_FIND_FLAT) {
+            resetUndoCountdownCheck();
             if (searchService.isRunning()) {
                 return false;
             }
@@ -336,6 +343,7 @@ public final class CycleService {
         }
 
         if (stage == CycleState.Stage.START_CONSTRUCT) {
+            resetUndoCountdownCheck();
             if (constructService.isRunning()) {
                 state = new CycleState(CycleState.CURRENT_VERSION, true, state.nextRunAtEpochMillis(), CycleState.Stage.WAIT_CONSTRUCT.name(), state.lastCenterX(), state.lastCenterY(), state.lastCenterZ(), state.lastConstructRunId());
                 persistState();
@@ -401,6 +409,7 @@ public final class CycleService {
         }
 
         if (stage == CycleState.Stage.WAIT_CONSTRUCT) {
+            resetUndoCountdownCheck();
             if (constructService.isRunning()) {
                 return false;
             }
@@ -420,6 +429,7 @@ public final class CycleService {
         }
 
         if (stage == CycleState.Stage.RUN_STRUCTUREMOB) {
+            resetUndoCountdownCheck();
             try {
                 spawnCommandManager.runStructureMob(actor, false);
             } catch (Exception e) {
@@ -434,6 +444,7 @@ public final class CycleService {
         }
 
         if (stage == CycleState.Stage.WAIT_BEFORE_UNDO) {
+            maybeBroadcastUndoCountdown(server, now);
             if (!ignoreSchedule && state.nextRunAtEpochMillis() > 0 && now < state.nextRunAtEpochMillis()) {
                 return false;
             }
@@ -444,6 +455,7 @@ public final class CycleService {
         }
 
         if (stage == CycleState.Stage.START_UNDO) {
+            resetUndoCountdownCheck();
             if (constructService.isRunning()) {
                 state = new CycleState(CycleState.CURRENT_VERSION, true, state.nextRunAtEpochMillis(), CycleState.Stage.WAIT_UNDO.name(), state.lastCenterX(), state.lastCenterY(), state.lastCenterZ(), state.lastConstructRunId());
                 persistState();
@@ -469,6 +481,7 @@ public final class CycleService {
         }
 
         if (stage == CycleState.Stage.WAIT_UNDO) {
+            resetUndoCountdownCheck();
             if (constructService.isRunning()) {
                 return false;
             }
@@ -521,5 +534,78 @@ public final class CycleService {
         } catch (Exception e) {
             AtlantisMod.LOGGER.warn("Failed to persist cycle state {}: {}", stateFile, e.getMessage());
         }
+    }
+
+    private void resetUndoCountdownCheck() {
+        lastUndoCountdownCheckMillis = -1L;
+        lastUndoCountdownCheckNanos = -1L;
+    }
+
+    private void maybeBroadcastUndoCountdown(MinecraftServer server, long nowMillis) {
+        long undoAt = state.nextRunAtEpochMillis();
+        if (undoAt <= 0L) {
+            lastUndoCountdownCheckMillis = nowMillis;
+            lastUndoCountdownCheckNanos = System.nanoTime();
+            return;
+        }
+
+        long nowNanos = System.nanoTime();
+        long prevMillis = lastUndoCountdownCheckMillis;
+        long prevNanos = lastUndoCountdownCheckNanos;
+
+        lastUndoCountdownCheckMillis = nowMillis;
+        lastUndoCountdownCheckNanos = nowNanos;
+
+        if (prevMillis < 0L || prevNanos < 0L) {
+            return;
+        }
+
+        long elapsedWallMillis = nowMillis - prevMillis;
+        long elapsedNanos = nowNanos - prevNanos;
+        if (elapsedWallMillis < 0L || elapsedNanos < 0L) {
+            return;
+        }
+
+        if (elapsedWallMillis > MAX_ELIGIBLE_TICK_GAP_MILLIS) {
+            return;
+        }
+
+        long elapsedFromNanoMillis = java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(elapsedNanos);
+        if (Math.abs(elapsedFromNanoMillis - elapsedWallMillis) > 250L) {
+            return;
+        }
+
+        long previousRemaining = undoAt - prevMillis;
+        long currentRemaining = undoAt - nowMillis;
+        if (previousRemaining <= 0L) {
+            return;
+        }
+
+        if (currentRemaining <= 0L) {
+            broadcastToAllPlayers(server, "Atlantis is moving");
+            return;
+        }
+
+        long boundaryDays = currentRemaining / DAY_MILLIS;
+        if (boundaryDays <= 0L) {
+            return;
+        }
+
+        long boundaryRemaining = boundaryDays * DAY_MILLIS;
+        if (previousRemaining > boundaryRemaining && currentRemaining <= boundaryRemaining) {
+            if (boundaryDays == 1L) {
+                broadcastToAllPlayers(server, "1 day until Atlantis moves");
+            } else {
+                broadcastToAllPlayers(server, boundaryDays + " days until Atlantis moves");
+            }
+        }
+    }
+
+    private void broadcastToAllPlayers(MinecraftServer server, String message) {
+        if (server == null || message == null || message.isBlank()) {
+            return;
+        }
+        Text text = Text.literal(message);
+        server.getPlayerManager().getPlayerList().forEach(player -> player.sendMessage(text, false));
     }
 }
