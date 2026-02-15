@@ -29,6 +29,7 @@ import net.minecraft.registry.ServerDynamicRegistryType;
 import net.minecraft.registry.SimpleRegistry;
 import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.registry.entry.RegistryEntryInfo;
+import net.minecraft.registry.tag.TagKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.network.ServerPlayNetworkHandler;
@@ -84,11 +85,13 @@ import java.util.stream.Stream;
  */
 public class EndResetManager {
     private static final int WALL_CLOCK_CHECK_INTERVAL_TICKS = 20;
+    private static final int ACTION_BAR_UPDATE_INTERVAL_TICKS = 20 * 60;
     private static final DateTimeFormatter DIMENSION_KEY_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmmss").withZone(ZoneOffset.UTC);
     private static final String DRAGON_BOSS_BAR_FIELD_NAME = "field_13119"; // obfuscated getter for EnderDragonFight#bossBar
 
     private static final Identifier STABLE_END_ID = Identifier.of(EnderFightMod.MOD_ID, "daily_end_active");
     private static final RegistryKey<World> STABLE_END_WORLD_KEY = RegistryKey.of(RegistryKeys.WORLD, STABLE_END_ID);
+    private static final TagKey<Biome> END_BIOME_TAG = TagKey.of(RegistryKeys.BIOME, Identifier.of("minecraft", "is_end"));
 
     private final ConfigManager configManager;
 
@@ -101,6 +104,9 @@ public class EndResetManager {
     private int wallClockCheckAccumulator;
     private boolean resetIntervalElapsed;
     private boolean warningWindowExceeded;
+    private long lastActionBarBucket = Long.MIN_VALUE;
+    private boolean lastActionBarSecondMode;
+    private Text lastActionBarMessage;
 
     private static final int VANILLA_END_REDIRECT_DELAY_TICKS = 1;
     private final Map<UUID, Integer> pendingVanillaEndRedirects = new ConcurrentHashMap<>();
@@ -185,6 +191,9 @@ public class EndResetManager {
         this.countdownActive = false;
         this.warningSent = false;
         this.activeEndWorldKey = World.END;
+        this.lastActionBarBucket = Long.MIN_VALUE;
+        this.lastActionBarSecondMode = false;
+        this.lastActionBarMessage = null;
     }
 
     public void tick(MinecraftServer server) {
@@ -198,10 +207,13 @@ public class EndResetManager {
 
         updateResetScheduleFlags();
 
+        if (!countdownActive && resetIntervalElapsed) {
+            beginCountdown();
+        }
+
+        sendEndResetActionBar(server);
+
         if (!countdownActive) {
-            if (resetIntervalElapsed) {
-                beginCountdown();
-            }
             return;
         }
 
@@ -211,6 +223,138 @@ public class EndResetManager {
         }
 
         processCountdown(server);
+    }
+
+    private void sendEndResetActionBar(MinecraftServer server) {
+        if (server == null) {
+            return;
+        }
+
+        List<ServerPlayerEntity> endPlayers = server.getPlayerManager().getPlayerList().stream()
+            .filter(this::isPlayerInEndContext)
+            .collect(Collectors.toList());
+        if (endPlayers.isEmpty()) {
+            return;
+        }
+
+        refreshActionBarMessageIfNeeded();
+        if (lastActionBarMessage == null) {
+            return;
+        }
+
+        for (ServerPlayerEntity player : endPlayers) {
+            player.sendMessage(lastActionBarMessage, true);
+        }
+    }
+
+    private void sendResetActionBarToPlayer(ServerPlayerEntity player) {
+        if (!isPlayerInEndContext(player)) {
+            return;
+        }
+
+        refreshActionBarMessageIfNeeded();
+        if (lastActionBarMessage == null) {
+            return;
+        }
+
+        player.sendMessage(lastActionBarMessage, true);
+    }
+
+    private void refreshActionBarMessageIfNeeded() {
+        long remainingMillis = getRemainingMillisUntilReset();
+        long remainingSeconds = Math.max(0L, (remainingMillis + 999L) / 1000L);
+        boolean secondMode = remainingSeconds < 60L;
+        long bucket = secondMode ? remainingSeconds : Math.max(0L, (remainingSeconds + 59L) / 60L);
+
+        if (bucket == lastActionBarBucket && secondMode == lastActionBarSecondMode && lastActionBarMessage != null) {
+            return;
+        }
+
+        String timeRemaining = formatRemainingTime(remainingMillis);
+        lastActionBarMessage = Text.literal("End resets in " + timeRemaining);
+        lastActionBarBucket = bucket;
+        lastActionBarSecondMode = secondMode;
+    }
+
+    private long getRemainingMillisUntilReset() {
+        if (persistentState == null) {
+            return 0L;
+        }
+
+        if (cachedConfig == null) {
+            cachedConfig = configManager.getConfig();
+        }
+
+        if (countdownActive) {
+            return Math.max(0L, countdownTicksRemaining * 50L);
+        }
+
+        long lastReset = persistentState.getLastResetEpochMillis();
+        long warningMillis = Math.max(0L, cachedConfig.warningDelayTicks()) * 50L;
+        long intervalMillis = (long) Math.max(1D, cachedConfig.resetIntervalHours() * 3_600_000D);
+
+        if (lastReset <= 0L) {
+            return warningMillis;
+        }
+
+        long targetResetMillis = lastReset + intervalMillis + warningMillis;
+        return Math.max(0L, targetResetMillis - Instant.now().toEpochMilli());
+    }
+
+    private boolean isPlayerInEndContext(ServerPlayerEntity player) {
+        if (player == null) {
+            return false;
+        }
+
+        ServerWorld world = player.getCommandSource().getWorld();
+        if (world == null) {
+            return false;
+        }
+
+        if (PortalInterceptor.isManagedEndDimension(world.getRegistryKey())) {
+            return true;
+        }
+
+        Identifier dimensionId = world.getRegistryKey().getValue();
+        if (dimensionId != null && dimensionId.getPath().contains("end")) {
+            return true;
+        }
+
+        return isEndBiome(world, player.getBlockPos());
+    }
+
+    private boolean isEndBiome(ServerWorld world, BlockPos position) {
+        if (world == null || position == null) {
+            return false;
+        }
+
+        RegistryEntry<Biome> biome = world.getBiome(position);
+        return biome.isIn(END_BIOME_TAG);
+    }
+
+    private String formatRemainingTime(long remainingMillis) {
+        if (remainingMillis < 60_000L) {
+            long seconds = (remainingMillis + 999L) / 1000L;
+            return seconds + "s";
+        }
+
+        long totalMinutes = (remainingMillis + 59_999L) / 60_000L;
+        if (totalMinutes <= 0L) {
+            return "0m";
+        }
+
+        long hours = totalMinutes / 60L;
+        long minutes = totalMinutes % 60L;
+
+        if (hours > 0 && minutes > 0) {
+            return hours + "h " + minutes + "m";
+        }
+
+        if (hours > 0) {
+            return hours + "h";
+        }
+
+        return minutes + "m";
     }
 
     private void beginCountdown() {
@@ -361,6 +505,9 @@ public class EndResetManager {
         resetIntervalElapsed = false;
         warningWindowExceeded = false;
         wallClockCheckAccumulator = 0;
+        lastActionBarBucket = Long.MIN_VALUE;
+        lastActionBarSecondMode = false;
+        lastActionBarMessage = null;
     }
 
     /**
@@ -527,6 +674,7 @@ public class EndResetManager {
             ensureEndSpawnPlatform(targetWorld);
             TeleportTarget target = new TeleportTarget(targetWorld, END_PLATFORM_SPAWN, Vec3d.ZERO, END_PLATFORM_YAW, 0.0F, TeleportTarget.NO_OP);
             player.teleportTo(target);
+            sendResetActionBarToPlayer(player);
         }
     }
 
@@ -542,6 +690,7 @@ public class EndResetManager {
         RegistryKey<World> recordedKey = persistentState.getRecordedEndDimension(player.getUuid());
         if (recordedKey == null) {
             EnderFightMod.LOGGER.debug("No offline End record for {}; skipping safeguard", player.getName().getString());
+            sendResetActionBarToPlayer(player);
             return;
         }
 
