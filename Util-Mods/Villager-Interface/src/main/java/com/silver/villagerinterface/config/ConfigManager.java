@@ -122,7 +122,7 @@ public final class ConfigManager {
 
                 String systemPrompt = entry.systemPrompt();
                 if (systemPrompt == null || systemPrompt.isBlank()) {
-                    systemPrompt = "You are a friendly Minecraft villager having a conversation with a player.";
+                    systemPrompt = VillagerInterfaceConfig.DEFAULT_SYSTEM_PROMPT;
                     shouldSave = true;
                 }
 
@@ -138,6 +138,11 @@ public final class ConfigManager {
                     systemPrompt
                 ));
             }
+        }
+
+        if (entries.isEmpty()) {
+            entries.add(VillagerInterfaceConfig.createDefaultVillagerEntry());
+            shouldSave = true;
         }
 
         VillagerInterfaceConfig coerced = new VillagerInterfaceConfig(
