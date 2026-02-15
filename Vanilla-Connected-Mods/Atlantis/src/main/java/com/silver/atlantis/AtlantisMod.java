@@ -10,6 +10,8 @@ import com.silver.atlantis.find.FindCommandManager;
 import com.silver.atlantis.find.FlatAreaSearchService;
 import com.silver.atlantis.heightcap.HeightCapCommandManager;
 import com.silver.atlantis.heightcap.HeightCapService;
+import com.silver.atlantis.leviathan.LeviathanCommandManager;
+import com.silver.atlantis.leviathan.Leviathans;
 import com.silver.atlantis.protect.ProtectionBootstrap;
 import com.silver.atlantis.protect.ProtectionService;
 import com.silver.atlantis.spawn.SpawnCommandManager;
@@ -33,13 +35,15 @@ public final class AtlantisMod implements ModInitializer {
 	private final ConstructCommandManager constructCommandManager = new ConstructCommandManager(flatAreaSearchService, constructService);
 	private final CycleService cycleService = new CycleService(flatAreaSearchService, constructService, spawnManager);
 	private final CycleCommandManager cycleCommandManager = new CycleCommandManager(cycleService);
+	private final LeviathanCommandManager leviathanCommandManager = new LeviathanCommandManager();
 	private final AtlantisCommandManager atlantisCommandManager = new AtlantisCommandManager(
 		findCommandManager,
 		constructCommandManager,
 		cycleCommandManager,
 		spawnManager,
 		constructService,
-		heightCapCommandManager
+		heightCapCommandManager,
+		leviathanCommandManager
 	);
 
 	@Override
@@ -53,6 +57,7 @@ public final class AtlantisMod implements ModInitializer {
 		flatAreaSearchService.register();
 		constructService.register();
 		cycleService.register();
+		Leviathans.init();
 		atlantisCommandManager.register();
 		LOGGER.info("Loaded Atlantis structure spawn manager");
 		LOGGER.info("Registered Atlantis root command: /atlantis");

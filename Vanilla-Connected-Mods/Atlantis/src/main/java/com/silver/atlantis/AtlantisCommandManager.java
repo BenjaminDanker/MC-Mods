@@ -6,6 +6,7 @@ import com.silver.atlantis.construct.ConstructService;
 import com.silver.atlantis.cycle.CycleCommandManager;
 import com.silver.atlantis.find.FindCommandManager;
 import com.silver.atlantis.heightcap.HeightCapCommandManager;
+import com.silver.atlantis.leviathan.LeviathanCommandManager;
 import com.silver.atlantis.spawn.SpawnCommandManager;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.server.command.CommandManager;
@@ -25,6 +26,7 @@ public final class AtlantisCommandManager {
     private final SpawnCommandManager spawnCommandManager;
     private final ConstructService constructService;
     private final HeightCapCommandManager heightCapCommandManager;
+    private final LeviathanCommandManager leviathanCommandManager;
 
     public AtlantisCommandManager(
         FindCommandManager findCommandManager,
@@ -32,7 +34,8 @@ public final class AtlantisCommandManager {
         CycleCommandManager cycleCommandManager,
         SpawnCommandManager spawnCommandManager,
         ConstructService constructService,
-        HeightCapCommandManager heightCapCommandManager
+        HeightCapCommandManager heightCapCommandManager,
+        LeviathanCommandManager leviathanCommandManager
     ) {
         this.findCommandManager = findCommandManager;
         this.constructCommandManager = constructCommandManager;
@@ -40,6 +43,7 @@ public final class AtlantisCommandManager {
         this.spawnCommandManager = spawnCommandManager;
         this.constructService = constructService;
         this.heightCapCommandManager = heightCapCommandManager;
+        this.leviathanCommandManager = leviathanCommandManager;
     }
 
     public void register() {
@@ -63,6 +67,7 @@ public final class AtlantisCommandManager {
                 .then(constructCommandManager.buildSubcommand())
                 .then(spawnCommandManager.buildSubcommand())
                 .then(heightCapCommandManager.buildSubcommand())
+                .then(leviathanCommandManager.buildSubcommand())
         );
     }
 
