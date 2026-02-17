@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "package": "com.silver.soulbounditems.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "AnvilScreenHandlerMixin",
+    "ItemEntityMixin",
+    "ScreenHandlerMixin"
+  ],
+  "client": [],
+  "server": [],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

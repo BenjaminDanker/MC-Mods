@@ -1,4 +1,4 @@
-package com.silver.villagerinterface.soulbound;
+package com.silver.soulbounditems.mpds;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;

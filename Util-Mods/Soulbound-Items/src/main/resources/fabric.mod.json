@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "soulbounditems",
+  "version": "${version}",
+  "name": "Soulbound Items",
+  "description": "Prevents hostile Soulbound overflow pickups and enforces flat overflow damage on deliberate inventory transfers.",
+  "authors": [
+    "BenjaminDanker"
+  ],
+  "license": "MIT",
+  "environment": "*",
+  "mixins": [
+    "soulbounditems.mixins.json"
+  ],
+  "entrypoints": {
+    "main": [
+      "com.silver.soulbounditems.SoulboundItemsMod"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "fabric": "*",
+    "minecraft": ">=1.21",
+    "java": ">=21"
+  }
+}

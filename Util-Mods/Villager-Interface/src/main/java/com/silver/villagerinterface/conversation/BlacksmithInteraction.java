@@ -15,6 +15,7 @@ public final class BlacksmithInteraction {
     private static final String TYPE_BLACKSMITH = "blacksmith";
     private static final String MOD_SOULBOUND = "Soulbound";
     private static final String MOD_SOULBOUND_CRAFTED = "CraftedSoulbound";
+    private static final String NAME_PREFIX_SOULBOUND = "Soulbound ";
     private static final String CONFIRM_PROMPT = "Please type !confirm to modify this item";
     private static final String KEY_ID_TYPE = "idType";
 
@@ -90,18 +91,19 @@ public final class BlacksmithInteraction {
             return true;
         }
 
-        MpdsSoulboundApi.Capacity cap;
+        int soulboundMax;
         try {
-            cap = MpdsSoulboundApi.getCapacity(player.getName().getString(), player.getUuidAsString());
+            soulboundMax = MpdsSoulboundApi.getSoulboundMax(player.getName().getString(), player.getUuidAsString());
         } catch (Exception e) {
             String strict = "Strict rules: The Soulbound capacity system is unavailable right now (DB error). Tell the player to try again later. Do not mention coins. Do not mention !confirm.";
             manager.requestTransientReply(player, session, "The player wants a Soulbound modification but DB lookup failed.", strict);
             return true;
         }
 
-        if (!cap.hasRoom()) {
+        int soulboundCount = countSoulboundItems(player);
+        if (soulboundCount >= soulboundMax) {
             String strict = "Strict rules: The player has no remaining Soulbound crafting capacity. Use this phrasing: 'Your Soul isn't large enough or you have too many Soulbound items.' "
-                + "If you mention numbers, include this exact sentence on its own line: 'Your Soulbound capacity is " + cap.current() + " out of a maximum of " + cap.max() + " items.' "
+                + "If you mention numbers, include this exact sentence on its own line: 'Your Soulbound capacity is " + soulboundCount + " out of a maximum of " + soulboundMax + " items.' "
                 + "Do not mention coins. Do not mention !confirm.";
             manager.requestTransientReply(player, session, "The player wants a Soulbound modification but has no capacity.", strict);
             return true;
@@ -116,7 +118,7 @@ public final class BlacksmithInteraction {
             + "Important: it CAN still be manually dropped by the player; do NOT claim it prevents accidental dropping/removal. "
             + "Do NOT claim it prevents other players from using the item. "
             + "Add a warning: Soulbound cannot be undone by normal means. "
-                + "Include this exact sentence on its own line: 'Your Soulbound capacity is " + cap.current() + " out of a maximum of " + cap.max() + " items.' "
+                + "Include this exact sentence on its own line: 'Your Soulbound capacity is " + soulboundCount + " out of a maximum of " + soulboundMax + " items.' "
             + "Then include this exact sentence on its own line: \"" + CONFIRM_PROMPT + "\"";
         manager.requestTransientReply(player, session, "Quote and explain the Soulbound modification for the player's selected item.", strict);
         return true;
@@ -153,19 +155,22 @@ public final class BlacksmithInteraction {
             return true;
         }
 
-        boolean reserved;
+        int soulboundMax;
         try {
-            reserved = MpdsSoulboundApi.tryReserveOne(player.getName().getString(), player.getUuidAsString());
+            soulboundMax = MpdsSoulboundApi.getSoulboundMax(player.getName().getString(), player.getUuidAsString());
         } catch (Exception e) {
             session.setPendingModification(null);
-            String strict = "Strict rules: The Soulbound capacity system is unavailable right now (DB error). Tell the player to try again later and retry !modify Soulbound. Do not mention coins.";
-            manager.requestTransientReply(player, session, "The player tried to confirm a Soulbound modification but DB reservation failed.", strict);
+            String strict = "Strict rules: The Soulbound capacity system is unavailable right now (DB error). Tell the player to try again later and retry !modify Soulbound. Do not mention coins. Do not mention !confirm.";
+            manager.requestTransientReply(player, session, "The player tried to confirm a Soulbound modification but DB lookup failed.", strict);
             return true;
         }
 
-        if (!reserved) {
+        int soulboundCount = countSoulboundItems(player);
+        if (soulboundCount >= soulboundMax) {
             session.setPendingModification(null);
-            String strict = "Strict rules: The player has no remaining Soulbound crafting capacity. Use this phrasing: 'Your Soul isn't large enough or you have too many Soulbound items.' Do not mention coins.";
+            String strict = "Strict rules: The player has no remaining Soulbound crafting capacity. Use this phrasing: 'Your Soul isn't large enough or you have too many Soulbound items.' "
+                + "If you mention numbers, include this exact sentence on its own line: 'Your Soulbound capacity is " + soulboundCount + " out of a maximum of " + soulboundMax + " items.' "
+                + "Do not mention coins. Do not mention !confirm.";
             manager.requestTransientReply(player, session, "The player tried to confirm a Soulbound modification but has no capacity.", strict);
             return true;
         }
@@ -184,6 +189,8 @@ public final class BlacksmithInteraction {
         NbtComponent.set(DataComponentTypes.CUSTOM_DATA, modified, nbt -> {
             nbt.putString(KEY_ID_TYPE, MOD_SOULBOUND_CRAFTED);
         });
+
+        modified.set(DataComponentTypes.CUSTOM_NAME, Text.literal(ensureSoulboundPrefix(modified.getName().getString())));
 
         player.getInventory().setSelectedStack(modified);
         player.getInventory().markDirty();
@@ -216,12 +223,49 @@ public final class BlacksmithInteraction {
         return -1;
     }
 
+    private static int countSoulboundItems(ServerPlayerEntity player) {
+        int count = 0;
+        int size = player.getInventory().size();
+        for (int i = 0; i < size; i++) {
+            ItemStack stack = player.getInventory().getStack(i);
+            if (isSoulboundTagged(stack)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static boolean isSoulboundTagged(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return false;
+        }
+
+        NbtComponent customData = stack.get(DataComponentTypes.CUSTOM_DATA);
+        if (customData == null) {
+            return false;
+        }
+
+        String idType = customData.copyNbt().getString(KEY_ID_TYPE).orElse("");
+        return MOD_SOULBOUND_CRAFTED.equals(idType);
+    }
+
     private static String safeItemName(ItemStack stack) {
         try {
             return stack.getName().getString();
         } catch (Exception ignored) {
             return "item";
         }
+    }
+
+    private static String ensureSoulboundPrefix(String name) {
+        String safe = name == null ? "" : name.trim();
+        if (safe.isEmpty()) {
+            return NAME_PREFIX_SOULBOUND.trim();
+        }
+        if (safe.regionMatches(true, 0, NAME_PREFIX_SOULBOUND, 0, NAME_PREFIX_SOULBOUND.length())) {
+            return safe;
+        }
+        return NAME_PREFIX_SOULBOUND + safe;
     }
 
     public record PendingModification(Item item, String modificationType) {
