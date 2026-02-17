@@ -4,6 +4,7 @@ package com.silver.atlantis;
 
 import com.silver.atlantis.construct.ConstructCommandManager;
 import com.silver.atlantis.construct.ConstructService;
+import com.silver.atlantis.compass.AtlantisCompassOverrideManager;
 import com.silver.atlantis.cycle.CycleCommandManager;
 import com.silver.atlantis.cycle.CycleService;
 import com.silver.atlantis.find.FindCommandManager;
@@ -56,6 +57,7 @@ public final class AtlantisMod implements ModInitializer {
 		SpecialDropManager.init();
 		spawnManager.register();
 		SpecialItemConversionManager.init();
+		AtlantisCompassOverrideManager.init();
 		flatAreaSearchService.register();
 		constructService.register();
 		cycleService.register();
