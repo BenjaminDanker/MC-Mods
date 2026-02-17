@@ -1,7 +1,9 @@
 package com.silver.atlantis.leviathan;
 
+import com.silver.atlantis.AtlantisMod;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
@@ -28,6 +30,7 @@ public final class LeviathansConfig {
     public static final String FILE_NAME = "atlantis-leviathans.json";
 
     public final String entityTypeId;
+    public final List<String> entityTypeIds;
     public final double entityScale;
     public final int minimumLeviathans;
 
@@ -45,7 +48,9 @@ public final class LeviathansConfig {
 
     public final boolean combatEnabled;
     public final int engageRadiusBlocks;
+    public final int engageVerticalRadiusBlocks;
     public final int disengageRadiusBlocks;
+    public final int disengageVerticalRadiusBlocks;
     public final int chargeDurationTicks;
     public final int chargeCooldownTicks;
     public final double chargeSpeedBlocksPerTick;
@@ -64,6 +69,14 @@ public final class LeviathansConfig {
     public final double chargeHitboxExpandBlocks;
     // Optional knockback magnitude applied on successful charge hit.
     public final double chargeKnockbackStrength;
+    public final int depthScaleTopY;
+    public final int depthScaleBottomY;
+    public final double depthScaleAtTop;
+    public final double depthScaleAtBottom;
+    public final double depthDamageAtTop;
+    public final double depthDamageAtBottom;
+    public final double depthHealthAtTop;
+    public final double depthHealthAtBottom;
 
     public final boolean requireWaterForSpawn;
     public final int solidAvoidanceProbeDistanceBlocks;
@@ -82,6 +95,7 @@ public final class LeviathansConfig {
 
     private LeviathansConfig(
         String entityTypeId,
+        List<String> entityTypeIds,
         double entityScale,
         int minimumLeviathans,
         boolean virtualTravelEnabled,
@@ -96,7 +110,9 @@ public final class LeviathansConfig {
         boolean autoDistancesFromServer,
         boolean combatEnabled,
         int engageRadiusBlocks,
+        int engageVerticalRadiusBlocks,
         int disengageRadiusBlocks,
+        int disengageVerticalRadiusBlocks,
         int chargeDurationTicks,
         int chargeCooldownTicks,
         double chargeSpeedBlocksPerTick,
@@ -110,6 +126,14 @@ public final class LeviathansConfig {
         double chargeDirectionDotThreshold,
         double chargeHitboxExpandBlocks,
         double chargeKnockbackStrength,
+        int depthScaleTopY,
+        int depthScaleBottomY,
+        double depthScaleAtTop,
+        double depthScaleAtBottom,
+        double depthDamageAtTop,
+        double depthDamageAtBottom,
+        double depthHealthAtTop,
+        double depthHealthAtBottom,
         boolean requireWaterForSpawn,
         int solidAvoidanceProbeDistanceBlocks,
         int solidAvoidanceVerticalClearanceBlocks,
@@ -124,6 +148,7 @@ public final class LeviathansConfig {
         int virtualStateFlushIntervalMinutes
     ) {
         this.entityTypeId = entityTypeId;
+        this.entityTypeIds = List.copyOf(entityTypeIds);
         this.entityScale = entityScale;
         this.minimumLeviathans = minimumLeviathans;
         this.virtualTravelEnabled = virtualTravelEnabled;
@@ -138,7 +163,9 @@ public final class LeviathansConfig {
         this.autoDistancesFromServer = autoDistancesFromServer;
         this.combatEnabled = combatEnabled;
         this.engageRadiusBlocks = engageRadiusBlocks;
+        this.engageVerticalRadiusBlocks = engageVerticalRadiusBlocks;
         this.disengageRadiusBlocks = disengageRadiusBlocks;
+        this.disengageVerticalRadiusBlocks = disengageVerticalRadiusBlocks;
         this.chargeDurationTicks = chargeDurationTicks;
         this.chargeCooldownTicks = chargeCooldownTicks;
         this.chargeSpeedBlocksPerTick = chargeSpeedBlocksPerTick;
@@ -152,6 +179,14 @@ public final class LeviathansConfig {
         this.chargeDirectionDotThreshold = chargeDirectionDotThreshold;
         this.chargeHitboxExpandBlocks = chargeHitboxExpandBlocks;
         this.chargeKnockbackStrength = chargeKnockbackStrength;
+        this.depthScaleTopY = depthScaleTopY;
+        this.depthScaleBottomY = depthScaleBottomY;
+        this.depthScaleAtTop = depthScaleAtTop;
+        this.depthScaleAtBottom = depthScaleAtBottom;
+        this.depthDamageAtTop = depthDamageAtTop;
+        this.depthDamageAtBottom = depthDamageAtBottom;
+        this.depthHealthAtTop = depthHealthAtTop;
+        this.depthHealthAtBottom = depthHealthAtBottom;
         this.requireWaterForSpawn = requireWaterForSpawn;
         this.solidAvoidanceProbeDistanceBlocks = solidAvoidanceProbeDistanceBlocks;
         this.solidAvoidanceVerticalClearanceBlocks = solidAvoidanceVerticalClearanceBlocks;
@@ -173,12 +208,14 @@ public final class LeviathansConfig {
     public static LeviathansConfig loadOrCreateStrict() {
         Path path = configPath();
         if (!Files.exists(path)) {
+            AtlantisMod.LOGGER.info("[Atlantis][leviathan] config file missing; writing defaults path={}", path);
             write(path, defaults());
         }
         return loadStrict(path);
     }
 
     public static LeviathansConfig loadStrict(Path path) {
+        AtlantisMod.LOGGER.info("[Atlantis][leviathan] loading strict config path={}", path);
         JsonObject root;
         try {
             String json = Files.readString(path, StandardCharsets.UTF_8);
@@ -193,6 +230,7 @@ public final class LeviathansConfig {
         enforceKnownKeys(root, errors);
 
         String entityTypeId = requireString(root, "entityTypeId", errors);
+        List<String> entityTypeIds = optionalStringArray(root, "entityTypeIds", errors);
         Double entityScale = requireDouble(root, "entityScale", errors);
         Integer minimumLeviathans = requireInt(root, "minimumLeviathans", errors);
 
@@ -210,7 +248,9 @@ public final class LeviathansConfig {
 
         Boolean combatEnabled = requireBoolean(root, "combatEnabled", errors);
         Integer engageRadiusBlocks = requireInt(root, "engageRadiusBlocks", errors);
+        Integer engageVerticalRadiusBlocks = optionalInt(root, "engageVerticalRadiusBlocks", Math.max(1, engageRadiusBlocks == null ? 64 : engageRadiusBlocks / 2), errors);
         Integer disengageRadiusBlocks = requireInt(root, "disengageRadiusBlocks", errors);
+        Integer disengageVerticalRadiusBlocks = optionalInt(root, "disengageVerticalRadiusBlocks", Math.max(1, disengageRadiusBlocks == null ? 96 : disengageRadiusBlocks / 2), errors);
         Integer chargeDurationTicks = requireInt(root, "chargeDurationTicks", errors);
         Integer chargeCooldownTicks = requireInt(root, "chargeCooldownTicks", errors);
         Double chargeSpeedBlocksPerTick = requireDouble(root, "chargeSpeedBlocksPerTick", errors);
@@ -224,6 +264,14 @@ public final class LeviathansConfig {
         Double chargeDirectionDotThreshold = requireDouble(root, "chargeDirectionDotThreshold", errors);
         Double chargeHitboxExpandBlocks = requireDouble(root, "chargeHitboxExpandBlocks", errors);
         Double chargeKnockbackStrength = requireDouble(root, "chargeKnockbackStrength", errors);
+        Integer depthScaleTopY = optionalInt(root, "depthScaleTopY", 192, errors);
+        Integer depthScaleBottomY = optionalInt(root, "depthScaleBottomY", -32, errors);
+        Double depthScaleAtTop = optionalDouble(root, "depthScaleAtTop", 0.65d, errors);
+        Double depthScaleAtBottom = optionalDouble(root, "depthScaleAtBottom", 1.45d, errors);
+        Double depthDamageAtTop = optionalDouble(root, "depthDamageAtTop", 0.7d, errors);
+        Double depthDamageAtBottom = optionalDouble(root, "depthDamageAtBottom", 1.8d, errors);
+        Double depthHealthAtTop = optionalDouble(root, "depthHealthAtTop", 0.7d, errors);
+        Double depthHealthAtBottom = optionalDouble(root, "depthHealthAtBottom", 1.8d, errors);
 
         Boolean requireWaterForSpawn = requireBoolean(root, "requireWaterForSpawn", errors);
         Integer solidAvoidanceProbeDistanceBlocks = requireInt(root, "solidAvoidanceProbeDistanceBlocks", errors);
@@ -279,11 +327,20 @@ public final class LeviathansConfig {
         if (engageRadiusBlocks != null && engageRadiusBlocks < 1) {
             errors.add("engageRadiusBlocks must be >= 1 (was " + engageRadiusBlocks + ")");
         }
+        if (engageVerticalRadiusBlocks != null && engageVerticalRadiusBlocks < 1) {
+            errors.add("engageVerticalRadiusBlocks must be >= 1 (was " + engageVerticalRadiusBlocks + ")");
+        }
         if (disengageRadiusBlocks != null && disengageRadiusBlocks < 1) {
             errors.add("disengageRadiusBlocks must be >= 1 (was " + disengageRadiusBlocks + ")");
         }
+        if (disengageVerticalRadiusBlocks != null && disengageVerticalRadiusBlocks < 1) {
+            errors.add("disengageVerticalRadiusBlocks must be >= 1 (was " + disengageVerticalRadiusBlocks + ")");
+        }
         if (engageRadiusBlocks != null && disengageRadiusBlocks != null && disengageRadiusBlocks < engageRadiusBlocks) {
             errors.add("disengageRadiusBlocks must be >= engageRadiusBlocks (was " + disengageRadiusBlocks + " < " + engageRadiusBlocks + ")");
+        }
+        if (engageVerticalRadiusBlocks != null && disengageVerticalRadiusBlocks != null && disengageVerticalRadiusBlocks < engageVerticalRadiusBlocks) {
+            errors.add("disengageVerticalRadiusBlocks must be >= engageVerticalRadiusBlocks (was " + disengageVerticalRadiusBlocks + " < " + engageVerticalRadiusBlocks + ")");
         }
         if (chargeDurationTicks != null && chargeDurationTicks < 1) {
             errors.add("chargeDurationTicks must be >= 1 (was " + chargeDurationTicks + ")");
@@ -327,6 +384,27 @@ public final class LeviathansConfig {
         if (chargeKnockbackStrength != null && chargeKnockbackStrength < 0.0d) {
             errors.add("chargeKnockbackStrength must be >= 0 (was " + chargeKnockbackStrength + ")");
         }
+        if (depthScaleTopY != null && depthScaleBottomY != null && depthScaleBottomY >= depthScaleTopY) {
+            errors.add("depthScaleBottomY must be < depthScaleTopY (was " + depthScaleBottomY + " >= " + depthScaleTopY + ")");
+        }
+        if (depthScaleAtTop != null && depthScaleAtTop <= 0.0d) {
+            errors.add("depthScaleAtTop must be > 0 (was " + depthScaleAtTop + ")");
+        }
+        if (depthScaleAtBottom != null && depthScaleAtBottom <= 0.0d) {
+            errors.add("depthScaleAtBottom must be > 0 (was " + depthScaleAtBottom + ")");
+        }
+        if (depthDamageAtTop != null && depthDamageAtTop <= 0.0d) {
+            errors.add("depthDamageAtTop must be > 0 (was " + depthDamageAtTop + ")");
+        }
+        if (depthDamageAtBottom != null && depthDamageAtBottom <= 0.0d) {
+            errors.add("depthDamageAtBottom must be > 0 (was " + depthDamageAtBottom + ")");
+        }
+        if (depthHealthAtTop != null && depthHealthAtTop <= 0.0d) {
+            errors.add("depthHealthAtTop must be > 0 (was " + depthHealthAtTop + ")");
+        }
+        if (depthHealthAtBottom != null && depthHealthAtBottom <= 0.0d) {
+            errors.add("depthHealthAtBottom must be > 0 (was " + depthHealthAtBottom + ")");
+        }
         if (solidAvoidanceProbeDistanceBlocks != null && solidAvoidanceProbeDistanceBlocks < 1) {
             errors.add("solidAvoidanceProbeDistanceBlocks must be >= 1 (was " + solidAvoidanceProbeDistanceBlocks + ")");
         }
@@ -361,13 +439,28 @@ public final class LeviathansConfig {
         if (entityTypeId != null) {
             validateEntityType(entityTypeId, errors);
         }
+        List<String> effectiveEntityTypeIds = new ArrayList<>();
+        if (entityTypeIds != null && !entityTypeIds.isEmpty()) {
+            effectiveEntityTypeIds.addAll(entityTypeIds);
+        } else if (entityTypeId != null) {
+            effectiveEntityTypeIds.add(entityTypeId);
+        }
+        if (effectiveEntityTypeIds.isEmpty()) {
+            errors.add("entityTypeIds must contain at least one valid aquatic entity type id");
+        } else {
+            for (String id : effectiveEntityTypeIds) {
+                validateEntityType(id, errors);
+            }
+        }
 
         if (!errors.isEmpty()) {
+            AtlantisMod.LOGGER.error("[Atlantis][leviathan] strict config validation failed path={} errors={}", path, errors);
             throw new ValidationException(errors);
         }
 
-        return new LeviathansConfig(
+        LeviathansConfig config = new LeviathansConfig(
             entityTypeId,
+            effectiveEntityTypeIds,
             entityScale,
             minimumLeviathans,
             virtualTravelEnabled,
@@ -382,7 +475,9 @@ public final class LeviathansConfig {
             autoDistancesFromServer,
             combatEnabled,
             engageRadiusBlocks,
+            engageVerticalRadiusBlocks,
             disengageRadiusBlocks,
+            disengageVerticalRadiusBlocks,
             chargeDurationTicks,
             chargeCooldownTicks,
             chargeSpeedBlocksPerTick,
@@ -396,6 +491,14 @@ public final class LeviathansConfig {
             chargeDirectionDotThreshold,
             chargeHitboxExpandBlocks,
             chargeKnockbackStrength,
+            depthScaleTopY,
+            depthScaleBottomY,
+            depthScaleAtTop,
+            depthScaleAtBottom,
+            depthDamageAtTop,
+            depthDamageAtBottom,
+            depthHealthAtTop,
+            depthHealthAtBottom,
             requireWaterForSpawn,
             solidAvoidanceProbeDistanceBlocks,
             solidAvoidanceVerticalClearanceBlocks,
@@ -409,18 +512,34 @@ public final class LeviathansConfig {
             releaseTicketsAfterTicks,
             virtualStateFlushIntervalMinutes
         );
+        AtlantisMod.LOGGER.info("[Atlantis][leviathan] strict config loaded path={} entityTypeId={} scale={} min={} activation={} despawn={}",
+            path,
+            config.entityTypeId,
+            config.entityScale,
+            config.minimumLeviathans,
+            config.activationRadiusBlocks,
+            config.despawnRadiusBlocks);
+        return config;
     }
 
     public static LeviathansConfig defaults() {
         return new LeviathansConfig(
             "minecraft:salmon",
+            List.of(
+                "minecraft:salmon",
+                "minecraft:cod",
+                "minecraft:tropical_fish",
+                "minecraft:pufferfish",
+                "minecraft:squid",
+                "minecraft:glow_squid"
+            ),
             8.0d,
             5,
             true,
             5000,
             30000,
-            90,
-            24,
+            153,
+            147,
             0.45d,
             256,
             384,
@@ -428,7 +547,9 @@ public final class LeviathansConfig {
             true,
             true,
             120,
+            64,
             192,
+            96,
             40,
             30,
             1.25d,
@@ -442,6 +563,14 @@ public final class LeviathansConfig {
             0.45d,
             0.75d,
             1.0d,
+            300,
+            6,
+            0.55d,
+            1.65d,
+            0.6d,
+            2.2d,
+            0.6d,
+            2.2d,
             true,
             12,
             16,
@@ -462,6 +591,11 @@ public final class LeviathansConfig {
             Files.createDirectories(path.getParent());
             JsonObject root = new JsonObject();
             root.addProperty("entityTypeId", config.entityTypeId);
+            JsonArray entityTypeIds = new JsonArray();
+            for (String id : config.entityTypeIds) {
+                entityTypeIds.add(id);
+            }
+            root.add("entityTypeIds", entityTypeIds);
             root.addProperty("entityScale", config.entityScale);
             root.addProperty("minimumLeviathans", config.minimumLeviathans);
 
@@ -479,7 +613,9 @@ public final class LeviathansConfig {
 
             root.addProperty("combatEnabled", config.combatEnabled);
             root.addProperty("engageRadiusBlocks", config.engageRadiusBlocks);
+            root.addProperty("engageVerticalRadiusBlocks", config.engageVerticalRadiusBlocks);
             root.addProperty("disengageRadiusBlocks", config.disengageRadiusBlocks);
+            root.addProperty("disengageVerticalRadiusBlocks", config.disengageVerticalRadiusBlocks);
             root.addProperty("chargeDurationTicks", config.chargeDurationTicks);
             root.addProperty("chargeCooldownTicks", config.chargeCooldownTicks);
             root.addProperty("chargeSpeedBlocksPerTick", config.chargeSpeedBlocksPerTick);
@@ -493,6 +629,14 @@ public final class LeviathansConfig {
             root.addProperty("chargeDirectionDotThreshold", config.chargeDirectionDotThreshold);
             root.addProperty("chargeHitboxExpandBlocks", config.chargeHitboxExpandBlocks);
             root.addProperty("chargeKnockbackStrength", config.chargeKnockbackStrength);
+            root.addProperty("depthScaleTopY", config.depthScaleTopY);
+            root.addProperty("depthScaleBottomY", config.depthScaleBottomY);
+            root.addProperty("depthScaleAtTop", config.depthScaleAtTop);
+            root.addProperty("depthScaleAtBottom", config.depthScaleAtBottom);
+            root.addProperty("depthDamageAtTop", config.depthDamageAtTop);
+            root.addProperty("depthDamageAtBottom", config.depthDamageAtBottom);
+            root.addProperty("depthHealthAtTop", config.depthHealthAtTop);
+            root.addProperty("depthHealthAtBottom", config.depthHealthAtBottom);
 
             root.addProperty("requireWaterForSpawn", config.requireWaterForSpawn);
             root.addProperty("solidAvoidanceProbeDistanceBlocks", config.solidAvoidanceProbeDistanceBlocks);
@@ -510,6 +654,11 @@ public final class LeviathansConfig {
             root.addProperty("virtualStateFlushIntervalMinutes", config.virtualStateFlushIntervalMinutes);
 
             Files.writeString(path, GSON.toJson(root), StandardCharsets.UTF_8);
+            AtlantisMod.LOGGER.info("[Atlantis][leviathan] wrote config path={} entityTypeId={} scale={} min={}",
+                path,
+                config.entityTypeId,
+                config.entityScale,
+                config.minimumLeviathans);
         } catch (IOException e) {
             throw new ValidationException(List.of("io: unable to write config path=" + path + " error=" + e.getMessage()));
         }
@@ -541,6 +690,7 @@ public final class LeviathansConfig {
     private static void enforceKnownKeys(JsonObject root, List<String> errors) {
         Set<String> known = new LinkedHashSet<>(List.of(
             "entityTypeId",
+            "entityTypeIds",
             "entityScale",
             "minimumLeviathans",
             "virtualTravelEnabled",
@@ -555,7 +705,9 @@ public final class LeviathansConfig {
             "autoDistancesFromServer",
             "combatEnabled",
             "engageRadiusBlocks",
+            "engageVerticalRadiusBlocks",
             "disengageRadiusBlocks",
+            "disengageVerticalRadiusBlocks",
             "chargeDurationTicks",
             "chargeCooldownTicks",
             "chargeSpeedBlocksPerTick",
@@ -569,6 +721,14 @@ public final class LeviathansConfig {
             "chargeDirectionDotThreshold",
             "chargeHitboxExpandBlocks",
             "chargeKnockbackStrength",
+            "depthScaleTopY",
+            "depthScaleBottomY",
+            "depthScaleAtTop",
+            "depthScaleAtBottom",
+            "depthDamageAtTop",
+            "depthDamageAtBottom",
+            "depthHealthAtTop",
+            "depthHealthAtBottom",
             "requireWaterForSpawn",
             "solidAvoidanceProbeDistanceBlocks",
             "solidAvoidanceVerticalClearanceBlocks",
@@ -669,6 +829,79 @@ public final class LeviathansConfig {
             errors.add(key + " must be valid number (was " + literal.toLowerCase(Locale.ROOT) + ")");
             return null;
         }
+    }
+
+    private static Integer optionalInt(JsonObject root, String key, int defaultValue, List<String> errors) {
+        JsonElement e = root.get(key);
+        if (e == null || e.isJsonNull()) {
+            return defaultValue;
+        }
+        if (!e.isJsonPrimitive() || !e.getAsJsonPrimitive().isNumber()) {
+            errors.add(key + " must be integer");
+            return defaultValue;
+        }
+        String literal = e.getAsJsonPrimitive().getAsString();
+        try {
+            BigDecimal decimal = new BigDecimal(literal);
+            if (decimal.stripTrailingZeros().scale() > 0) {
+                errors.add(key + " must be integer (was " + literal + ")");
+                return defaultValue;
+            }
+            return decimal.intValueExact();
+        } catch (Exception ex) {
+            errors.add(key + " must be valid int (was " + literal + ")");
+            return defaultValue;
+        }
+    }
+
+    private static Double optionalDouble(JsonObject root, String key, double defaultValue, List<String> errors) {
+        JsonElement e = root.get(key);
+        if (e == null || e.isJsonNull()) {
+            return defaultValue;
+        }
+        if (!e.isJsonPrimitive() || !e.getAsJsonPrimitive().isNumber()) {
+            errors.add(key + " must be number");
+            return defaultValue;
+        }
+        String literal = e.getAsJsonPrimitive().getAsString();
+        try {
+            double value = Double.parseDouble(literal);
+            if (!Double.isFinite(value)) {
+                errors.add(key + " must be finite number (was " + literal + ")");
+                return defaultValue;
+            }
+            return value;
+        } catch (NumberFormatException ex) {
+            errors.add(key + " must be valid number (was " + literal.toLowerCase(Locale.ROOT) + ")");
+            return defaultValue;
+        }
+    }
+
+    private static List<String> optionalStringArray(JsonObject root, String key, List<String> errors) {
+        JsonElement e = root.get(key);
+        if (e == null || e.isJsonNull()) {
+            return List.of();
+        }
+        if (!e.isJsonArray()) {
+            errors.add(key + " must be array of strings");
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        JsonArray array = e.getAsJsonArray();
+        for (int i = 0; i < array.size(); i++) {
+            JsonElement item = array.get(i);
+            if (item == null || !item.isJsonPrimitive() || !item.getAsJsonPrimitive().isString()) {
+                errors.add(key + "[" + i + "] must be string");
+                continue;
+            }
+            String value = item.getAsString().trim();
+            if (value.isEmpty()) {
+                errors.add(key + "[" + i + "] must not be blank");
+                continue;
+            }
+            out.add(value);
+        }
+        return out;
     }
 
     public static final class ValidationException extends RuntimeException {

@@ -15,6 +15,7 @@ public final class Leviathans {
     }
 
     public static void init() {
+        AtlantisMod.LOGGER.info("[Atlantis][leviathan] init start");
         LeviathansConfig loaded = LeviathansConfig.loadOrCreateStrict();
         VirtualLeviathanStore store = new VirtualLeviathanStore();
 
@@ -25,6 +26,7 @@ public final class Leviathans {
         if (!shutdownFlushHookRegistered) {
             ServerLifecycleEvents.SERVER_STOPPING.register(server -> flushVirtualState());
             shutdownFlushHookRegistered = true;
+            AtlantisMod.LOGGER.info("[Atlantis][leviathan] registered shutdown flush hook");
         }
 
         AtlantisMod.LOGGER.info("[Atlantis][leviathan] loaded strict config path={} entityTypeId={} minimumLeviathans={}",
@@ -44,12 +46,18 @@ public final class Leviathans {
 
     public static ReloadResult reloadConfig() {
         Path path = LeviathansConfig.configPath();
+        AtlantisMod.LOGGER.info("[Atlantis][leviathan] config reload requested path={}", path);
         try {
             LeviathansConfig loaded = LeviathansConfig.loadStrict(path);
             activeConfig = loaded;
             LeviathanManager.onConfigReload(loaded);
+            AtlantisMod.LOGGER.info("[Atlantis][leviathan] config reload applied path={} entityTypeId={} minimumLeviathans={}",
+                path,
+                loaded.entityTypeId,
+                loaded.minimumLeviathans);
             return ReloadResult.success(path, loaded);
         } catch (LeviathansConfig.ValidationException e) {
+            AtlantisMod.LOGGER.warn("[Atlantis][leviathan] config reload rejected path={} errors={}", path, e.errors());
             return ReloadResult.failure(path, e.errors());
         }
     }
@@ -65,7 +73,11 @@ public final class Leviathans {
     public static void flushVirtualState() {
         VirtualLeviathanStore store = virtualStore;
         if (store != null) {
+            AtlantisMod.LOGGER.info("[Atlantis][leviathan] flushing virtual state store");
             store.flush();
+            AtlantisMod.LOGGER.info("[Atlantis][leviathan] virtual state store flush complete");
+        } else {
+            AtlantisMod.LOGGER.debug("[Atlantis][leviathan] flush requested but virtual store is not initialized");
         }
     }
 

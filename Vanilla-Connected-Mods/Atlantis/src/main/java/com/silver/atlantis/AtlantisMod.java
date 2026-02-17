@@ -17,6 +17,7 @@ import com.silver.atlantis.protect.ProtectionService;
 import com.silver.atlantis.spawn.SpawnCommandManager;
 import com.silver.atlantis.spawn.SpecialDropManager;
 import com.silver.atlantis.spawn.SpecialItemConversionManager;
+import com.silver.atlantis.worldgen.AtlantisWorldgen;
 import net.fabricmc.api.ModInitializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,6 +49,7 @@ public final class AtlantisMod implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
+		AtlantisWorldgen.register();
 		protectionService.register();
 		ProtectionBootstrap.loadAllPersisted();
 		heightCapService.register();

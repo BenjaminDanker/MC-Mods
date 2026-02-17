@@ -1,5 +1,6 @@
 package com.silver.atlantis.leviathan;
 
+import com.silver.atlantis.AtlantisMod;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
@@ -31,12 +32,14 @@ final class LeviathanChunkPreloader {
 
     LeviathanChunkPreloader(int ticketLevel) {
         this.ticketLevel = ticketLevel;
+        AtlantisMod.LOGGER.info("[Atlantis][leviathan] chunk preloader initialized ticketLevel={}", ticketLevel);
     }
 
     int request(ServerWorld world, UUID id, Iterable<ChunkPos> desiredChunks, long nowTick, int budget) {
         if (budget <= 0) {
             touch(id, nowTick);
             pollActive(world, id);
+            AtlantisMod.LOGGER.debug("[Atlantis][leviathan] chunk request skipped budget<=0 id={}", shortId(id));
             return 0;
         }
 
@@ -51,6 +54,11 @@ final class LeviathanChunkPreloader {
             tickets.pending.addLast(pos);
             tickets.pendingKeys.add(key);
         }
+        AtlantisMod.LOGGER.debug("[Atlantis][leviathan] chunk request queued id={} pending={} activeTickets={} budget={}",
+            shortId(id),
+            tickets.pending.size(),
+            tickets.ticketKeys.size(),
+            budget);
 
         pollActive(world, tickets);
 
@@ -72,10 +80,25 @@ final class LeviathanChunkPreloader {
                 tickets.ticketKeys.add(key);
                 tickets.activeLoads.put(key, future);
                 started++;
-            } catch (Exception ignored) {
+                AtlantisMod.LOGGER.debug("[Atlantis][leviathan] chunk ticket added id={} chunk=({}, {}) level={}",
+                    shortId(id),
+                    pos.x,
+                    pos.z,
+                    ticketLevel);
+            } catch (Exception e) {
+                AtlantisMod.LOGGER.warn("[Atlantis][leviathan] chunk ticket add failed id={} chunk=({}, {}) error={}",
+                    shortId(id),
+                    pos.x,
+                    pos.z,
+                    e.getMessage());
             }
         }
 
+        AtlantisMod.LOGGER.debug("[Atlantis][leviathan] chunk request processed id={} started={} remainingPending={} activeLoads={}",
+            shortId(id),
+            started,
+            tickets.pending.size(),
+            tickets.activeLoads.size());
         return started;
     }
 
@@ -86,6 +109,7 @@ final class LeviathanChunkPreloader {
     void release(ServerWorld world, UUID id) {
         LeviathanTickets tickets = ticketsByLeviathan.remove(id);
         if (tickets == null) {
+            AtlantisMod.LOGGER.debug("[Atlantis][leviathan] chunk release no-op id={}", shortId(id));
             return;
         }
 
@@ -95,13 +119,16 @@ final class LeviathanChunkPreloader {
                 int cz = ChunkPos.getPackedZ(key);
                 world.getChunkManager().removeTicket(TICKET_TYPE, new ChunkPos(cx, cz), ticketLevel);
             }
-        } catch (Exception ignored) {
+            AtlantisMod.LOGGER.debug("[Atlantis][leviathan] chunk release removed tickets id={} count={}", shortId(id), tickets.ticketKeys.size());
+        } catch (Exception e) {
+            AtlantisMod.LOGGER.warn("[Atlantis][leviathan] chunk release failed id={} error={}", shortId(id), e.getMessage());
         }
 
         tickets.pending.clear();
         tickets.pendingKeys.clear();
         tickets.ticketKeys.clear();
         tickets.activeLoads.clear();
+        AtlantisMod.LOGGER.debug("[Atlantis][leviathan] chunk release state cleared id={}", shortId(id));
     }
 
     void releaseUnused(ServerWorld world, long nowTick, int releaseAfterTicks) {
@@ -119,7 +146,13 @@ final class LeviathanChunkPreloader {
                     int cz = ChunkPos.getPackedZ(key);
                     world.getChunkManager().removeTicket(TICKET_TYPE, new ChunkPos(cx, cz), ticketLevel);
                 }
-            } catch (Exception ignored) {
+                AtlantisMod.LOGGER.debug("[Atlantis][leviathan] chunk releaseUnused removed stale id={} count={}",
+                    shortId(entry.getKey()),
+                    entry.getValue().ticketKeys.size());
+            } catch (Exception e) {
+                AtlantisMod.LOGGER.warn("[Atlantis][leviathan] chunk releaseUnused failed id={} error={}",
+                    shortId(entry.getKey()),
+                    e.getMessage());
             }
         }
     }
@@ -153,6 +186,7 @@ final class LeviathanChunkPreloader {
             }
 
             it.remove();
+            AtlantisMod.LOGGER.debug("[Atlantis][leviathan] chunk load completed chunk=({}, {})", cx, cz);
         }
     }
 
@@ -161,5 +195,10 @@ final class LeviathanChunkPreloader {
         if (tickets != null) {
             tickets.lastTouchedTick = nowTick;
         }
+    }
+
+    private static String shortId(UUID id) {
+        String value = id.toString();
+        return value.length() <= 8 ? value : value.substring(0, 8);
     }
 }
