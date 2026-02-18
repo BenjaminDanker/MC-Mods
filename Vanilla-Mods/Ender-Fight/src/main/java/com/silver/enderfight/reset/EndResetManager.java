@@ -383,7 +383,7 @@ public class EndResetManager {
             return;
         }
 
-        boolean success = performReset(server);
+        boolean success = performReset(server, true);
         if (success) {
             countdownActive = false;
             warningSent = false;
@@ -408,7 +408,7 @@ public class EndResetManager {
         EnderFightMod.LOGGER.info("Warned {} players about upcoming End reset", endWorld.getPlayers().size());
     }
 
-    private boolean performReset(MinecraftServer server) {
+    private boolean performReset(MinecraftServer server, boolean alignToExpectedSchedule) {
         if (server == null) {
             EnderFightMod.LOGGER.warn("Cannot reset End – server reference was null");
             return false;
@@ -437,10 +437,32 @@ public class EndResetManager {
 
         ensureDragonFightState(server);
 
-        persistentState.updateOnReset(Instant.now().toEpochMilli(), newSeed, activeEndWorldKey);
+        long recordedResetTime = resolveRecordedResetTime(alignToExpectedSchedule);
+        persistentState.updateOnReset(recordedResetTime, newSeed, activeEndWorldKey);
         persistentState.save(server);
-        EnderFightMod.LOGGER.info("End reset completed; new seed {} recorded", newSeed);
+        EnderFightMod.LOGGER.info("End reset completed; new seed {} recorded (recordedResetEpochMillis={})", newSeed, recordedResetTime);
         return true;
+    }
+
+    private long resolveRecordedResetTime(boolean alignToExpectedSchedule) {
+        long now = Instant.now().toEpochMilli();
+        if (!alignToExpectedSchedule || persistentState == null || cachedConfig == null) {
+            return now;
+        }
+
+        long previousReset = persistentState.getLastResetEpochMillis();
+        if (previousReset <= 0L) {
+            return now;
+        }
+
+        long intervalMillis = (long) Math.max(1D, cachedConfig.resetIntervalHours() * 3_600_000D);
+        long warningMillis = Math.max(0L, cachedConfig.warningDelayTicks()) * 50L;
+        long cycleMillis = Math.max(1L, intervalMillis + warningMillis);
+        long elapsed = Math.max(0L, now - previousReset);
+
+        long completedCycles = Math.max(1L, elapsed / cycleMillis);
+        long scheduledResetTime = previousReset + completedCycles * cycleMillis;
+        return Math.min(now, scheduledResetTime);
     }
 
     private void ensureDragonFightState(MinecraftServer server) {
@@ -463,7 +485,7 @@ public class EndResetManager {
             return false;
         }
         cachedConfig = configManager.getConfig();
-        boolean success = performReset(server);
+        boolean success = performReset(server, false);
         if (success) {
             countdownActive = false;
             warningSent = false;
