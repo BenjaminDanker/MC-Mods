@@ -40,7 +40,7 @@ public final class AtlantisCompassOverrideManager {
     private static volatile AtlantisCompassConfig config;
     private static volatile boolean initialised;
     private static long ticks;
-    private static long lastCenterRefreshTick = Long.MIN_VALUE;
+    private static long cachedCenterTick = Long.MIN_VALUE;
     private static BlockPos cachedAtlantisCenter;
     private static final Set<UUID> trackedPlayers = new HashSet<>();
     private static final Map<UUID, Long> nextScanTickByPlayer = new HashMap<>();
@@ -60,7 +60,7 @@ public final class AtlantisCompassOverrideManager {
         ServerTickEvents.END_SERVER_TICK.register(AtlantisCompassOverrideManager::onEndServerTick);
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
             ticks = 0L;
-            lastCenterRefreshTick = Long.MIN_VALUE;
+            cachedCenterTick = Long.MIN_VALUE;
             cachedAtlantisCenter = null;
             trackedPlayers.clear();
             nextScanTickByPlayer.clear();
@@ -85,27 +85,28 @@ public final class AtlantisCompassOverrideManager {
         if (isActive(stack)) {
             deactivateCompass(stack);
             updatePlayerTracking(serverPlayer);
-            serverPlayer.sendMessage(Text.literal("Atlantis compass override disabled."), true);
+            serverPlayer.sendMessage(Text.literal("Atlantis compass: OFF"), true);
             return ActionResult.SUCCESS;
         }
 
-        BlockPos atlantisCenter = resolveAtlantisCenter(world.getServer());
+        BlockPos atlantisCenter = resolveAtlantisCenterOnUse(world.getServer());
         if (atlantisCenter == null) {
-            serverPlayer.sendMessage(Text.literal("No Atlantis center is available yet."), true);
+            serverPlayer.sendMessage(Text.literal("Atlantis compass: no center yet"), true);
             return ActionResult.FAIL;
         }
 
         if (!consumeCrystal(serverPlayer)) {
-            serverPlayer.sendMessage(Text.literal("Need 1 prismarine crystals to activate Atlantis compass override."), true);
+            serverPlayer.sendMessage(Text.literal("Atlantis compass: need 1 prismarine crystals"), true);
             return ActionResult.FAIL;
         }
 
         AtlantisCompassConfig activeConfig = getConfig();
-        long nextChargeTick = ticks + Math.max(1L, activeConfig.crystalIntervalTicks());
+        long intervalTicks = Math.max(1L, activeConfig.crystalIntervalTicks());
+        long nowTick = world.getTime();
+        long nextChargeTick = nowTick + intervalTicks;
         activateCompass(stack, atlantisCenter, nextChargeTick);
         trackPlayer(serverPlayer, nextChargeTick);
-        serverPlayer.sendMessage(Text.literal("Atlantis compass override enabled. Consuming 1 prismarine crystals every "
-            + activeConfig.crystalIntervalSeconds + "s."), true);
+        serverPlayer.sendMessage(Text.literal("Atlantis compass: ON (" + activeConfig.crystalIntervalSeconds + "s/crystal)"), true);
         return ActionResult.SUCCESS;
     }
 
@@ -113,15 +114,16 @@ public final class AtlantisCompassOverrideManager {
         ticks++;
         AtlantisCompassConfig activeConfig = getConfig();
         long intervalTicks = Math.max(1L, activeConfig.crystalIntervalTicks());
+        long nowTick = currentGameTick(server);
 
         if (ticks % DISCOVERY_INTERVAL_TICKS == 0L) {
-            discoverTrackedPlayers(server);
+            discoverTrackedPlayers(server, nowTick, intervalTicks);
         }
 
         Set<UUID> snapshot = new HashSet<>(trackedPlayers);
         for (UUID playerId : snapshot) {
-            long nextScanTick = nextScanTickByPlayer.getOrDefault(playerId, ticks);
-            if (ticks < nextScanTick) {
+            long nextScanTick = nextScanTickByPlayer.getOrDefault(playerId, nowTick);
+            if (nowTick < nextScanTick) {
                 continue;
             }
 
@@ -132,11 +134,11 @@ public final class AtlantisCompassOverrideManager {
                 continue;
             }
 
-            processPlayerCompasses(player, server, intervalTicks);
+            processPlayerCompasses(player, server, intervalTicks, nowTick);
         }
     }
 
-    private static void processPlayerCompasses(ServerPlayerEntity player, MinecraftServer server, long intervalTicks) {
+    private static void processPlayerCompasses(ServerPlayerEntity player, MinecraftServer server, long intervalTicks, long nowTick) {
         PlayerInventory inventory = player.getInventory();
         boolean hasActiveCompass = false;
         long earliestNextScan = Long.MAX_VALUE;
@@ -149,28 +151,28 @@ public final class AtlantisCompassOverrideManager {
             }
 
             hasActiveCompass = true;
-            long dueTick = getNextChargeTick(stack);
-            if (ticks < dueTick) {
+            long dueTick = normalizeDueTick(getNextChargeTick(stack), nowTick, intervalTicks);
+            if (nowTick < dueTick) {
                 earliestNextScan = Math.min(earliestNextScan, dueTick);
                 continue;
             }
 
             if (atlantisCenter == null) {
-                atlantisCenter = resolveAtlantisCenter(server);
+                atlantisCenter = cachedAtlantisCenter;
             }
             if (atlantisCenter == null) {
                 deactivateCompass(stack);
-                player.sendMessage(Text.literal("Atlantis compass override disabled: no Atlantis center available."), true);
+                player.sendMessage(Text.literal("Atlantis compass: OFF (no center)"), true);
                 continue;
             }
 
             if (!consumeCrystal(player)) {
                 deactivateCompass(stack);
-                player.sendMessage(Text.literal("Atlantis compass override disabled: out of prismarine crystals."), true);
+                player.sendMessage(Text.literal("Atlantis compass: OFF (out of crystals)"), true);
                 continue;
             }
 
-            long nextChargeTick = ticks + intervalTicks;
+            long nextChargeTick = nowTick + intervalTicks;
             activateCompass(stack, atlantisCenter, nextChargeTick);
             earliestNextScan = Math.min(earliestNextScan, nextChargeTick);
         }
@@ -183,19 +185,19 @@ public final class AtlantisCompassOverrideManager {
         }
 
         if (earliestNextScan == Long.MAX_VALUE) {
-            earliestNextScan = ticks + 20L;
+            earliestNextScan = nowTick + 20L;
         }
         trackedPlayers.add(playerId);
         nextScanTickByPlayer.put(playerId, earliestNextScan);
     }
 
-    private static void discoverTrackedPlayers(MinecraftServer server) {
+    private static void discoverTrackedPlayers(MinecraftServer server, long nowTick, long intervalTicks) {
         for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
             if (trackedPlayers.contains(player.getUuid())) {
                 continue;
             }
 
-            long earliestDue = findEarliestActiveCompassDueTick(player);
+            long earliestDue = findEarliestActiveCompassDueTick(player, nowTick, intervalTicks);
             if (earliestDue == Long.MAX_VALUE) {
                 continue;
             }
@@ -205,7 +207,7 @@ public final class AtlantisCompassOverrideManager {
         }
     }
 
-    private static long findEarliestActiveCompassDueTick(ServerPlayerEntity player) {
+    private static long findEarliestActiveCompassDueTick(ServerPlayerEntity player, long nowTick, long intervalTicks) {
         PlayerInventory inventory = player.getInventory();
         long earliestDue = Long.MAX_VALUE;
         for (int slot = 0; slot < inventory.size(); slot++) {
@@ -213,7 +215,8 @@ public final class AtlantisCompassOverrideManager {
             if (!stack.isOf(Items.COMPASS) || !isActive(stack)) {
                 continue;
             }
-            earliestDue = Math.min(earliestDue, getNextChargeTick(stack));
+            long dueTick = normalizeDueTick(getNextChargeTick(stack), nowTick, intervalTicks);
+            earliestDue = Math.min(earliestDue, dueTick);
         }
         return earliestDue;
     }
@@ -227,7 +230,10 @@ public final class AtlantisCompassOverrideManager {
 
     private static void updatePlayerTracking(ServerPlayerEntity player) {
         UUID playerId = player.getUuid();
-        long earliestDue = findEarliestActiveCompassDueTick(player);
+        AtlantisCompassConfig activeConfig = getConfig();
+        long intervalTicks = Math.max(1L, activeConfig.crystalIntervalTicks());
+        long nowTick = player.getEntityWorld().getTime();
+        long earliestDue = findEarliestActiveCompassDueTick(player, nowTick, intervalTicks);
         if (earliestDue == Long.MAX_VALUE) {
             trackedPlayers.remove(playerId);
             nextScanTickByPlayer.remove(playerId);
@@ -240,7 +246,7 @@ public final class AtlantisCompassOverrideManager {
 
     private static void activateCompass(ItemStack stack, BlockPos target, long nextChargeTick) {
         GlobalPos globalTarget = GlobalPos.create(World.OVERWORLD, target);
-        LodestoneTrackerComponent tracker = new LodestoneTrackerComponent(Optional.of(globalTarget), true);
+        LodestoneTrackerComponent tracker = new LodestoneTrackerComponent(Optional.of(globalTarget), false);
         stack.set(DataComponentTypes.LODESTONE_TRACKER, tracker);
 
         NbtCompound custom = readCustomData(stack);
@@ -304,22 +310,24 @@ public final class AtlantisCompassOverrideManager {
         stack.set(DataComponentTypes.CUSTOM_DATA, NbtComponent.of(nbt));
     }
 
-    private static BlockPos resolveAtlantisCenter(MinecraftServer server) {
+    private static BlockPos resolveAtlantisCenterOnUse(MinecraftServer server) {
         if (server == null) {
             return null;
         }
 
-        if (ticks - lastCenterRefreshTick < CENTER_REFRESH_TICKS) {
+        if (cachedAtlantisCenter != null && ticks - cachedCenterTick < CENTER_REFRESH_TICKS) {
             return cachedAtlantisCenter;
         }
-        lastCenterRefreshTick = ticks;
 
         CycleState state = CycleJsonIO.tryRead(CyclePaths.stateFile());
         if (state == null || state.lastCenterX() == null || state.lastCenterY() == null || state.lastCenterZ() == null) {
             cachedAtlantisCenter = null;
+            cachedCenterTick = Long.MIN_VALUE;
             return null;
         }
+
         cachedAtlantisCenter = new BlockPos(state.lastCenterX(), state.lastCenterY(), state.lastCenterZ());
+        cachedCenterTick = ticks;
         return cachedAtlantisCenter;
     }
 
@@ -344,5 +352,25 @@ public final class AtlantisCompassOverrideManager {
             throw new IllegalStateException("AtlantisCompassConfig not initialized");
         }
         return active;
+    }
+
+    private static long currentGameTick(MinecraftServer server) {
+        if (server == null || server.getOverworld() == null) {
+            return ticks;
+        }
+        return server.getOverworld().getTime();
+    }
+
+    private static long normalizeDueTick(long storedDueTick, long nowTick, long intervalTicks) {
+        if (storedDueTick == Long.MAX_VALUE || storedDueTick <= 0L) {
+            return nowTick + intervalTicks;
+        }
+
+        long maxReasonableFuture = nowTick + Math.max(intervalTicks * 4L, 200L);
+        if (storedDueTick > maxReasonableFuture) {
+            return nowTick + intervalTicks;
+        }
+
+        return storedDueTick;
     }
 }

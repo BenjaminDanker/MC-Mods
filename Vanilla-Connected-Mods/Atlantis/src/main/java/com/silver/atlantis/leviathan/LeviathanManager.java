@@ -290,15 +290,6 @@ public final class LeviathanManager {
                 getDespawnRadiusBlocks(),
                 getMinSpawnDistanceBlocks());
         }
-        if ((serverTicks % 1200L) == 0L) {
-            AtlantisMod.LOGGER.info("[Atlantis][leviathan] heartbeat tick={} virtual={} loaded={} activation={} despawn={} minSpawn={}",
-                serverTicks,
-                snapshot.size(),
-                loadedById.size(),
-                getActivationRadiusBlocks(),
-                getDespawnRadiusBlocks(),
-                getMinSpawnDistanceBlocks());
-        }
         for (VirtualLeviathanStore.VirtualLeviathanState state : snapshot) {
             Entity loaded = loadedById.get(state.id());
             if (loaded == null) {
@@ -1728,13 +1719,6 @@ public final class LeviathanManager {
         effectiveDespawnRadiusBlocks = despawn;
         effectiveMinSpawnDistanceBlocks = minSpawn;
 
-        if ((serverTicks % 1200L) == 0L) {
-            AtlantisMod.LOGGER.info("[Atlantis][leviathan] fixed auto distances from initial view distance={} chunks -> activation={} minSpawn={} despawn={}",
-                viewChunks,
-                effectiveActivationRadiusBlocks,
-                effectiveMinSpawnDistanceBlocks,
-                effectiveDespawnRadiusBlocks);
-        }
     }
 
     private static boolean isSpawnReady(ServerWorld world, UUID id, ChunkPos centerChunk) {
