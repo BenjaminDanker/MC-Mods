@@ -5,7 +5,7 @@
   "mixins": [
     "AnvilScreenHandlerMixin",
     "ItemEntityMixin",
-    "ScreenHandlerMixin"
+    "ServerPlayerEntityMixin"
   ],
   "client": [],
   "server": [],

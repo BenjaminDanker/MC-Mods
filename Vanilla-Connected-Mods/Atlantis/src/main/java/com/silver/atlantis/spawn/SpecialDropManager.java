@@ -16,8 +16,6 @@ import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 
-import java.util.Random;
-
 public final class SpecialDropManager {
 
     private static boolean initialized;

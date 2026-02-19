@@ -229,7 +229,7 @@ public final class BlacksmithInteraction {
         for (int i = 0; i < size; i++) {
             ItemStack stack = player.getInventory().getStack(i);
             if (isSoulboundTagged(stack)) {
-                count++;
+                count += stack.getCount();
             }
         }
         return count;

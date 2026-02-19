@@ -135,8 +135,7 @@ public final class SpecialItemConversionManager {
         ServerCommandSource source = server.getCommandSource();
 
         try {
-            server.getCommandManager().executeWithPrefix(source, "/mpdsdefeated " + playerName + " skyisland true");
-            server.getCommandManager().executeWithPrefix(source, "/mpdssoulboundmax " + playerName + " 1");
+            server.getCommandManager().executeWithPrefix(source, "/mpdsgrantbossreward " + playerName + " skyisland 1");
             player.addCommandTag(MPDS_SKYISLAND_DEFEATED_TAG);
         } catch (Exception e) {
             LOGGER.error("Failed to update MPDS skyisland defeated flag for {}", playerName, e);

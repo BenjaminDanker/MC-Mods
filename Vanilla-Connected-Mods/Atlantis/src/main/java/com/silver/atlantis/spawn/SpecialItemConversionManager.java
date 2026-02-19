@@ -142,8 +142,7 @@ public final class SpecialItemConversionManager {
         ServerCommandSource source = server.getCommandSource();
 
         try {
-            server.getCommandManager().executeWithPrefix(source, "/mpdsdefeated " + playerName + " ocean true");
-            server.getCommandManager().executeWithPrefix(source, "/mpdssoulboundmax " + playerName + " 1");
+            server.getCommandManager().executeWithPrefix(source, "/mpdsgrantbossreward " + playerName + " ocean 1");
             player.addCommandTag(MPDS_OCEAN_DEFEATED_TAG);
         } catch (Exception e) {
             AtlantisMod.LOGGER.error("Failed to update MPDS ocean defeated flag for {}", playerName, e);

@@ -235,8 +235,7 @@ public final class MobSpawner {
                 Field field = CreeperEntity.class.getDeclaredField(fieldName);
                 field.setAccessible(true);
                 Object trackedData = field.get(null);
-                if (trackedData != null) {
-                    creeper.getDataTracker().set((net.minecraft.entity.data.TrackedData<Boolean>) trackedData, charged);
+                if (trackedData != null && trySetTrackedBoolean(creeper, trackedData, charged)) {
                     return;
                 }
             } catch (Exception ignored) {
@@ -244,6 +243,29 @@ public final class MobSpawner {
         }
 
         AtlantisMod.LOGGER.warn("Unable to set creeper charged state via reflection (charged={})", charged);
+    }
+
+    private static boolean trySetTrackedBoolean(CreeperEntity creeper, Object trackedData, boolean value) {
+        try {
+            Method getMethod = creeper.getDataTracker().getClass().getMethod(
+                "get",
+                net.minecraft.entity.data.TrackedData.class
+            );
+            Object current = getMethod.invoke(creeper.getDataTracker(), trackedData);
+            if (current != null && !(current instanceof Boolean)) {
+                return false;
+            }
+
+            Method setMethod = creeper.getDataTracker().getClass().getMethod(
+                "set",
+                net.minecraft.entity.data.TrackedData.class,
+                Object.class
+            );
+            setMethod.invoke(creeper.getDataTracker(), trackedData, Boolean.valueOf(value));
+            return true;
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private static void applyAttribute(LivingEntity entity, String attributeId, double value) {
