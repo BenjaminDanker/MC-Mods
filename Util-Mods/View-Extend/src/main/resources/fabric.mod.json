@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "viewextend",
+  "version": "${version}",
+  "name": "View Extend",
+  "description": "Bare-bones scaffold for the View Extend Fabric mod.",
+  "authors": [
+    "BenjaminDanker"
+  ],
+  "contact": {
+    "homepage": "",
+    "sources": ""
+  },
+  "license": "MIT",
+  "icon": "",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.silver.viewextend.ViewExtendMod"
+    ],
+    "client": [
+      "com.silver.viewextend.client.ViewExtendClientMod"
+    ]
+  },
+  "mixins": [
+    "viewextend.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "minecraft": ">=1.21",
+    "java": ">=21"
+  }
+}
