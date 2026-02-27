@@ -24,6 +24,7 @@ import net.minecraft.util.math.GlobalPos;
 import net.minecraft.world.World;
 
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
@@ -120,8 +121,9 @@ public final class AtlantisCompassOverrideManager {
             discoverTrackedPlayers(server, nowTick, intervalTicks);
         }
 
-        Set<UUID> snapshot = new HashSet<>(trackedPlayers);
-        for (UUID playerId : snapshot) {
+        Iterator<UUID> trackedIterator = trackedPlayers.iterator();
+        while (trackedIterator.hasNext()) {
+            UUID playerId = trackedIterator.next();
             long nextScanTick = nextScanTickByPlayer.getOrDefault(playerId, nowTick);
             if (nowTick < nextScanTick) {
                 continue;
@@ -129,16 +131,22 @@ public final class AtlantisCompassOverrideManager {
 
             ServerPlayerEntity player = server.getPlayerManager().getPlayer(playerId);
             if (player == null) {
-                trackedPlayers.remove(playerId);
+                trackedIterator.remove();
                 nextScanTickByPlayer.remove(playerId);
                 continue;
             }
 
-            processPlayerCompasses(player, server, intervalTicks, nowTick);
+            long earliestNextScan = processPlayerCompasses(player, server, intervalTicks, nowTick);
+            if (earliestNextScan == Long.MAX_VALUE) {
+                trackedIterator.remove();
+                nextScanTickByPlayer.remove(playerId);
+            } else {
+                nextScanTickByPlayer.put(playerId, earliestNextScan);
+            }
         }
     }
 
-    private static void processPlayerCompasses(ServerPlayerEntity player, MinecraftServer server, long intervalTicks, long nowTick) {
+    private static long processPlayerCompasses(ServerPlayerEntity player, MinecraftServer server, long intervalTicks, long nowTick) {
         PlayerInventory inventory = player.getInventory();
         boolean hasActiveCompass = false;
         long earliestNextScan = Long.MAX_VALUE;
@@ -177,18 +185,14 @@ public final class AtlantisCompassOverrideManager {
             earliestNextScan = Math.min(earliestNextScan, nextChargeTick);
         }
 
-        UUID playerId = player.getUuid();
         if (!hasActiveCompass) {
-            trackedPlayers.remove(playerId);
-            nextScanTickByPlayer.remove(playerId);
-            return;
+            return Long.MAX_VALUE;
         }
 
         if (earliestNextScan == Long.MAX_VALUE) {
             earliestNextScan = nowTick + 20L;
         }
-        trackedPlayers.add(playerId);
-        nextScanTickByPlayer.put(playerId, earliestNextScan);
+        return earliestNextScan;
     }
 
     private static void discoverTrackedPlayers(MinecraftServer server, long nowTick, long intervalTicks) {

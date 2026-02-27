@@ -1,4 +1,4 @@
-package com.silver.atlantis.spawn;
+package com.silver.atlantis.spawn.drop;
 
 /**
  * Hard-coded spawn-cycle special drop settings.
@@ -31,9 +31,6 @@ public final class SpawnSpecialConfig {
     /** Enables verbose logs for special-drop roll, tagging, and death-drop behavior. */
     public static final boolean SPECIAL_DROP_DEBUG_LOGS = true;
 
-    /** Marker key stored in SPECIAL_DROP_CUSTOM_DATA_SNBT so the inventory converter can reliably identify special drops. */
-    public static final String SPECIAL_DROP_MARKER_KEY = "atlantis_special";
-
     /**
      * Custom data (SNBT compound) stored on the dropped item.
      * Example: {atlantis_special:1b,run:"cycle"}
@@ -57,15 +54,6 @@ public final class SpawnSpecialConfig {
 
     /** Random variance applied to special-drop amount roll. */
     public static final double SPECIAL_DROP_RANDOMNESS_PERCENT = 20.0;
-
-    /** Minimum chance for any eligible spawned mob to receive a special drop amount. */
-    public static final double SPECIAL_DROP_BASE_CHANCE = 0.06;
-
-    /** Maximum special-drop chance for non-boss mobs at top difficulty. */
-    public static final double SPECIAL_DROP_MAX_CHANCE_NON_BOSS = 0.78;
-
-    /** Maximum special-drop chance for boss mobs at top difficulty. */
-    public static final double SPECIAL_DROP_MAX_CHANCE_BOSS = 1.00;
 
     /** Maximum amount for non-boss special drops at top difficulty. */
     public static final int SPECIAL_DROP_MAX_AMOUNT_NON_BOSS = 16;

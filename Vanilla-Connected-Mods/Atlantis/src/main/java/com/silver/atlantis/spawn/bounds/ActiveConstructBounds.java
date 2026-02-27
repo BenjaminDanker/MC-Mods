@@ -1,4 +1,4 @@
-package com.silver.atlantis.spawn;
+package com.silver.atlantis.spawn.bounds;
 
 import net.minecraft.util.math.BlockPos;
 

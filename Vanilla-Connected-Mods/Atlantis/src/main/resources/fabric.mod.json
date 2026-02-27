@@ -21,7 +21,8 @@
   },
   "mixins": [
     "atlantis.mixins.json",
-    "atlantis.spawn.mixins.json"
+    "atlantis.spawn.mixins.json",
+    "atlantis.construct.mixins.json"
   ],
   "depends": {
     "fabricloader": ">=0.15.0",

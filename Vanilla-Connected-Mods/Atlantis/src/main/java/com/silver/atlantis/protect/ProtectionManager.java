@@ -1,6 +1,8 @@
 package com.silver.atlantis.protect;
 
 import com.silver.atlantis.AtlantisMod;
+import com.silver.atlantis.spawn.bounds.ActiveConstructBounds;
+import com.silver.atlantis.spawn.bounds.ActiveConstructBoundsResolver;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -30,6 +32,9 @@ public final class ProtectionManager {
 
     private final Object2LongOpenHashMap<UUID> lastWarnNanosByPlayer = new Object2LongOpenHashMap<>();
     private static final long WARN_COOLDOWN_NANOS = 2_000_000_000L;
+    private static final long BOUNDS_CACHE_TTL_NANOS = 1_000_000_000L;
+    private ActiveConstructBounds cachedBounds;
+    private long cachedBoundsAtNanos;
 
     private ProtectionManager() {
     }
@@ -54,6 +59,17 @@ public final class ProtectionManager {
                 jobQueue.poll();
             }
         }
+    }
+
+    public synchronized void flushPendingIndexJobs() {
+        while (!jobQueue.isEmpty()) {
+            ProtectionIndexJob job = jobQueue.peek();
+            job.step(Long.MAX_VALUE);
+            if (job.isDone()) {
+                jobQueue.poll();
+            }
+        }
+        AtlantisMod.LOGGER.info("[Protection] flushed all pending index jobs.");
     }
 
     public synchronized void register(ProtectionEntry entry) {
@@ -104,7 +120,7 @@ public final class ProtectionManager {
 
         ObjectArrayList<ProtectionEntry> entries = entriesByDimension.get(dim);
         if (entries == null) {
-            return false;
+            return isWithinLatestConstructBounds(world, pos, dim);
         }
         for (int i = 0; i < entries.size(); i++) {
             ProtectionEntry e = entries.get(i);
@@ -112,7 +128,7 @@ public final class ProtectionManager {
                 return true;
             }
         }
-        return false;
+        return isWithinLatestConstructBounds(world, pos, dim);
     }
 
     public synchronized boolean isPlaceProtected(ServerWorld world, BlockPos pos) {
@@ -133,7 +149,7 @@ public final class ProtectionManager {
 
         ObjectArrayList<ProtectionEntry> entries = entriesByDimension.get(dim);
         if (entries == null) {
-            return false;
+            return isWithinLatestConstructBounds(world, pos, dim);
         }
         for (int i = 0; i < entries.size(); i++) {
             ProtectionEntry e = entries.get(i);
@@ -141,7 +157,7 @@ public final class ProtectionManager {
                 return true;
             }
         }
-        return false;
+        return isWithinLatestConstructBounds(world, pos, dim);
     }
 
     public synchronized boolean isInteriorProtected(ServerWorld world, BlockPos pos) {
@@ -166,7 +182,7 @@ public final class ProtectionManager {
 
         ObjectArrayList<ProtectionEntry> entries = entriesByDimension.get(dim);
         if (entries == null) {
-            return false;
+            return isWithinLatestConstructBounds(world, pos, dim);
         }
         for (int i = 0; i < entries.size(); i++) {
             ProtectionEntry e = entries.get(i);
@@ -174,7 +190,7 @@ public final class ProtectionManager {
                 return true;
             }
         }
-        return false;
+        return isWithinLatestConstructBounds(world, pos, dim);
     }
 
     public boolean shouldBlockBreak(ServerPlayerEntity player, BlockPos pos) {
@@ -259,6 +275,23 @@ public final class ProtectionManager {
         ProtectionIndex index = indexByDimension.computeIfAbsent(entry.dimensionId(), ignored -> new ProtectionIndex());
         ProtectionIndexJob job = new ProtectionIndexJob(mode, entry, index);
         jobQueue.add(job);
+    }
+
+    private boolean isWithinLatestConstructBounds(ServerWorld world, BlockPos pos, String dimensionId) {
+        long now = System.nanoTime();
+        if ((now - cachedBoundsAtNanos) > BOUNDS_CACHE_TTL_NANOS) {
+            cachedBounds = ActiveConstructBoundsResolver.tryResolveLatest();
+            cachedBoundsAtNanos = now;
+        }
+
+        ActiveConstructBounds bounds = cachedBounds;
+        if (bounds == null) {
+            return false;
+        }
+        if (bounds.dimensionId() == null || !bounds.dimensionId().equals(dimensionId)) {
+            return false;
+        }
+        return bounds.contains(pos);
     }
 
     /**

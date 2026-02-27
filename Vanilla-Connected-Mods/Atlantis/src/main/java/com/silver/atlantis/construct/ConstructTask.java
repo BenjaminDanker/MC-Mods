@@ -1,59 +1,41 @@
 package com.silver.atlantis.construct;
 
 import com.silver.atlantis.AtlantisMod;
+import com.silver.atlantis.construct.state.ConstructRunState;
+import com.silver.atlantis.construct.state.ConstructRunStateIO;
+import com.silver.atlantis.construct.state.ConstructStatePaths;
 import com.silver.atlantis.construct.undo.UndoEntry;
 import com.silver.atlantis.construct.undo.UndoMetadataIO;
 import com.silver.atlantis.construct.undo.UndoPaths;
 import com.silver.atlantis.construct.undo.UndoRunMetadata;
-import com.silver.atlantis.construct.undo.UndoSliceFile;
-import com.silver.atlantis.construct.state.ConstructRunState;
-import com.silver.atlantis.construct.state.ConstructRunStateIO;
-import com.silver.atlantis.construct.state.ConstructStatePaths;
-import com.sk89q.worldedit.extent.clipboard.Clipboard;
-import com.sk89q.worldedit.EditSession;
-import com.sk89q.worldedit.WorldEdit;
-import com.sk89q.worldedit.fabric.FabricAdapter;
-import com.sk89q.worldedit.math.BlockVector3;
-import com.sk89q.worldedit.util.concurrency.LazyReference;
-import com.sk89q.worldedit.util.SideEffect;
-import com.sk89q.worldedit.util.SideEffectSet;
-import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.longs.LongArrayList;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.ExperienceOrbEntity;
-import net.minecraft.entity.ItemEntity;
-import net.minecraft.entity.mob.MobEntity;
-import net.minecraft.network.packet.s2c.play.PositionFlag;
-import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.server.world.ChunkTicketType;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.ChunkPos;
-import net.minecraft.world.World;
-import net.minecraft.block.Blocks;
-
-import com.sk89q.worldedit.world.block.BlockTypes;
-import com.sk89q.worldedit.world.block.BaseBlock;
+import com.silver.atlantis.construct.undo.UndoFileFormat;
+import com.silver.atlantis.construct.mixin.ServerChunkManagerAccessor;
 import com.silver.atlantis.protect.ProtectionCollector;
 import com.silver.atlantis.protect.ProtectionFileIO;
 import com.silver.atlantis.protect.ProtectionManager;
 import com.silver.atlantis.protect.ProtectionPaths;
-import org.enginehub.linbus.format.snbt.LinStringIO;
-import org.enginehub.linbus.tree.LinCompoundTag;
+import com.silver.atlantis.spawn.bounds.ActiveConstructBounds;
+import com.silver.atlantis.spawn.service.ProximityMobManager;
+import net.minecraft.network.packet.s2c.play.PositionFlag;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.command.ServerCommandSource;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.world.ChunkTicketType;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.text.Text;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Box;
+import net.minecraft.util.math.ChunkPos;
 
-import java.nio.file.Files;
 import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayDeque;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
-import java.util.Deque;
-import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -65,18 +47,14 @@ import java.util.concurrent.Executor;
 
 final class ConstructTask implements ConstructJob {
 
-    // Construct is intentionally single-pass (like manual `//paste -a`).
-    // Fluids (water/lava) are pasted as normal blocks; no extra fluid recompute pulses.
-
     private enum Stage {
-        SCAN_SLICES,
-        LOAD_SLICE_ASYNC,
-        PRELOAD_CHUNKS,
-        PASTE,
-        CLEAR_BARRIERS,
-        WAIT_BETWEEN_SLICES,
-        CLEANUP_MOBS,
-        CLEANUP_ITEMS,
+        SCAN_INPUT,
+        LOAD_SCHEMATIC_ASYNC,
+        PREPARE_MISSING_CHUNKS,
+        WAIT_FOR_TARGET_CHUNKS_UNLOAD,
+        APPLY_SCHEMATIC_ASYNC,
+        MERGE_PROTECTION,
+        FINALIZE,
         DONE
     }
 
@@ -86,101 +64,66 @@ final class ConstructTask implements ConstructJob {
     private final BlockPos targetCenter;
     private final Executor ioExecutor;
 
-    // Persistent construct progress (so a restart can resume without starting over)
-    private final Path runStateFile;
-    private boolean runCompleted;
-
-    // Protection bookkeeping (filled during paste; registered on completion)
-    private final ProtectionCollector protectionCollector;
-    private boolean protectionRegistered;
-
-    // Undo persistence (only for edits performed by this mod)
-    private final boolean undoEnabled;
     private final String undoRunId;
     private final Path undoRunDir;
-    private final List<String> undoSliceFiles = new ArrayList<>();
-    private Long2ObjectOpenHashMap<UndoEntry> undoThisSlice = new Long2ObjectOpenHashMap<>();
+    private final Path runStateFile;
+    private final Path schematicFilePath;
 
-    // Computed once from the first slice so the overall build is centered on targetCenter.
-    // Reused for all slices to preserve their relative offsets.
-    private BlockVector3 pasteAnchorTo;
+    private final ProtectionCollector protectionCollector;
+    private final List<String> undoFiles = new ArrayList<>();
 
-    // Union of all slice regions in world coordinates.
-    private BlockVector3 overallMin;
-    private BlockVector3 overallMax;
+    private Stage stage = Stage.SCAN_INPUT;
+    private int passIndex;
 
-    private Stage stage = Stage.SCAN_SLICES;
+    private CompletableFuture<SpongeV3Schematic> pendingSchematic;
+    private CompletableFuture<ChunkPlan> pendingChunkPlan;
+    private CompletableFuture<PassApplyResult> pendingApply;
+    private SpongeV3Schematic loadedSchematic;
+    private ChunkPlan loadedChunkPlan;
+    private boolean preflightDone;
 
-    private List<SchematicSlice> slices;
-    private int sliceIndex = 0;
+    private long pendingSchematicStartedAtNanos;
 
-    private CompletableFuture<Clipboard> pendingClipboard;
+    private final ConstructChunkGenerationScheduler chunkGenerationScheduler = new ConstructChunkGenerationScheduler(31);
 
-    private EditSession pasteEditSession;
-    private com.sk89q.worldedit.world.World pasteWeWorld;
-    private Clipboard pasteClipboard;
-    private BlockVector3 pasteShift;
-    private int pasteMinX;
-    private int pasteMaxX;
-    private int pasteMinY;
-    private int pasteMaxY;
-    private int pasteMinZ;
-    private int pasteMaxZ;
-    private int pasteX;
-    private int pasteY;
-    private int pasteZ;
-    private String pasteSliceName;
-    private int pasteSinceLastFlush;
-    private int pasteFlushEveryBlocks;
+    private static final int CHUNK_PREP_BUDGET_PER_TICK = 4;
+    private static final int UNLOAD_FORCE_INTERVAL_TICKS = 5;
+    private static final int UNLOAD_STATUS_LOG_INTERVAL_TICKS = 20;
+    private static final int UNLOAD_FORCE_CHUNK_BUDGET = 8;
+    private static final int APPLY_STATUS_LOG_INTERVAL_TICKS = 100;
+    private static final int PROTECTION_MERGE_ADD_BUDGET_PER_TICK = 25_000;
+    private static final int PROTECTION_MERGE_STATUS_LOG_INTERVAL_TICKS = 20;
+    private static final int MIN_TICKET_LEVEL = 0;
+    private static final int MAX_TICKET_LEVEL = 40;
+    private static final List<ChunkTicketType> DISCOVERED_TICKET_TYPES = discoverChunkTicketTypes();
 
-    // Barrier clearing after paste (keeps barriers solid during paste so fluids don't invade mid-build).
-    private boolean sawBarrierThisRun;
-    private boolean barrierClearInitialized;
-    private int barrierMinX;
-    private int barrierMaxX;
-    private int barrierMinY;
-    private int barrierMaxY;
-    private int barrierMinZ;
-    private int barrierMaxZ;
-    private int barrierX;
-    private int barrierY;
-    private int barrierZ;
-    private int barrierSinceLastFlush;
-    private final BlockPos.Mutable barrierScanPos = new BlockPos.Mutable();
+    private long chunkPrepStartedAtNanos;
+    private int chunkPrepExpectedMissingCount;
+    private int chunkPrepStatusLogTicks;
+    private int unloadWaitTicks;
+    private int applyStatusLogTicks;
+    private int protectionMergeStatusLogTicks;
+    private long applyStartedAtNanos;
+    private long protectionMergeStartedAtNanos;
+    private Set<Long> unloadChunkKeys = Set.of();
+    private final Set<Long> chunkPrepObservedLoadedKeys = new HashSet<>();
+    private long[] unloadChunkKeysArray = new long[0];
+    private int unloadChunkKeysCursor;
+    private Iterator<Long> pendingPlacedMergeIterator;
+    private Iterator<Long> pendingInteriorMergeIterator;
+    private PassApplyResult pendingProtectionMergeResult;
+    private int pendingPlacedMergeRemaining;
+    private int pendingInteriorMergeRemaining;
 
-    // Note: fluid-specific update queues are intentionally not used by construct.
+    private CompletableFuture<List<ChunkPos>> pendingMissingAfterUnload;
 
+    private BlockPos pasteAnchorTo;
+    private BlockPos overallMin;
+    private BlockPos overallMax;
 
-    private final Set<Long> loadedChunkKeys = new HashSet<>();
-    private final Long2ObjectOpenHashMap<CompletableFuture<?>> activeChunkLoads = new Long2ObjectOpenHashMap<>();
-    private final Set<Long> chunkTicketKeys = new HashSet<>();
-
-    private static final ChunkTicketType PRELOAD_TICKET_TYPE = ChunkTicketType.FORCED;
-    private static final int PRELOAD_TICKET_LEVEL = 2;
-
-    // Make paste look incremental: send updates to clients and keep POI consistent,
-    // while avoiding heavy neighbor/physics effects.
-    private static final SideEffectSet PASTE_SIDE_EFFECTS = SideEffectSet.none()
-        .with(SideEffect.NETWORK, SideEffect.State.ON)
-        .with(SideEffect.POI_UPDATE, SideEffect.State.ON);
-
-    private static final int PASTE_FLUSH_EVERY_BLOCKS_DEFAULT = 8192;
-
-    private List<? extends Entity> entitiesToProcess;
-    private int entitiesProcessedIndex;
-
-    private Deque<ChunkPos> chunksToLoad;
-
-    private int waitTicks = 0;
-
-    // Last known valid X/Z where a player was outside the protected construct area.
-    // Used to return them to where they came from before trying generic fallback destinations.
-    private final Map<UUID, BlockPos> lastKnownOutsideByPlayer = new HashMap<>();
-
-    // Progress logging (useful when the command invoker disconnects).
-    private long lastProgressLogNanos;
-    private long lastTickStartNanos;
-    private double adaptiveWorkScale = 1.0d;
+    private boolean runCompleted;
+    private boolean protectionRegistered;
+    private boolean spawnPauseAcquired;
 
     ConstructTask(ServerCommandSource source, ConstructConfig config, ServerWorld world, BlockPos targetCenter, Executor ioExecutor) {
         this.requesterId = source.getPlayer() != null ? source.getPlayer().getUuid() : null;
@@ -189,125 +132,68 @@ final class ConstructTask implements ConstructJob {
         this.targetCenter = targetCenter;
         this.ioExecutor = ioExecutor;
 
-        send(source.getServer(), "Construct started. /findflat center: x=" + targetCenter.getX() + " y=" + targetCenter.getY() + " z=" + targetCenter.getZ() + " (yOffset=" + config.yOffsetBlocks() + ")");
-
-        boolean enabled = true;
-        String runId = String.valueOf(System.currentTimeMillis());
-        Path runDir = UndoPaths.runDir(runId);
-        try {
-            Files.createDirectories(runDir);
-            Files.createDirectories(UndoPaths.undoBaseDir());
-        } catch (Exception e) {
-            enabled = false;
-            AtlantisMod.LOGGER.warn("Undo persistence disabled: {}", e.getMessage());
-        }
-        this.undoEnabled = enabled;
-        this.undoRunId = runId;
-        this.undoRunDir = runDir;
-
-        this.runStateFile = ConstructStatePaths.stateFile(runDir);
-        this.runCompleted = false;
+        this.undoRunId = String.valueOf(System.currentTimeMillis());
+        this.undoRunDir = UndoPaths.runDir(undoRunId);
+        this.runStateFile = ConstructStatePaths.stateFile(undoRunDir);
+        this.schematicFilePath = AtlantisSchematicPaths.schematicFile();
 
         this.protectionCollector = new ProtectionCollector(
-            runId,
+            undoRunId,
             world.getRegistryKey().getValue().toString()
         );
+
+        this.passIndex = 0;
+        this.runCompleted = false;
         this.protectionRegistered = false;
 
-        if (undoEnabled) {
-            send(source.getServer(), "Undo recording enabled. Run ID: " + undoRunId + " (saved under config/atlantis/undo/)");
-            writeUndoMetadataSafely();
+        try {
+            Files.createDirectories(undoRunDir);
+            Files.createDirectories(UndoPaths.undoBaseDir());
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to initialize undo directory", e);
         }
 
-        // Initial state checkpoint.
-        persistRunStateAsync("SCAN_SLICES");
-    }
-
-    String getRunId() {
-        return undoRunId;
+        writeUndoMetadataSafely();
+        persistRunStateAsync("SCAN_INPUT");
+        send(source.getServer(), "Construct started. Run ID: " + undoRunId);
     }
 
     ConstructTask(ServerCommandSource source, ConstructConfig config, ServerWorld world, ConstructRunState resumeState, Executor ioExecutor) {
         this.requesterId = source.getPlayer() != null ? source.getPlayer().getUuid() : null;
-        this.config = new ConstructConfig(
-            config.delayBetweenStagesTicks(),
-            config.delayBetweenSlicesTicks(),
-            config.maxChunksToLoadPerTick(),
-            resumeState.yOffsetBlocks(),
-            config.maxEntitiesToProcessPerTick(),
-            config.playerEjectMarginBlocks(),
-            config.playerEjectTeleportOffsetBlocks(),
-            config.pasteFlushEveryBlocks(),
-            config.tickTimeBudgetNanos(),
-            config.undoTickTimeBudgetNanos(),
-            config.undoFlushEveryBlocks(),
-            config.maxFluidNeighborUpdatesPerTick(),
-            config.expectedTickNanos(),
-            config.adaptiveScaleSmoothing(),
-            config.adaptiveScaleMin(),
-            config.adaptiveScaleMax()
-        );
+        this.config = config.withYOffsetBlocks(resumeState.yOffsetBlocks());
         this.world = world;
         this.targetCenter = new BlockPos(resumeState.rawCenterX(), resumeState.rawCenterY(), resumeState.rawCenterZ());
         this.ioExecutor = ioExecutor;
 
         this.undoRunId = resumeState.runId();
         this.undoRunDir = UndoPaths.runDir(undoRunId);
-        this.undoEnabled = Files.exists(undoRunDir);
-
-        if (undoEnabled) {
-            preloadExistingUndoSliceFiles();
-        }
-
         this.runStateFile = ConstructStatePaths.stateFile(undoRunDir);
-        this.runCompleted = resumeState.completed();
+        this.schematicFilePath = AtlantisSchematicPaths.schematicFile();
 
         this.protectionCollector = new ProtectionCollector(
             undoRunId,
             world.getRegistryKey().getValue().toString()
         );
+
+        this.passIndex = Math.max(0, resumeState.nextPassIndex());
+        this.runCompleted = resumeState.completed();
         this.protectionRegistered = false;
 
         if (resumeState.anchorToX() != null && resumeState.anchorToY() != null && resumeState.anchorToZ() != null) {
-            this.pasteAnchorTo = BlockVector3.at(resumeState.anchorToX(), resumeState.anchorToY(), resumeState.anchorToZ());
+            this.pasteAnchorTo = new BlockPos(resumeState.anchorToX(), resumeState.anchorToY(), resumeState.anchorToZ());
         }
         if (resumeState.overallMinX() != null && resumeState.overallMinY() != null && resumeState.overallMinZ() != null
             && resumeState.overallMaxX() != null && resumeState.overallMaxY() != null && resumeState.overallMaxZ() != null) {
-            this.overallMin = BlockVector3.at(resumeState.overallMinX(), resumeState.overallMinY(), resumeState.overallMinZ());
-            this.overallMax = BlockVector3.at(resumeState.overallMaxX(), resumeState.overallMaxY(), resumeState.overallMaxZ());
+            this.overallMin = new BlockPos(resumeState.overallMinX(), resumeState.overallMinY(), resumeState.overallMinZ());
+            this.overallMax = new BlockPos(resumeState.overallMaxX(), resumeState.overallMaxY(), resumeState.overallMaxZ());
         }
 
-        this.sliceIndex = Math.max(0, resumeState.nextSliceIndex());
-        this.stage = Stage.SCAN_SLICES;
-
-        send(source.getServer(), "Resuming construct run " + undoRunId + " at slice=" + (this.sliceIndex + 1));
+        preloadExistingUndoFiles();
+        send(source.getServer(), "Resuming construct run " + undoRunId + " at pass=" + (passIndex + 1));
     }
 
-    private void preloadExistingUndoSliceFiles() {
-        try {
-            Path metadataFile = UndoPaths.metadataFile(undoRunDir);
-            if (Files.exists(metadataFile)) {
-                UndoRunMetadata metadata = UndoMetadataIO.read(metadataFile);
-                if (metadata != null && metadata.sliceFiles() != null) {
-                    undoSliceFiles.addAll(metadata.sliceFiles());
-                }
-            }
-        } catch (Exception ignored) {
-            // Fall back to scanning the folder.
-        }
-
-        if (!undoSliceFiles.isEmpty()) {
-            return;
-        }
-
-        try (var stream = Files.list(undoRunDir)) {
-            stream
-                .filter(Files::isRegularFile)
-                .map(p -> p.getFileName().toString())
-                .filter(name -> name.toLowerCase(Locale.ROOT).endsWith(".atlundo"))
-                .forEach(undoSliceFiles::add);
-        } catch (Exception ignored) {
-        }
+    String getRunId() {
+        return undoRunId;
     }
 
     static ConstructRunState tryLoadLatestResumableState(ServerWorld world) {
@@ -356,234 +242,66 @@ final class ConstructTask implements ConstructJob {
         return best;
     }
 
-    private void persistRunStateAsync(String stageName) {
-        if (runCompleted) {
-            return;
-        }
-
-        Integer anchorX = (pasteAnchorTo != null) ? pasteAnchorTo.x() : null;
-        Integer anchorY = (pasteAnchorTo != null) ? pasteAnchorTo.y() : null;
-        Integer anchorZ = (pasteAnchorTo != null) ? pasteAnchorTo.z() : null;
-
-        Integer minX = (overallMin != null) ? overallMin.x() : null;
-        Integer minY = (overallMin != null) ? overallMin.y() : null;
-        Integer minZ = (overallMin != null) ? overallMin.z() : null;
-        Integer maxX = (overallMax != null) ? overallMax.x() : null;
-        Integer maxY = (overallMax != null) ? overallMax.y() : null;
-        Integer maxZ = (overallMax != null) ? overallMax.z() : null;
-
-        ConstructRunState state = new ConstructRunState(
-            ConstructRunState.CURRENT_VERSION,
-            undoRunId,
-            world.getRegistryKey().getValue().toString(),
-            System.currentTimeMillis(),
-            targetCenter.getX(),
-            targetCenter.getY(),
-            targetCenter.getZ(),
-            config.yOffsetBlocks(),
-            "SOLIDS",
-            sliceIndex,
-            stageName,
-            anchorX,
-            anchorY,
-            anchorZ,
-            minX,
-            minY,
-            minZ,
-            maxX,
-            maxY,
-            maxZ,
-            false
-        );
-
-        CompletableFuture
-            .runAsync(() -> {
-                try {
-                    ConstructRunStateIO.write(runStateFile, state);
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
-                }
-            }, ioExecutor)
-            .exceptionally(throwable -> {
-                AtlantisMod.LOGGER.warn("Failed to persist construct state {}: {}", runStateFile, throwable.getMessage());
-                return null;
-            });
-    }
-
-    private void markRunCompletedAsync() {
-        if (runCompleted) {
-            return;
-        }
-        runCompleted = true;
-
-        ConstructRunState state = new ConstructRunState(
-            ConstructRunState.CURRENT_VERSION,
-            undoRunId,
-            world.getRegistryKey().getValue().toString(),
-            System.currentTimeMillis(),
-            targetCenter.getX(),
-            targetCenter.getY(),
-            targetCenter.getZ(),
-            config.yOffsetBlocks(),
-            "SOLIDS",
-            sliceIndex,
-            "DONE",
-            (pasteAnchorTo != null) ? pasteAnchorTo.x() : null,
-            (pasteAnchorTo != null) ? pasteAnchorTo.y() : null,
-            (pasteAnchorTo != null) ? pasteAnchorTo.z() : null,
-            (overallMin != null) ? overallMin.x() : null,
-            (overallMin != null) ? overallMin.y() : null,
-            (overallMin != null) ? overallMin.z() : null,
-            (overallMax != null) ? overallMax.x() : null,
-            (overallMax != null) ? overallMax.y() : null,
-            (overallMax != null) ? overallMax.z() : null,
-            true
-        );
-
-        // This file is tiny; write it synchronously so the cycle tick in the same server tick
-        // cannot immediately "resume" a run that just finished due to async IO lag.
-        try {
-            ConstructRunStateIO.write(runStateFile, state);
-        } catch (Exception e) {
-            AtlantisMod.LOGGER.warn("Failed to finalize construct state {}: {}", runStateFile, e.getMessage());
-            // Best-effort fallback.
-            CompletableFuture
-                .runAsync(() -> {
-                    try {
-                        ConstructRunStateIO.write(runStateFile, state);
-                    } catch (Exception ex) {
-                        throw new RuntimeException(ex);
-                    }
-                }, ioExecutor)
-                .exceptionally(throwable -> {
-                    AtlantisMod.LOGGER.warn("Failed to finalize construct state {}: {}", runStateFile, throwable.getMessage());
-                    return null;
-                });
-        }
-    }
-
     @Override
     public boolean tick(MinecraftServer server) {
-        long tickStartNanos = System.nanoTime();
-        updateAdaptiveWorkScale(tickStartNanos);
-        long deadline = tickStartNanos + scaledBudget(config.tickTimeBudgetNanos());
-
-        maybeLogProgress(server);
+        long budgetNanos = Math.max(1_000_000L, config.tickTimeBudgetNanos());
+        long deadline = System.nanoTime() + budgetNanos;
 
         while (System.nanoTime() < deadline && stage != Stage.DONE) {
-            // Prevent players from standing in the build while it is being constructed/cleaned.
-            enforcePlayersOutside();
-
             switch (stage) {
-                case SCAN_SLICES -> {
-                    Path dir = SchematicSliceScanner.defaultSchematicDir();
-                    try {
-                        slices = SchematicSliceScanner.scanSlices(dir);
-                    } catch (Exception e) {
-                        send(server, "Failed to scan .schem files in " + dir + ": " + e.getMessage());
-                        AtlantisMod.LOGGER.error("Failed to scan .schem files", e);
-                        // Avoid a resume loop (cycle will keep trying to resume the latest run).
-                        // If scanning fails, the safest behavior is to finalize the run and require a new /construct.
-                        markRunCompletedAsync();
+                case SCAN_INPUT -> {
+                    if (!Files.exists(schematicFilePath) || !Files.isRegularFile(schematicFilePath)) {
+                        send(server, "Schematic not found: " + schematicFilePath.getFileName());
                         stage = Stage.DONE;
                         break;
                     }
 
-                    if (slices.isEmpty()) {
-                        send(server, "No .schem files found in: " + dir);
-                        // Avoid a resume loop when the schematics directory is empty.
-                        markRunCompletedAsync();
-                        stage = Stage.DONE;
+                    if (passIndex >= 1) {
+                        stage = Stage.FINALIZE;
                         break;
                     }
 
-                    send(server, "Found " + slices.size() + " slice(s) in " + dir + ". Starting paste...");
-
-                    // Resume safeguard: if we already wrote undo slice files before the restart,
-                    // skip ahead so we don't re-paste completed slices.
-                    if (undoEnabled) {
-                        while (sliceIndex < slices.size()) {
-                            Path undoFile = UndoPaths.sliceUndoFile(undoRunDir, sliceIndex);
-                            if (!Files.exists(undoFile)) {
-                                break;
-                            }
-                            sliceIndex++;
-                        }
-                    }
-
-                    persistRunStateAsync("LOAD_SLICE_ASYNC");
-                    stage = Stage.LOAD_SLICE_ASYNC;
+                    persistRunStateAsync("LOAD_SCHEMATIC_ASYNC");
+                    stage = Stage.LOAD_SCHEMATIC_ASYNC;
                 }
 
-                case LOAD_SLICE_ASYNC -> {
-                    if (sliceIndex >= slices.size()) {
-                        // Clear barrier carve markers once at the very end.
-                        if (sawBarrierThisRun) {
-                            stage = Stage.CLEAR_BARRIERS;
-                            waitTicks = config.delayBetweenStagesTicks();
+                case LOAD_SCHEMATIC_ASYNC -> {
+                    if (passIndex >= 1) {
+                        stage = Stage.FINALIZE;
+                        break;
+                    }
+
+                    if (loadedSchematic == null) {
+                        if (pendingSchematic == null) {
+                            send(server, "Loading schematic " + schematicFilePath.getFileName() + " (Sponge v3 native reader)");
+                            pendingSchematicStartedAtNanos = System.nanoTime();
+                            pendingSchematic = CompletableFuture.supplyAsync(() -> {
+                                try {
+                                    return SpongeV3Schematic.load(schematicFilePath);
+                                } catch (Exception e) {
+                                    throw new RuntimeException(e);
+                                }
+                            }, ioExecutor);
+                            return false;
+                        }
+
+                        if (!pendingSchematic.isDone()) {
+                            return false;
+                        }
+
+                        SpongeV3Schematic schematic;
+                        try {
+                            schematic = pendingSchematic.join();
+                        } catch (Exception e) {
+                            send(server, "Failed to load schematic " + schematicFilePath.getFileName() + ": " + rootMessage(e));
+                            pendingSchematic = null;
+                            stage = Stage.DONE;
                             break;
                         }
-
-                        // Post-build cleanup (order: players kept out continuously -> remove mobs -> remove dropped items).
-                        stage = Stage.CLEANUP_MOBS;
-                        waitTicks = config.delayBetweenStagesTicks();
-                        break;
-                    }
-
-                    if (pendingClipboard == null) {
-                        // New map per slice so async persistence can keep using the old one.
-                        // (Clearing would race with the IO thread.)
-                        undoThisSlice = new Long2ObjectOpenHashMap<>();
-
-                        SchematicSlice slice = slices.get(sliceIndex);
-                        String name = slice.path().getFileName().toString();
-                        send(server, "Loading slice " + (sliceIndex + 1) + "/" + slices.size() + ": " + name);
-
-                        persistRunStateAsync("LOAD_SLICE_ASYNC");
-
-                        pendingClipboard = CompletableFuture.supplyAsync(() -> {
-                            try {
-                                return WorldEditSchematicPaster.loadClipboard(slice.path());
-                            } catch (Exception e) {
-                                throw new RuntimeException(e);
-                            }
-                        }, ioExecutor);
-                        break;
-                    }
-
-                    if (!pendingClipboard.isDone()) {
-                        // Wait for IO completion; don't spin.
-                        return false;
-                    }
-
-                    Clipboard clipboard;
-                    try {
-                        clipboard = pendingClipboard.join();
-                    } catch (Exception e) {
-                        send(server, "Failed to load slice: " + e.getMessage());
-                        AtlantisMod.LOGGER.error("Failed to load schematic slice", e);
-                        pendingClipboard = null;
-                        sliceIndex++;
-                        stage = Stage.WAIT_BETWEEN_SLICES;
-                        waitTicks = config.delayBetweenSlicesTicks();
-                        break;
-                    }
-
-                    pendingClipboard = CompletableFuture.completedFuture(clipboard);
-                    stage = Stage.PRELOAD_CHUNKS;
-                    waitTicks = config.delayBetweenStagesTicks();
-                }
-
-                case PRELOAD_CHUNKS -> {
-                    if (waitTicks > 0) {
-                        waitTicks--;
-                        return false;
-                    }
-
-                    Clipboard clipboard = pendingClipboard != null ? pendingClipboard.getNow(null) : null;
-                    if (clipboard == null) {
-                        stage = Stage.LOAD_SLICE_ASYNC;
-                        break;
+                        loadedSchematic = schematic;
+                        pendingSchematic = null;
+                        long loadElapsedMs = (System.nanoTime() - pendingSchematicStartedAtNanos) / 1_000_000L;
+                        send(server, "Loaded schematic in " + loadElapsedMs + "ms (thread=" + Thread.currentThread().getName() + ")");
                     }
 
                     if (pasteAnchorTo == null) {
@@ -592,448 +310,278 @@ final class ConstructTask implements ConstructJob {
                             targetCenter.getY() + config.yOffsetBlocks(),
                             targetCenter.getZ()
                         );
-
-                        pasteAnchorTo = WorldEditSchematicPaster.computeCenteredAnchorTo(clipboard, centeredTarget);
-                        // Keep chat simple: only report the center once.
+                        pasteAnchorTo = loadedSchematic.computeCenteredAnchor(centeredTarget);
                         send(server, "Construct center: x=" + centeredTarget.getX() + " y=" + centeredTarget.getY() + " z=" + centeredTarget.getZ());
-                        AtlantisMod.LOGGER.info(String.format(Locale.ROOT,
-                            "Construct anchor computed from slice_000: to=[%d,%d,%d] adjustedCenter=[%d,%d,%d] rawCenter=[%d,%d,%d] yOffset=%d",
-                            pasteAnchorTo.x(), pasteAnchorTo.y(), pasteAnchorTo.z(),
-                            centeredTarget.getX(), centeredTarget.getY(), centeredTarget.getZ(),
-                            targetCenter.getX(), targetCenter.getY(), targetCenter.getZ(),
-                            config.yOffsetBlocks()
-                        ));
-
-                        persistRunStateAsync("PRELOAD_CHUNKS");
                     }
 
-                    if (chunksToLoad == null) {
-                        // Preload only the chunks this slice will actually touch at its paste position.
-                        // Also: only preload chunks we haven't already loaded in this construct run.
-                        var placement = WorldEditSchematicPaster.computePlacement(clipboard, pasteAnchorTo);
-                        var region = placement.region();
+                    var placement = loadedSchematic.computePlacementBounds(pasteAnchorTo);
+                    updateOverallBounds(placement.minX(), placement.minY(), placement.minZ(), placement.maxX(), placement.maxY(), placement.maxZ());
+                    
+                    if (ejectPlayersFromBuildArea(server, placement.minX(), placement.minY(), placement.minZ(), placement.maxX(), placement.maxY(), placement.maxZ())) {
+                        return false;
+                    }
 
-                        updateOverallBounds(region.worldMin(), region.worldMax());
+                    if (!preflightDone) {
+                        runConstructPreflight(placement.minX(), placement.minZ(), placement.maxX(), placement.maxZ());
+                        preflightDone = true;
+                    }
 
-                        int minX = region.worldMin().x();
-                        int maxX = region.worldMax().x();
-                        int minZ = region.worldMin().z();
-                        int maxZ = region.worldMax().z();
+                    if (loadedChunkPlan == null && pendingChunkPlan == null) {
+                        SpongeV3Schematic schematicForPlan = loadedSchematic;
+                        pendingChunkPlan = CompletableFuture.supplyAsync(() -> buildChunkPlan(schematicForPlan), ioExecutor);
+                        return false;
+                    }
 
-                        int minChunkX = minX >> 4;
-                        int maxChunkX = maxX >> 4;
-                        int minChunkZ = minZ >> 4;
-                        int maxChunkZ = maxZ >> 4;
-
-                        chunksToLoad = new ArrayDeque<>();
-                        activeChunkLoads.clear();
-                        for (int cx = minChunkX; cx <= maxChunkX; cx++) {
-                            for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
-                                ChunkPos pos = new ChunkPos(cx, cz);
-                                long key = ChunkPos.toLong(pos.x, pos.z);
-                                if (loadedChunkKeys.contains(key)) {
-                                    continue;
-                                }
-                                chunksToLoad.add(pos);
-                            }
+                    if (loadedChunkPlan == null) {
+                        if (!pendingChunkPlan.isDone()) {
+                            return false;
                         }
 
-                        if (chunksToLoad.isEmpty()) {
-                            // Nothing new to load: don't spam chat and don't waste ticks here.
-                            chunksToLoad = null;
-                            stage = Stage.PASTE;
-                            waitTicks = config.delayBetweenStagesTicks();
+                        try {
+                            loadedChunkPlan = pendingChunkPlan.join();
+                        } catch (Exception e) {
+                            send(server, "Failed to prepare target chunks for schematic: " + rootMessage(e));
+                            pendingChunkPlan = null;
+                            stage = Stage.DONE;
                             break;
                         }
-
-                        send(server, String.format(Locale.ROOT,
-                            "Preloading chunks for slice %d/%d (%d new chunks)...",
-                            (sliceIndex + 1),
-                            slices.size(),
-                            chunksToLoad.size()
-                        ));
+                        pendingChunkPlan = null;
                     }
 
-                    // Request a few chunk loads per tick without blocking the server thread.
-                    int requestedThisTick = 0;
-                    int maxChunksThisTick = scaledCap(config.maxChunksToLoadPerTick());
-                    while (!chunksToLoad.isEmpty() && requestedThisTick < maxChunksThisTick && System.nanoTime() < deadline) {
-                        ChunkPos pos = chunksToLoad.removeFirst();
-                        long key = ChunkPos.toLong(pos.x, pos.z);
-
-                        CompletableFuture<?> fut = world.getChunkManager().addChunkLoadingTicket(PRELOAD_TICKET_TYPE, pos, PRELOAD_TICKET_LEVEL);
-                        activeChunkLoads.put(key, fut);
-                        chunkTicketKeys.add(key);
-                        loadedChunkKeys.add(key);
-                        requestedThisTick++;
+                    if (!loadedChunkPlan.missingChunks.isEmpty()) {
+                        send(server, "Preparing " + loadedChunkPlan.missingChunks.size() + " missing chunk(s) for schematic pass");
+                        chunkPrepStartedAtNanos = System.nanoTime();
+                        chunkPrepExpectedMissingCount = loadedChunkPlan.missingChunks.size();
+                        chunkPrepStatusLogTicks = 0;
+                        chunkGenerationScheduler.reset(loadedChunkPlan.missingChunks);
+                        chunkPrepObservedLoadedKeys.clear();
+                        setUnloadChunkKeys(Set.of());
+                        pendingMissingAfterUnload = null;
+                        stage = Stage.PREPARE_MISSING_CHUNKS;
+                        return false;
                     }
 
-                    if (requestedThisTick > 0 && com.silver.atlantis.spawn.SpawnMobConfig.DIAGNOSTIC_LOGS) {
-                        AtlantisMod.LOGGER.info(
-                            "[ConstructTickets] runId={} slice={}/{} addedThisTick={} totalActiveLoads={} totalTicketKeys={}",
+                    setUnloadChunkKeys(loadedChunkPlan.targetChunkKeys);
+                    pendingMissingAfterUnload = null;
+                    int loadedTargetChunks = countLoadedTargetChunks(unloadChunkKeys);
+                    if (loadedTargetChunks > 0) {
+                        send(server, "Waiting for " + loadedTargetChunks + " target chunk(s) to unload before schematic apply");
+                        persistRunStateAsync("WAIT_FOR_TARGET_CHUNKS_UNLOAD");
+                        stage = Stage.WAIT_FOR_TARGET_CHUNKS_UNLOAD;
+                        return false;
+                    }
+
+                    SpongeV3Schematic schematicToApply = loadedSchematic;
+                    int currentPass = passIndex;
+                    send(server, "Applying schematic pass");
+                    applyStatusLogTicks = 0;
+                    applyStartedAtNanos = System.nanoTime();
+                    pendingApply = CompletableFuture.supplyAsync(() -> {
+                        long startedAt = System.nanoTime();
+                        AtlantisMod.LOGGER.info("[construct:{}] apply start schematic pass thread={}", undoRunId, Thread.currentThread().getName());
+                        PassApplyResult result = applyPass(currentPass, schematicToApply);
+                        long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000L;
+                        AtlantisMod.LOGGER.info("[construct:{}] apply done schematic pass elapsed={}ms chunks={} writes={} undoEntries={}",
                             undoRunId,
-                            (sliceIndex + 1),
-                            slices.size(),
-                            requestedThisTick,
-                            activeChunkLoads.size(),
-                            chunkTicketKeys.size()
+                            elapsedMs,
+                            result.chunkCount,
+                            result.writeCount,
+                            result.undoEntryCount
                         );
-                    }
-
-                    // Poll completion; do not proceed to paste until all requested chunks are actually loaded.
-                    var it = activeChunkLoads.long2ObjectEntrySet().fastIterator();
-                    while (it.hasNext()) {
-                        var entry = it.next();
-                        long key = entry.getLongKey();
-                        CompletableFuture<?> fut = entry.getValue();
-
-                        if (!fut.isDone()) {
-                            continue;
-                        }
-
-                        int cx = ChunkPos.getPackedX(key);
-                        int cz = ChunkPos.getPackedZ(key);
-                        if (!world.getChunkManager().isChunkLoaded(cx, cz)) {
-                            // Ticket completed but chunk isn't visible as loaded yet; keep waiting.
-                            continue;
-                        }
-
-                        it.remove();
-                    }
-
-                    if (!chunksToLoad.isEmpty() || !activeChunkLoads.isEmpty()) {
-                        return false;
-                    }
-
-                    chunksToLoad = null;
-                    stage = Stage.PASTE;
-                    waitTicks = config.delayBetweenStagesTicks();
+                        return result;
+                    }, ioExecutor);
+                    stage = Stage.APPLY_SCHEMATIC_ASYNC;
                 }
 
-                case PASTE -> {
-                    if (waitTicks > 0) {
-                        waitTicks--;
-                        return false;
-                    }
-
-                    Clipboard clipboard = pendingClipboard != null ? pendingClipboard.getNow(null) : null;
-                    if (clipboard == null) {
-                        stage = Stage.LOAD_SLICE_ASYNC;
+                case PREPARE_MISSING_CHUNKS -> {
+                    if (loadedSchematic == null || loadedChunkPlan == null) {
+                        stage = Stage.LOAD_SCHEMATIC_ASYNC;
                         break;
                     }
 
-                    SchematicSlice slice = slices.get(sliceIndex);
-                    String name = slice.path().getFileName().toString();
-
-                    // Manual incremental paste (guaranteed to respect tick budget).
-                    if (pasteEditSession == null) {
-                        pasteSliceName = name;
-                        pasteClipboard = clipboard;
-
-                        int cfgFlush = config.pasteFlushEveryBlocks();
-                        pasteFlushEveryBlocks = (cfgFlush > 0) ? cfgFlush : PASTE_FLUSH_EVERY_BLOCKS_DEFAULT;
-
-                        var weWorld = FabricAdapter.adapt(world);
-                        pasteWeWorld = weWorld;
-                        pasteEditSession = WorldEdit.getInstance()
-                            .newEditSessionBuilder()
-                            .world(weWorld)
-                            .maxBlocks(-1)
-                            .build();
-                        // Run without fast mode to keep behavior closer to manual pastes.
-                        pasteEditSession.setFastMode(false);
-                        pasteEditSession.setSideEffectApplier(PASTE_SIDE_EFFECTS);
-
-                        BlockVector3 origin = pasteClipboard.getOrigin();
-                        pasteShift = pasteAnchorTo.subtract(origin);
-
-                        var region = pasteClipboard.getRegion();
-                        var min = region.getMinimumPoint();
-                        var max = region.getMaximumPoint();
-
-                        pasteMinX = min.x();
-                        pasteMaxX = max.x();
-                        pasteMinY = min.y();
-                        pasteMaxY = max.y();
-                        pasteMinZ = min.z();
-                        pasteMaxZ = max.z();
-
-                        // World-space bounds for post-pass barrier clearing.
-                        BlockVector3 worldMin = min.add(pasteShift);
-                        BlockVector3 worldMax = max.add(pasteShift);
-                        barrierMinX = worldMin.x();
-                        barrierMaxX = worldMax.x();
-                        barrierMinY = worldMin.y();
-                        barrierMaxY = worldMax.y();
-                        barrierMinZ = worldMin.z();
-                        barrierMaxZ = worldMax.z();
-                        barrierX = barrierMinX;
-                        barrierY = barrierMinY;
-                        barrierZ = barrierMinZ;
-                        barrierSinceLastFlush = 0;
-
-                        pasteX = pasteMinX;
-                        pasteZ = pasteMinZ;
-                        pasteY = pasteMinY;
-                        pasteSinceLastFlush = 0;
-
-                        send(server, "Pasting " + name + " (manual tick-sliced, like //paste -a)...");
+                    var placement = loadedSchematic.computePlacementBounds(pasteAnchorTo);
+                    if (ejectPlayersFromBuildArea(server, placement.minX(), placement.minY(), placement.minZ(), placement.maxX(), placement.maxY(), placement.maxZ())) {
+                        return false;
                     }
 
-                    boolean finished = false;
+                    boolean prepDone = chunkGenerationScheduler.tickGenerate(world, CHUNK_PREP_BUDGET_PER_TICK);
+                    Set<Long> observedLoadedNow = chunkGenerationScheduler.consumeObservedLoadedChunkKeys();
+                    if (!observedLoadedNow.isEmpty()) {
+                        chunkPrepObservedLoadedKeys.addAll(observedLoadedNow);
+                    }
+
+                    Set<Long> recentlyGeneratedNow = chunkGenerationScheduler.consumeRecentlyGeneratedChunkKeys();
+                    Set<Long> immediateUnloadKeys = mergeChunkKeySets(recentlyGeneratedNow, observedLoadedNow);
+                    if (!immediateUnloadKeys.isEmpty()) {
+                        markLoadedTargetChunksNeedSaving(immediateUnloadKeys);
+                        forceUnloadChunkKeysNow(immediateUnloadKeys);
+                    }
+
+                    if (!prepDone) {
+                        chunkPrepStatusLogTicks++;
+                        if (chunkPrepStatusLogTicks % 20 == 0) {
+                            long elapsedMs = (System.nanoTime() - chunkPrepStartedAtNanos) / 1_000_000L;
+                            send(server, "Chunk prep running: elapsed=" + elapsedMs + "ms, pending=" + chunkGenerationScheduler.pendingCount() + ", active=" + chunkGenerationScheduler.activeCount());
+                        }
+                        return false;
+                    }
+
+                    long elapsedMs = (System.nanoTime() - chunkPrepStartedAtNanos) / 1_000_000L;
+                    send(server, "Chunk prep complete: requested=" + chunkPrepExpectedMissingCount + ", elapsed=" + elapsedMs + "ms");
+
+                    setUnloadChunkKeys(mergeChunkKeySets(loadedChunkPlan.targetChunkKeys, chunkPrepObservedLoadedKeys));
+                    chunkPrepObservedLoadedKeys.clear();
+                    pendingMissingAfterUnload = null;
+                    send(server, "Chunk prep unload set prepared: targetChunks=" + loadedChunkPlan.targetChunkKeys.size() + ", unloadSet=" + unloadChunkKeys.size());
+
+                    // Non-blocking path: mark loaded targets dirty and verify NBT after unload.
+                    markLoadedTargetChunksNeedSaving(loadedChunkPlan.targetChunkKeys);
+                    send(server, "Chunk prep save pass skipped (non-blocking); will verify after unload");
+
+                    chunkGenerationScheduler.releaseTickets(world);
+                    persistRunStateAsync("WAIT_FOR_TARGET_CHUNKS_UNLOAD");
+                    stage = Stage.WAIT_FOR_TARGET_CHUNKS_UNLOAD;
+                    return false;
+                }
+
+                case WAIT_FOR_TARGET_CHUNKS_UNLOAD -> {
+                    if (loadedSchematic == null) {
+                        stage = Stage.LOAD_SCHEMATIC_ASYNC;
+                        break;
+                    }
+
+                    var placement = loadedSchematic.computePlacementBounds(pasteAnchorTo);
+                    if (ejectPlayersFromBuildArea(server, placement.minX(), placement.minY(), placement.minZ(), placement.maxX(), placement.maxY(), placement.maxZ())) {
+                        return false;
+                    }
+
+                    int loadedTargetChunks = loadedChunkPlan != null
+                        ? countLoadedTargetChunks(unloadChunkKeys)
+                        : 0;
+                    if (loadedTargetChunks > 0) {
+                        unloadWaitTicks++;
+                        if (unloadWaitTicks % UNLOAD_FORCE_INTERVAL_TICKS == 0) {
+                            forceUnloadTargetChunks(unloadChunkKeys);
+                        }
+                        if (unloadWaitTicks % UNLOAD_STATUS_LOG_INTERVAL_TICKS == 0) {
+                            send(server, "Unload wait running: loadedChunks=" + loadedTargetChunks + ", unloadSet=" + unloadChunkKeys.size() + ", waitTicks=" + unloadWaitTicks);
+                        }
+                        return false;
+                    }
+                    unloadWaitTicks = 0;
+
+                    if (loadedChunkPlan != null) {
+                        if (pendingMissingAfterUnload == null) {
+                            Set<Long> keysToVerify = loadedChunkPlan.targetChunkKeys;
+                            pendingMissingAfterUnload = CompletableFuture.supplyAsync(() -> findMissingChunkNbts(keysToVerify), ioExecutor);
+                            return false;
+                        }
+
+                        if (!pendingMissingAfterUnload.isDone()) {
+                            return false;
+                        }
+
+                        List<ChunkPos> missingAfterUnload;
+                        try {
+                            missingAfterUnload = pendingMissingAfterUnload.join();
+                        } catch (Exception e) {
+                            send(server, "Chunk prep verify failed: " + rootMessage(e));
+                            stage = Stage.DONE;
+                            return false;
+                        } finally {
+                            pendingMissingAfterUnload = null;
+                        }
+
+                        if (!missingAfterUnload.isEmpty()) {
+                            send(server, "Chunk prep failed: " + missingAfterUnload.size() + " chunk(s) still missing NBT after unload");
+                            stage = Stage.DONE;
+                            return false;
+                        }
+                    }
+
+                    int currentPass = passIndex;
+                    SpongeV3Schematic schematicToApply = loadedSchematic;
+                    send(server, "Applying schematic pass");
+                    applyStatusLogTicks = 0;
+                    applyStartedAtNanos = System.nanoTime();
+                    pendingApply = CompletableFuture.supplyAsync(() -> applyPass(currentPass, schematicToApply), ioExecutor);
+                    stage = Stage.APPLY_SCHEMATIC_ASYNC;
+                }
+
+                case APPLY_SCHEMATIC_ASYNC -> {
+                    if (pendingApply == null) {
+                        stage = Stage.LOAD_SCHEMATIC_ASYNC;
+                        break;
+                    }
+
+                    if (!pendingApply.isDone()) {
+                        applyStatusLogTicks++;
+                        if (applyStatusLogTicks % APPLY_STATUS_LOG_INTERVAL_TICKS == 0) {
+                            long elapsedMs = (System.nanoTime() - applyStartedAtNanos) / 1_000_000L;
+                            send(server, "Schematic apply running: elapsed=" + elapsedMs + "ms");
+                        }
+                        if (loadedSchematic != null && pasteAnchorTo != null) {
+                            var placement = loadedSchematic.computePlacementBounds(pasteAnchorTo);
+                            ejectPlayersFromBuildArea(server, placement.minX(), placement.minY(), placement.minZ(), placement.maxX(), placement.maxY(), placement.maxZ());
+                        }
+                        return false;
+                    }
+
+                    PassApplyResult result;
                     try {
-                        while (System.nanoTime() < deadline) {
-                            if (pasteX > pasteMaxX) {
-                                finished = true;
-                                break;
-                            }
-
-                            BlockVector3 src = BlockVector3.at(pasteX, pasteY, pasteZ);
-                            BaseBlock block = pasteClipboard.getFullBlock(src);
-
-                            // Ignore air for speed.
-                            if (block.getBlockType() != BlockTypes.AIR) {
-                                // Convert barriers to air immediately (same end result as paste+replace).
-                                // Important: barriers are used as a "carving" signal, so they must be applied
-                                // during the NON_FLUID pass even though they become AIR.
-                                boolean wasBarrier = (block.getBlockType() == BlockTypes.BARRIER);
-                                if (wasBarrier) {
-                                    // Keep barriers during paste so they act as temporary solid plugs.
-                                    // This prevents ocean/river water from flowing into carved interiors while
-                                    // the slice is still being pasted over many ticks.
-                                    sawBarrierThisRun = true;
-                                }
-
-                                BlockVector3 dst = src.add(pasteShift);
-                                long dstKey = BlockPos.asLong(dst.x(), dst.y(), dst.z());
-
-                                // Barrier-marked positions are treated as protected interior air-space.
-                                if (wasBarrier) {
-                                    protectionCollector.addInterior(dstKey);
-                                }
-
-                                BeforeSnapshot before = captureBeforeSnapshot(dst, undoEnabled);
-                                if (!wasBarrier && didActuallyChange(before, block)) {
-                                    protectionCollector.addPlaced(dstKey);
-                                }
-                                pasteEditSession.setBlock(dst, block);
-
-                                pasteSinceLastFlush++;
-                                if (pasteSinceLastFlush >= pasteFlushEveryBlocks) {
-                                    pasteEditSession.flushSession();
-                                    pasteEditSession.commit();
-                                    pasteSinceLastFlush = 0;
-                                }
-                            }
-
-                            advancePasteCursor();
-                        }
-                    } catch (Throwable t) {
-                        send(server, "Paste failed for " + pasteSliceName + ": " + t.getMessage());
-                        AtlantisMod.LOGGER.error("Paste failed", t);
-                        safeClosePaste();
-                        pendingClipboard = null;
-                        sliceIndex++;
-                        stage = Stage.WAIT_BETWEEN_SLICES;
-                        waitTicks = config.delayBetweenSlicesTicks();
-                        break;
-                    }
-
-                    if (!finished) {
-                        // Make progress visible even when we yield mid-slice.
-                        if (pasteEditSession != null && pasteSinceLastFlush > 0) {
-                            try {
-                                pasteEditSession.flushSession();
-                                pasteEditSession.commit();
-                            } catch (Exception ignored) {
-                            }
-                            pasteSinceLastFlush = 0;
-                        }
-                        return false;
-                    }
-
-                    // Finalize and persist undo.
-                    try {
-                        if (undoEnabled && !undoThisSlice.isEmpty()) {
-                            Long2ObjectOpenHashMap<UndoEntry> toPersist = undoThisSlice;
-                            // Swap immediately to free memory and avoid accidental reuse.
-                            undoThisSlice = new Long2ObjectOpenHashMap<>();
-                            persistSliceUndoAsync(server, sliceIndex, toPersist);
-                        }
-                    } catch (Throwable t) {
-                        AtlantisMod.LOGGER.warn("Failed to finalize paste bookkeeping for {}: {}", pasteSliceName, t.getMessage());
-                    } finally {
-                        safeClosePaste();
-                    }
-
-                    send(server, "Pasted " + name + " at center x=" + targetCenter.getX() + " y=" + (targetCenter.getY() + config.yOffsetBlocks()) + " z=" + targetCenter.getZ());
-
-                    pendingClipboard = null;
-                    sliceIndex++;
-                    persistRunStateAsync("WAIT_BETWEEN_SLICES");
-                    stage = Stage.WAIT_BETWEEN_SLICES;
-                    waitTicks = config.delayBetweenSlicesTicks();
-                }
-
-                case CLEAR_BARRIERS -> {
-                    if (waitTicks > 0) {
-                        waitTicks--;
-                        return false;
-                    }
-
-                    if (!sawBarrierThisRun || overallMin == null || overallMax == null) {
-                        stage = Stage.CLEANUP_MOBS;
-                        waitTicks = config.delayBetweenStagesTicks();
-                        break;
-                    }
-
-                    if (!barrierClearInitialized) {
-                        int cfgFlush = config.pasteFlushEveryBlocks();
-                        pasteFlushEveryBlocks = (cfgFlush > 0) ? cfgFlush : PASTE_FLUSH_EVERY_BLOCKS_DEFAULT;
-
-                        var weWorld = FabricAdapter.adapt(world);
-                        pasteWeWorld = weWorld;
-                        pasteEditSession = WorldEdit.getInstance()
-                            .newEditSessionBuilder()
-                            .world(weWorld)
-                            .maxBlocks(-1)
-                            .build();
-                        pasteEditSession.setFastMode(false);
-                        pasteEditSession.setSideEffectApplier(PASTE_SIDE_EFFECTS);
-
-                        barrierMinX = overallMin.x();
-                        barrierMaxX = overallMax.x();
-                        barrierMinY = overallMin.y();
-                        barrierMaxY = overallMax.y();
-                        barrierMinZ = overallMin.z();
-                        barrierMaxZ = overallMax.z();
-                        barrierX = barrierMinX;
-                        barrierY = barrierMinY;
-                        barrierZ = barrierMinZ;
-                        barrierSinceLastFlush = 0;
-
-                        barrierClearInitialized = true;
-                        send(server, "Clearing barrier carve markers (final step)...");
-                    }
-
-                    try {
-                        BaseBlock air = BlockTypes.AIR.getDefaultState().toBaseBlock();
-
-                        while (System.nanoTime() < deadline) {
-                            if (barrierX > barrierMaxX) {
-                                break;
-                            }
-
-                            barrierScanPos.set(barrierX, barrierY, barrierZ);
-                            if (world.getBlockState(barrierScanPos).isOf(Blocks.BARRIER)) {
-                                BlockVector3 dst = BlockVector3.at(barrierX, barrierY, barrierZ);
-                                pasteEditSession.setBlock(dst, air);
-
-                                barrierSinceLastFlush++;
-                                if (barrierSinceLastFlush >= pasteFlushEveryBlocks) {
-                                    pasteEditSession.flushSession();
-                                    pasteEditSession.commit();
-                                    barrierSinceLastFlush = 0;
-                                }
-                            }
-
-                            // Advance scan cursor: Y fastest, then Z, then X.
-                            barrierY++;
-                            if (barrierY > barrierMaxY) {
-                                barrierY = barrierMinY;
-                                barrierZ++;
-                                if (barrierZ > barrierMaxZ) {
-                                    barrierZ = barrierMinZ;
-                                    barrierX++;
-                                }
-                            }
-                        }
-                    } catch (Throwable t) {
-                        send(server, "Barrier clear failed: " + t.getMessage());
-                        AtlantisMod.LOGGER.error("Barrier clear failed", t);
-                        safeClosePaste();
-                        sawBarrierThisRun = false;
-                        barrierClearInitialized = false;
-                        stage = Stage.CLEANUP_MOBS;
-                        waitTicks = config.delayBetweenStagesTicks();
-                        break;
-                    }
-
-                    if (barrierX <= barrierMaxX) {
-                        // Yield mid-scan; flush so players can see progress.
-                        if (pasteEditSession != null && barrierSinceLastFlush > 0) {
-                            try {
-                                pasteEditSession.flushSession();
-                                pasteEditSession.commit();
-                            } catch (Exception ignored) {
-                            }
-                            barrierSinceLastFlush = 0;
-                        }
-                        return false;
-                    }
-
-                    // Done.
-                    barrierClearInitialized = false;
-                    safeClosePaste();
-                    stage = Stage.CLEANUP_MOBS;
-                    waitTicks = config.delayBetweenStagesTicks();
-                }
-
-                case WAIT_BETWEEN_SLICES -> {
-                    if (waitTicks > 0) {
-                        waitTicks--;
-                        return false;
-                    }
-                    stage = Stage.LOAD_SLICE_ASYNC;
-                }
-
-                case CLEANUP_MOBS -> {
-                    if (waitTicks > 0) {
-                        waitTicks--;
-                        return false;
-                    }
-
-                    if (entitiesToProcess == null) {
-                        send(server, "Cleanup: removing mobs in build area...");
-                        entitiesToProcess = EntityCleanup.collectMobs(world,
-                            EntityCleanup.cleanupBox(world, targetCenter, overallMin, overallMax, config.playerEjectMarginBlocks())
-                        );
-                        entitiesProcessedIndex = 0;
-                    }
-
-                    entitiesProcessedIndex = EntityCleanup.discardSome(entitiesToProcess, entitiesProcessedIndex, scaledCap(config.maxEntitiesToProcessPerTick()));
-                    if (entitiesProcessedIndex >= entitiesToProcess.size()) {
-                        entitiesToProcess = null;
-                        stage = Stage.CLEANUP_ITEMS;
-                        waitTicks = config.delayBetweenStagesTicks();
-                    }
-                }
-
-                case CLEANUP_ITEMS -> {
-                    if (waitTicks > 0) {
-                        waitTicks--;
-                        return false;
-                    }
-
-                    if (entitiesToProcess == null) {
-                        send(server, "Cleanup: removing dropped items in build area...");
-                        Box cleanup = EntityCleanup.cleanupBox(world, targetCenter, overallMin, overallMax, config.playerEjectMarginBlocks());
-                        entitiesToProcess = EntityCleanup.collectItemsAndXp(world, cleanup);
-                        entitiesProcessedIndex = 0;
-                    }
-
-                    entitiesProcessedIndex = EntityCleanup.discardSome(entitiesToProcess, entitiesProcessedIndex, scaledCap(config.maxEntitiesToProcessPerTick()));
-                    if (entitiesProcessedIndex >= entitiesToProcess.size()) {
-                        entitiesToProcess = null;
-                        releaseChunkTickets();
-
-                        // Register protections after the paste/cleanup completes so all slices are included.
-                        finalizeProtectionOnce();
-
-                        send(server, "Construct complete.");
-                        markRunCompletedAsync();
+                        result = pendingApply.join();
+                    } catch (Exception e) {
+                        send(server, "Construct apply failed: " + rootMessage(e));
+                        AtlantisMod.LOGGER.error("Construct apply failed", e);
+                        pendingApply = null;
                         stage = Stage.DONE;
+                        break;
                     }
+
+                    pendingApply = null;
+                    applyStatusLogTicks = 0;
+                    applyStartedAtNanos = 0L;
+                    loadedSchematic = null;
+                    loadedChunkPlan = null;
+                    pendingChunkPlan = null;
+                    preflightDone = false;
+                    unloadWaitTicks = 0;
+                    setUnloadChunkKeys(Set.of());
+                    pendingMissingAfterUnload = null;
+                    beginProtectionMerge(result);
+                    persistRunStateAsync("MERGE_PROTECTION");
+                    stage = Stage.MERGE_PROTECTION;
+                    return false;
+                }
+
+                case MERGE_PROTECTION -> {
+                    if (!tickProtectionMerge(server)) {
+                        return false;
+                    }
+
+                    PassApplyResult result = pendingProtectionMergeResult;
+                    pendingProtectionMergeResult = null;
+                    pendingPlacedMergeIterator = null;
+                    pendingInteriorMergeIterator = null;
+                    protectionMergeStatusLogTicks = 0;
+                    protectionMergeStartedAtNanos = 0L;
+
+                    if (result != null && result.undoFileName != null) {
+                        undoFiles.add(result.undoFileName);
+                        writeUndoMetadataSafely();
+                    }
+
+                    passIndex = 1;
+                    persistRunStateAsync("FINALIZE");
+                    stage = Stage.FINALIZE;
+                }
+
+                case FINALIZE -> {
+                    finalizeProtectionOnce();
+                    markRunCompletedAsync();
+                    releaseSpawnPauseForce();
+                    send(server, "Construct complete.");
+                    stage = Stage.DONE;
                 }
 
                 case DONE -> {
@@ -1045,615 +593,653 @@ final class ConstructTask implements ConstructJob {
         return stage == Stage.DONE;
     }
 
-    private void maybeLogProgress(MinecraftServer server) {
-        long now = System.nanoTime();
-        if (lastProgressLogNanos != 0 && (now - lastProgressLogNanos) < 5_000_000_000L) {
-            return;
-        }
-        lastProgressLogNanos = now;
-
-        // Only log while actively running (avoid log spam after completion).
-        if (stage == Stage.DONE) {
-            return;
-        }
-
-        int sliceTotal = (slices != null) ? slices.size() : -1;
-        int sliceNum = sliceIndex + 1;
-
-        String extra = "";
-        if (stage == Stage.PASTE && pasteClipboard != null) {
-            extra = String.format(Locale.ROOT,
-                " cursor=(%d,%d,%d) x=[%d..%d] y=[%d..%d] z=[%d..%d]",
-                pasteX, pasteY, pasteZ,
-                pasteMinX, pasteMaxX,
-                pasteMinY, pasteMaxY,
-                pasteMinZ, pasteMaxZ
-            );
-        } else if (stage == Stage.PRELOAD_CHUNKS && chunksToLoad != null) {
-            extra = " remainingChunks=" + chunksToLoad.size();
-        } else if (stage == Stage.WAIT_BETWEEN_SLICES) {
-            extra = " waitTicks=" + waitTicks;
-        }
-
-        AtlantisMod.LOGGER.info(String.format(Locale.ROOT,
-            "Construct progress: stage=%s slice=%d/%d%s",
-            stage.name(),
-            sliceNum,
-            sliceTotal,
-            extra
-        ));
-    }
-
-    private void updateAdaptiveWorkScale(long tickStartNanos) {
-        if (lastTickStartNanos <= 0L) {
-            lastTickStartNanos = tickStartNanos;
-            return;
-        }
-
-        long expectedTickNanos = Math.max(1L, config.expectedTickNanos());
-        long observedTickNanos = tickStartNanos - lastTickStartNanos;
-        lastTickStartNanos = tickStartNanos;
-
-        if (observedTickNanos <= 0L) {
-            return;
-        }
-
-        double rawScale = (double) expectedTickNanos / (double) observedTickNanos;
-        rawScale = clamp(rawScale, config.adaptiveScaleMin(), config.adaptiveScaleMax());
-
-        double smoothing = clamp(config.adaptiveScaleSmoothing(), 0.0d, 1.0d);
-        adaptiveWorkScale = adaptiveWorkScale + ((rawScale - adaptiveWorkScale) * smoothing);
-        adaptiveWorkScale = clamp(adaptiveWorkScale, config.adaptiveScaleMin(), config.adaptiveScaleMax());
-    }
-
-    private long scaledBudget(long baseBudgetNanos) {
-        long safeBase = Math.max(250_000L, baseBudgetNanos);
-        return Math.max(250_000L, Math.round(safeBase * adaptiveWorkScale));
-    }
-
-    private int scaledCap(int basePerTick) {
-        if (basePerTick <= 0) {
-            return basePerTick;
-        }
-        return Math.max(1, (int) Math.round(basePerTick * adaptiveWorkScale));
-    }
-
-    private static double clamp(double value, double min, double max) {
-        if (min > max) {
-            return value;
-        }
-        if (value < min) {
-            return min;
-        }
-        if (value > max) {
-            return max;
-        }
-        return value;
-    }
-
     @Override
     public void onError(MinecraftServer server, Throwable throwable) {
-        send(server, "Construct crashed: " + throwable.getClass().getSimpleName() + ": " + (throwable.getMessage() != null ? throwable.getMessage() : "(no message)"));
+        releaseChunkGenerationTickets();
+        releaseSpawnPauseForce();
         AtlantisMod.LOGGER.error("Construct crashed", throwable);
-
-        // Best-effort cleanup: release chunk tickets so we don't keep chunks forced-loaded.
-        releaseChunkTickets();
+        send(server, "Construct crashed: " + rootMessage(throwable));
     }
 
     @Override
     public void onCancel(MinecraftServer server, String reason) {
-        send(server, "Construct cancelled" + (reason != null && !reason.isBlank() ? (": " + reason) : "."));
-
-        // Best-effort cleanup: close any open WorldEdit session and release chunk tickets.
-        safeClosePaste();
-        releaseChunkTickets();
+        releaseChunkGenerationTickets();
+        releaseSpawnPauseForce();
+        if (reason != null && !reason.isBlank()) {
+            send(server, "Construct cancelled: " + reason);
+        } else {
+            send(server, "Construct cancelled.");
+        }
     }
 
-    private void releaseChunkTickets() {
-        if (chunkTicketKeys.isEmpty()) {
+    private PassApplyResult applyPass(int passIndex, SpongeV3Schematic schematic) {
+        if (pasteAnchorTo == null) {
+            throw new IllegalStateException("Paste anchor not initialized");
+        }
+        Path undoFile = UndoPaths.constructUndoFile(undoRunDir);
+        SpongeV3Schematic.StreamApplyResult streamResult;
+        String undoFileName;
+        try (UndoFileFormat.StreamWriter undoWriter = UndoFileFormat.openStreamWriter(undoFile, world.getRegistryKey().getValue().toString())) {
+            streamResult = schematic.streamApply(world, pasteAnchorTo, undoWriter::write);
+            undoFileName = undoFile.getFileName().toString();
+        } catch (Exception e) {
+            AtlantisMod.LOGGER.error("Failed to persist undo for construct pass", e);
+            throw new IllegalStateException("Failed to persist undo for construct pass", e);
+        }
+
+        return new PassApplyResult(
+            undoFileName,
+            streamResult.placedKeys(),
+            streamResult.interiorKeys(),
+            streamResult.chunkCount(),
+            streamResult.writeCount(),
+            streamResult.undoEntryCount()
+        );
+    }
+
+    private void beginProtectionMerge(PassApplyResult result) {
+        pendingProtectionMergeResult = result;
+        pendingPlacedMergeIterator = result != null && result.placedKeys != null
+            ? result.placedKeys.iterator()
+            : null;
+        pendingInteriorMergeIterator = result != null && result.interiorKeys != null
+            ? result.interiorKeys.iterator()
+            : null;
+        pendingPlacedMergeRemaining = result != null && result.placedKeys != null
+            ? result.placedKeys.size()
+            : 0;
+        pendingInteriorMergeRemaining = result != null && result.interiorKeys != null
+            ? result.interiorKeys.size()
+            : 0;
+        protectionMergeStatusLogTicks = 0;
+        protectionMergeStartedAtNanos = System.nanoTime();
+
+        int total = pendingPlacedMergeRemaining + pendingInteriorMergeRemaining;
+        int estimatedTicks = total <= 0
+            ? 0
+            : (int) Math.ceil(total / (double) Math.max(1, PROTECTION_MERGE_ADD_BUDGET_PER_TICK));
+        AtlantisMod.LOGGER.info(
+            "[construct:{}] protection merge start: placed={} interior={} total={} budgetPerTick={} estimatedTicks≈{}",
+            undoRunId,
+            pendingPlacedMergeRemaining,
+            pendingInteriorMergeRemaining,
+            total,
+            PROTECTION_MERGE_ADD_BUDGET_PER_TICK,
+            estimatedTicks
+        );
+    }
+
+    private boolean tickProtectionMerge(MinecraftServer server) {
+        if (pendingProtectionMergeResult == null) {
+            return true;
+        }
+
+        int budget = PROTECTION_MERGE_ADD_BUDGET_PER_TICK;
+
+        while (budget > 0 && pendingPlacedMergeIterator != null && pendingPlacedMergeIterator.hasNext()) {
+            protectionCollector.addPlaced(pendingPlacedMergeIterator.next());
+            if (pendingPlacedMergeRemaining > 0) {
+                pendingPlacedMergeRemaining--;
+            }
+            budget--;
+        }
+
+        while (budget > 0 && pendingInteriorMergeIterator != null && pendingInteriorMergeIterator.hasNext()) {
+            protectionCollector.addInterior(pendingInteriorMergeIterator.next());
+            if (pendingInteriorMergeRemaining > 0) {
+                pendingInteriorMergeRemaining--;
+            }
+            budget--;
+        }
+
+        boolean placedDone = pendingPlacedMergeIterator == null || !pendingPlacedMergeIterator.hasNext();
+        boolean interiorDone = pendingInteriorMergeIterator == null || !pendingInteriorMergeIterator.hasNext();
+        if (placedDone && interiorDone) {
+            AtlantisMod.LOGGER.info("[construct:{}] protection merge complete: placed={} interior={}",
+                undoRunId,
+                pendingPlacedMergeRemaining,
+                pendingInteriorMergeRemaining
+            );
+            return true;
+        }
+
+        protectionMergeStatusLogTicks++;
+        if (protectionMergeStatusLogTicks % PROTECTION_MERGE_STATUS_LOG_INTERVAL_TICKS == 0) {
+            long elapsedMs = (System.nanoTime() - protectionMergeStartedAtNanos) / 1_000_000L;
+            send(server,
+                "Protection merge running: elapsed=" + elapsedMs
+                    + "ms, stage=" + (placedDone ? "interior" : "placed")
+                    + ", remainingPlaced=" + pendingPlacedMergeRemaining
+                    + ", remainingInterior=" + pendingInteriorMergeRemaining);
+        }
+        return false;
+    }
+
+    private void updateOverallBounds(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
+        if (overallMin == null || overallMax == null) {
+            overallMin = new BlockPos(minX, minY, minZ);
+            overallMax = new BlockPos(maxX, maxY, maxZ);
             return;
         }
 
-        int ticketCount = chunkTicketKeys.size();
+        overallMin = new BlockPos(
+            Math.min(overallMin.getX(), minX),
+            Math.min(overallMin.getY(), minY),
+            Math.min(overallMin.getZ(), minZ)
+        );
+        overallMax = new BlockPos(
+            Math.max(overallMax.getX(), maxX),
+            Math.max(overallMax.getY(), maxY),
+            Math.max(overallMax.getZ(), maxZ)
+        );
+    }
 
+    private int countLoadedTargetChunks(Set<Long> targetChunkKeys) {
+        if (targetChunkKeys == null || targetChunkKeys.isEmpty()) {
+            return 0;
+        }
+
+        int loaded = 0;
+        for (long key : targetChunkKeys) {
+            int chunkX = ChunkPos.getPackedX(key);
+            int chunkZ = ChunkPos.getPackedZ(key);
+            if (world.getChunkManager().isChunkLoaded(chunkX, chunkZ)) {
+                loaded++;
+            }
+        }
+        return loaded;
+    }
+
+    private void markLoadedTargetChunksNeedSaving(Set<Long> targetChunkKeys) {
+        if (targetChunkKeys == null || targetChunkKeys.isEmpty()) {
+            return;
+        }
+
+        int saved = 0;
+        for (long key : targetChunkKeys) {
+            int chunkX = ChunkPos.getPackedX(key);
+            int chunkZ = ChunkPos.getPackedZ(key);
+            if (!world.getChunkManager().isChunkLoaded(chunkX, chunkZ)) {
+                continue;
+            }
+
+            ((ServerChunkManagerAccessor) world.getChunkManager().chunkLoadingManager).atlantis$markChunkNeedsSaving(new ChunkPos(chunkX, chunkZ));
+            saved++;
+        }
+
+        if (saved > 0) {
+            AtlantisMod.LOGGER.info("[construct:{}] requested immediate save for {} loaded target chunk(s).", undoRunId, saved);
+        }
+    }
+
+    private ChunkPlan buildChunkPlan(SpongeV3Schematic schematic) {
+        if (schematic == null || pasteAnchorTo == null) {
+            return new ChunkPlan(Set.of(), List.of());
+        }
+        var prepass = schematic.runPrepass(pasteAnchorTo);
+        Set<Long> targetChunkKeys = prepass.targetChunkKeys();
+
+        List<ChunkPos> missingChunks = new ArrayList<>();
+        missingChunks.addAll(findMissingChunkNbts(targetChunkKeys));
+
+        return new ChunkPlan(targetChunkKeys, List.copyOf(missingChunks));
+    }
+
+    private List<ChunkPos> findMissingChunkNbts(Set<Long> targetChunkKeys) {
+        List<ChunkPos> missingChunks = new ArrayList<>();
+        if (targetChunkKeys == null || targetChunkKeys.isEmpty()) {
+            return missingChunks;
+        }
+
+        for (long key : targetChunkKeys) {
+            ChunkPos chunkPos = new ChunkPos(ChunkPos.getPackedX(key), ChunkPos.getPackedZ(key));
+            if (!UnloadedChunkNbtEditor.hasChunkNbt(world, chunkPos)) {
+                missingChunks.add(chunkPos);
+            }
+        }
+        return missingChunks;
+    }
+
+    private void releaseChunkGenerationTickets() {
         try {
-            for (long key : chunkTicketKeys) {
-                int cx = ChunkPos.getPackedX(key);
-                int cz = ChunkPos.getPackedZ(key);
-                world.getChunkManager().removeTicket(PRELOAD_TICKET_TYPE, new ChunkPos(cx, cz), PRELOAD_TICKET_LEVEL);
-            }
-        } catch (Exception e) {
-            AtlantisMod.LOGGER.warn("Failed to release chunk tickets: {}", e.getMessage());
-        } finally {
-            if (com.silver.atlantis.spawn.SpawnMobConfig.DIAGNOSTIC_LOGS) {
-                AtlantisMod.LOGGER.info(
-                    "[ConstructTickets] runId={} released={} remainingActiveLoadsBeforeClear={}",
-                    undoRunId,
-                    ticketCount,
-                    activeChunkLoads.size()
-                );
-            }
-            chunkTicketKeys.clear();
-            activeChunkLoads.clear();
-        }
-    }
-
-    private void recordUndoAt(BlockVector3 dst) {
-        captureBeforeSnapshot(dst, true);
-    }
-
-    private static final class BeforeSnapshot {
-        private final String stateString;
-        private final String nbtSnbt;
-
-        private BeforeSnapshot(String stateString, String nbtSnbt) {
-            this.stateString = stateString;
-            this.nbtSnbt = nbtSnbt;
-        }
-    }
-
-    private BeforeSnapshot captureBeforeSnapshot(BlockVector3 dst, boolean persistUndo) {
-        if (pasteWeWorld == null) {
-            return new BeforeSnapshot("minecraft:air", null);
-        }
-
-        long key = BlockPos.asLong(dst.x(), dst.y(), dst.z());
-
-        if (persistUndo) {
-            UndoEntry existing = undoThisSlice.get(key);
-            if (existing != null) {
-                return new BeforeSnapshot(existing.blockString(), existing.nbtSnbt());
-            }
-        }
-
-        try {
-            BaseBlock previous = pasteWeWorld.getFullBlock(dst);
-            String beforeState = previous != null ? previous.toImmutableState().getAsString() : "minecraft:air";
-            String beforeNbt = extractNbtSnbt(previous);
-
-            if (persistUndo) {
-                UndoEntry entry = new UndoEntry(dst.x(), dst.y(), dst.z(), beforeState, beforeNbt);
-                undoThisSlice.put(key, entry);
-            }
-
-            return new BeforeSnapshot(beforeState, beforeNbt);
-        } catch (Exception e) {
-            AtlantisMod.LOGGER.warn("Failed to read before-state at {},{},{}: {}", dst.x(), dst.y(), dst.z(), e.getMessage());
-            return new BeforeSnapshot("minecraft:air", null);
-        }
-    }
-
-    private static String extractNbtSnbt(BaseBlock block) {
-        if (block == null) {
-            return null;
-        }
-
-        try {
-            LazyReference<LinCompoundTag> ref = block.getNbtReference();
-            if (ref == null) {
-                return null;
-            }
-            LinCompoundTag tag = ref.getValue();
-            if (tag == null) {
-                return null;
-            }
-            return LinStringIO.writeToString(tag);
+            chunkGenerationScheduler.releaseTickets(world);
         } catch (Exception ignored) {
-            return null;
         }
     }
 
-    private static boolean didActuallyChange(BeforeSnapshot before, BaseBlock after) {
-        String afterState = (after != null) ? after.toImmutableState().getAsString() : "minecraft:air";
-        if (before == null) {
-            return true;
-        }
-        if (!Objects.equals(before.stateString, afterState)) {
-            return true;
+    private void setUnloadChunkKeys(Set<Long> keys) {
+        if (keys == null || keys.isEmpty()) {
+            unloadChunkKeys = Set.of();
+            unloadChunkKeysArray = new long[0];
+            unloadChunkKeysCursor = 0;
+            return;
         }
 
-        // If the block carries NBT/components, treat NBT-only differences as a change.
-        String afterNbt = extractNbtSnbt(after);
-        return !Objects.equals(before.nbtSnbt, afterNbt);
+        unloadChunkKeys = Set.copyOf(keys);
+        unloadChunkKeysArray = unloadChunkKeys.stream().mapToLong(Long::longValue).toArray();
+        unloadChunkKeysCursor = 0;
+    }
+
+    private void forceUnloadTargetChunks(Set<Long> targetChunkKeys) {
+        if (targetChunkKeys == null || targetChunkKeys.isEmpty()) {
+            return;
+        }
+
+        if (unloadChunkKeysArray.length == 0) {
+            // Fallback: should normally be kept in sync via setUnloadChunkKeys().
+            setUnloadChunkKeys(targetChunkKeys);
+        }
+
+        int budget = Math.min(UNLOAD_FORCE_CHUNK_BUDGET, unloadChunkKeysArray.length);
+        for (int i = 0; i < budget; i++) {
+            int idx = unloadChunkKeysCursor++;
+            if (idx < 0) {
+                idx = 0;
+                unloadChunkKeysCursor = 1;
+            }
+
+            long key = unloadChunkKeysArray[idx % unloadChunkKeysArray.length];
+            int chunkX = ChunkPos.getPackedX(key);
+            int chunkZ = ChunkPos.getPackedZ(key);
+
+            world.setChunkForced(chunkX, chunkZ, false);
+
+            ChunkPos pos = new ChunkPos(chunkX, chunkZ);
+            for (ChunkTicketType ticketType : DISCOVERED_TICKET_TYPES) {
+                for (int level = MIN_TICKET_LEVEL; level <= MAX_TICKET_LEVEL; level++) {
+                    try {
+                        world.getChunkManager().removeTicket(ticketType, pos, level);
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+        }
+    }
+
+    private void forceUnloadChunkKeysNow(Set<Long> chunkKeys) {
+        if (chunkKeys == null || chunkKeys.isEmpty()) {
+            return;
+        }
+
+        for (long key : chunkKeys) {
+            int chunkX = ChunkPos.getPackedX(key);
+            int chunkZ = ChunkPos.getPackedZ(key);
+
+            world.setChunkForced(chunkX, chunkZ, false);
+
+            ChunkPos pos = new ChunkPos(chunkX, chunkZ);
+            for (ChunkTicketType ticketType : DISCOVERED_TICKET_TYPES) {
+                for (int level = MIN_TICKET_LEVEL; level <= MAX_TICKET_LEVEL; level++) {
+                    try {
+                        world.getChunkManager().removeTicket(ticketType, pos, level);
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+        }
+    }
+
+    private static List<ChunkTicketType> discoverChunkTicketTypes() {
+        List<ChunkTicketType> types = new ArrayList<>();
+        for (Field field : ChunkTicketType.class.getDeclaredFields()) {
+            if (!Modifier.isStatic(field.getModifiers())) {
+                continue;
+            }
+            if (!ChunkTicketType.class.isAssignableFrom(field.getType())) {
+                continue;
+            }
+            try {
+                field.setAccessible(true);
+                Object value = field.get(null);
+                if (value instanceof ChunkTicketType ticketType) {
+                    types.add(ticketType);
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
+        AtlantisMod.LOGGER.info("[construct] discovered {} chunk ticket type(s) for unload forcing.", types.size());
+        return List.copyOf(types);
+    }
+
+    private boolean ejectPlayersFromBuildArea(MinecraftServer server, int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
+        int configuredMargin = Math.max(0, config.playerEjectMarginBlocks());
+        int viewDistanceChunks = server.getPlayerManager().getViewDistance();
+        int simulationDistanceChunks = server.getPlayerManager().getSimulationDistance();
+        int chunkLoadRadiusBlocks = Math.max(viewDistanceChunks, simulationDistanceChunks) * 16;
+        int margin = Math.max(configuredMargin, chunkLoadRadiusBlocks + 32);
+        int offset = Math.max(64, config.playerEjectTeleportOffsetBlocks() + chunkLoadRadiusBlocks);
+
+        Box box = new Box(
+            minX - margin,
+            minY - margin,
+            minZ - margin,
+            maxX + margin + 1,
+            maxY + margin + 1,
+            maxZ + margin + 1
+        );
+
+        int ejectedCount = 0;
+        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+            if (player.getEntityWorld() != world) {
+                continue;
+            }
+
+            if (!box.contains(player.getX(), player.getY(), player.getZ())) {
+                continue;
+            }
+
+            double px = player.getX();
+            double pz = player.getZ();
+            double dxLeft = Math.abs(px - minX);
+            double dxRight = Math.abs(px - maxX);
+            double dzFront = Math.abs(pz - minZ);
+            double dzBack = Math.abs(pz - maxZ);
+
+            double best = dxLeft;
+            int tx = minX - margin - offset;
+            int tz = (int) Math.floor(pz);
+
+            if (dxRight < best) {
+                best = dxRight;
+                tx = maxX + margin + offset;
+                tz = (int) Math.floor(pz);
+            }
+            if (dzFront < best) {
+                best = dzFront;
+                tx = (int) Math.floor(px);
+                tz = minZ - margin - offset;
+            }
+            if (dzBack < best) {
+                tx = (int) Math.floor(px);
+                tz = maxZ + margin + offset;
+            }
+
+            int safeY = Math.max(world.getBottomY() + 1, player.getBlockY());
+            BlockPos target = new BlockPos(tx, safeY, tz);
+
+            player.teleport(
+                world,
+                target.getX() + 0.5,
+                target.getY(),
+                target.getZ() + 0.5,
+                Set.of(PositionFlag.DELTA_X, PositionFlag.DELTA_Y, PositionFlag.DELTA_Z),
+                player.getYaw(),
+                player.getPitch(),
+                true
+            );
+            ejectedCount++;
+        }
+
+        if (ejectedCount > 0) {
+            AtlantisMod.LOGGER.info("[construct:{}] ejected {} player(s) from keepout (margin={} offset={} view={} sim={})",
+                undoRunId,
+                ejectedCount,
+                margin,
+                offset,
+                viewDistanceChunks,
+                simulationDistanceChunks
+            );
+            return true;
+        }
+        return false;
+    }
+
+    private void runConstructPreflight(int minX, int minZ, int maxX, int maxZ) {
+        acquireSpawnPauseIfNeeded();
+
+        ActiveConstructBounds bounds = new ActiveConstructBounds(
+            undoRunId,
+            world.getRegistryKey().getValue().toString(),
+            overallMin.getX(),
+            overallMin.getY(),
+            overallMin.getZ(),
+            overallMax.getX(),
+            overallMax.getY(),
+            overallMax.getZ()
+        );
+        ProximityMobManager.getInstance().clearWithinBounds(world, bounds);
+        AtlantisMod.LOGGER.info("[construct:{}] preflight: custom spawning paused and Atlantis mobs cleared in construct bounds.", undoRunId);
+
+        forceReleaseChunksInBounds(minX, minZ, maxX, maxZ);
+    }
+
+    private void forceReleaseChunksInBounds(int minX, int minZ, int maxX, int maxZ) {
+        int minChunkX = minX >> 4;
+        int maxChunkX = maxX >> 4;
+        int minChunkZ = minZ >> 4;
+        int maxChunkZ = maxZ >> 4;
+
+        int total = 0;
+        int loadedBefore = 0;
+        for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+            for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
+                total++;
+                if (world.getChunkManager().isChunkLoaded(chunkX, chunkZ)) {
+                    loadedBefore++;
+                }
+                world.setChunkForced(chunkX, chunkZ, false);
+            }
+        }
+
+        AtlantisMod.LOGGER.info("[construct:{}] preflight: force-release requested for {} chunk(s), loadedBefore={}", undoRunId, total, loadedBefore);
+    }
+
+    private void acquireSpawnPauseIfNeeded() {
+        if (spawnPauseAcquired) {
+            return;
+        }
+        ProximityMobManager.getInstance().acquireExternalPause("construct:" + undoRunId);
+        spawnPauseAcquired = true;
+    }
+
+    private void releaseSpawnPauseIfNeeded() {
+        if (!spawnPauseAcquired) {
+            return;
+        }
+        ProximityMobManager.getInstance().releaseExternalPause("construct:" + undoRunId);
+        spawnPauseAcquired = false;
+    }
+
+    public void releaseSpawnPauseForce() {
+        // Defensive: Always release the pause token for this construct, regardless of flag state
+        String token = "construct:" + undoRunId;
+        ProximityMobManager.getInstance().releaseExternalPause(token);
+        spawnPauseAcquired = false;
+        AtlantisMod.LOGGER.info("[construct:{}] spawn pause force-released token={}", undoRunId, token);
     }
 
     private void finalizeProtectionOnce() {
         if (protectionRegistered) {
             return;
         }
-        protectionRegistered = true;
 
         if (protectionCollector.isEmpty()) {
+            protectionRegistered = true;
             return;
         }
 
         var entry = protectionCollector.buildEntry();
         ProtectionManager.INSTANCE.register(entry);
 
-        AtlantisMod.LOGGER.info(
-            "Registered paste protection for runId={} dim={} placed={} interior={}",
-            entry.id(),
-            entry.dimensionId(),
-            entry.placedPositions().size(),
-            entry.interiorPositions().size()
+        // Write protection file asynchronously to avoid blocking server thread with large I/O
+        CompletableFuture.runAsync(() -> {
+            try {
+                Path file = ProtectionPaths.protectionFileForRun(undoRunId);
+                ProtectionFileIO.write(file, entry);
+            } catch (Exception e) {
+                AtlantisMod.LOGGER.warn("Failed to persist protection for run {}: {}", undoRunId, e.getMessage());
+            }
+        }, ioExecutor);
+
+        protectionRegistered = true;
+    }
+
+    private void markRunCompletedAsync() {
+        if (runCompleted) {
+            return;
+        }
+        runCompleted = true;
+        persistRunStateAsync("DONE");
+    }
+
+    private void persistRunStateAsync(String stageName) {
+        ConstructRunState snapshot = new ConstructRunState(
+            ConstructRunState.CURRENT_VERSION,
+            undoRunId,
+            world.getRegistryKey().getValue().toString(),
+            parseRunIdMillisSafe(undoRunId),
+            targetCenter.getX(),
+            targetCenter.getY(),
+            targetCenter.getZ(),
+            config.yOffsetBlocks(),
+            "SOLIDS",
+            passIndex,
+            stageName,
+            pasteAnchorTo != null ? pasteAnchorTo.getX() : null,
+            pasteAnchorTo != null ? pasteAnchorTo.getY() : null,
+            pasteAnchorTo != null ? pasteAnchorTo.getZ() : null,
+            overallMin != null ? overallMin.getX() : null,
+            overallMin != null ? overallMin.getY() : null,
+            overallMin != null ? overallMin.getZ() : null,
+            overallMax != null ? overallMax.getX() : null,
+            overallMax != null ? overallMax.getY() : null,
+            overallMax != null ? overallMax.getZ() : null,
+            runCompleted
         );
 
-        // Persist so protections survive server restarts.
-        // Store next to the undo run folder so `/construct undo` cleanup deletes it.
-        if (undoEnabled) {
-            Path file = ProtectionPaths.protectionFile(undoRunDir);
-            CompletableFuture
-                .runAsync(() -> {
-                    try {
-                        ProtectionFileIO.write(file, entry);
-                    } catch (Exception e) {
-                        throw new RuntimeException(e);
-                    }
-                }, ioExecutor)
-                .whenComplete((ignored, throwable) -> {
-                    if (throwable != null) {
-                        AtlantisMod.LOGGER.warn("Failed to persist protection file {}: {}", file, throwable.getMessage());
-                    }
-                });
-        }
+        CompletableFuture.runAsync(() -> {
+            try {
+                ConstructRunStateIO.write(runStateFile, snapshot);
+            } catch (Exception e) {
+                AtlantisMod.LOGGER.debug("Failed to persist construct run state: {}", e.getMessage());
+            }
+        }, ioExecutor);
     }
 
-    private void persistSliceUndoSafely() {
+    private void preloadExistingUndoFiles() {
         try {
-            String dimension = world.getRegistryKey().getValue().toString();
-
-            if (undoThisSlice.isEmpty()) {
-                return;
+            Path metadataFile = UndoPaths.metadataFile(undoRunDir);
+            if (Files.exists(metadataFile)) {
+                UndoRunMetadata metadata = UndoMetadataIO.read(metadataFile);
+                if (metadata != null && metadata.undoFiles() != null) {
+                    undoFiles.addAll(metadata.undoFiles());
+                }
             }
-
-            List<UndoEntry> entries = new ArrayList<>(undoThisSlice.size());
-            for (UndoEntry entry : undoThisSlice.values()) {
-                entries.add(entry);
-            }
-
-            Path file = UndoPaths.sliceUndoFile(undoRunDir, sliceIndex);
-            UndoSliceFile.write(file, dimension, entries);
-            undoSliceFiles.add(file.getFileName().toString());
-        } catch (Exception e) {
-            AtlantisMod.LOGGER.warn("Failed to persist undo for slice {}: {}", sliceIndex, e.getMessage());
+        } catch (Exception ignored) {
         }
-    }
-
-    private void persistSliceUndoAsync(MinecraftServer server, int sliceIndexToPersist, Long2ObjectOpenHashMap<UndoEntry> sliceUndo) {
-        final String dimension = world.getRegistryKey().getValue().toString();
-        final Path file = UndoPaths.sliceUndoFile(undoRunDir, sliceIndexToPersist);
-        final String fileName = file.getFileName().toString();
-
-        CompletableFuture
-            .runAsync(() -> {
-                try {
-                    List<UndoEntry> entries = new ArrayList<>(sliceUndo.size());
-                    for (UndoEntry entry : sliceUndo.values()) {
-                        entries.add(entry);
-                    }
-                    UndoSliceFile.write(file, dimension, entries);
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
-                }
-            }, ioExecutor)
-            .whenComplete((ignored, throwable) -> server.execute(() -> {
-                if (throwable != null) {
-                    AtlantisMod.LOGGER.warn("Failed to persist undo for slice {}: {}", sliceIndexToPersist, throwable.getMessage());
-                    send(server, "Warning: failed to save undo slice " + fileName + ": " + throwable.getMessage());
-                    return;
-                }
-
-                undoSliceFiles.add(fileName);
-                writeUndoMetadataSafely();
-            }));
     }
 
     private void writeUndoMetadataSafely() {
         try {
-            String dimension = world.getRegistryKey().getValue().toString();
             UndoRunMetadata metadata = new UndoRunMetadata(
                 UndoRunMetadata.CURRENT_VERSION,
                 undoRunId,
-                dimension,
-                System.currentTimeMillis(),
+                world.getRegistryKey().getValue().toString(),
+                parseRunIdMillisSafe(undoRunId),
                 config.yOffsetBlocks(),
                 targetCenter.getX(),
                 targetCenter.getY(),
                 targetCenter.getZ(),
-                List.copyOf(undoSliceFiles)
+                List.copyOf(undoFiles)
             );
             UndoMetadataIO.write(UndoPaths.metadataFile(undoRunDir), metadata);
         } catch (Exception e) {
-            AtlantisMod.LOGGER.warn("Failed to write undo metadata: {}", e.getMessage());
+            AtlantisMod.LOGGER.warn("Failed to write undo metadata for run {}: {}", undoRunId, e.getMessage());
         }
     }
-
-    private void updateOverallBounds(BlockVector3 min, BlockVector3 max) {
-        if (overallMin == null || overallMax == null) {
-            overallMin = min;
-            overallMax = max;
-            return;
-        }
-
-        overallMin = BlockVector3.at(
-            Math.min(overallMin.x(), min.x()),
-            Math.min(overallMin.y(), min.y()),
-            Math.min(overallMin.z(), min.z())
-        );
-        overallMax = BlockVector3.at(
-            Math.max(overallMax.x(), max.x()),
-            Math.max(overallMax.y(), max.y()),
-            Math.max(overallMax.z(), max.z())
-        );
-    }
-
-    private void enforcePlayersOutside() {
-        // Only enforce X/Z containment.
-        // Also: we protect a conservative footprint around the /findflat center
-        // so players are ejected even before all slice bounds have been computed.
-        // The find algorithm searches a 510x510 area, so we assume the build fits
-        // inside roughly +/-255 blocks from the center.
-        int extra = Math.max(0, config.playerEjectMarginBlocks());
-        int fallbackHalfSize = 255 + extra;
-        int protectedMinX = targetCenter.getX() - fallbackHalfSize;
-        int protectedMaxX = targetCenter.getX() + fallbackHalfSize;
-        int protectedMinZ = targetCenter.getZ() - fallbackHalfSize;
-        int protectedMaxZ = targetCenter.getZ() + fallbackHalfSize;
-
-        if (overallMin != null && overallMax != null) {
-            protectedMinX = Math.min(protectedMinX, overallMin.x() - extra);
-            protectedMaxX = Math.max(protectedMaxX, overallMax.x() + extra);
-            protectedMinZ = Math.min(protectedMinZ, overallMin.z() - extra);
-            protectedMaxZ = Math.max(protectedMaxZ, overallMax.z() + extra);
-        }
-
-        double minX = protectedMinX;
-        double maxX = protectedMaxX + 1;
-        double minZ = protectedMinZ;
-        double maxZ = protectedMaxZ + 1;
-
-        for (ServerPlayerEntity player : world.getServer().getPlayerManager().getPlayerList()) {
-            if (player.getEntityWorld() != world) {
-                continue;
-            }
-
-            double x = player.getX();
-            double z = player.getZ();
-            if (x < minX || x > maxX || z < minZ || z > maxZ) {
-                lastKnownOutsideByPlayer.put(player.getUuid(), player.getBlockPos());
-                continue;
-            }
-
-            teleportPlayerSafelyOutside(player, protectedMinX, protectedMaxX, protectedMinZ, protectedMaxZ);
-        }
-    }
-
-    private static boolean isInsideProtectedXZ(BlockPos pos, int protectedMinX, int protectedMaxX, int protectedMinZ, int protectedMaxZ) {
-        return pos.getX() >= protectedMinX
-            && pos.getX() <= (protectedMaxX + 1)
-            && pos.getZ() >= protectedMinZ
-            && pos.getZ() <= (protectedMaxZ + 1);
-    }
-
-    private void teleportPlayerSafelyOutside(ServerPlayerEntity player, int protectedMinX, int protectedMaxX, int protectedMinZ, int protectedMaxZ) {
-        int margin = Math.max(1, config.playerEjectTeleportOffsetBlocks());
-        UUID playerId = player.getUuid();
-
-        BlockPos best = null;
-        BlockPos returnPos = lastKnownOutsideByPlayer.get(playerId);
-        if (returnPos != null) {
-            BlockPos safeReturn = findSafeTeleportPos(returnPos.getX(), returnPos.getZ());
-            if (safeReturn != null && !isInsideProtectedXZ(safeReturn, protectedMinX, protectedMaxX, protectedMinZ, protectedMaxZ)) {
-                best = safeReturn;
-            }
-        }
-
-        int bestMobCount = Integer.MAX_VALUE;
-
-        if (best != null) {
-            bestMobCount = world.getEntitiesByClass(MobEntity.class,
-                new Box(best).expand(16.0, 8.0, 16.0),
-                e -> true
-            ).size();
-        }
-
-        // Candidate positions just outside each side of the build.
-        int px = player.getBlockX();
-        int pz = player.getBlockZ();
-
-        int minX = protectedMinX - margin;
-        int maxX = protectedMaxX + margin;
-        int minZ = protectedMinZ - margin;
-        int maxZ = protectedMaxZ + margin;
-
-        BlockPos[] candidates = new BlockPos[] {
-            new BlockPos(minX, 0, pz),
-            new BlockPos(maxX, 0, pz),
-            new BlockPos(px, 0, minZ),
-            new BlockPos(px, 0, maxZ)
-        };
-
-        for (BlockPos candidate : candidates) {
-            BlockPos safe = findSafeTeleportPos(candidate.getX(), candidate.getZ());
-            if (safe == null) {
-                continue;
-            }
-
-            if (isInsideProtectedXZ(safe, protectedMinX, protectedMaxX, protectedMinZ, protectedMaxZ)) {
-                continue;
-            }
-
-            int mobCount = world.getEntitiesByClass(MobEntity.class,
-                new Box(safe).expand(16.0, 8.0, 16.0),
-                e -> true
-            ).size();
-
-            if (mobCount < bestMobCount) {
-                bestMobCount = mobCount;
-                best = safe;
-                if (mobCount == 0) {
-                    break;
-                }
-            }
-        }
-
-        if (best == null) {
-            // Fallback: world spawn top.
-            MinecraftServer server = world.getServer();
-            BlockPos spawn = (server.getSpawnPoint() != null)
-                ? server.getSpawnPoint().getPos()
-                : BlockPos.ORIGIN;
-            BlockPos spawnSafe = findSafeTeleportPos(spawn.getX(), spawn.getZ());
-            if (spawnSafe != null && !isInsideProtectedXZ(spawnSafe, protectedMinX, protectedMaxX, protectedMinZ, protectedMaxZ)) {
-                best = spawnSafe;
-            }
-        }
-
-        if (best == null) {
-            return;
-        }
-
-        int cappedY = Math.min(best.getY(), 310);
-
-        player.teleport(
-            world,
-            best.getX() + 0.5,
-            cappedY,
-            best.getZ() + 0.5,
-            EnumSet.noneOf(PositionFlag.class),
-            player.getYaw(),
-            player.getPitch(),
-            false
-        );
-        lastKnownOutsideByPlayer.put(playerId, best);
-        player.sendMessage(Text.literal("Build is in progress. You were moved outside the build area."), false);
-    }
-
-    private BlockPos findSafeTeleportPos(int x, int z) {
-        // Ensure we're reading real, current blocks/heightmaps (including player edits),
-        // not guessing for an unloaded area.
-        world.getChunk(x >> 4, z >> 4);
-
-        // Heightmaps break with an artificial bedrock roof (they will report the roof as the "top"),
-        // so instead scan down to find a solid ground block, then try to place the player above it.
-        int bottomY = world.getBottomY();
-        int maxTeleportFeetY = Math.min(world.getTopYInclusive() - 1, 310);
-        if (maxTeleportFeetY <= bottomY) {
-            return null;
-        }
-        int scanStartY = Math.min(world.getTopYInclusive(), world.getSeaLevel() - 2);
-
-        int groundY = bottomY;
-        for (int y = scanStartY; y >= bottomY; y--) {
-            BlockPos pos = new BlockPos(x, y, z);
-            if (!world.getBlockState(pos).getFluidState().isEmpty()) {
-                continue;
-            }
-            if (!world.getBlockState(pos).isSolidBlock(world, pos)) {
-                continue;
-            }
-            groundY = y;
-            break;
-        }
-
-        // Candidate feet start just above ground.
-        int topY = groundY + 1;
-
-        // In vanilla, getTopY(...) is typically "the first free Y above the heightmap surface".
-        // So the correct feet position is often exactly topY (with solid ground at topY-1).
-        // Search a reasonable vertical band to handle odd terrain/blocks.
-        for (int dy = 0; dy <= 24; dy++) {
-            int y = topY + dy;
-            if (y > maxTeleportFeetY) {
-                break;
-            }
-            BlockPos feet = new BlockPos(x, y, z);
-            BlockPos head = feet.up();
-            BlockPos below = feet.down();
-
-            if (!world.getBlockState(below).isSolidBlock(world, below)) {
-                continue;
-            }
-            if (!world.getBlockState(feet).getCollisionShape(world, feet).isEmpty()) {
-                continue;
-            }
-            if (!world.getBlockState(head).getCollisionShape(world, head).isEmpty()) {
-                continue;
-            }
-
-            return feet;
-        }
-
-        // If the upward scan failed, also try slightly below the heightmap (cliffs/caves/overhangs).
-        for (int dy = -1; dy >= -32; dy--) {
-            int y = topY + dy;
-            if (y > maxTeleportFeetY) {
-                continue;
-            }
-            BlockPos feet = new BlockPos(x, y, z);
-            BlockPos head = feet.up();
-            BlockPos below = feet.down();
-
-            if (!world.getBlockState(below).isSolidBlock(world, below)) {
-                continue;
-            }
-            if (!world.getBlockState(feet).getCollisionShape(world, feet).isEmpty()) {
-                continue;
-            }
-            if (!world.getBlockState(head).getCollisionShape(world, head).isEmpty()) {
-                continue;
-            }
-
-            return feet;
-        }
-        return null;
-    }
-
 
     private void send(MinecraftServer server, String message) {
-        if (requesterId != null) {
+        AtlantisMod.LOGGER.info("[construct:{}] {}", undoRunId, message);
+
+        if (requesterId != null && server != null) {
             ServerPlayerEntity player = server.getPlayerManager().getPlayer(requesterId);
             if (player != null) {
                 player.sendMessage(Text.literal(message), false);
-                return;
-            }
-        }
-
-        AtlantisMod.LOGGER.info(message);
-    }
-
-    private void advancePasteCursor() {
-        // Advance cursor: Y fastest, then Z, then X (keeps locality per column).
-        pasteY++;
-        if (pasteY > pasteMaxY) {
-            pasteY = pasteMinY;
-            pasteZ++;
-            if (pasteZ > pasteMaxZ) {
-                pasteZ = pasteMinZ;
-                pasteX++;
             }
         }
     }
 
-    private void safeClosePaste() {
-        if (pasteEditSession != null) {
-            try {
-                pasteEditSession.flushSession();
-                pasteEditSession.commit();
-                pasteEditSession.close();
-            } catch (Exception ignored) {
-            }
+    private static long parseRunIdMillisSafe(String runId) {
+        try {
+            return Long.parseLong(runId);
+        } catch (Exception ignored) {
+            return System.currentTimeMillis();
         }
+    }
 
-        pasteEditSession = null;
-        pasteWeWorld = null;
-        pasteClipboard = null;
-        pasteShift = null;
-        pasteSliceName = null;
-        pasteSinceLastFlush = 0;
-        pasteFlushEveryBlocks = 0;
+    private static String normalizeNullable(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value;
+    }
 
-        barrierClearInitialized = false;
-        barrierSinceLastFlush = 0;
+    private static String rootMessage(Throwable throwable) {
+        Throwable root = throwable;
+        while (root.getCause() != null) {
+            root = root.getCause();
+        }
+        String msg = root.getMessage();
+        return (msg == null || msg.isBlank()) ? root.getClass().getSimpleName() : msg;
+    }
+
+    private static Set<Long> mergeChunkKeySets(Set<Long> first, Set<Long> second) {
+        if ((first == null || first.isEmpty()) && (second == null || second.isEmpty())) {
+            return Set.of();
+        }
+        if (first == null || first.isEmpty()) {
+            return Set.copyOf(second);
+        }
+        if (second == null || second.isEmpty()) {
+            return Set.copyOf(first);
+        }
+        Set<Long> merged = new HashSet<>(first);
+        merged.addAll(second);
+        return Set.copyOf(merged);
+    }
+
+    private static final class BlockPlacement {
+        private final int x;
+        private final int y;
+        private final int z;
+        private final String blockString;
+        private final String blockEntitySnbt;
+
+        private BlockPlacement(int x, int y, int z, String blockString, String blockEntitySnbt) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.blockString = blockString;
+            this.blockEntitySnbt = blockEntitySnbt;
+        }
+    }
+
+    private static final class PassApplyResult {
+        private final String undoFileName;
+        private final Set<Long> placedKeys;
+        private final Set<Long> interiorKeys;
+        private final int chunkCount;
+        private final int writeCount;
+        private final int undoEntryCount;
+
+        private PassApplyResult(String undoFileName, Set<Long> placedKeys, Set<Long> interiorKeys, int chunkCount, int writeCount, int undoEntryCount) {
+            this.undoFileName = undoFileName;
+            this.placedKeys = placedKeys;
+            this.interiorKeys = interiorKeys;
+            this.chunkCount = chunkCount;
+            this.writeCount = writeCount;
+            this.undoEntryCount = undoEntryCount;
+        }
+    }
+
+    private static final class ChunkPlan {
+        private final Set<Long> targetChunkKeys;
+        private final List<ChunkPos> missingChunks;
+
+        private ChunkPlan(Set<Long> targetChunkKeys, List<ChunkPos> missingChunks) {
+            this.targetChunkKeys = targetChunkKeys;
+            this.missingChunks = missingChunks;
+        }
     }
 }

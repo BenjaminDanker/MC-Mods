@@ -1,10 +1,9 @@
-package com.silver.atlantis.spawn;
+package com.silver.atlantis.spawn.drop;
 
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.NbtComponent;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NbtCompound;
 import net.minecraft.registry.Registries;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
@@ -35,25 +34,4 @@ public final class SpecialSeaLanternItem {
         return stack;
     }
 
-    public static boolean isSpecialSeaLantern(ItemStack stack) {
-        if (stack == null || stack.isEmpty()) {
-            return false;
-        }
-        NbtCompound nbt = readCustomData(stack);
-        if (nbt == null) {
-            return false;
-        }
-        String id = nbt.getString("id").orElse("");
-        String idType = nbt.getString("idType").orElse("");
-        return SpawnSpecialConfig.SPECIAL_SEA_LANTERN_CUSTOM_ID.equals(id)
-            && SpawnSpecialConfig.SPECIAL_SEA_LANTERN_CUSTOM_ITEM_TYPE.equals(idType);
-    }
-
-    private static NbtCompound readCustomData(ItemStack stack) {
-        NbtComponent custom = stack.get(DataComponentTypes.CUSTOM_DATA);
-        if (custom == null) {
-            return null;
-        }
-        return custom.copyNbt();
-    }
 }

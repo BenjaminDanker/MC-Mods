@@ -30,7 +30,7 @@ public record FlatAreaSearchConfig(
             10_000,
             32, // coarser sampling for speed; still 510/32 = ~16x16 grid
             0, // unlimited attempts
-            100_000_000L // higher is faster finding
+            8_000_000L // lower per-tick budget to reduce server-thread spikes
         );
     }
 

@@ -1,6 +1,8 @@
-package com.silver.atlantis.spawn;
+package com.silver.atlantis.spawn.mob;
 
 import com.silver.atlantis.AtlantisMod;
+import com.silver.atlantis.spawn.drop.SpawnSpecialConfig;
+import com.silver.atlantis.spawn.drop.SpecialDropManager;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.EquipmentSlot;
@@ -34,14 +36,7 @@ public final class MobSpawner {
 
     private MobSpawner() {}
 
-    /**
-     * Spawns a mob with the given customization options.
-     * 
-     * @param world The server world to spawn in
-     * @param customization The mob customization data
-     * @return The spawned entity, or empty if spawning failed
-     */
-    public static Optional<Entity> spawn(ServerWorld world, MobCustomization customization) {
+    public static Optional<Entity> createConfiguredEntity(ServerWorld world, MobCustomization customization) {
         // Parse entity type
         Identifier entityId = parseIdentifier(customization.entityId());
         if (entityId == null) {
@@ -102,20 +97,10 @@ public final class MobSpawner {
             if (customization.glowing()) {
                 entity.setGlowing(true);
             }
-
-            // Spawn the entity
-            boolean spawned = world.spawnEntity(entity);
-            if (!spawned) {
-                AtlantisMod.LOGGER.error("World rejected spawn of entity: {}", entityId);
-                return Optional.empty();
-            }
-
-            AtlantisMod.LOGGER.info("Successfully spawned {} at ({}, {}, {})", 
-                entityId, customization.x(), customization.y(), customization.z());
             return Optional.of(entity);
 
         } catch (Exception e) {
-            AtlantisMod.LOGGER.error("Exception spawning entity {}: {}", entityId, e.getMessage(), e);
+            AtlantisMod.LOGGER.error("Exception creating configured entity {}: {}", entityId, e.getMessage(), e);
             return Optional.empty();
         }
     }

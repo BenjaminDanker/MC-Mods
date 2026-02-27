@@ -1,4 +1,4 @@
-package com.silver.atlantis.spawn;
+package com.silver.atlantis.spawn.bounds;
 
 import com.silver.atlantis.AtlantisMod;
 import com.silver.atlantis.construct.state.ConstructRunState;

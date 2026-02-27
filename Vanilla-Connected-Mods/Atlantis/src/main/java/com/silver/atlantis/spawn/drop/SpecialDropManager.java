@@ -1,4 +1,4 @@
-package com.silver.atlantis.spawn;
+package com.silver.atlantis.spawn.drop;
 
 import com.silver.atlantis.AtlantisMod;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
@@ -19,6 +19,8 @@ import net.minecraft.util.Identifier;
 public final class SpecialDropManager {
 
     private static boolean initialized;
+    private static int tagLogCounter = 0;
+    private static final int TAG_LOG_SAMPLE_RATE = 100; // Log approximately 1 in 100
 
     private SpecialDropManager() {
     }
@@ -41,7 +43,7 @@ public final class SpecialDropManager {
         String longTag = SpawnSpecialConfig.SPECIAL_DROP_AMOUNT_TAG_PREFIX + amount;
         boolean added = entity.addCommandTag(longTag);
         if (added) {
-            if (SpawnSpecialConfig.SPECIAL_DROP_DEBUG_LOGS) {
+            if (SpawnSpecialConfig.SPECIAL_DROP_DEBUG_LOGS && shouldLogTagSample()) {
                 AtlantisMod.LOGGER.info("[SpecialDropTag] entity={} amount={} tag={}", entity.getType(), amount, longTag);
             }
             return;
@@ -49,15 +51,18 @@ public final class SpecialDropManager {
 
         String compactTag = SpawnSpecialConfig.SPECIAL_DROP_AMOUNT_TAG_PREFIX_COMPACT + amount;
         if (entity.addCommandTag(compactTag)) {
-            if (SpawnSpecialConfig.SPECIAL_DROP_DEBUG_LOGS) {
+            if (SpawnSpecialConfig.SPECIAL_DROP_DEBUG_LOGS && shouldLogTagSample()) {
                 AtlantisMod.LOGGER.info("[SpecialDropTag] entity={} amount={} tag={} (fallback)", entity.getType(), amount, compactTag);
             }
             return;
         }
 
-        if (!entity.addCommandTag(compactTag)) {
-            AtlantisMod.LOGGER.warn("Failed to add special-drop amount tag to {} (amount={})", entity.getType(), amount);
-        }
+        AtlantisMod.LOGGER.warn("Failed to add special-drop amount tag to {} (amount={})", entity.getType(), amount);
+    }
+
+    private static boolean shouldLogTagSample() {
+        tagLogCounter++;
+        return (tagLogCounter % TAG_LOG_SAMPLE_RATE) == 0;
     }
 
     public static void tryDropIfSpecial(LivingEntity entity) {
@@ -69,15 +74,6 @@ public final class SpecialDropManager {
         boolean atlantisSpawned = entity.getCommandTags().contains(SpawnSpecialConfig.ATLANTIS_SPAWNED_MOB_TAG);
 
         if (specialAmount <= 0) {
-            if (SpawnSpecialConfig.SPECIAL_DROP_DEBUG_LOGS) {
-                AtlantisMod.LOGGER.info(
-                    "[SpecialDropDeath] entity={} atlantisSpawned={} hasAmountTag={} amount={} -> no special drop",
-                    entity.getType(),
-                    atlantisSpawned,
-                    false,
-                    specialAmount
-                );
-            }
             return;
         }
 
@@ -159,6 +155,7 @@ public final class SpecialDropManager {
 
         NbtComponent.set(DataComponentTypes.CUSTOM_DATA, stack, tag -> {
             tag.putString("id", "special_drop");
+            tag.putBoolean("no_despawn", true);
         });
 
         return stack;

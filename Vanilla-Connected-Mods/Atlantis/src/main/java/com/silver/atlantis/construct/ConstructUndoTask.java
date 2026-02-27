@@ -4,1708 +4,1088 @@ import com.silver.atlantis.AtlantisMod;
 import com.silver.atlantis.construct.undo.UndoMetadataIO;
 import com.silver.atlantis.construct.undo.UndoPaths;
 import com.silver.atlantis.construct.undo.UndoRunMetadata;
-import com.silver.atlantis.construct.undo.UndoSliceFile;
+import com.silver.atlantis.construct.undo.UndoFileFormat;
+import com.silver.atlantis.construct.mixin.ServerChunkManagerAccessor;
 import com.silver.atlantis.construct.state.ConstructRunState;
 import com.silver.atlantis.construct.state.ConstructRunStateIO;
 import com.silver.atlantis.construct.state.ConstructStatePaths;
 import com.silver.atlantis.protect.ProtectionManager;
-import com.sk89q.worldedit.EditSession;
-import com.sk89q.worldedit.WorldEdit;
-import com.sk89q.worldedit.extension.input.ParserContext;
-import com.sk89q.worldedit.fabric.FabricAdapter;
-import com.sk89q.worldedit.extension.platform.Actor;
-import com.sk89q.worldedit.internal.cui.CUIEvent;
-import com.sk89q.worldedit.session.SessionKey;
-import com.sk89q.worldedit.util.concurrency.LazyReference;
-import com.sk89q.worldedit.util.SideEffectSet;
-import com.sk89q.worldedit.util.SideEffect;
-import com.sk89q.worldedit.world.block.BaseBlock;
-import com.sk89q.worldedit.extension.input.InputParseException;
-import com.sk89q.worldedit.math.BlockVector3;
-import com.sk89q.worldedit.world.block.BlockTypes;
-import it.unimi.dsi.fastutil.longs.LongArrayList;
-import net.minecraft.block.Blocks;
-import net.minecraft.registry.tag.FluidTags;
+import com.silver.atlantis.spawn.bounds.ActiveConstructBounds;
+import com.silver.atlantis.spawn.service.ProximityMobManager;
+import net.minecraft.network.packet.s2c.play.PositionFlag;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ChunkTicketType;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.ChunkPos;
-import net.minecraft.util.math.Direction;
-import org.enginehub.linbus.format.snbt.LinStringIO;
-import org.enginehub.linbus.tree.LinCompoundTag;
-import org.enginehub.linbus.tree.impl.LinTagReader;
 
-import java.io.IOException;
-import java.io.File;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayDeque;
-import java.util.Comparator;
-import java.util.Deque;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
+import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.UUID;
 import java.util.Set;
-import java.util.stream.Stream;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 
 final class ConstructUndoTask implements ConstructJob {
 
     private enum Stage {
         LOAD_METADATA,
-        CLEANUP_MOBS,
-        CLEANUP_ITEMS,
-        LOAD_SLICE,
-        PRELOAD_CHUNKS,
-        PREPASS_CLEAR_FLUIDS,
-        APPLY_SLICE,
-        POST_FORCE_FLUID_UPDATES,
-        POST_CLEANUP_ARTIFACTS,
-        POST_CLEANUP_FORCE_FLUID_TICKS,
+        LOAD_UNDO_ASYNC,
+        PREPARE_MISSING_CHUNKS,
+        WAIT_FOR_TARGET_CHUNKS_UNLOAD,
+        APPLY_UNDO_ASYNC,
         DELETE_RUN_ASYNC,
-        WAIT_BETWEEN_SLICES,
         DONE
     }
 
     private final UUID requesterId;
     private final ConstructConfig config;
     private final MinecraftServer server;
-    private final String runId;
+    private final String requestedRunId;
     private final Executor ioExecutor;
-
-    private UndoRunMetadata metadata;
-    private ServerWorld world;
-
-    private BlockPos undoCenter;
-
-    private List<? extends net.minecraft.entity.Entity> entitiesToProcess;
-    private int entitiesProcessedIndex;
-
-    private Path runDir;
-
-    private Path currentSliceFile;
-
-    private int sliceIndex;
-    private UndoSliceFile.UndoSliceDataIndexed currentSlice;
-    private int entryIndex;
-
-    private int prepassEntryIndex;
-    private long prepassFluidsCleared;
-    private long lastPrepassProgressNanos;
-
-    private BaseBlock[] blockPalette;
-    private boolean[] blockPaletteIsAir;
-    private LinCompoundTag[] nbtPalette;
-    private final Map<Long, BaseBlock> blockWithNbtCache = new HashMap<>();
-
-    private long sliceAttempted;
-    private long sliceApplied;
-    private long sliceSkipped;
-    private long sliceDeferred;
-
-    String getRunId() {
-        return runId;
-    }
-    private long sliceFailedFalse;
-    private long sliceFailedException;
-    private long lastProgressNanos;
-
-    // Lightweight profiling to catch occasional multi-second hitches.
-    private long lastSlowLogNanos;
-    private static final long SLOW_LOG_COOLDOWN_NANOS = 5_000_000_000L;
-    private static final long SLOW_OP_NANOS = 50_000_000L; // 50ms
-    private long lastTickStartNanos;
-    private double adaptiveWorkScale = 1.0d;
-
-    private static final int UNDO_FLUSH_EVERY_BLOCKS_DEFAULT = 2048;
-    private int undoFlushEveryBlocks;
-    private int undoSinceLastFlush;
-
-    // Preload chunks for each slice so undo doesn't trigger expensive synchronous loads per-block.
-    private Deque<ChunkPos> chunksToLoad;
-    private final Set<Long> chunkTicketKeys = new HashSet<>();
-    private final it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap<CompletableFuture<?>> activeChunkLoads = new it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap<>();
-
-    private static final ChunkTicketType PRELOAD_TICKET_TYPE = ChunkTicketType.FORCED;
-    private static final int PRELOAD_TICKET_LEVEL = 2;
-
-    private boolean sliceSampleLogged;
-
-    private enum ApplyPass {
-        NON_AIR,
-        AIR
-    }
-
-    private ApplyPass applyPass = ApplyPass.NON_AIR;
-
-    private EditSession editSession;
-    private ParserContext parserContext;
-
-    private static final Actor UNDO_ACTOR = new SystemActor();
-
-    // We need NETWORK updates so clients actually see the undo, and POI updates to avoid POI mismatch spam.
-    // Keep other heavy side effects disabled for speed.
-    private static final SideEffectSet UNDO_SIDE_EFFECTS = SideEffectSet.none()
-        .with(SideEffect.NETWORK, SideEffect.State.ON)
-        .with(SideEffect.POI_UPDATE, SideEffect.State.ON);
-
-    private static final BaseBlock WE_AIR = BlockTypes.AIR.getDefaultState().toBaseBlock();
-
-    private final Map<String, BaseBlock> parsedBlockStringCache = new HashMap<>();
-    private final Map<String, LinCompoundTag> parsedNbtCache = new HashMap<>();
-    private final Set<String> badNbtLogged = new HashSet<>();
 
     private Stage stage = Stage.LOAD_METADATA;
 
-    private boolean undoFullyCompleted;
+    private UndoRunMetadata metadata;
+    private ServerWorld world;
+    private Path runDir;
+    private Path undoFile;
+
+    private int passIndex;
+
+    private CompletableFuture<UndoFileFormat.UndoDataIndexed> pendingUndoData;
+    private CompletableFuture<UndoChunkPlan> pendingChunkPlan;
+    private CompletableFuture<Void> pendingApply;
+    private CompletableFuture<Void> pendingDelete;
+    private UndoFileFormat.UndoDataIndexed loadedUndoData;
+    private UndoChunkPlan loadedChunkPlan;
+
+    private final ConstructChunkGenerationScheduler chunkGenerationScheduler = new ConstructChunkGenerationScheduler(31);
+
+    private static final int CHUNK_PREP_BUDGET_PER_TICK = 1;
+    private static final int UNLOAD_FORCE_INTERVAL_TICKS = 5;
+    private static final int UNLOAD_STATUS_LOG_INTERVAL_TICKS = 20;
+    private static final int UNLOAD_FORCE_CHUNK_BUDGET = 8;
+    private static final int MIN_TICKET_LEVEL = 0;
+    private static final int MAX_TICKET_LEVEL = 40;
+    private static final List<ChunkTicketType> DISCOVERED_TICKET_TYPES = discoverChunkTicketTypes();
+
+    private long chunkPrepStartedAtNanos;
+    private int chunkPrepExpectedMissingCount;
+    private int chunkPrepStatusLogTicks;
+    private int unloadWaitTicks;
+    private Set<Long> unloadChunkKeys = Set.of();
+    private final Set<Long> chunkPrepObservedLoadedKeys = new java.util.HashSet<>();
+    private long[] unloadChunkKeysArray = new long[0];
+    private int unloadChunkKeysCursor;
+
+    private CompletableFuture<List<ChunkPos>> pendingMissingAfterUnload;
+
     private boolean protectionUnregistered;
-    private boolean fluidTickGuardActive;
-    private boolean fluidTickGuardUsingRunBounds;
-
-    private int waitTicks;
-
-    private CompletableFuture<DeleteResult> pendingDelete;
-
-    // After restoring blocks, force neighbor updates on water/lava blocks that were actually restored
-    // by undo (fast mode disables lots of neighbor updates).
-    private LongArrayList postFluidQueue;
-    private int postFluidIndex;
-    private long postFluidUpdated;
-    private long postFluidQueueDropped;
-    private long lastPostFluidProgressNanos;
-    private final BlockPos.Mutable fluidPos = new BlockPos.Mutable();
-
-    // Hard cap to prevent large builds from accumulating millions of queued fluid positions,
-    // which can cause huge memory pressure and long-lasting tick lag.
-    private static final int POST_FLUID_QUEUE_MAX = 200_000;
-
-    // Cleanup pass: remove blocks that can appear after paste due to physics/growth
-    // but were never part of the schematic and therefore were never recorded in undo.
-    private static final int MAX_ARTIFACT_REMOVALS_PER_TICK = 2048;
-    private int cleanupX;
-    private int cleanupY;
-    private int cleanupZ;
-    private boolean cleanupInit;
-    private long cleanupScanned;
-    private long cleanupRemoved;
-    private long lastCleanupProgressNanos;
-    private LongArrayList cleanupFluidQueue;
-    private int cleanupFluidIndex;
-    private final BlockPos.Mutable cleanupPos = new BlockPos.Mutable();
-    private final BlockPos.Mutable neighborPos = new BlockPos.Mutable();
+    private boolean undoPreflightDone;
+    private boolean spawnPauseAcquired;
+    private Integer undoMinX;
+    private Integer undoMinY;
+    private Integer undoMinZ;
+    private Integer undoMaxX;
+    private Integer undoMaxY;
+    private Integer undoMaxZ;
 
     ConstructUndoTask(ServerCommandSource source, ConstructConfig config, MinecraftServer server, String runIdOrNull, Executor ioExecutor) {
         this.requesterId = source.getPlayer() != null ? source.getPlayer().getUuid() : null;
         this.config = config;
         this.server = server;
-        this.runId = runIdOrNull;
+        this.requestedRunId = runIdOrNull;
         this.ioExecutor = ioExecutor;
 
         send("Undo started.");
     }
 
+    String getRunId() {
+        if (metadata != null) {
+            return metadata.runId();
+        }
+        return requestedRunId;
+    }
+
     @Override
     public boolean tick(MinecraftServer ignored) {
-        long tickStartNanos = System.nanoTime();
-        updateAdaptiveWorkScale(tickStartNanos);
-
-        // Undo can be visually overwhelming; throttle per-tick work via config so changes stream in slower.
-        long configured = config.undoTickTimeBudgetNanos();
-        long baseBudget = config.tickTimeBudgetNanos();
-        long undoBudget = configured > 0 ? Math.min(configured, baseBudget) : Math.min(baseBudget, 3_000_000L);
-        long deadline = tickStartNanos + scaledBudget(Math.max(250_000L, undoBudget));
-
-        while (System.nanoTime() < deadline && stage != Stage.DONE) {
-            switch (stage) {
-                case LOAD_METADATA -> {
-                    String runToLoad = runId;
-                    if (runToLoad == null) {
-                        runToLoad = UndoPaths.findLatestRunIdOrNull();
-                        if (runToLoad == null || runToLoad.isBlank()) {
-                            send("No undo history found.");
-                            stage = Stage.DONE;
-                            break;
-                        }
-                    }
-
-                    Path runDir = UndoPaths.runDir(runToLoad);
-                    Path metadataFile = UndoPaths.metadataFile(runDir);
-                    if (!Files.exists(metadataFile)) {
-                        send("Undo metadata not found: " + metadataFile);
-                        stage = Stage.DONE;
-                        break;
-                    }
-
-                    try {
-                        metadata = UndoMetadataIO.read(metadataFile);
-                    } catch (Exception e) {
-                        send("Failed to read undo metadata: " + e.getMessage());
-                        stage = Stage.DONE;
-                        break;
-                    }
-
-                    // Keep the resolved directory so we can delete it after a successful undo.
-                    this.runDir = runDir;
-
-                    world = server.getWorld(net.minecraft.registry.RegistryKey.of(
-                        net.minecraft.registry.RegistryKeys.WORLD,
-                        net.minecraft.util.Identifier.of(metadata.dimension())
-                    ));
-                    if (world == null) {
-                        send("World not loaded for dimension: " + metadata.dimension());
-                        stage = Stage.DONE;
-                        break;
-                    }
-
-                    // User convention: slice_000 is the TOP and later indices are lower.
-                    // Block restore: bottom -> top (last..0)
-                    sliceIndex = metadata.sliceFiles().size() - 1;
-                    send(String.format(Locale.ROOT,
-                        "Undo run '%s' in %s (%d slice file(s)).",
-                        metadata.runId(), metadata.dimension(), metadata.sliceFiles().size()
-                    ));
-
-                    // Keep protection active during undo so players cannot enter mid-restore.
-                    // We'll unregister after the undo fully completes.
-                    undoFullyCompleted = false;
-                    protectionUnregistered = false;
-
-                    undoCenter = new BlockPos(metadata.rawCenterX(), metadata.rawCenterY(), metadata.rawCenterZ());
-                    activateFluidTickGuardFromRunBounds();
-                    stage = Stage.CLEANUP_MOBS;
-                }
-
-                case CLEANUP_MOBS -> {
-                    if (entitiesToProcess == null) {
-                        send("Undo: removing mobs in build area...");
-                        Box cleanup = EntityCleanup.cleanupBox(world, undoCenter, null, null, config.playerEjectMarginBlocks());
-                        entitiesToProcess = EntityCleanup.collectMobs(world, cleanup);
-                        entitiesProcessedIndex = 0;
-                    }
-
-                    entitiesProcessedIndex = EntityCleanup.discardSome(entitiesToProcess, entitiesProcessedIndex, scaledCap(config.maxEntitiesToProcessPerTick()));
-                    if (entitiesProcessedIndex >= entitiesToProcess.size()) {
-                        entitiesToProcess = null;
-                        stage = Stage.CLEANUP_ITEMS;
-                        waitTicks = config.delayBetweenStagesTicks();
-                    }
-                }
-
-                case CLEANUP_ITEMS -> {
-                    if (waitTicks > 0) {
-                        waitTicks--;
-                        return false;
-                    }
-
-                    if (entitiesToProcess == null) {
-                        send("Undo: removing dropped items in build area...");
-                        Box cleanup = EntityCleanup.cleanupBox(world, undoCenter, null, null, config.playerEjectMarginBlocks());
-                        entitiesToProcess = EntityCleanup.collectItemsAndXp(world, cleanup);
-                        entitiesProcessedIndex = 0;
-                    }
-
-                    entitiesProcessedIndex = EntityCleanup.discardSome(entitiesToProcess, entitiesProcessedIndex, scaledCap(config.maxEntitiesToProcessPerTick()));
-                    if (entitiesProcessedIndex >= entitiesToProcess.size()) {
-                        entitiesToProcess = null;
-                        send("Undo: restoring blocks (bottom -> top)...");
-                        stage = Stage.LOAD_SLICE;
-                    }
-                }
-
-                case LOAD_SLICE -> {
-                    closeEditSession();
-                    // Keep chunk tickets across slices (same as construct) to avoid unload/reload thrash
-                    // when consecutive Y-slices touch the same X/Z chunks.
-                    currentSlice = null;
-                    blockPalette = null;
-                    blockPaletteIsAir = null;
-                    nbtPalette = null;
-                    blockWithNbtCache.clear();
-                    entryIndex = 0;
-                    prepassEntryIndex = 0;
-                    prepassFluidsCleared = 0;
-                    lastPrepassProgressNanos = 0;
-                    chunksToLoad = null;
-
-                    int cfgFlush = config.undoFlushEveryBlocks();
-                    undoFlushEveryBlocks = (cfgFlush > 0) ? cfgFlush : UNDO_FLUSH_EVERY_BLOCKS_DEFAULT;
-                    undoSinceLastFlush = 0;
-
-                    sliceAttempted = 0;
-                    sliceApplied = 0;
-                    sliceSkipped = 0;
-                    sliceDeferred = 0;
-                    sliceFailedFalse = 0;
-                    sliceFailedException = 0;
-                    lastProgressNanos = 0;
-                    sliceSampleLogged = false;
-                    applyPass = ApplyPass.NON_AIR;
-                    waitTicks = 0;
-
-                    if (sliceIndex < 0) {
-                        // Deleting the undo folder can take 1-2s+ on some systems (many files).
-                        // Do it off-thread so the main server tick never freezes.
-                        if (pendingDelete == null) {
-                            send("Undo complete. Removing undo history for run '" + metadata.runId() + "'...");
-                            pendingDelete = CompletableFuture.supplyAsync(this::deleteUndoRunInternal, ioExecutor);
-                            undoFullyCompleted = true;
-                            stage = Stage.DELETE_RUN_ASYNC;
-                        }
-                        break;
-                    }
-
-                    Path runDir = (this.runDir != null) ? this.runDir : UndoPaths.runDir(metadata.runId());
-                    String sliceFileName = metadata.sliceFiles().get(sliceIndex);
-                    Path sliceFile = runDir.resolve(sliceFileName);
-
-                    // If the server restarted mid-undo and we already completed this slice previously,
-                    // the slice file may have been deleted. Treat that as "already done" and continue.
-                    if (!Files.exists(sliceFile)) {
-                        currentSliceFile = null;
-                        sliceIndex--;
-                        break;
-                    }
-
-                    currentSliceFile = sliceFile;
-
-                    UndoSliceFile.UndoSliceDataIndexed data;
-                    try {
-                        data = UndoSliceFile.readIndexed(sliceFile);
-                    } catch (Exception e) {
-                        send("Failed to read undo slice " + sliceFileName + ": " + e.getMessage());
-                        currentSliceFile = null;
-                        sliceIndex--;
-                        break;
-                    }
-
-                    if (!metadata.dimension().equals(data.dimension())) {
-                        send("Undo slice dimension mismatch: expected " + metadata.dimension() + " got " + data.dimension());
-                        sliceIndex--;
-                        break;
-                    }
-
-                    currentSlice = data;
-                    updateFluidTickGuardFromSliceBoundsIfNeeded();
-
-                    com.sk89q.worldedit.world.World weWorld = FabricAdapter.adapt(world);
-                    editSession = WorldEdit.getInstance().newEditSessionBuilder()
-                        .world(weWorld)
-                        .maxBlocks(-1)
-                        .build();
-                    editSession.setFastMode(true);
-                    editSession.setSideEffectApplier(UNDO_SIDE_EFFECTS);
-
-                    parserContext = new ParserContext();
-                    parserContext.setWorld(weWorld);
-                    parserContext.setExtent(weWorld);
-                    parserContext.setActor(UNDO_ACTOR);
-
-                    postFluidQueue = new LongArrayList();
-                    postFluidIndex = 0;
-                    postFluidUpdated = 0;
-                    postFluidQueueDropped = 0;
-                    lastPostFluidProgressNanos = 0;
-
-                    // Restore phase: pre-parse palettes once per slice so the apply loop only does array lookups.
-                    blockPalette = new BaseBlock[currentSlice.blocks().length];
-                    blockPaletteIsAir = new boolean[currentSlice.blocks().length];
-                    for (int i = 0; i < currentSlice.blocks().length; i++) {
-                        BaseBlock parsed = parseBlockString(currentSlice.blocks()[i]);
-                        // If parsing fails, keep null and skip those entries during apply.
-                        blockPalette[i] = parsed;
-                        blockPaletteIsAir[i] = parsed != null && parsed.getBlockType() == com.sk89q.worldedit.world.block.BlockTypes.AIR;
-                    }
-
-                    nbtPalette = new LinCompoundTag[currentSlice.nbts().length];
-                    for (int i = 0; i < currentSlice.nbts().length; i++) {
-                        nbtPalette[i] = parseNbt(currentSlice.nbts()[i]);
-                    }
-
-                    send("Undoing slice " + (sliceIndex + 1) + "/" + metadata.sliceFiles().size() + " (" + currentSlice.entryCount() + " blocks)...");
-
-                    // Helpful for debugging: show the slice bounds so you can tell whether undo is
-                    // currently working on the area you're looking at.
-                    String boundsMsg = String.format(Locale.ROOT,
-                        "Slice bounds: x=[%d..%d] y=[%d..%d] z=[%d..%d]",
-                        currentSlice.minX(), currentSlice.maxX(),
-                        currentSlice.minY(), currentSlice.maxY(),
-                        currentSlice.minZ(), currentSlice.maxZ()
-                    );
-                    if (requesterId != null) {
-                        ServerPlayerEntity p = server.getPlayerManager().getPlayer(requesterId);
-                        if (p != null && p.getEntityWorld() == world) {
-                            int px = p.getBlockX();
-                            int pz = p.getBlockZ();
-                            int dx = 0;
-                            if (px < currentSlice.minX()) dx = currentSlice.minX() - px;
-                            else if (px > currentSlice.maxX()) dx = px - currentSlice.maxX();
-
-                            int dz = 0;
-                            if (pz < currentSlice.minZ()) dz = currentSlice.minZ() - pz;
-                            else if (pz > currentSlice.maxZ()) dz = pz - currentSlice.maxZ();
-
-                            boundsMsg += String.format(Locale.ROOT, " (you are ~%d blocks away)", (int) Math.floor(Math.hypot(dx, dz)));
-                        }
-                    }
-                    send(boundsMsg);
-
-                    send("Undo: preloading chunks for this slice...");
-                    stage = Stage.PRELOAD_CHUNKS;
-                }
-
-                case PRELOAD_CHUNKS -> {
-                    if (world == null || currentSlice == null) {
-                        stage = Stage.LOAD_SLICE;
-                        break;
-                    }
-
-                    if (chunksToLoad == null) {
-                        chunksToLoad = new ArrayDeque<>();
-                        int minChunkX = currentSlice.minX() >> 4;
-                        int maxChunkX = currentSlice.maxX() >> 4;
-                        int minChunkZ = currentSlice.minZ() >> 4;
-                        int maxChunkZ = currentSlice.maxZ() >> 4;
-                        for (int cx = minChunkX; cx <= maxChunkX; cx++) {
-                            for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
-                                chunksToLoad.addLast(new ChunkPos(cx, cz));
-                            }
-                        }
-                    }
-
-                    int maxToStart = scaledPositiveCap(config.maxChunksToLoadPerTick());
-                    int started = 0;
-
-                    while (System.nanoTime() < deadline && started < maxToStart && chunksToLoad != null && !chunksToLoad.isEmpty()) {
-                        ChunkPos pos = chunksToLoad.pollFirst();
-                        if (pos == null) {
-                            break;
-                        }
-
-                        long key = ChunkPos.toLong(pos.x, pos.z);
-                        if (chunkTicketKeys.contains(key)) {
-                            continue;
-                        }
-
-                        try {
-                            CompletableFuture<?> fut = world.getChunkManager().addChunkLoadingTicket(PRELOAD_TICKET_TYPE, pos, PRELOAD_TICKET_LEVEL);
-                            chunkTicketKeys.add(key);
-                            activeChunkLoads.put(key, fut);
-                            started++;
-                        } catch (Exception e) {
-                            AtlantisMod.LOGGER.debug("Undo chunk preload ticket failed at {}: {}", pos, e.getMessage());
-                        }
-                    }
-
-                    if (started > 0 && com.silver.atlantis.spawn.SpawnMobConfig.DIAGNOSTIC_LOGS) {
-                        AtlantisMod.LOGGER.info(
-                            "[UndoTickets] runId={} sliceIndex={} addedThisTick={} totalActiveLoads={} totalTicketKeys={}",
-                            runId,
-                            sliceIndex,
-                            started,
-                            activeChunkLoads.size(),
-                            chunkTicketKeys.size()
-                        );
-                    }
-
-                    if (!activeChunkLoads.isEmpty()) {
-                        var it = activeChunkLoads.long2ObjectEntrySet().fastIterator();
-                        while (it.hasNext()) {
-                            var entry = it.next();
-                            long key = entry.getLongKey();
-                            CompletableFuture<?> fut = entry.getValue();
-                            if (fut == null || !fut.isDone()) {
-                                continue;
-                            }
-
-                            // Ticket completed, but chunk may not be visible as loaded yet; double-check.
-                            int cx = ChunkPos.getPackedX(key);
-                            int cz = ChunkPos.getPackedZ(key);
-                            if (world.getChunkManager().getWorldChunk(cx, cz) == null) {
-                                continue;
-                            }
-
-                            it.remove();
-                        }
-                    }
-
-                    boolean startedAll = (chunksToLoad == null || chunksToLoad.isEmpty());
-                    if (startedAll && activeChunkLoads.isEmpty()) {
-                        send("Undo: clearing water/lava at recorded positions...");
-                        stage = Stage.PREPASS_CLEAR_FLUIDS;
-                    }
-                }
-
-                case WAIT_BETWEEN_SLICES -> {
-                    if (waitTicks > 0) {
-                        waitTicks--;
-                        return false;
-                    }
-                    stage = Stage.LOAD_SLICE;
-                }
-
-                case PREPASS_CLEAR_FLUIDS -> {
-                    if (editSession == null || currentSlice == null || blockPalette == null || blockPaletteIsAir == null) {
-                        stage = Stage.LOAD_SLICE;
-                        break;
-                    }
-
-                    int[] xs = currentSlice.xs();
-                    int[] ys = currentSlice.ys();
-                    int[] zs = currentSlice.zs();
-                    int[] blockIdx = currentSlice.blockIdx();
-
-                    int cfgFlush = config.undoFlushEveryBlocks();
-                    int flushEvery = (cfgFlush > 0) ? cfgFlush : UNDO_FLUSH_EVERY_BLOCKS_DEFAULT;
-                    int sinceFlush = 0;
-
-                    while (System.nanoTime() < deadline && prepassEntryIndex < xs.length) {
-                        int i = prepassEntryIndex++;
-
-                        int bIdx = blockIdx[i];
-                        if (bIdx < 0 || bIdx >= blockPalette.length) {
-                            continue;
-                        }
-
-                        // Efficiency: Only clear fluids where undo will restore AIR.
-                        // If undo restores a solid block, water/lava will be overwritten anyway.
-                        if (!blockPaletteIsAir[bIdx]) {
-                            continue;
-                        }
-
-                        fluidPos.set(xs[i], ys[i], zs[i]);
-                        var fluidState = world.getFluidState(fluidPos);
-                        if (fluidState.isEmpty()) {
-                            continue;
-                        }
-
-                        // Only clear water/lava (including flowing variants), and only at coordinates that are
-                        // already part of this undo slice (so we don't drain surrounding ocean/river water).
-                        if (!fluidState.isIn(FluidTags.WATER) && !fluidState.isIn(FluidTags.LAVA)) {
-                            continue;
-                        }
-
-                        try {
-                            boolean ok = editSession.setBlock(BlockVector3.at(xs[i], ys[i], zs[i]), WE_AIR);
-                            if (ok) {
-                                prepassFluidsCleared++;
-                                sinceFlush++;
-                                if (sinceFlush >= flushEvery) {
-                                    try {
-                                        editSession.flushSession();
-                                        editSession.commit();
-                                    } catch (Exception e) {
-                                        AtlantisMod.LOGGER.debug("Undo prepass flush failed: {}", e.getMessage());
-                                    }
-                                    sinceFlush = 0;
-                                }
-                            }
-                        } catch (Exception e) {
-                            AtlantisMod.LOGGER.debug("Undo prepass failed at {},{},{}: {}", xs[i], ys[i], zs[i], e.getMessage());
-                        }
-                    }
-
-                    if (prepassEntryIndex >= xs.length) {
-                        try {
-                            editSession.flushSession();
-                            editSession.commit();
-                        } catch (Exception e) {
-                            AtlantisMod.LOGGER.debug("Undo prepass final flush failed: {}", e.getMessage());
-                        }
-
-                        entryIndex = 0;
-                        applyPass = ApplyPass.NON_AIR;
-                        stage = Stage.APPLY_SLICE;
-                        break;
-                    }
-
-                    long now = System.nanoTime();
-                    if (lastPrepassProgressNanos == 0) {
-                        lastPrepassProgressNanos = now;
-                    } else if (now - lastPrepassProgressNanos > 5_000_000_000L) {
-                        lastPrepassProgressNanos = now;
-                        send(String.format(Locale.ROOT,
-                            "Undo fluid prepass: slice %d/%d scanned=%d/%d cleared=%d",
-                            (sliceIndex + 1),
-                            metadata != null ? metadata.sliceFiles().size() : -1,
-                            prepassEntryIndex,
-                            xs.length,
-                            prepassFluidsCleared
-                        ));
-                    }
-                }
-
-                case APPLY_SLICE -> {
-                    if (editSession == null || currentSlice == null || blockPalette == null || blockPaletteIsAir == null || nbtPalette == null) {
-                        stage = Stage.LOAD_SLICE;
-                        break;
-                    }
-
-                    int[] xs = currentSlice.xs();
-                    int[] ys = currentSlice.ys();
-                    int[] zs = currentSlice.zs();
-                    int[] blockIdx = currentSlice.blockIdx();
-                    int[] nbtIdx = currentSlice.nbtIdx();
-
-                    while (System.nanoTime() < deadline && entryIndex < xs.length) {
-                        int i = entryIndex++;
-
-                        sliceAttempted++;
-
-                        int bIdx = blockIdx[i];
-                        BaseBlock base = (bIdx >= 0 && bIdx < blockPalette.length) ? blockPalette[bIdx] : null;
-                        if (base == null) {
-                            sliceSkipped++;
-                            continue;
-                        }
-
-                        // Two-pass apply to avoid temporary holes that cause fluids to flow and falling blocks to drop.
-                        // Pass 1: apply all non-air blocks.
-                        // Pass 2: apply air blocks.
-                        boolean isAir = blockPaletteIsAir[bIdx];
-                        if (applyPass == ApplyPass.NON_AIR && isAir) {
-                            sliceDeferred++;
-                            continue;
-                        }
-                        if (applyPass == ApplyPass.AIR && !isAir) {
-                            sliceDeferred++;
-                            continue;
-                        }
-
-                        int nIdx = nbtIdx[i];
-                        BaseBlock toSet;
-                        if (nIdx < 0) {
-                            toSet = base;
-                        } else {
-                            long key = (((long) bIdx) << 32) | (nIdx & 0xffffffffL);
-                            toSet = blockWithNbtCache.computeIfAbsent(key, k -> {
-                                if (nIdx >= nbtPalette.length) {
-                                    return base;
-                                }
-                                LinCompoundTag tag = nbtPalette[nIdx];
-                                if (tag == null) {
-                                    return base;
-                                }
-                                return base.toBaseBlock(LazyReference.computed(tag));
-                            });
-                        }
-
-                        try {
-                            // Air pass optimization: if the target is AIR and the world is already air with no fluid,
-                            // skip calling WorldEdit (which can be expensive and may trigger network updates).
-                            if (applyPass == ApplyPass.AIR && isAir) {
-                                fluidPos.set(xs[i], ys[i], zs[i]);
-                                if (world.getBlockState(fluidPos).isAir() && world.getFluidState(fluidPos).isEmpty()) {
-                                    sliceSkipped++;
-                                    continue;
-                                }
-                            }
-
-                            if (!sliceSampleLogged) {
-                                sliceSampleLogged = true;
-                                try {
-                                    var weWorld = parserContext.getWorld();
-                                    String before = weWorld.getFullBlock(BlockVector3.at(xs[i], ys[i], zs[i])).getAsString();
-                                    String want = toSet.getAsString();
-                                    send(String.format(Locale.ROOT,
-                                        "Undo sample @ %d,%d,%d: before=%s -> want=%s",
-                                        xs[i], ys[i], zs[i], before, want
-                                    ));
-                                } catch (Exception e) {
-                                    AtlantisMod.LOGGER.warn("Failed to sample undo before-state: {}", e.getMessage());
-                                }
-                            }
-
-                            boolean ok = editSession.setBlock(BlockVector3.at(xs[i], ys[i], zs[i]), toSet);
-                            if (ok) {
-                                if (postFluidQueue != null && (toSet.getBlockType() == BlockTypes.WATER || toSet.getBlockType() == BlockTypes.LAVA)) {
-                                    if (postFluidQueue.size() < POST_FLUID_QUEUE_MAX) {
-                                        postFluidQueue.add(BlockPos.asLong(xs[i], ys[i], zs[i]));
-                                    } else {
-                                        postFluidQueueDropped++;
-                                    }
-                                }
-                                sliceApplied++;
-
-                                undoSinceLastFlush++;
-                                if (undoSinceLastFlush >= undoFlushEveryBlocks) {
-                                    flushUndo(false, xs.length);
-                                    undoSinceLastFlush = 0;
-                                }
-                            } else {
-                                sliceFailedFalse++;
-                            }
-
-                        } catch (Exception e) {
-                            sliceFailedException++;
-                            AtlantisMod.LOGGER.warn("Failed to undo block at {},{},{}: {}", xs[i], ys[i], zs[i], e.getMessage());
-                        }
-                    }
-
-                    long now = System.nanoTime();
-                    if (lastProgressNanos == 0) {
-                        lastProgressNanos = now;
-                    } else if (now - lastProgressNanos > 5_000_000_000L) {
-                        lastProgressNanos = now;
-                        send(String.format(Locale.ROOT,
-                            "Undo progress: slice %d/%d %d/%d applied=%d skipped=%d deferred=%d failed=%d (false=%d, ex=%d)",
-                            (sliceIndex + 1),
-                            metadata.sliceFiles().size(),
-                            entryIndex,
-                            xs.length,
-                            sliceApplied,
-                            sliceSkipped,
-                            sliceDeferred,
-                            (sliceFailedFalse + sliceFailedException),
-                            sliceFailedFalse,
-                            sliceFailedException
-                        ));
-                    }
-
-                    if (entryIndex >= xs.length) {
-                        if (undoSinceLastFlush > 0) {
-                            flushUndo(true, xs.length);
-                            undoSinceLastFlush = 0;
-                        }
-
-                        if (applyPass == ApplyPass.NON_AIR) {
-                            // Second pass: apply air blocks.
-                            applyPass = ApplyPass.AIR;
-                            entryIndex = 0;
-                            send("Undo pass 2/2: applying air blocks...");
-                            break;
-                        }
-
-                        // After restoring blocks, force restored water/lava blocks to recompute.
-                        postFluidIndex = 0;
-                        postFluidUpdated = 0;
-                        lastPostFluidProgressNanos = 0;
-                        if (postFluidQueueDropped > 0) {
-                            AtlantisMod.LOGGER.warn(
-                                "Undo: dropped {} fluid positions from update queue (cap={}) to avoid tick lag.",
-                                postFluidQueueDropped,
-                                POST_FLUID_QUEUE_MAX
-                            );
-                        }
-
-                        if (postFluidQueue != null && !postFluidQueue.isEmpty()) {
-                            stage = Stage.POST_FORCE_FLUID_UPDATES;
-                        } else {
-                            // No restored fluids; continue to post-cleanup.
-                            stage = Stage.POST_CLEANUP_ARTIFACTS;
-                        }
-                    }
-                }
-
-                case POST_FORCE_FLUID_UPDATES -> {
-                    if (currentSlice == null) {
-                        stage = Stage.LOAD_SLICE;
-                        break;
-                    }
-
-                    if (postFluidQueue == null || postFluidIndex >= postFluidQueue.size()) {
-                        // Done; clear and move on to artifact cleanup.
-                        postFluidQueue = null;
-                        postFluidIndex = 0;
-                        postFluidUpdated = 0;
-                        stage = Stage.POST_CLEANUP_ARTIFACTS;
-                        break;
-                    }
-
-                    int maxPerTick = scaledCap(config.maxFluidNeighborUpdatesPerTick());
-                    if (maxPerTick <= 0) {
-                        // Disabled; skip the pulse stage.
-                        postFluidIndex = postFluidQueue.size();
-                        break;
-                    }
-
-                    int updatedThisTick = 0;
-                    while (System.nanoTime() < deadline && postFluidIndex < postFluidQueue.size() && updatedThisTick < maxPerTick) {
-                        long packed = postFluidQueue.getLong(postFluidIndex++);
-                        fluidPos.set(packed);
-
-                        var state = world.getBlockState(fluidPos);
-                        if (!(state.isOf(Blocks.WATER) || state.isOf(Blocks.LAVA))) {
-                            continue;
-                        }
-
-                        var fluidState = state.getFluidState();
-                        if (fluidState.isEmpty()) {
-                            continue;
-                        }
-
-                        // Only poke "edge" fluids (adjacent to non-water/lava) to avoid scheduling
-                        // ticks for massive interior oceans, which creates long-lasting tick lag.
-                        boolean isWater = state.isOf(Blocks.WATER);
-                        boolean touchesNonFluid = false;
-                        for (Direction d : new Direction[]{Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.EAST, Direction.UP, Direction.DOWN}) {
-                            neighborPos.set(fluidPos).move(d);
-                            var nFluid = world.getFluidState(neighborPos);
-                            if (isWater) {
-                                if (!nFluid.isIn(FluidTags.WATER)) {
-                                    touchesNonFluid = true;
-                                    break;
-                                }
-                            } else {
-                                if (!nFluid.isIn(FluidTags.LAVA)) {
-                                    touchesNonFluid = true;
-                                    break;
-                                }
-                            }
-                        }
-
-                        if (!touchesNonFluid) {
-                            continue;
-                        }
-
-                        if (!UndoFluidTickGuard.INSTANCE.shouldSuppress(world, fluidPos)) {
-                            world.scheduleFluidTick(fluidPos, fluidState.getFluid(), 1);
-                        }
-                        updatedThisTick++;
-                        postFluidUpdated++;
-                    }
-
-                    long now = System.nanoTime();
-                    if (lastPostFluidProgressNanos == 0) {
-                        lastPostFluidProgressNanos = now;
-                    } else if (now - lastPostFluidProgressNanos > 5_000_000_000L) {
-                        lastPostFluidProgressNanos = now;
-                        send(String.format(Locale.ROOT,
-                            "Undo fluid update pulse: slice %d/%d queued=%d updated=%d",
-                            (sliceIndex + 1),
-                            metadata != null ? metadata.sliceFiles().size() : -1,
-                            postFluidQueue != null ? postFluidQueue.size() : 0,
-                            postFluidUpdated
-                        ));
-                    }
-                }
-
-                case POST_CLEANUP_ARTIFACTS -> {
-                    if (editSession == null || currentSlice == null) {
-                        stage = Stage.LOAD_SLICE;
-                        break;
-                    }
-
-                    if (!cleanupInit) {
-                        cleanupInit = true;
-                        cleanupX = currentSlice.minX();
-                        cleanupY = currentSlice.minY();
-                        cleanupZ = currentSlice.minZ();
-                        cleanupScanned = 0;
-                        cleanupRemoved = 0;
-                        lastCleanupProgressNanos = 0;
-                        cleanupFluidQueue = new LongArrayList();
-                        cleanupFluidIndex = 0;
-                    }
-
-                    int removedThisTick = 0;
-                    int maxArtifactRemovalsThisTick = scaledPositiveCap(MAX_ARTIFACT_REMOVALS_PER_TICK);
-                    while (System.nanoTime() < deadline && cleanupX <= currentSlice.maxX()) {
-                        cleanupPos.set(cleanupX, cleanupY, cleanupZ);
-                        cleanupScanned++;
-
-                        var state = world.getBlockState(cleanupPos);
-                        boolean shouldRemove = false;
-
-                        // Vines that grew after paste (not recorded in undo) can linger.
-                        if (state.isOf(Blocks.VINE)
-                            || state.isOf(Blocks.WEEPING_VINES)
-                            || state.isOf(Blocks.WEEPING_VINES_PLANT)
-                            || state.isOf(Blocks.TWISTING_VINES)
-                            || state.isOf(Blocks.TWISTING_VINES_PLANT)
-                            || state.isOf(Blocks.CAVE_VINES)
-                            || state.isOf(Blocks.CAVE_VINES_PLANT)) {
-                            shouldRemove = true;
-                        }
-
-                        // Lava flowing into water can create cobble/stone/obsidian in mid-water.
-                        // Those blocks were not part of the schematic and won't be in undo.
-                        if (!shouldRemove
-                            && (state.isOf(Blocks.COBBLESTONE) || state.isOf(Blocks.STONE) || state.isOf(Blocks.OBSIDIAN))
-                            && world.getFluidState(cleanupPos.down()).isIn(FluidTags.WATER)) {
-                            int waterSides = 0;
-                            for (Direction d : Direction.Type.HORIZONTAL) {
-                                if (world.getFluidState(cleanupPos.offset(d)).isIn(FluidTags.WATER)) {
-                                    waterSides++;
-                                }
-                            }
-                            if (waterSides >= 3) {
-                                shouldRemove = true;
-                            }
-                        }
-
-                        if (shouldRemove) {
-                            try {
-                                boolean ok = editSession.setBlock(BlockVector3.at(cleanupX, cleanupY, cleanupZ), WE_AIR);
-                                if (ok) {
-                                    cleanupRemoved++;
-
-                                    // Queue nearby fluid blocks so water fills in immediately.
-                                    for (Direction d : Direction.values()) {
-                                        neighborPos.set(cleanupPos).move(d);
-                                        if (world.getFluidState(neighborPos).isIn(FluidTags.WATER) || world.getFluidState(neighborPos).isIn(FluidTags.LAVA)) {
-                                            cleanupFluidQueue.add(BlockPos.asLong(neighborPos.getX(), neighborPos.getY(), neighborPos.getZ()));
-                                        }
-                                    }
-                                }
-                            } catch (Exception e) {
-                                AtlantisMod.LOGGER.debug("Undo cleanup failed at {},{},{}: {}", cleanupX, cleanupY, cleanupZ, e.getMessage());
-                            }
-
-                            removedThisTick++;
-                            if (removedThisTick >= maxArtifactRemovalsThisTick) {
-                                break;
-                            }
-                        }
-
-                        // Advance cursor (z -> y -> x)
-                        cleanupZ++;
-                        if (cleanupZ > currentSlice.maxZ()) {
-                            cleanupZ = currentSlice.minZ();
-                            cleanupY++;
-                            if (cleanupY > currentSlice.maxY()) {
-                                cleanupY = currentSlice.minY();
-                                cleanupX++;
-                            }
-                        }
-                    }
-
-                    if (removedThisTick > 0) {
-                        try {
-                            editSession.flushSession();
-                            editSession.commit();
-                        } catch (Exception e) {
-                            AtlantisMod.LOGGER.debug("Undo cleanup flush failed: {}", e.getMessage());
-                        }
-                    }
-
-                    long now = System.nanoTime();
-                    if (lastCleanupProgressNanos == 0) {
-                        lastCleanupProgressNanos = now;
-                    } else if (now - lastCleanupProgressNanos > 5_000_000_000L) {
-                        lastCleanupProgressNanos = now;
-                        send(String.format(Locale.ROOT,
-                            "Undo cleanup: slice %d/%d scanned=%d removed=%d",
-                            (sliceIndex + 1),
-                            metadata != null ? metadata.sliceFiles().size() : -1,
-                            cleanupScanned,
-                            cleanupRemoved
-                        ));
-                    }
-
-                    if (cleanupX > currentSlice.maxX()) {
-                        // Done scanning this slice.
-                        cleanupInit = false;
-                        cleanupScanned = 0;
-                        cleanupRemoved = 0;
-                        lastCleanupProgressNanos = 0;
-
-                        if (cleanupFluidQueue != null && !cleanupFluidQueue.isEmpty()) {
-                            cleanupFluidIndex = 0;
-                            stage = Stage.POST_CLEANUP_FORCE_FLUID_TICKS;
-                        } else {
-                            cleanupFluidQueue = null;
-                            cleanupFluidIndex = 0;
-
-                            closeEditSession();
-
-                            // Slice is fully complete (restore + post cleanup). Delete its undo file so a restart
-                            // won't redo work.
-                            deleteCurrentSliceFileAsync();
-
-                            sliceIndex--;
-                            waitTicks = Math.max(0, config.delayBetweenSlicesTicks());
-                            stage = Stage.WAIT_BETWEEN_SLICES;
-                        }
-                    }
-                }
-
-                case POST_CLEANUP_FORCE_FLUID_TICKS -> {
-                    if (currentSlice == null) {
-                        stage = Stage.LOAD_SLICE;
-                        break;
-                    }
-
-                    if (cleanupFluidQueue == null || cleanupFluidIndex >= cleanupFluidQueue.size()) {
-                        cleanupFluidQueue = null;
-                        cleanupFluidIndex = 0;
-
-                        closeEditSession();
-
-                        // Slice is fully complete (restore + cleanup + forced fluid ticks). Delete its undo file so
-                        // a restart won't redo work.
-                        deleteCurrentSliceFileAsync();
-
-                        sliceIndex--;
-                        waitTicks = Math.max(0, config.delayBetweenSlicesTicks());
-                        stage = Stage.WAIT_BETWEEN_SLICES;
-                        break;
-                    }
-
-                    int maxPerTick = scaledCap(config.maxFluidNeighborUpdatesPerTick());
-                    if (maxPerTick <= 0) {
-                        cleanupFluidIndex = cleanupFluidQueue.size();
-                        break;
-                    }
-
-                    int updatedThisTick = 0;
-                    while (System.nanoTime() < deadline && cleanupFluidIndex < cleanupFluidQueue.size() && updatedThisTick < maxPerTick) {
-                        long packed = cleanupFluidQueue.getLong(cleanupFluidIndex++);
-                        fluidPos.set(packed);
-
-                        var state = world.getBlockState(fluidPos);
-                        var fluidState = state.getFluidState();
-                        if (!fluidState.isEmpty() && !UndoFluidTickGuard.INSTANCE.shouldSuppress(world, fluidPos)) {
-                            fluidState.onScheduledTick(world, fluidPos, state);
-                            updatedThisTick++;
-                        }
-                    }
-                }
-
-                case DELETE_RUN_ASYNC -> {
-                    if (pendingDelete == null) {
-                        stage = Stage.DONE;
-                        break;
-                    }
-
-                    if (!pendingDelete.isDone()) {
-                        // Keep ticking; deletion is happening on the IO executor.
-                        return false;
-                    }
-
-                    try {
-                        DeleteResult result = pendingDelete.join();
-                        send(result.message);
-                    } catch (Exception e) {
-                        AtlantisMod.LOGGER.warn("Failed to delete undo run async: {}", e.getMessage());
-                        send("Failed to remove undo history for run '" + (metadata != null ? metadata.runId() : "?") + "': " + e.getMessage());
-                    } finally {
-                        pendingDelete = null;
-                    }
-
-                    // Now that undo is fully complete, remove the protection entry.
-                    if (!protectionUnregistered && undoFullyCompleted && metadata != null) {
-                        ProtectionManager.INSTANCE.unregister(metadata.runId());
-                        protectionUnregistered = true;
-                    }
-
-                    stage = Stage.DONE;
-                }
-
-                case DONE -> {
-                    closeEditSession();
-                    releaseChunkTickets();
-
-                    // Safety net: if we completed but didn't hit DELETE_RUN_ASYNC for some reason, unregister here.
-                    if (!protectionUnregistered && undoFullyCompleted && metadata != null) {
-                        ProtectionManager.INSTANCE.unregister(metadata.runId());
-                        protectionUnregistered = true;
-                    }
-                    return true;
-                }
+        if (stage == Stage.DONE) {
+            return true;
+        }
+
+        switch (stage) {
+            case LOAD_METADATA -> loadMetadata();
+            case LOAD_UNDO_ASYNC -> loadUndoAsync();
+            case PREPARE_MISSING_CHUNKS -> prepareMissingChunks();
+            case WAIT_FOR_TARGET_CHUNKS_UNLOAD -> waitForTargetChunksUnload();
+            case APPLY_UNDO_ASYNC -> applyUndoAsync();
+            case DELETE_RUN_ASYNC -> deleteRunAsync();
+            case DONE -> {
+                return true;
             }
         }
 
-        if (stage == Stage.DONE) {
-            deactivateFluidTickGuard();
-        }
         return stage == Stage.DONE;
     }
 
-    private void activateFluidTickGuardFromRunBounds() {
-        if (world == null || metadata == null) {
+    private void loadMetadata() {
+        String runId = requestedRunId;
+        if (runId == null || runId.isBlank()) {
+            runId = UndoPaths.findLatestUsableRunIdOrNull();
+        }
+
+        if (runId == null || runId.isBlank()) {
+            send("No undo history found.");
+            stage = Stage.DONE;
             return;
         }
 
-        Path resolvedRunDir = (runDir != null) ? runDir : UndoPaths.runDir(metadata.runId());
-        Path stateFile = ConstructStatePaths.stateFile(resolvedRunDir);
+        runDir = UndoPaths.runDir(runId);
+        Path metadataFile = UndoPaths.metadataFile(runDir);
+        if (!Files.exists(metadataFile)) {
+            send("Undo metadata not found for run: " + runId);
+            stage = Stage.DONE;
+            return;
+        }
+
+        try {
+            metadata = UndoMetadataIO.read(metadataFile);
+        } catch (Exception e) {
+            send("Failed to read undo metadata: " + rootMessage(e));
+            stage = Stage.DONE;
+            return;
+        }
+
+        world = server.getWorld(net.minecraft.registry.RegistryKey.of(
+            net.minecraft.registry.RegistryKeys.WORLD,
+            Identifier.of(metadata.dimension())
+        ));
+        if (world == null) {
+            send("World not loaded for dimension: " + metadata.dimension());
+            stage = Stage.DONE;
+            return;
+        }
+
+        String expectedUndoFileName = UndoPaths.constructUndoFile(runDir).getFileName().toString();
+        if (metadata.undoFiles() == null
+            || metadata.undoFiles().size() != 1
+            || !expectedUndoFileName.equals(metadata.undoFiles().getFirst())) {
+            send("Invalid undo metadata for single-pass mode. Expected exactly one undo file: " + expectedUndoFileName);
+            stage = Stage.DONE;
+            return;
+        }
+        undoFile = runDir.resolve(expectedUndoFileName);
+        if (!Files.exists(undoFile)) {
+            send("Undo file not found for run: " + expectedUndoFileName);
+            stage = Stage.DONE;
+            return;
+        }
+        passIndex = 0;
+        protectionUnregistered = false;
+
+        loadUndoBoundsFromRunState();
+
+        send(String.format(Locale.ROOT,
+            "Undo run '%s' in %s (%d undo file(s)).",
+            metadata.runId(), metadata.dimension(), 1
+        ));
+
+        stage = Stage.LOAD_UNDO_ASYNC;
+    }
+
+    private void loadUndoAsync() {
+        if (metadata == null || world == null) {
+            stage = Stage.DONE;
+            return;
+        }
+
+        if (passIndex < 0) {
+            if (pendingDelete == null) {
+                unregisterProtectionOnce();
+                send("Undo complete. Removing undo history for run '" + metadata.runId() + "'...");
+                pendingDelete = CompletableFuture.runAsync(this::deleteUndoRunInternal, ioExecutor);
+                stage = Stage.DELETE_RUN_ASYNC;
+            }
+            return;
+        }
+
+        if (loadedUndoData != null) {
+            if (!undoPreflightDone) {
+                runUndoPreflight(loadedUndoData);
+                undoPreflightDone = true;
+            }
+
+            if (loadedChunkPlan == null && pendingChunkPlan == null) {
+                UndoFileFormat.UndoDataIndexed data = loadedUndoData;
+                pendingChunkPlan = CompletableFuture.supplyAsync(() -> buildUndoChunkPlan(data), ioExecutor);
+                return;
+            }
+
+            if (loadedChunkPlan == null) {
+                if (!pendingChunkPlan.isDone()) {
+                    return;
+                }
+
+                try {
+                    loadedChunkPlan = pendingChunkPlan.join();
+                } catch (Exception e) {
+                    send("Failed to prepare target chunks for undo pass: " + rootMessage(e));
+                    pendingChunkPlan = null;
+                    stage = Stage.DONE;
+                    return;
+                }
+                pendingChunkPlan = null;
+            }
+
+            if (!loadedChunkPlan.missingChunks.isEmpty()) {
+                send("Preparing " + loadedChunkPlan.missingChunks.size() + " missing chunk(s) for undo pass");
+                chunkPrepStartedAtNanos = System.nanoTime();
+                chunkPrepExpectedMissingCount = loadedChunkPlan.missingChunks.size();
+                chunkPrepStatusLogTicks = 0;
+                chunkGenerationScheduler.reset(loadedChunkPlan.missingChunks);
+                chunkPrepObservedLoadedKeys.clear();
+                setUnloadChunkKeys(Set.of());
+                pendingMissingAfterUnload = null;
+                stage = Stage.PREPARE_MISSING_CHUNKS;
+                return;
+            }
+
+            ejectPlayersFromBounds(loadedUndoData.minX(), loadedUndoData.minY(), loadedUndoData.minZ(), loadedUndoData.maxX(), loadedUndoData.maxY(), loadedUndoData.maxZ());
+            setUnloadChunkKeys(loadedChunkPlan.targetChunkKeys);
+            pendingMissingAfterUnload = null;
+            int loadedTargetChunks = countLoadedTargetChunks(unloadChunkKeys);
+            if (loadedTargetChunks > 0) {
+                send("Waiting for " + loadedTargetChunks + " target chunk(s) to unload before undo pass");
+                stage = Stage.WAIT_FOR_TARGET_CHUNKS_UNLOAD;
+                return;
+            }
+
+            UndoFileFormat.UndoDataIndexed dataToApply = loadedUndoData;
+            send("Applying undo pass");
+            pendingApply = CompletableFuture.runAsync(() -> {
+                long startedAt = System.nanoTime();
+                AtlantisMod.LOGGER.info("[undo:{}] apply start pass thread={}", getRunId(), Thread.currentThread().getName());
+                UndoApplyStats stats = applyUndoPass(dataToApply);
+                long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000L;
+                AtlantisMod.LOGGER.info("[undo:{}] apply done pass elapsed={}ms chunks={} writes={}", getRunId(), elapsedMs, stats.chunkCount, stats.writeCount);
+            }, ioExecutor);
+            stage = Stage.APPLY_UNDO_ASYNC;
+            return;
+        }
+
+        if (!Files.exists(undoFile)) {
+            send("Undo file missing during run: " + undoFile.getFileName());
+            stage = Stage.DONE;
+            return;
+        }
+
+        if (pendingUndoData == null) {
+            Path fileToLoad = undoFile;
+            send("Loading undo file " + fileToLoad.getFileName());
+            pendingUndoData = CompletableFuture.supplyAsync(() -> {
+                try {
+                    return UndoFileFormat.readIndexed(fileToLoad);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }, ioExecutor);
+            return;
+        }
+
+        if (!pendingUndoData.isDone()) {
+            return;
+        }
+
+        UndoFileFormat.UndoDataIndexed undoData;
+        try {
+            undoData = pendingUndoData.join();
+        } catch (Exception e) {
+            send("Failed to read undo file: " + rootMessage(e));
+            pendingUndoData = null;
+            stage = Stage.DONE;
+            return;
+        }
+        pendingUndoData = null;
+
+        if (!metadata.dimension().equals(undoData.dimension())) {
+            send("Undo file dimension mismatch.");
+            stage = Stage.DONE;
+            return;
+        }
+
+        loadedUndoData = undoData;
+        undoPreflightDone = false;
+        stage = Stage.LOAD_UNDO_ASYNC;
+    }
+
+    private void prepareMissingChunks() {
+        if (loadedUndoData == null || loadedChunkPlan == null || world == null) {
+            stage = Stage.LOAD_UNDO_ASYNC;
+            return;
+        }
+
+        ejectPlayersFromBounds(loadedUndoData.minX(), loadedUndoData.minY(), loadedUndoData.minZ(), loadedUndoData.maxX(), loadedUndoData.maxY(), loadedUndoData.maxZ());
+
+        boolean prepDone = chunkGenerationScheduler.tickGenerate(world, CHUNK_PREP_BUDGET_PER_TICK);
+        Set<Long> observedLoadedNow = chunkGenerationScheduler.consumeObservedLoadedChunkKeys();
+        if (!observedLoadedNow.isEmpty()) {
+            chunkPrepObservedLoadedKeys.addAll(observedLoadedNow);
+        }
+
+        Set<Long> recentlyGeneratedNow = chunkGenerationScheduler.consumeRecentlyGeneratedChunkKeys();
+        Set<Long> immediateUnloadKeys = mergeChunkKeySets(recentlyGeneratedNow, observedLoadedNow);
+        if (!immediateUnloadKeys.isEmpty()) {
+            markLoadedTargetChunksNeedSaving(immediateUnloadKeys);
+            forceUnloadChunkKeysNow(immediateUnloadKeys);
+        }
+
+        if (!prepDone) {
+            chunkPrepStatusLogTicks++;
+            if (chunkPrepStatusLogTicks % 20 == 0) {
+                long elapsedMs = (System.nanoTime() - chunkPrepStartedAtNanos) / 1_000_000L;
+                send("Undo chunk prep running: elapsed=" + elapsedMs + "ms, pending=" + chunkGenerationScheduler.pendingCount() + ", active=" + chunkGenerationScheduler.activeCount());
+            }
+            return;
+        }
+
+        long elapsedMs = (System.nanoTime() - chunkPrepStartedAtNanos) / 1_000_000L;
+        send("Undo chunk prep complete: requested=" + chunkPrepExpectedMissingCount + ", elapsed=" + elapsedMs + "ms");
+
+        setUnloadChunkKeys(mergeChunkKeySets(loadedChunkPlan.targetChunkKeys, chunkPrepObservedLoadedKeys));
+        chunkPrepObservedLoadedKeys.clear();
+        pendingMissingAfterUnload = null;
+        send("Undo chunk prep unload set prepared: targetChunks=" + loadedChunkPlan.targetChunkKeys.size() + ", unloadSet=" + unloadChunkKeys.size());
+
+        // Non-blocking path: mark loaded targets dirty and verify NBT after unload.
+        markLoadedTargetChunksNeedSaving(loadedChunkPlan.targetChunkKeys);
+        send("Undo chunk prep save pass skipped (non-blocking); will verify after unload");
+
+        chunkGenerationScheduler.releaseTickets(world);
+        stage = Stage.WAIT_FOR_TARGET_CHUNKS_UNLOAD;
+    }
+
+    private void waitForTargetChunksUnload() {
+        if (loadedUndoData == null) {
+            stage = Stage.LOAD_UNDO_ASYNC;
+            return;
+        }
+
+        ejectPlayersFromBounds(loadedUndoData.minX(), loadedUndoData.minY(), loadedUndoData.minZ(), loadedUndoData.maxX(), loadedUndoData.maxY(), loadedUndoData.maxZ());
+
+        int loadedTargetChunks = loadedChunkPlan != null
+            ? countLoadedTargetChunks(unloadChunkKeys)
+            : 0;
+        if (loadedTargetChunks > 0) {
+            unloadWaitTicks++;
+            if (unloadWaitTicks % UNLOAD_FORCE_INTERVAL_TICKS == 0) {
+                forceUnloadTargetChunks(unloadChunkKeys);
+            }
+            if (unloadWaitTicks % UNLOAD_STATUS_LOG_INTERVAL_TICKS == 0) {
+                send("Undo unload wait running: loadedChunks=" + loadedTargetChunks + ", unloadSet=" + unloadChunkKeys.size() + ", waitTicks=" + unloadWaitTicks);
+            }
+            return;
+        }
+        unloadWaitTicks = 0;
+
+        if (loadedChunkPlan != null) {
+            if (pendingMissingAfterUnload == null) {
+                Set<Long> keysToVerify = loadedChunkPlan.targetChunkKeys;
+                pendingMissingAfterUnload = CompletableFuture.supplyAsync(() -> findMissingChunkNbts(keysToVerify), ioExecutor);
+                return;
+            }
+
+            if (!pendingMissingAfterUnload.isDone()) {
+                return;
+            }
+
+            List<ChunkPos> missingAfterUnload;
+            try {
+                missingAfterUnload = pendingMissingAfterUnload.join();
+            } catch (Exception e) {
+                send("Undo chunk prep verify failed: " + rootMessage(e));
+                stage = Stage.DONE;
+                return;
+            } finally {
+                pendingMissingAfterUnload = null;
+            }
+
+            if (!missingAfterUnload.isEmpty()) {
+                send("Undo chunk prep failed: " + missingAfterUnload.size() + " chunk(s) still missing NBT after unload");
+                stage = Stage.DONE;
+                return;
+            }
+        }
+
+        UndoFileFormat.UndoDataIndexed dataToApply = loadedUndoData;
+        send("Applying undo pass");
+        pendingApply = CompletableFuture.runAsync(() -> {
+            long startedAt = System.nanoTime();
+            AtlantisMod.LOGGER.info("[undo:{}] apply start pass thread={}", getRunId(), Thread.currentThread().getName());
+            UndoApplyStats stats = applyUndoPass(dataToApply);
+            long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000L;
+            AtlantisMod.LOGGER.info("[undo:{}] apply done pass elapsed={}ms chunks={} writes={}", getRunId(), elapsedMs, stats.chunkCount, stats.writeCount);
+        }, ioExecutor);
+        stage = Stage.APPLY_UNDO_ASYNC;
+    }
+
+    private void applyUndoAsync() {
+        if (pendingApply == null) {
+            stage = Stage.LOAD_UNDO_ASYNC;
+            return;
+        }
+
+        if (!pendingApply.isDone()) {
+            if (loadedUndoData != null) {
+                ejectPlayersFromBounds(
+                    loadedUndoData.minX(),
+                    loadedUndoData.minY(),
+                    loadedUndoData.minZ(),
+                    loadedUndoData.maxX(),
+                    loadedUndoData.maxY(),
+                    loadedUndoData.maxZ()
+                );
+            }
+            return;
+        }
+
+        try {
+            pendingApply.join();
+        } catch (Exception e) {
+            send("Failed to apply undo pass: " + rootMessage(e));
+            AtlantisMod.LOGGER.error("Failed to apply undo pass", e);
+
+            pendingApply = null;
+            stage = Stage.WAIT_FOR_TARGET_CHUNKS_UNLOAD;
+            return;
+        }
+
+        pendingApply = null;
+        loadedUndoData = null;
+        loadedChunkPlan = null;
+        pendingChunkPlan = null;
+        undoPreflightDone = false;
+        unloadWaitTicks = 0;
+        setUnloadChunkKeys(Set.of());
+        pendingMissingAfterUnload = null;
+
+        Path finishedUndoFile = undoFile;
+        try {
+            Files.deleteIfExists(finishedUndoFile);
+        } catch (Exception ignored) {
+        }
+
+        passIndex = -1;
+        stage = Stage.DELETE_RUN_ASYNC;
+    }
+
+    private void deleteRunAsync() {
+        if (pendingDelete == null) {
+            stage = Stage.DONE;
+            return;
+        }
+
+        if (!pendingDelete.isDone()) {
+            return;
+        }
+
+        try {
+            pendingDelete.join();
+        } catch (Exception ignored) {
+        }
+
+        pendingDelete = null;
+        stage = Stage.DONE;
+
+        releaseSpawnPauseIfNeeded();
+    }
+
+    @Override
+    public void onError(MinecraftServer server, Throwable throwable) {
+        releaseChunkGenerationTickets();
+        releaseSpawnPauseIfNeeded();
+        AtlantisMod.LOGGER.error("Undo crashed", throwable);
+        send("Undo crashed: " + rootMessage(throwable));
+    }
+
+    @Override
+    public void onCancel(MinecraftServer server, String reason) {
+        releaseChunkGenerationTickets();
+        releaseSpawnPauseIfNeeded();
+        if (reason != null && !reason.isBlank()) {
+            send("Undo cancelled: " + reason);
+        } else {
+            send("Undo cancelled.");
+        }
+    }
+
+    private UndoApplyStats applyUndoPass(UndoFileFormat.UndoDataIndexed data) {
+        Map<Long, List<UndoPlacement>> byChunk = new HashMap<>();
+
+        int[] xs = data.xs();
+        int[] ys = data.ys();
+        int[] zs = data.zs();
+        int[] blockIdx = data.blockIdx();
+        int[] nbtIdx = data.nbtIdx();
+        String[] blocks = data.blocks();
+        String[] nbts = data.nbts();
+        int invalidBlockPaletteRefs = 0;
+        int nullBlockPaletteValues = 0;
+        int invalidNbtPaletteRefs = 0;
+
+        for (int i = 0; i < xs.length; i++) {
+            int x = xs[i];
+            int y = ys[i];
+            int z = zs[i];
+
+            String blockString = "minecraft:air";
+            int blockPaletteIndex = blockIdx[i];
+            if (blocks != null && blockPaletteIndex >= 0 && blockPaletteIndex < blocks.length) {
+                blockString = blocks[blockPaletteIndex];
+                if (blockString == null) {
+                    nullBlockPaletteValues++;
+                    blockString = "minecraft:air";
+                }
+            } else {
+                invalidBlockPaletteRefs++;
+            }
+
+            int nbtPaletteIndex = nbtIdx[i];
+            String nbtSnbt;
+            if (nbtPaletteIndex < 0) {
+                nbtSnbt = null;
+            } else if (nbts != null && nbtPaletteIndex < nbts.length) {
+                nbtSnbt = nbts[nbtPaletteIndex];
+            } else {
+                invalidNbtPaletteRefs++;
+                nbtSnbt = null;
+            }
+
+            long key = ChunkPos.toLong(x >> 4, z >> 4);
+            byChunk.computeIfAbsent(key, ignored -> new ArrayList<>())
+                .add(new UndoPlacement(x, y, z, blockString, nbtSnbt));
+        }
+
+        if (invalidBlockPaletteRefs > 0 || nullBlockPaletteValues > 0 || invalidNbtPaletteRefs > 0) {
+            AtlantisMod.LOGGER.warn(
+                "[undo:{}] normalized invalid undo palette entries: invalidBlockRefs={}, nullBlockValues={}, invalidNbtRefs={}",
+                getRunId(),
+                invalidBlockPaletteRefs,
+                nullBlockPaletteValues,
+                invalidNbtPaletteRefs
+            );
+        }
+
+        final int[] writeCount = new int[1];
+        for (Map.Entry<Long, List<UndoPlacement>> entry : byChunk.entrySet()) {
+            int chunkX = ChunkPos.getPackedX(entry.getKey());
+            int chunkZ = ChunkPos.getPackedZ(entry.getKey());
+            ChunkPos chunkPos = new ChunkPos(chunkX, chunkZ);
+
+            boolean mutated = UnloadedChunkNbtEditor.mutateChunk(world, chunkPos, context -> {
+                for (UndoPlacement placement : entry.getValue()) {
+                    context.setBlock(
+                        placement.x,
+                        placement.y,
+                        placement.z,
+                        placement.blockString,
+                        placement.blockEntitySnbt
+                    );
+                    writeCount[0]++;
+                }
+            });
+
+            if (!mutated) {
+                throw new IllegalStateException("Target chunk unavailable for unloaded mutate (loaded or missing NBT): " + chunkPos.x + "," + chunkPos.z);
+            }
+        }
+
+        return new UndoApplyStats(byChunk.size(), writeCount[0]);
+    }
+
+    private int countLoadedTargetChunks(Set<Long> targetChunkKeys) {
+        if (world == null || targetChunkKeys == null || targetChunkKeys.isEmpty()) {
+            return 0;
+        }
+
+        int loaded = 0;
+        for (long key : targetChunkKeys) {
+            int chunkX = ChunkPos.getPackedX(key);
+            int chunkZ = ChunkPos.getPackedZ(key);
+            if (world.getChunkManager().isChunkLoaded(chunkX, chunkZ)) {
+                loaded++;
+            }
+        }
+        return loaded;
+    }
+
+    private void markLoadedTargetChunksNeedSaving(Set<Long> targetChunkKeys) {
+        if (world == null || targetChunkKeys == null || targetChunkKeys.isEmpty()) {
+            return;
+        }
+
+        int saved = 0;
+        for (long key : targetChunkKeys) {
+            int chunkX = ChunkPos.getPackedX(key);
+            int chunkZ = ChunkPos.getPackedZ(key);
+            if (!world.getChunkManager().isChunkLoaded(chunkX, chunkZ)) {
+                continue;
+            }
+
+            ((ServerChunkManagerAccessor) world.getChunkManager().chunkLoadingManager).atlantis$markChunkNeedsSaving(new ChunkPos(chunkX, chunkZ));
+            saved++;
+        }
+
+        if (saved > 0) {
+            AtlantisMod.LOGGER.info("[undo:{}] requested immediate save for {} loaded target chunk(s).", getRunId(), saved);
+        }
+    }
+
+    private UndoChunkPlan buildUndoChunkPlan(UndoFileFormat.UndoDataIndexed data) {
+        Set<Long> targetChunkKeys = new java.util.HashSet<>();
+
+        int[] xs = data.xs();
+        int[] ys = data.ys();
+        int[] zs = data.zs();
+
+        for (int i = 0; i < xs.length; i++) {
+            int x = xs[i];
+            int y = ys[i];
+            int z = zs[i];
+
+            targetChunkKeys.add(ChunkPos.toLong(x >> 4, z >> 4));
+        }
+
+        List<ChunkPos> missingChunks = new ArrayList<>();
+        missingChunks.addAll(findMissingChunkNbts(targetChunkKeys));
+
+        return new UndoChunkPlan(Set.copyOf(targetChunkKeys), List.copyOf(missingChunks));
+    }
+
+    private List<ChunkPos> findMissingChunkNbts(Set<Long> targetChunkKeys) {
+        List<ChunkPos> missingChunks = new ArrayList<>();
+        if (targetChunkKeys == null || targetChunkKeys.isEmpty()) {
+            return missingChunks;
+        }
+
+        for (long key : targetChunkKeys) {
+            ChunkPos chunkPos = new ChunkPos(ChunkPos.getPackedX(key), ChunkPos.getPackedZ(key));
+            if (!UnloadedChunkNbtEditor.hasChunkNbt(world, chunkPos)) {
+                missingChunks.add(chunkPos);
+            }
+        }
+        return missingChunks;
+    }
+
+    private void releaseChunkGenerationTickets() {
+        if (world == null) {
+            return;
+        }
+        try {
+            chunkGenerationScheduler.releaseTickets(world);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void setUnloadChunkKeys(Set<Long> keys) {
+        if (keys == null || keys.isEmpty()) {
+            unloadChunkKeys = Set.of();
+            unloadChunkKeysArray = new long[0];
+            unloadChunkKeysCursor = 0;
+            return;
+        }
+
+        unloadChunkKeys = Set.copyOf(keys);
+        unloadChunkKeysArray = unloadChunkKeys.stream().mapToLong(Long::longValue).toArray();
+        unloadChunkKeysCursor = 0;
+    }
+
+    private void forceUnloadTargetChunks(Set<Long> targetChunkKeys) {
+        if (world == null || targetChunkKeys == null || targetChunkKeys.isEmpty()) {
+            return;
+        }
+
+        if (unloadChunkKeysArray.length == 0) {
+            // Fallback: should normally be kept in sync via setUnloadChunkKeys().
+            setUnloadChunkKeys(targetChunkKeys);
+        }
+
+        int budget = Math.min(UNLOAD_FORCE_CHUNK_BUDGET, unloadChunkKeysArray.length);
+        for (int i = 0; i < budget; i++) {
+            int idx = unloadChunkKeysCursor++;
+            if (idx < 0) {
+                idx = 0;
+                unloadChunkKeysCursor = 1;
+            }
+
+            long key = unloadChunkKeysArray[idx % unloadChunkKeysArray.length];
+            int chunkX = ChunkPos.getPackedX(key);
+            int chunkZ = ChunkPos.getPackedZ(key);
+
+            world.setChunkForced(chunkX, chunkZ, false);
+
+            ChunkPos pos = new ChunkPos(chunkX, chunkZ);
+            for (ChunkTicketType ticketType : DISCOVERED_TICKET_TYPES) {
+                for (int level = MIN_TICKET_LEVEL; level <= MAX_TICKET_LEVEL; level++) {
+                    try {
+                        world.getChunkManager().removeTicket(ticketType, pos, level);
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+        }
+    }
+
+    private void forceUnloadChunkKeysNow(Set<Long> chunkKeys) {
+        if (world == null || chunkKeys == null || chunkKeys.isEmpty()) {
+            return;
+        }
+
+        for (long key : chunkKeys) {
+            int chunkX = ChunkPos.getPackedX(key);
+            int chunkZ = ChunkPos.getPackedZ(key);
+
+            world.setChunkForced(chunkX, chunkZ, false);
+
+            ChunkPos pos = new ChunkPos(chunkX, chunkZ);
+            for (ChunkTicketType ticketType : DISCOVERED_TICKET_TYPES) {
+                for (int level = MIN_TICKET_LEVEL; level <= MAX_TICKET_LEVEL; level++) {
+                    try {
+                        world.getChunkManager().removeTicket(ticketType, pos, level);
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+        }
+    }
+
+    private static List<ChunkTicketType> discoverChunkTicketTypes() {
+        List<ChunkTicketType> types = new ArrayList<>();
+        for (Field field : ChunkTicketType.class.getDeclaredFields()) {
+            if (!Modifier.isStatic(field.getModifiers())) {
+                continue;
+            }
+            if (!ChunkTicketType.class.isAssignableFrom(field.getType())) {
+                continue;
+            }
+            try {
+                field.setAccessible(true);
+                Object value = field.get(null);
+                if (value instanceof ChunkTicketType ticketType) {
+                    types.add(ticketType);
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
+        AtlantisMod.LOGGER.info("[undo] discovered {} chunk ticket type(s) for unload forcing.", types.size());
+        return List.copyOf(types);
+    }
+
+    private void loadUndoBoundsFromRunState() {
+        if (runDir == null) {
+            return;
+        }
+
+        Path stateFile = ConstructStatePaths.stateFile(runDir);
         if (!Files.exists(stateFile)) {
             return;
         }
 
         try {
             ConstructRunState state = ConstructRunStateIO.read(stateFile);
-            if (!metadata.dimension().equals(state.dimension())) {
+            if (state.overallMinX() == null || state.overallMinY() == null || state.overallMinZ() == null
+                || state.overallMaxX() == null || state.overallMaxY() == null || state.overallMaxZ() == null) {
                 return;
             }
 
-            Integer minX = state.overallMinX();
-            Integer minY = state.overallMinY();
-            Integer minZ = state.overallMinZ();
-            Integer maxX = state.overallMaxX();
-            Integer maxY = state.overallMaxY();
-            Integer maxZ = state.overallMaxZ();
-            if (minX == null || minY == null || minZ == null || maxX == null || maxY == null || maxZ == null) {
-                return;
-            }
-
-            UndoFluidTickGuard.INSTANCE.activate(
-                world.getRegistryKey().getValue().toString(),
-                minX,
-                minY,
-                minZ,
-                maxX,
-                maxY,
-                maxZ
-            );
-            fluidTickGuardActive = true;
-            fluidTickGuardUsingRunBounds = true;
-            AtlantisMod.LOGGER.info(
-                "Undo fluid guard active (run bounds): dim={} x=[{}..{}] y=[{}..{}] z=[{}..{}]",
-                world.getRegistryKey().getValue(),
-                Math.min(minX, maxX),
-                Math.max(minX, maxX),
-                Math.min(minY, maxY),
-                Math.max(minY, maxY),
-                Math.min(minZ, maxZ),
-                Math.max(minZ, maxZ)
-            );
-        } catch (Exception e) {
-            AtlantisMod.LOGGER.warn("Failed to activate undo fluid tick guard from run state {}: {}", stateFile, e.getMessage());
+            undoMinX = state.overallMinX();
+            undoMinY = state.overallMinY();
+            undoMinZ = state.overallMinZ();
+            undoMaxX = state.overallMaxX();
+            undoMaxY = state.overallMaxY();
+            undoMaxZ = state.overallMaxZ();
+        } catch (Exception ignored) {
         }
     }
 
-    private void updateFluidTickGuardFromSliceBoundsIfNeeded() {
-        if (fluidTickGuardUsingRunBounds || world == null || currentSlice == null) {
+    private void ejectPlayersFromBounds(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
+        if (world == null) {
             return;
         }
 
-        UndoFluidTickGuard.INSTANCE.activate(
+        int configuredMargin = Math.max(0, config.playerEjectMarginBlocks());
+        int viewDistanceChunks = server.getPlayerManager().getViewDistance();
+        int simulationDistanceChunks = server.getPlayerManager().getSimulationDistance();
+        int chunkLoadRadiusBlocks = Math.max(viewDistanceChunks, simulationDistanceChunks) * 16;
+        int margin = Math.max(configuredMargin, chunkLoadRadiusBlocks + 32);
+        int offset = Math.max(64, config.playerEjectTeleportOffsetBlocks() + chunkLoadRadiusBlocks);
+
+        Box box = new Box(
+            minX - margin,
+            minY - margin,
+            minZ - margin,
+            maxX + margin + 1,
+            maxY + margin + 1,
+            maxZ + margin + 1
+        );
+
+        int ejectedCount = 0;
+        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+            if (player.getEntityWorld() != world) {
+                continue;
+            }
+            if (!box.contains(player.getX(), player.getY(), player.getZ())) {
+                continue;
+            }
+
+            double px = player.getX();
+            double pz = player.getZ();
+            double dxLeft = Math.abs(px - minX);
+            double dxRight = Math.abs(px - maxX);
+            double dzFront = Math.abs(pz - minZ);
+            double dzBack = Math.abs(pz - maxZ);
+
+            double best = dxLeft;
+            int tx = minX - margin - offset;
+            int tz = (int) Math.floor(pz);
+
+            if (dxRight < best) {
+                best = dxRight;
+                tx = maxX + margin + offset;
+                tz = (int) Math.floor(pz);
+            }
+            if (dzFront < best) {
+                best = dzFront;
+                tx = (int) Math.floor(px);
+                tz = minZ - margin - offset;
+            }
+            if (dzBack < best) {
+                tx = (int) Math.floor(px);
+                tz = maxZ + margin + offset;
+            }
+
+            int safeY = Math.max(world.getBottomY() + 1, player.getBlockY());
+            BlockPos target = new BlockPos(tx, safeY, tz);
+
+            player.teleport(
+                world,
+                target.getX() + 0.5,
+                target.getY(),
+                target.getZ() + 0.5,
+                Set.of(PositionFlag.DELTA_X, PositionFlag.DELTA_Y, PositionFlag.DELTA_Z),
+                player.getYaw(),
+                player.getPitch(),
+                true
+            );
+            ejectedCount++;
+        }
+
+        if (ejectedCount > 0) {
+            AtlantisMod.LOGGER.info("[undo:{}] ejected {} player(s) from keepout (margin={} offset={} view={} sim={})",
+                getRunId(),
+                ejectedCount,
+                margin,
+                offset,
+                viewDistanceChunks,
+                simulationDistanceChunks
+            );
+        }
+    }
+
+    private void unregisterProtectionOnce() {
+        if (protectionUnregistered || metadata == null) {
+            return;
+        }
+        ProtectionManager.INSTANCE.unregister(metadata.runId());
+        ProtectionManager.INSTANCE.flushPendingIndexJobs();
+        protectionUnregistered = true;
+    }
+
+    private void deleteUndoRunInternal() {
+        unregisterProtectionOnce();
+        if (runDir == null || !Files.exists(runDir)) {
+            send("Undo complete.");
+            return;
+        }
+
+        try {
+            try (var walk = Files.walk(runDir)) {
+                walk.sorted((a, b) -> b.compareTo(a)).forEach(path -> {
+                    try {
+                        Files.deleteIfExists(path);
+                    } catch (Exception ignored) {
+                    }
+                });
+            }
+            UndoPaths.pruneUnusableRunDirectories();
+            send("Undo complete.");
+        } catch (Exception e) {
+            AtlantisMod.LOGGER.warn("Failed to delete undo run directory {}: {}", runDir, e.getMessage());
+            send("Undo complete, but could not delete undo history folder.");
+        }
+    }
+
+    private void runUndoPreflight(UndoFileFormat.UndoDataIndexed undoData) {
+        if (world == null || undoData == null) {
+            return;
+        }
+
+        int minX = (undoMinX != null) ? undoMinX : undoData.minX();
+        int minY = (undoMinY != null) ? undoMinY : undoData.minY();
+        int minZ = (undoMinZ != null) ? undoMinZ : undoData.minZ();
+        int maxX = (undoMaxX != null) ? undoMaxX : undoData.maxX();
+        int maxY = (undoMaxY != null) ? undoMaxY : undoData.maxY();
+        int maxZ = (undoMaxZ != null) ? undoMaxZ : undoData.maxZ();
+
+        acquireSpawnPauseIfNeeded();
+
+        ActiveConstructBounds bounds = new ActiveConstructBounds(
+            getRunId() == null ? "undo" : getRunId(),
             world.getRegistryKey().getValue().toString(),
-            currentSlice.minX(),
-            currentSlice.minY(),
-            currentSlice.minZ(),
-            currentSlice.maxX(),
-            currentSlice.maxY(),
-            currentSlice.maxZ()
+            minX,
+            minY,
+            minZ,
+            maxX,
+            maxY,
+            maxZ
         );
-        fluidTickGuardActive = true;
-        AtlantisMod.LOGGER.info(
-            "Undo fluid guard active (slice bounds): dim={} x=[{}..{}] y=[{}..{}] z=[{}..{}]",
-            world.getRegistryKey().getValue(),
-            Math.min(currentSlice.minX(), currentSlice.maxX()),
-            Math.max(currentSlice.minX(), currentSlice.maxX()),
-            Math.min(currentSlice.minY(), currentSlice.maxY()),
-            Math.max(currentSlice.minY(), currentSlice.maxY()),
-            Math.min(currentSlice.minZ(), currentSlice.maxZ()),
-            Math.max(currentSlice.minZ(), currentSlice.maxZ())
-        );
+        ProximityMobManager.getInstance().clearWithinBounds(world, bounds);
+        send("Undo preflight: custom spawning paused and Atlantis mobs cleared in bounds.");
+
+        ejectPlayersFromBounds(minX, minY, minZ, maxX, maxY, maxZ);
+        forceReleaseChunksInBounds(minX, minZ, maxX, maxZ);
     }
 
-    private void deactivateFluidTickGuard() {
-        if (!fluidTickGuardActive) {
+    private void forceReleaseChunksInBounds(int minX, int minZ, int maxX, int maxZ) {
+        if (world == null) {
             return;
         }
 
-        UndoFluidTickGuard.INSTANCE.clear();
-        fluidTickGuardActive = false;
-        fluidTickGuardUsingRunBounds = false;
-        AtlantisMod.LOGGER.info("Undo fluid guard cleared.");
-    }
-
-    private void updateAdaptiveWorkScale(long tickStartNanos) {
-        if (lastTickStartNanos <= 0L) {
-            lastTickStartNanos = tickStartNanos;
-            return;
-        }
-
-        long expectedTickNanos = Math.max(1L, config.expectedTickNanos());
-        long observedTickNanos = tickStartNanos - lastTickStartNanos;
-        lastTickStartNanos = tickStartNanos;
-
-        if (observedTickNanos <= 0L) {
-            return;
-        }
-
-        double rawScale = (double) expectedTickNanos / (double) observedTickNanos;
-        rawScale = clamp(rawScale, config.adaptiveScaleMin(), config.adaptiveScaleMax());
-
-        double smoothing = clamp(config.adaptiveScaleSmoothing(), 0.0d, 1.0d);
-        adaptiveWorkScale = adaptiveWorkScale + ((rawScale - adaptiveWorkScale) * smoothing);
-        adaptiveWorkScale = clamp(adaptiveWorkScale, config.adaptiveScaleMin(), config.adaptiveScaleMax());
-    }
-
-    private long scaledBudget(long baseBudgetNanos) {
-        long safeBase = Math.max(250_000L, baseBudgetNanos);
-        return Math.max(250_000L, Math.round(safeBase * adaptiveWorkScale));
-    }
-
-    private int scaledCap(int basePerTick) {
-        if (basePerTick <= 0) {
-            return basePerTick;
-        }
-        return Math.max(1, (int) Math.round(basePerTick * adaptiveWorkScale));
-    }
-
-    private int scaledPositiveCap(int basePerTick) {
-        return Math.max(1, scaledCap(basePerTick));
-    }
-
-    private static double clamp(double value, double min, double max) {
-        if (min > max) {
-            return value;
-        }
-        if (value < min) {
-            return min;
-        }
-        if (value > max) {
-            return max;
-        }
-        return value;
-    }
-
-    @Override
-    public void onError(MinecraftServer server, Throwable throwable) {
-        send("Undo crashed: " + throwable.getClass().getSimpleName() + ": " + (throwable.getMessage() != null ? throwable.getMessage() : "(no message)"));
-        AtlantisMod.LOGGER.error("Undo crashed", throwable);
-
-        // Best-effort cleanup
-        closeEditSession();
-        releaseChunkTickets();
-        deactivateFluidTickGuard();
-    }
-
-    @Override
-    public void onCancel(MinecraftServer server, String reason) {
-        send("Undo cancelled" + (reason != null && !reason.isBlank() ? (": " + reason) : "."));
-        closeEditSession();
-        releaseChunkTickets();
-        deactivateFluidTickGuard();
-    }
-
-    private void releaseChunkTickets() {
-        if (world == null || chunkTicketKeys.isEmpty()) {
-            activeChunkLoads.clear();
-            chunkTicketKeys.clear();
-            return;
-        }
-
-        int ticketCount = chunkTicketKeys.size();
-
-        try {
-            for (long key : chunkTicketKeys) {
-                int cx = ChunkPos.getPackedX(key);
-                int cz = ChunkPos.getPackedZ(key);
-                world.getChunkManager().removeTicket(PRELOAD_TICKET_TYPE, new ChunkPos(cx, cz), PRELOAD_TICKET_LEVEL);
-            }
-        } catch (Exception e) {
-            AtlantisMod.LOGGER.warn("Failed to release undo chunk tickets: {}", e.getMessage());
-        } finally {
-            if (com.silver.atlantis.spawn.SpawnMobConfig.DIAGNOSTIC_LOGS) {
-                AtlantisMod.LOGGER.info(
-                    "[UndoTickets] runId={} released={} remainingActiveLoadsBeforeClear={}",
-                    runId,
-                    ticketCount,
-                    activeChunkLoads.size()
-                );
-            }
-            activeChunkLoads.clear();
-            chunkTicketKeys.clear();
-        }
-    }
-
-    private BaseBlock parseBlockString(String blockString) {
-        // Legacy undo entries may have been recorded via `BaseBlock.getAsString()` which can
-        // include inline NBT (e.g. `{components:{}}`). WorldEdit's block parser does not accept
-        // that format, and we store NBT separately anyway.
-        String sanitized = blockString;
-        int nbtStart = sanitized.indexOf('{');
-        if (nbtStart >= 0) {
-            sanitized = sanitized.substring(0, nbtStart).trim();
-        }
-
-        BaseBlock cached = parsedBlockStringCache.get(sanitized);
-        if (cached != null) {
-            return cached;
-        }
-
-        BaseBlock base;
-        try {
-            base = WorldEdit.getInstance().getBlockFactory().parseFromInput(sanitized, parserContext);
-        } catch (InputParseException e) {
-            AtlantisMod.LOGGER.warn("Failed to parse undo block '{}': {}", sanitized, e.getMessage());
-            return null;
-        }
-
-        parsedBlockStringCache.put(sanitized, base);
-        return base;
-    }
-
-    private void deleteCurrentSliceFileAsync() {
-        Path file = currentSliceFile;
-        currentSliceFile = null;
-        if (file == null) {
-            return;
-        }
-
-        CompletableFuture.runAsync(() -> {
-            try {
-                Files.deleteIfExists(file);
-            } catch (Exception e) {
-                AtlantisMod.LOGGER.warn("Failed to delete undo slice file {}: {}", file, e.getMessage());
-            }
-        }, ioExecutor);
-    }
-
-    private LinCompoundTag parseNbt(String nbtSnbt) {
-        if (nbtSnbt == null || nbtSnbt.isBlank()) {
-            return null;
-        }
-
-        String raw = nbtSnbt.trim();
-
-        // Some legacy strings may have been persisted as a quoted SNBT payload.
-        String unquoted = raw;
-        if ((unquoted.startsWith("\"") && unquoted.endsWith("\""))
-            || (unquoted.startsWith("'") && unquoted.endsWith("'"))) {
-            if (unquoted.length() >= 2) {
-                unquoted = unquoted.substring(1, unquoted.length() - 1);
-            }
-        }
-        unquoted = unquoted.trim();
-
-        // Common case: many vanilla block-entity NBTs include an empty `components:{}` field.
-        // Some SNBT parsers are picky about it, and it's redundant when empty.
-        // Remove only the *empty* form to avoid changing real data.
-        if (unquoted.contains("components:{}")) {
-            String cleaned = unquoted
-                .replace(",components:{}", "")
-                .replace("components:{},", "")
-                .replace("components:{}", "");
-
-            // Cleanup a possible trailing comma left behind.
-            cleaned = cleaned.replaceAll(",\s*}", "}");
-            unquoted = cleaned.trim();
-        }
-
-        // Candidate strings to try, in order.
-        // - If it already looks like a compound, parse directly.
-        // - If it looks like a compound *body* (e.g. "Items:[...]"), wrap with braces.
-        // - If it's a list root (starts with '['), we can't apply it as a block-entity compound.
-        //
-        // NOTE: Some SNBT emitters use single quotes around strings; LinTagReader is stricter in
-        // some cases, so we also try a conservative single-quote -> double-quote variant.
-        String candidate0;
-        String candidate1;
-        if (unquoted.startsWith("{")) {
-            candidate0 = unquoted;
-            candidate1 = unquoted.replace('\'', '"');
-        } else if (unquoted.startsWith("[")) {
-            // Not a compound root; ignore.
-            candidate0 = null;
-            candidate1 = null;
-        } else {
-            candidate0 = "{" + unquoted + "}";
-            candidate1 = candidate0.replace('\'', '"');
-        }
-
-        String[] candidates;
-        if (candidate0 == null) {
-            candidates = new String[] { };
-        } else if (candidate0.equals(candidate1)) {
-            candidates = new String[] { candidate0 };
-        } else {
-            candidates = new String[] { candidate0, candidate1 };
-        }
-
-        for (String candidate : candidates) {
-            LinCompoundTag cached = parsedNbtCache.get(candidate);
-            if (cached != null) {
-                return cached;
-            }
-
-            try {
-                LinCompoundTag tag = LinTagReader.readCompound(LinStringIO.readFromString(candidate));
-                parsedNbtCache.put(candidate, tag);
-                return tag;
-            } catch (Exception ignored) {
-                // Try next candidate.
-            }
-        }
-
-        // Log once per *normalized* key (prevents log spam when the only differences are seeds, etc.).
-        String logKey = normalizeBadNbtKey(raw);
-        if (badNbtLogged.add(logKey)) {
-            String preview = raw;
-            if (preview.length() > 220) {
-                preview = preview.substring(0, 220) + "...";
-            }
-            AtlantisMod.LOGGER.warn("Failed to parse undo NBT (len={}): preview='{}'", raw.length(), preview);
-        }
-        return null;
-    }
-
-    private static String normalizeBadNbtKey(String raw) {
-        // Try to group by common stable fields so we don't spam logs for different LootTableSeed values.
-        String s = raw;
-
-        // Collapse digits to reduce uniqueness.
-        s = s.replaceAll("[0-9]+", "#");
-
-        // Prefer block entity id if present.
-        int idIdx = s.indexOf("id:");
-        if (idIdx >= 0) {
-            int end = Math.min(s.length(), idIdx + 64);
-            return "id=" + s.substring(idIdx, end);
-        }
-
-        // Prefer loot table id if present.
-        int lootIdx = s.indexOf("LootTable:");
-        if (lootIdx >= 0) {
-            int end = Math.min(s.length(), lootIdx + 96);
-            return "loot=" + s.substring(lootIdx, end);
-        }
-
-        // Fallback to a short prefix.
-        if (s.length() > 96) {
-            s = s.substring(0, 96);
-        }
-        return s;
-    }
-
-    private static final class SystemActor implements Actor {
-
-        private static final SessionKey SESSION_KEY = new SessionKey() {
-            private final UUID id = UUID.nameUUIDFromBytes("Atlantis-Construct-Undo".getBytes());
-
-            @Override
-            public UUID getUniqueId() {
-                return id;
-            }
-
-            @Override
-            public String getName() {
-                return "AtlantisUndo";
-            }
-
-            @Override
-            public boolean isActive() {
-                return true;
-            }
-
-            @Override
-            public boolean isPersistent() {
-                return false;
-            }
-        };
-
-        @Override
-        public UUID getUniqueId() {
-            return SESSION_KEY.getUniqueId();
-        }
-
-        @Override
-        public SessionKey getSessionKey() {
-            return SESSION_KEY;
-        }
-
-        @Override
-        public String getName() {
-            return "AtlantisUndo";
-        }
-
-        @Override
-        public void printRaw(String msg) {
-        }
-
-        @Override
-        public void printDebug(String msg) {
-        }
-
-        @Override
-        public void print(String msg) {
-        }
-
-        @Override
-        public void printError(String msg) {
-        }
-
-        @Override
-        public void print(com.sk89q.worldedit.util.formatting.text.Component component) {
-        }
-
-        @Override
-        public boolean canDestroyBedrock() {
-            return true;
-        }
-
-        @Override
-        public boolean isPlayer() {
-            return false;
-        }
-
-        @Override
-        public File openFileOpenDialog(String[] extensions) {
-            return null;
-        }
-
-        @Override
-        public File openFileSaveDialog(String[] extensions) {
-            return null;
-        }
-
-        @Override
-        public void dispatchCUIEvent(CUIEvent event) {
-        }
-
-        @Override
-        public Locale getLocale() {
-            return Locale.ROOT;
-        }
-
-        @Override
-        public String[] getGroups() {
-            return new String[0];
-        }
-
-        @Override
-        public void checkPermission(String permission) {
-        }
-
-        @Override
-        public boolean hasPermission(String permission) {
-            return true;
-        }
-    }
-
-    private void closeEditSession() {
-        if (editSession != null) {
-            long tFlush = 0;
-            long tCommit = 0;
-            long tClose = 0;
-            try {
-                long t0 = System.nanoTime();
-                editSession.flushSession();
-                tFlush = System.nanoTime() - t0;
-            } catch (Exception ignored) {
-            }
-            try {
-                long t0 = System.nanoTime();
-                editSession.commit();
-                tCommit = System.nanoTime() - t0;
-            } catch (Exception ignored) {
-            }
-            try {
-                long t0 = System.nanoTime();
-                editSession.close();
-                tClose = System.nanoTime() - t0;
-            } catch (Exception ignored) {
-            }
-
-            if (tFlush > SLOW_OP_NANOS || tCommit > SLOW_OP_NANOS || tClose > SLOW_OP_NANOS) {
-                maybeLogSlow(String.format(Locale.ROOT,
-                    "Undo closeEditSession slow: flush=%.1fms commit=%.1fms close=%.1fms (slice=%d/%d)",
-                    tFlush / 1_000_000.0,
-                    tCommit / 1_000_000.0,
-                    tClose / 1_000_000.0,
-                    (sliceIndex + 1),
-                    metadata != null ? metadata.sliceFiles().size() : -1
-                ));
-            }
-            editSession = null;
-        }
-    }
-
-    private void maybeLogSlow(String message) {
-        long now = System.nanoTime();
-        if (lastSlowLogNanos != 0 && (now - lastSlowLogNanos) < SLOW_LOG_COOLDOWN_NANOS) {
-            return;
-        }
-        lastSlowLogNanos = now;
-        AtlantisMod.LOGGER.warn(message);
-    }
-
-    private void flushUndo(boolean force, int totalEntriesInSlice) {
-        if (editSession == null) {
-            return;
-        }
-
-        // We always flush+commit as a pair. Even when not "force", this is only called
-        // on a block-count threshold, not every tick.
-        try {
-            long t0 = System.nanoTime();
-            editSession.flushSession();
-            long dt = System.nanoTime() - t0;
-            if (dt > SLOW_OP_NANOS) {
-                maybeLogSlow(String.format(Locale.ROOT,
-                    "Undo flushSession() slow: %.1fms (stage=%s pass=%s slice=%d/%d entry=%d/%d)",
-                    dt / 1_000_000.0,
-                    stage,
-                    applyPass,
-                    (sliceIndex + 1),
-                    metadata != null ? metadata.sliceFiles().size() : -1,
-                    entryIndex,
-                    totalEntriesInSlice
-                ));
-            }
-
-            long c0 = System.nanoTime();
-            editSession.commit();
-            long cdt = System.nanoTime() - c0;
-            if (cdt > SLOW_OP_NANOS) {
-                maybeLogSlow(String.format(Locale.ROOT,
-                    "Undo commit() slow: %.1fms (stage=%s pass=%s slice=%d/%d)%s",
-                    cdt / 1_000_000.0,
-                    stage,
-                    applyPass,
-                    (sliceIndex + 1),
-                    metadata != null ? metadata.sliceFiles().size() : -1,
-                    force ? " (force)" : ""
-                ));
-            }
-        } catch (Exception e) {
-            AtlantisMod.LOGGER.warn("Undo flush failed: {}", e.getMessage());
-        }
-    }
-
-    private record DeleteResult(boolean ok, String message) {}
-
-    private DeleteResult deleteUndoRunInternal() {
-        if (metadata == null) {
-            return new DeleteResult(false, "Failed to remove undo history: missing metadata.");
-        }
-
-        Path dir = (runDir != null) ? runDir : UndoPaths.runDir(metadata.runId());
-        try {
-            if (Files.exists(dir)) {
-                try (Stream<Path> walk = Files.walk(dir)) {
-                    walk.sorted(Comparator.reverseOrder()).forEach(p -> {
-                        try {
-                            Files.deleteIfExists(p);
-                        } catch (IOException e) {
-                            AtlantisMod.LOGGER.warn("Failed to delete undo path {}: {}", p, e.getMessage());
-                        }
-                    });
+        int minChunkX = minX >> 4;
+        int maxChunkX = maxX >> 4;
+        int minChunkZ = minZ >> 4;
+        int maxChunkZ = maxZ >> 4;
+
+        int total = 0;
+        int loadedBefore = 0;
+        for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+            for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
+                total++;
+                if (world.getChunkManager().isChunkLoaded(chunkX, chunkZ)) {
+                    loadedBefore++;
                 }
+                world.setChunkForced(chunkX, chunkZ, false);
             }
-
-            Path base = UndoPaths.undoBaseDir();
-            // Intentionally do not maintain a latest.txt pointer; undo history is discovered by scanning directories.
-
-            return new DeleteResult(true, "Undo history removed for run '" + metadata.runId() + "'.");
-        } catch (Exception e) {
-            AtlantisMod.LOGGER.warn("Failed to delete undo run {}: {}", metadata.runId(), e.getMessage());
-            return new DeleteResult(false, "Failed to remove undo history for run '" + metadata.runId() + "': " + e.getMessage());
         }
+
+        send("Undo preflight: force-release requested for " + total + " chunk(s), loadedBefore=" + loadedBefore);
+    }
+
+    private void acquireSpawnPauseIfNeeded() {
+        if (spawnPauseAcquired) {
+            return;
+        }
+        ProximityMobManager.getInstance().acquireExternalPause(spawnPauseToken());
+        spawnPauseAcquired = true;
+    }
+
+    private void releaseSpawnPauseIfNeeded() {
+        if (!spawnPauseAcquired) {
+            return;
+        }
+        ProximityMobManager.getInstance().releaseExternalPause(spawnPauseToken());
+        spawnPauseAcquired = false;
+    }
+
+    private String spawnPauseToken() {
+        String runId = getRunId();
+        if (runId == null || runId.isBlank()) {
+            runId = (requestedRunId == null || requestedRunId.isBlank()) ? "latest" : requestedRunId;
+        }
+        return "undo:" + runId;
     }
 
     private void send(String message) {
-        if (requesterId != null) {
+        AtlantisMod.LOGGER.info("[undo:{}] {}", getRunId(), message);
+
+        if (requesterId != null && server != null) {
             ServerPlayerEntity player = server.getPlayerManager().getPlayer(requesterId);
             if (player != null) {
                 player.sendMessage(Text.literal(message), false);
-                return;
             }
         }
+    }
 
-        AtlantisMod.LOGGER.info(message);
+    private static String rootMessage(Throwable throwable) {
+        Throwable root = throwable;
+        while (root.getCause() != null) {
+            root = root.getCause();
+        }
+        String msg = root.getMessage();
+        return (msg == null || msg.isBlank()) ? root.getClass().getSimpleName() : msg;
+    }
+
+    private static Set<Long> mergeChunkKeySets(Set<Long> first, Set<Long> second) {
+        if ((first == null || first.isEmpty()) && (second == null || second.isEmpty())) {
+            return Set.of();
+        }
+        if (first == null || first.isEmpty()) {
+            return Set.copyOf(second);
+        }
+        if (second == null || second.isEmpty()) {
+            return Set.copyOf(first);
+        }
+        Set<Long> merged = new java.util.HashSet<>(first);
+        merged.addAll(second);
+        return Set.copyOf(merged);
+    }
+
+    private static final class UndoPlacement {
+        private final int x;
+        private final int y;
+        private final int z;
+        private final String blockString;
+        private final String blockEntitySnbt;
+
+        private UndoPlacement(int x, int y, int z, String blockString, String blockEntitySnbt) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.blockString = blockString;
+            this.blockEntitySnbt = blockEntitySnbt;
+        }
+    }
+
+    private static final class UndoChunkPlan {
+        private final Set<Long> targetChunkKeys;
+        private final List<ChunkPos> missingChunks;
+
+        private UndoChunkPlan(Set<Long> targetChunkKeys, List<ChunkPos> missingChunks) {
+            this.targetChunkKeys = targetChunkKeys;
+            this.missingChunks = missingChunks;
+        }
+    }
+
+    private static final class UndoApplyStats {
+        private final int chunkCount;
+        private final int writeCount;
+
+        private UndoApplyStats(int chunkCount, int writeCount) {
+            this.chunkCount = chunkCount;
+            this.writeCount = writeCount;
+        }
     }
 }

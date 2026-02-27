@@ -82,24 +82,7 @@ public final class ConstructCommandManager {
         ConstructConfig defaults = ConstructConfig.defaults();
         ConstructConfig config = (yOffsetOverride == null)
             ? defaults
-            : new ConstructConfig(
-                defaults.delayBetweenStagesTicks(),
-                defaults.delayBetweenSlicesTicks(),
-                defaults.maxChunksToLoadPerTick(),
-                yOffsetOverride,
-                defaults.maxEntitiesToProcessPerTick(),
-                defaults.playerEjectMarginBlocks(),
-                defaults.playerEjectTeleportOffsetBlocks(),
-                defaults.pasteFlushEveryBlocks(),
-                defaults.tickTimeBudgetNanos(),
-                defaults.undoTickTimeBudgetNanos(),
-                defaults.undoFlushEveryBlocks(),
-                defaults.maxFluidNeighborUpdatesPerTick(),
-                defaults.expectedTickNanos(),
-                defaults.adaptiveScaleSmoothing(),
-                defaults.adaptiveScaleMin(),
-                defaults.adaptiveScaleMax()
-            );
+            : defaults.withYOffsetBlocks(yOffsetOverride);
         boolean started = constructService.start(source, config, world, center);
         if (!started) {
             source.sendFeedback(() -> Text.literal("A construct job is already running."), false);

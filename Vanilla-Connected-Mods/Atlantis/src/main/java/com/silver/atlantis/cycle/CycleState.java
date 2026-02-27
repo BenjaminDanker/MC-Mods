@@ -22,6 +22,7 @@ public record CycleState(
         START_CONSTRUCT,
         WAIT_CONSTRUCT,
         RUN_STRUCTUREMOB,
+        WAIT_STRUCTUREMOB,
         WAIT_BEFORE_UNDO,
         START_UNDO,
         WAIT_UNDO

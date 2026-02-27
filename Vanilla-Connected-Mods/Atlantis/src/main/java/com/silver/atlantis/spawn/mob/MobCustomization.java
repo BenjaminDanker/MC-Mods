@@ -1,4 +1,4 @@
-package com.silver.atlantis.spawn;
+package com.silver.atlantis.spawn.mob;
 
 import net.minecraft.item.ItemStack;
 

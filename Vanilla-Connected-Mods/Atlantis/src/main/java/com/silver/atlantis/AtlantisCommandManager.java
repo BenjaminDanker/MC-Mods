@@ -7,7 +7,7 @@ import com.silver.atlantis.cycle.CycleCommandManager;
 import com.silver.atlantis.find.FindCommandManager;
 import com.silver.atlantis.heightcap.HeightCapCommandManager;
 import com.silver.atlantis.leviathan.LeviathanCommandManager;
-import com.silver.atlantis.spawn.SpawnCommandManager;
+import com.silver.atlantis.spawn.command.ProximitySpawnCommandManager;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
@@ -23,7 +23,7 @@ public final class AtlantisCommandManager {
     private final FindCommandManager findCommandManager;
     private final ConstructCommandManager constructCommandManager;
     private final CycleCommandManager cycleCommandManager;
-    private final SpawnCommandManager spawnCommandManager;
+    private final ProximitySpawnCommandManager spawnCommandManager;
     private final ConstructService constructService;
     private final HeightCapCommandManager heightCapCommandManager;
     private final LeviathanCommandManager leviathanCommandManager;
@@ -32,7 +32,7 @@ public final class AtlantisCommandManager {
         FindCommandManager findCommandManager,
         ConstructCommandManager constructCommandManager,
         CycleCommandManager cycleCommandManager,
-        SpawnCommandManager spawnCommandManager,
+        ProximitySpawnCommandManager spawnCommandManager,
         ConstructService constructService,
         HeightCapCommandManager heightCapCommandManager,
         LeviathanCommandManager leviathanCommandManager

@@ -2,7 +2,6 @@ package com.silver.atlantis.leviathan;
 
 import com.silver.atlantis.AtlantisMod;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
-import net.minecraft.block.BlockState;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.LivingEntity;
@@ -20,13 +19,10 @@ import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
-import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.Heightmap;
-import net.minecraft.world.RaycastContext;
 import net.minecraft.world.WorldProperties;
 import net.minecraft.world.border.WorldBorder;
 
@@ -46,10 +42,6 @@ public final class LeviathanManager {
 
     private static final long MINIMUM_ENSURE_INTERVAL_TICKS = 100L;
     private static final long RECOVERY_INTERVAL_TICKS = 200L;
-    private static final double PREDATOR_RETREAT_RADIUS_BLOCKS = 130.0d;
-    private static final double PREDATOR_CIRCLE_RADIUS_BLOCKS = 130.0d;
-    private static final double PREDATOR_CLOSE_RANGE_CANCEL_BLOCKS = 90.0d;
-    private static final double PREDATOR_RETREAT_REACHED_EPSILON_BLOCKS = 14.0d;
     private static final double HEALTH_SCALING_STRENGTH_FROM_ENTITY_SCALE = 0.60d;
     private static final double MIN_HEALTH_SCALING_STRENGTH = 2.0d;
     private static final String SQUID_ENTITY_TYPE_ID = "minecraft:squid";
@@ -64,7 +56,7 @@ public final class LeviathanManager {
     private static final Map<String, EntityType<?>> configuredEntityTypesById = new HashMap<>();
     private static List<String> configuredEntityTypeIds = List.of();
     private static LeviathanChunkPreloader chunkPreloader;
-    private static final Map<UUID, CombatRuntime> combatRuntimeById = new HashMap<>();
+    private static final Map<UUID, LeviathanCombatRuntime> combatRuntimeById = new HashMap<>();
     private static final Set<UUID> inactiveChunkReleaseDone = new LinkedHashSet<>();
     private static final Set<UUID> loadedIdsLastTick = new LinkedHashSet<>();
 
@@ -76,48 +68,6 @@ public final class LeviathanManager {
     private static int effectiveMinSpawnDistanceBlocks;
     private static boolean warnedAutoDistanceAdjustment;
     private static int initialServerViewDistanceChunks = -1;
-
-    private enum CombatSubstate {
-        ACQUIRE,
-        CHARGE,
-        PASS_THROUGH,
-        TURN_BACK,
-        REACQUIRE
-    }
-
-    private static final class CombatRuntime {
-        private CombatSubstate substate = CombatSubstate.ACQUIRE;
-        private UUID targetUuid;
-        private Vec3d anchorPos;
-        private Vec3d previousPos;
-        private Vec3d chargeDirection = new Vec3d(1.0, 0.0, 0.0);
-        private long phaseStartTick;
-        private long cooldownUntilTick;
-        private long invalidLineTicks;
-        private long passId;
-        private long stalledTicks;
-        private long missingTargetUntilTick = -1L;
-        private Vec3d passStartPos;
-        private Vec3d retreatCenter;
-        private Vec3d retreatTarget;
-        private long retreatHoldUntilTick;
-        private final Map<UUID, Long> lastHitTickByPlayer = new HashMap<>();
-        private final Map<UUID, Long> lastHitPassByPlayer = new HashMap<>();
-
-        private void resetToPassive() {
-            substate = CombatSubstate.ACQUIRE;
-            targetUuid = null;
-            anchorPos = null;
-            cooldownUntilTick = 0L;
-            invalidLineTicks = 0L;
-            stalledTicks = 0L;
-            missingTargetUntilTick = -1L;
-            passStartPos = null;
-            retreatCenter = null;
-            retreatTarget = null;
-            retreatHoldUntilTick = 0L;
-        }
-    }
 
     private LeviathanManager() {
     }
@@ -140,8 +90,10 @@ public final class LeviathanManager {
         warnedAutoDistanceAdjustment = false;
         initialServerViewDistanceChunks = -1;
         loadedIdsLastTick.clear();
+        LeviathanManagedEntityIndex.reset();
 
         if (!initialized) {
+            LeviathanManagedEntityIndex.registerHooks();
             ServerTickEvents.END_SERVER_TICK.register(LeviathanManager::tick);
             initialized = true;
         }
@@ -162,6 +114,7 @@ public final class LeviathanManager {
         effectiveMinSpawnDistanceBlocks = newConfig.minSpawnDistanceBlocks;
         warnedAutoDistanceAdjustment = false;
         loadedIdsLastTick.clear();
+        LeviathanManagedEntityIndex.reset();
         AtlantisMod.LOGGER.info("[Atlantis][leviathan] manager config reload applied entityTypeId={} min={} activation={} despawn={}",
             newConfig.entityTypeId,
             newConfig.minimumLeviathans,
@@ -212,7 +165,7 @@ public final class LeviathanManager {
             if (includeLoaded) {
                 Entity entity = loaded.get(state.id());
                 if (entity != null) {
-                    CombatRuntime runtime = combatRuntimeById.get(state.id());
+                    LeviathanCombatRuntime runtime = combatRuntimeById.get(state.id());
                     String engagementState = runtime == null || runtime.targetUuid == null ? "PASSIVE" : "ENGAGED/" + runtime.substate;
                     String target = runtime == null || runtime.targetUuid == null ? "<none>" : shortId(runtime.targetUuid);
                     String loadedTypeId = Registries.ENTITY_TYPE.getId(entity.getType()).toString();
@@ -253,6 +206,7 @@ public final class LeviathanManager {
         if (overworld == null) {
             return;
         }
+        List<ServerPlayerEntity> activePlayers = overworld.getPlayers(player -> player != null && !player.isSpectator() && player.isAlive());
 
         updateEffectiveDistancesFromServerSettings(server);
 
@@ -294,7 +248,7 @@ public final class LeviathanManager {
             Entity loaded = loadedById.get(state.id());
             if (loaded == null) {
                 if (disappearedLoadedIds.contains(state.id())
-                    && isAnyPlayerNear(overworld, state.pos(), getActivationRadiusBlocks())) {
+                    && isAnyPlayerNear(activePlayers, state.pos(), getActivationRadiusBlocks())) {
                     retireAndReplaceVirtualLeviathan(overworld, state, "loaded instance disappeared near players (likely killed)");
                     continue;
                 }
@@ -303,7 +257,7 @@ public final class LeviathanManager {
                 virtualStore.upsert(advanced);
 
                 if (config.forceChunkLoadingEnabled && chunkPreloader != null) {
-                    if (isAnyPlayerNear(overworld, advanced.pos(), getActivationRadiusBlocks())) {
+                    if (isAnyPlayerNear(activePlayers, advanced.pos(), getActivationRadiusBlocks())) {
                         Set<ChunkPos> desired = computeDesiredChunks(advanced);
                         chunkBudget -= chunkPreloader.request(overworld, advanced.id(), desired, serverTicks, chunkBudget);
                         inactiveChunkReleaseDone.remove(advanced.id());
@@ -312,14 +266,14 @@ public final class LeviathanManager {
                     }
                 }
 
-                tryMaterialize(overworld, advanced, loadedById);
+                tryMaterialize(overworld, activePlayers, advanced, loadedById);
                 continue;
             }
 
             inactiveChunkReleaseDone.remove(state.id());
 
-            CombatRuntime runtime = combatRuntimeById.computeIfAbsent(state.id(), id -> {
-                CombatRuntime created = new CombatRuntime();
+            LeviathanCombatRuntime runtime = combatRuntimeById.computeIfAbsent(state.id(), id -> {
+                LeviathanCombatRuntime created = new LeviathanCombatRuntime();
                 created.previousPos = posOf(loaded);
                 return created;
             });
@@ -331,7 +285,7 @@ public final class LeviathanManager {
 
             VirtualLeviathanStore.VirtualLeviathanState sync = syncStateFromLoaded(loaded, state.id());
 
-            if (!isAnyPlayerNear(overworld, sync.pos(), getDespawnRadiusBlocks())) {
+            if (!isAnyPlayerNear(activePlayers, sync.pos(), getDespawnRadiusBlocks())) {
                 loaded.discard();
                 virtualStore.upsert(sync);
                 combatRuntimeById.remove(state.id());
@@ -514,17 +468,18 @@ public final class LeviathanManager {
     }
 
     private static void tryMaterialize(ServerWorld world,
+                                       List<ServerPlayerEntity> activePlayers,
                                        VirtualLeviathanStore.VirtualLeviathanState state,
                                        Map<UUID, Entity> loadedById) {
         if (loadedById.containsKey(state.id())) {
             AtlantisMod.LOGGER.debug("[Atlantis][leviathan] materialize skipped already loaded id={}", shortId(state.id()));
             return;
         }
-        if (!isAnyPlayerNear(world, state.pos(), getActivationRadiusBlocks())) {
+        if (!isAnyPlayerNear(activePlayers, state.pos(), getActivationRadiusBlocks())) {
             AtlantisMod.LOGGER.debug("[Atlantis][leviathan] materialize skipped no nearby player id={} activationRadius={}", shortId(state.id()), getActivationRadiusBlocks());
             return;
         }
-        if (isAnyPlayerNear(world, state.pos(), getMinSpawnDistanceBlocks())) {
+        if (isAnyPlayerNear(activePlayers, state.pos(), getMinSpawnDistanceBlocks())) {
             AtlantisMod.LOGGER.debug("[Atlantis][leviathan] materialize skipped too close to player id={} minSpawnDistance={}", shortId(state.id()), getMinSpawnDistanceBlocks());
             return;
         }
@@ -623,722 +578,12 @@ public final class LeviathanManager {
         return entity;
     }
 
-    private static boolean updateCombat(ServerWorld world, Entity entity, CombatRuntime runtime) {
-        if (!config.combatEnabled) {
-            runtime.resetToPassive();
-            runtime.previousPos = posOf(entity);
-            return false;
-        }
-
-        if (runtime.targetUuid == null) {
-            ServerPlayerEntity initialTarget = findNearestTarget(world, posOf(entity), config.engageRadiusBlocks, config.engageVerticalRadiusBlocks);
-            if (initialTarget == null) {
-                runtime.previousPos = posOf(entity);
-                return false;
-            }
-            runtime.targetUuid = initialTarget.getUuid();
-            runtime.anchorPos = posOf(initialTarget);
-            runtime.phaseStartTick = serverTicks;
-            runtime.substate = CombatSubstate.ACQUIRE;
-            AtlantisMod.LOGGER.info("[Atlantis][leviathan] engagement start leviathan={} target={}", shortId(entity.getUuid()), shortId(initialTarget.getUuid()));
-        }
-
-        ServerPlayerEntity target = world.getServer() == null ? null : world.getServer().getPlayerManager().getPlayer(runtime.targetUuid);
-        Vec3d entityPos = posOf(entity);
-        Vec3d previousPos = runtime.previousPos == null ? entityPos : runtime.previousPos;
-
-        if (target == null || !target.isAlive() || target.isSpectator()) {
-            if (runtime.anchorPos == null) {
-                runtime.anchorPos = entityPos;
-            }
-            if (runtime.missingTargetUntilTick < 0L) {
-                runtime.missingTargetUntilTick = serverTicks + config.disconnectLingerTicks;
-                runtime.phaseStartTick = serverTicks;
-            }
-            if (serverTicks > runtime.missingTargetUntilTick) {
-                AtlantisMod.LOGGER.info("[Atlantis][leviathan] engagement ended (target missing timeout) leviathan={} target={}",
-                    shortId(entity.getUuid()),
-                    runtime.targetUuid == null ? "<none>" : shortId(runtime.targetUuid));
-                runtime.resetToPassive();
-                runtime.previousPos = entityPos;
-                return false;
-            }
-
-            circleAroundAnchor(world, entity, runtime.anchorPos, config.passOvershootBlocks, config.virtualSpeedBlocksPerTick);
-            runtime.substate = CombatSubstate.TURN_BACK;
-            runtime.previousPos = entityPos;
-            return true;
-        }
-
-        runtime.anchorPos = posOf(target);
-        runtime.missingTargetUntilTick = -1L;
-
-        if (runtime.substate == CombatSubstate.REACQUIRE
-            && entityPos.distanceTo(posOf(target)) <= PREDATOR_CLOSE_RANGE_CANCEL_BLOCKS) {
-            if (serverTicks >= runtime.cooldownUntilTick) {
-                AtlantisMod.LOGGER.info("[Atlantis][leviathan] predator retreat canceled by close target distance={} <= {} leviathan={} target={}",
-                    round1(entityPos.distanceTo(posOf(target))),
-                    round1(PREDATOR_CLOSE_RANGE_CANCEL_BLOCKS),
-                    shortId(entity.getUuid()),
-                    shortId(target.getUuid()));
-                beginCharge(runtime, entityPos, target);
-            } else {
-                runtime.substate = CombatSubstate.ACQUIRE;
-                runtime.phaseStartTick = serverTicks;
-            }
-        }
-
-        if (!isWithinEngagementRange(entityPos, posOf(target), config.disengageRadiusBlocks, config.disengageVerticalRadiusBlocks)) {
-            AtlantisMod.LOGGER.info("[Atlantis][leviathan] engagement ended (out of range) leviathan={} target={} distance={} disengageRadius={}",
-                shortId(entity.getUuid()),
-                shortId(target.getUuid()),
-                round1(entityPos.distanceTo(posOf(target))),
-                config.disengageRadiusBlocks);
-            runtime.resetToPassive();
-            runtime.previousPos = entityPos;
-            return false;
-        }
-
-        if (!hasLineOfEngagement(world, entity, target)) {
-            runtime.invalidLineTicks++;
-        } else {
-            runtime.invalidLineTicks = 0L;
-        }
-        if (runtime.invalidLineTicks > config.lineOfEngagementTimeoutTicks) {
-            AtlantisMod.LOGGER.info("[Atlantis][leviathan] engagement ended (line timeout) leviathan={} target={} invalidTicks={} timeout={}",
-                shortId(entity.getUuid()),
-                shortId(target.getUuid()),
-                runtime.invalidLineTicks,
-                config.lineOfEngagementTimeoutTicks);
-            runtime.resetToPassive();
-            runtime.previousPos = entityPos;
-            return false;
-        }
-
-        switch (runtime.substate) {
-            case ACQUIRE -> {
-                if (serverTicks >= runtime.cooldownUntilTick) {
-                    beginCharge(runtime, entityPos, target);
-                } else {
-                    runtime.substate = CombatSubstate.TURN_BACK;
-                    runtime.phaseStartTick = serverTicks;
-                    circleAroundAnchor(world, entity, posOf(target), Math.max(8.0d, config.passOvershootBlocks), config.virtualSpeedBlocksPerTick);
-                }
-            }
-            case CHARGE -> {
-                Vec3d guidedDirection = refineChargeDirection(runtime, entityPos, target, 6.0d, 0.045d);
-                runtime.chargeDirection = guidedDirection;
-                detectChargeHit(world, entity, target, runtime, previousPos, entityPos);
-                Vec3d steered = chooseSubmergedDirection(world, entityPos, guidedDirection, true);
-                entity.setVelocity(steered.multiply(config.chargeSpeedBlocksPerTick));
-                faceAlong(entity, steered);
-
-                if (detectChargeStall(entity, runtime, previousPos, entityPos)) {
-                    break;
-                }
-
-                if ((serverTicks - runtime.phaseStartTick) >= config.chargeDurationTicks) {
-                    runtime.substate = CombatSubstate.PASS_THROUGH;
-                    runtime.phaseStartTick = serverTicks;
-                    runtime.cooldownUntilTick = serverTicks + config.chargeCooldownTicks;
-                    runtime.stalledTicks = 0L;
-                    runtime.passStartPos = entityPos;
-                }
-            }
-            case PASS_THROUGH -> {
-                detectChargeHit(world, entity, target, runtime, previousPos, entityPos);
-                Vec3d steered = chooseSubmergedDirection(world, entityPos, runtime.chargeDirection, true);
-                entity.setVelocity(steered.multiply(config.chargeSpeedBlocksPerTick));
-                faceAlong(entity, steered);
-
-                if (detectChargeStall(entity, runtime, previousPos, entityPos)) {
-                    break;
-                }
-
-                if (runtime.passStartPos == null) {
-                    runtime.passStartPos = previousPos == null ? entityPos : previousPos;
-                }
-
-                if (entityPos.distanceTo(runtime.passStartPos) >= PREDATOR_RETREAT_RADIUS_BLOCKS) {
-                    startPredatorRetreat(runtime, entityPos, posOf(target), target.getUuid());
-                }
-            }
-            case TURN_BACK -> {
-                predatorRetreatStep(world, entity, runtime, posOf(target), target.getUuid());
-            }
-            case REACQUIRE -> {
-                if (serverTicks >= runtime.cooldownUntilTick) {
-                    runtime.substate = CombatSubstate.ACQUIRE;
-                    runtime.phaseStartTick = serverTicks;
-                } else {
-                    predatorCircleStep(world, entity, runtime);
-                }
-            }
-        }
-
-        runtime.previousPos = entityPos;
-        return true;
-    }
-
-    private static void beginCharge(CombatRuntime runtime, Vec3d entityPos, ServerPlayerEntity target) {
-        Vec3d intercept = posOf(target).add(target.getVelocity().multiply(Math.min(10.0d, config.chargeDurationTicks * 0.25d)));
-        Vec3d raw = intercept.subtract(entityPos);
-        double len = raw.length();
-        if (len < 1.0e-6d) {
-            throw new IllegalStateException("Charge direction invalid (zero length) for target=" + target.getUuidAsString());
-        }
-
-        runtime.chargeDirection = raw.multiply(1.0d / len);
-        runtime.substate = CombatSubstate.CHARGE;
-        runtime.phaseStartTick = serverTicks;
-        runtime.stalledTicks = 0L;
-        runtime.passId++;
-        AtlantisMod.LOGGER.debug("[Atlantis][leviathan] charge begin target={} passId={} direction=({}, {}, {})",
-            shortId(target.getUuid()),
-            runtime.passId,
-            round2(runtime.chargeDirection.x),
-            round2(runtime.chargeDirection.y),
-            round2(runtime.chargeDirection.z));
-    }
-
-    private static Vec3d refineChargeDirection(CombatRuntime runtime,
-                                               Vec3d entityPos,
-                                               ServerPlayerEntity target,
-                                               double maxHorizontalTurnDegrees,
-                                               double maxVerticalStep) {
-        Vec3d current = runtime.chargeDirection.length() < 1.0e-6d ? new Vec3d(1.0d, 0.0d, 0.0d) : runtime.chargeDirection.normalize();
-        double lookaheadTicks = clamp(config.chargeDurationTicks * 0.15d, 2.0d, 7.0d);
-        Vec3d intercept = posOf(target).add(target.getVelocity().multiply(lookaheadTicks));
-        Vec3d toIntercept = intercept.subtract(entityPos);
-        double len = toIntercept.length();
-        if (len < 1.0e-6d) {
-            return current;
-        }
-
-        Vec3d desired = toIntercept.multiply(1.0d / len);
-        double maxTurnRadians = Math.toRadians(Math.max(0.5d, maxHorizontalTurnDegrees));
-        return steerChargeDirection3d(current, desired, maxTurnRadians, Math.max(0.01d, maxVerticalStep));
-    }
-
-    private static Vec3d steerChargeDirection3d(Vec3d current,
-                                                Vec3d desired,
-                                                double maxHorizontalTurnRadians,
-                                                double maxVerticalStep) {
-        Vec3d currentNorm = normalizeVectorStrict(current);
-        Vec3d desiredNorm = normalizeVectorStrict(desired);
-
-        Vec3d currentHorizontal = new Vec3d(currentNorm.x, 0.0d, currentNorm.z);
-        Vec3d desiredHorizontal = new Vec3d(desiredNorm.x, 0.0d, desiredNorm.z);
-
-        Vec3d steeredHorizontal;
-        double currentHorizontalSq = currentHorizontal.lengthSquared();
-        double desiredHorizontalSq = desiredHorizontal.lengthSquared();
-        if (currentHorizontalSq < 1.0e-6d && desiredHorizontalSq < 1.0e-6d) {
-            steeredHorizontal = new Vec3d(1.0d, 0.0d, 0.0d);
-        } else if (currentHorizontalSq < 1.0e-6d) {
-            steeredHorizontal = normalizeXZ(desiredHorizontal.x, desiredHorizontal.z);
-        } else if (desiredHorizontalSq < 1.0e-6d) {
-            steeredHorizontal = normalizeXZ(currentHorizontal.x, currentHorizontal.z);
-        } else {
-            steeredHorizontal = turnLimited(
-                normalizeXZ(currentHorizontal.x, currentHorizontal.z),
-                normalizeXZ(desiredHorizontal.x, desiredHorizontal.z),
-                maxHorizontalTurnRadians);
-        }
-
-        double steeredY = currentNorm.y + clamp(desiredNorm.y - currentNorm.y, -maxVerticalStep, maxVerticalStep);
-        return normalizeVectorStrict(new Vec3d(steeredHorizontal.x, steeredY, steeredHorizontal.z));
-    }
-
-    private static boolean detectChargeStall(Entity entity, CombatRuntime runtime, Vec3d previousPos, Vec3d currentPos) {
-        if (previousPos == null || currentPos == null) {
-            runtime.stalledTicks = 0L;
-            return false;
-        }
-        if (runtime.substate != CombatSubstate.CHARGE && runtime.substate != CombatSubstate.PASS_THROUGH) {
-            runtime.stalledTicks = 0L;
-            return false;
-        }
-
-        double movedSq = currentPos.squaredDistanceTo(previousPos);
-        if (movedSq < 0.0025d) {
-            runtime.stalledTicks++;
-        } else {
-            runtime.stalledTicks = 0L;
-            return false;
-        }
-
-        if (runtime.stalledTicks < 12L) {
-            return false;
-        }
-
-        AtlantisMod.LOGGER.warn("[Atlantis][leviathan] charge stalled; forcing turn-back leviathan={} substate={} stalledTicks={} movedSq={}",
-            shortId(entity.getUuid()),
-            runtime.substate,
-            runtime.stalledTicks,
-            round2(movedSq));
-        runtime.substate = CombatSubstate.TURN_BACK;
-        runtime.phaseStartTick = serverTicks;
-        runtime.cooldownUntilTick = serverTicks + config.chargeCooldownTicks;
-        runtime.stalledTicks = 0L;
-        runtime.passStartPos = null;
-        runtime.retreatCenter = currentPos;
-        runtime.retreatTarget = null;
-        runtime.retreatHoldUntilTick = 0L;
-        return true;
-    }
-
-    private static void startPredatorRetreat(CombatRuntime runtime, Vec3d entityPos, Vec3d targetPos, UUID targetId) {
-        runtime.substate = CombatSubstate.TURN_BACK;
-        runtime.phaseStartTick = serverTicks;
-        runtime.stalledTicks = 0L;
-        runtime.passStartPos = null;
-        runtime.retreatCenter = entityPos;
-        runtime.retreatTarget = selectRetreatTarget(entityPos, targetPos, runtime.passId, targetId);
-        runtime.retreatHoldUntilTick = 0L;
-    }
-
-    private static Vec3d selectRetreatTarget(Vec3d entityPos, Vec3d targetPos, long passId, UUID targetId) {
-        Vec3d fromTarget = new Vec3d(entityPos.x - targetPos.x, 0.0d, entityPos.z - targetPos.z);
-        Vec3d base;
-        try {
-            base = normalizeXZ(fromTarget.x, fromTarget.z);
-        } catch (IllegalStateException ignored) {
-            base = new Vec3d(1.0d, 0.0d, 0.0d);
-        }
-
-        long seed = passId ^ targetId.getLeastSignificantBits() ^ targetId.getMostSignificantBits();
-        Random random = new Random(seed);
-        double angleJitter = (random.nextDouble() * Math.PI * 1.2d) - (Math.PI * 0.6d);
-        double baseAngle = Math.atan2(base.z, base.x) + angleJitter;
-
-        double tx = targetPos.x + Math.cos(baseAngle) * PREDATOR_RETREAT_RADIUS_BLOCKS;
-        double tz = targetPos.z + Math.sin(baseAngle) * PREDATOR_RETREAT_RADIUS_BLOCKS;
-        return new Vec3d(tx, targetPos.y, tz);
-    }
-
-    private static void predatorRetreatStep(ServerWorld world,
-                                            Entity entity,
-                                            CombatRuntime runtime,
-                                            Vec3d targetPos,
-                                            UUID targetId) {
-        Vec3d entityPos = posOf(entity);
-
-        if (runtime.retreatTarget == null) {
-            runtime.retreatTarget = selectRetreatTarget(entityPos, targetPos, runtime.passId, targetId);
-        }
-        if (runtime.retreatCenter == null) {
-            runtime.retreatCenter = entityPos;
-        }
-
-        Vec3d retreatTarget = new Vec3d(runtime.retreatTarget.x, entityPos.y, runtime.retreatTarget.z);
-        Vec3d toRetreat = retreatTarget.subtract(entityPos);
-        double retreatDistance = toRetreat.length();
-
-        if (retreatDistance <= PREDATOR_RETREAT_REACHED_EPSILON_BLOCKS) {
-            runtime.substate = CombatSubstate.REACQUIRE;
-            runtime.phaseStartTick = serverTicks;
-            long seed = runtime.passId ^ targetId.getMostSignificantBits() ^ targetId.getLeastSignificantBits() ^ Double.doubleToLongBits(entityPos.x + entityPos.z);
-            Random random = new Random(seed);
-            int minHold = 30;
-            int maxHold = 100;
-            runtime.retreatHoldUntilTick = serverTicks + minHold + random.nextInt((maxHold - minHold) + 1);
-            AtlantisMod.LOGGER.debug("[Atlantis][leviathan] predator retreat reached; entering circling phase holdUntilTick={} id={}",
-                runtime.retreatHoldUntilTick,
-                shortId(entity.getUuid()));
-            return;
-        }
-
-        Vec3d centerToEntity = new Vec3d(entityPos.x - runtime.retreatCenter.x, 0.0d, entityPos.z - runtime.retreatCenter.z);
-        Vec3d tangent;
-        try {
-            Vec3d radial = normalizeXZ(centerToEntity.x, centerToEntity.z);
-            tangent = new Vec3d(-radial.z, 0.0d, radial.x);
-        } catch (IllegalStateException ignored) {
-            tangent = new Vec3d(0.0d, 0.0d, 1.0d);
-        }
-
-        Vec3d toward;
-        try {
-            toward = normalizeXZ(toRetreat.x, toRetreat.z);
-        } catch (IllegalStateException ignored) {
-            toward = tangent;
-        }
-        Vec3d desired = normalizeVectorStrict(toward.multiply(0.75d).add(tangent.multiply(0.45d)));
-
-        Vec3d steered = chooseSubmergedDirection(world, entityPos, desired, true);
-        double recuperateSpeed = Math.max(0.06d, Math.min(config.virtualSpeedBlocksPerTick, config.chargeSpeedBlocksPerTick * 0.5d));
-        entity.setVelocity(steered.multiply(recuperateSpeed));
-        faceAlong(entity, steered);
-    }
-
-    private static void predatorCircleStep(ServerWorld world, Entity entity, CombatRuntime runtime) {
-        Vec3d entityPos = posOf(entity);
-        Vec3d center = runtime.retreatTarget == null ? entityPos : runtime.retreatTarget;
-
-        double baseRadius = PREDATOR_CIRCLE_RADIUS_BLOCKS;
-        double angleSpeed = 0.05d;
-        double elapsed = Math.max(0.0d, (double) (serverTicks - runtime.phaseStartTick));
-        double angle = elapsed * angleSpeed;
-        if ((runtime.passId & 1L) == 0L) {
-            angle *= -1.0d;
-        }
-
-        Vec3d orbitPoint = new Vec3d(
-            center.x + Math.cos(angle) * baseRadius,
-            entityPos.y,
-            center.z + Math.sin(angle) * baseRadius
-        );
-        Vec3d desired = orbitPoint.subtract(entityPos);
-        if (desired.length() < 1.0e-6d) {
-            desired = new Vec3d(1.0d, 0.0d, 0.0d);
-        }
-
-        Vec3d steered = chooseSubmergedDirection(world, entityPos, desired.normalize(), true);
-        double recuperateSpeed = Math.max(0.06d, Math.min(config.virtualSpeedBlocksPerTick, config.chargeSpeedBlocksPerTick * 0.45d));
-        entity.setVelocity(steered.multiply(recuperateSpeed));
-        faceAlong(entity, steered);
-    }
-
-    private static void detectChargeHit(ServerWorld world,
-                                        Entity leviathan,
-                                        ServerPlayerEntity target,
-                                        CombatRuntime runtime,
-                                        Vec3d segmentStart,
-                                        Vec3d segmentEnd) {
-        if (segmentStart == null || segmentEnd == null) {
-            return;
-        }
-
-        Box expanded = target.getBoundingBox().expand(config.chargeHitboxExpandBlocks);
-        boolean directIntersect = expanded.raycast(segmentStart, segmentEnd).isPresent();
-        double leviathanRadius = Math.max(0.4d, leviathan.getWidth() * 0.5d);
-        double targetRadius = Math.max(0.3d, target.getWidth() * 0.5d);
-        double sweptRadius = leviathanRadius + targetRadius + config.chargeHitboxExpandBlocks;
-        double centerDistanceSq = squaredDistancePointToSegment(target.getBoundingBox().getCenter(), segmentStart, segmentEnd);
-        if (!directIntersect && centerDistanceSq > (sweptRadius * sweptRadius)) {
-            return;
-        }
-
-        Vec3d toTarget = posOf(target).subtract(posOf(leviathan));
-        double toTargetLen = toTarget.length();
-        if (toTargetLen < 1.0e-6d) {
-            return;
-        }
-
-        Vec3d toTargetNorm = toTarget.multiply(1.0d / toTargetLen);
-        Vec3d forward = runtime.chargeDirection.length() < 1.0e-6d ? new Vec3d(1.0d, 0.0d, 0.0d) : runtime.chargeDirection.normalize();
-        double dot;
-        double toTargetHorizontalSq = (toTargetNorm.x * toTargetNorm.x) + (toTargetNorm.z * toTargetNorm.z);
-        double forwardHorizontalSq = (forward.x * forward.x) + (forward.z * forward.z);
-        if (toTargetHorizontalSq >= 1.0e-6d && forwardHorizontalSq >= 1.0e-6d) {
-            Vec3d toTargetHorizontal = normalizeXZ(toTargetNorm.x, toTargetNorm.z);
-            Vec3d forwardHorizontal = normalizeXZ(forward.x, forward.z);
-            dot = forwardHorizontal.dotProduct(toTargetHorizontal);
-        } else {
-            dot = forward.dotProduct(toTargetNorm);
-        }
-        if (dot < config.chargeDirectionDotThreshold) {
-            return;
-        }
-
-        double sampledSpeed = Math.max(leviathan.getVelocity().length(), segmentEnd.distanceTo(segmentStart));
-        double effectiveMinHitSpeed = Math.min(config.chargeMinHitSpeed, Math.max(0.1d, config.chargeSpeedBlocksPerTick * 0.35d));
-        if (sampledSpeed < effectiveMinHitSpeed) {
-            return;
-        }
-
-        long lastHitPass = runtime.lastHitPassByPlayer.getOrDefault(target.getUuid(), -1L);
-        if (lastHitPass == runtime.passId) {
-            return;
-        }
-        long lastHitTick = runtime.lastHitTickByPlayer.getOrDefault(target.getUuid(), Long.MIN_VALUE / 2L);
-        if ((serverTicks - lastHitTick) < config.chargeHitCooldownTicks) {
-            return;
-        }
-
-        boolean damaged;
-        double effectiveDamage = resolveEffectiveChargeDamage(leviathan);
-        double totalHealthBefore = target.getHealth() + target.getAbsorptionAmount();
-        if (leviathan instanceof LivingEntity living) {
-            damaged = target.damage(world, world.getDamageSources().mobAttack(living), (float) effectiveDamage);
-        } else {
-            damaged = target.damage(world, world.getDamageSources().generic(), (float) effectiveDamage);
-        }
-
-        if (!damaged) {
-            AtlantisMod.LOGGER.info("[Atlantis][leviathan] charge attempted but rejected target={} raw={} speed={} (likely shield/blocking or hurt cooldown)",
-                shortId(target.getUuid()),
-                round2(effectiveDamage),
-                round2(sampledSpeed));
-            return;
-        }
-
-        double totalHealthAfter = target.getHealth() + target.getAbsorptionAmount();
-        double appliedDamage = Math.max(0.0d, totalHealthBefore - totalHealthAfter);
-        double mitigatedDamage = Math.max(0.0d, effectiveDamage - appliedDamage);
-        AtlantisMod.LOGGER.info("[Atlantis][leviathan] charge mitigation target={} raw={} applied={} mitigated={} armor={} toughness={} absorptionBefore={} absorptionAfter={}",
-            shortId(target.getUuid()),
-            round2(effectiveDamage),
-            round2(appliedDamage),
-            round2(mitigatedDamage),
-            round2(target.getArmor()),
-            round2(target.getAttributeValue(EntityAttributes.ARMOR_TOUGHNESS)),
-            round2(totalHealthBefore - target.getHealth()),
-            round2(totalHealthAfter - target.getHealth()));
-
-        if (config.chargeKnockbackStrength > 0.0d) {
-            Vec3d knock = forward.multiply(config.chargeKnockbackStrength);
-            target.addVelocity(knock.x, Math.max(0.15d, knock.y + 0.15d), knock.z);
-            target.velocityModified = true;
-        }
-
-        runtime.lastHitTickByPlayer.put(target.getUuid(), serverTicks);
-        runtime.lastHitPassByPlayer.put(target.getUuid(), runtime.passId);
-        AtlantisMod.LOGGER.info("[Atlantis][leviathan] charge hit leviathan={} target={} damage={} speed={} passId={}",
-            shortId(leviathan.getUuid()),
-            shortId(target.getUuid()),
-            round2(effectiveDamage),
-            round2(sampledSpeed),
-            runtime.passId);
-    }
-
-    private static double squaredDistancePointToSegment(Vec3d point, Vec3d segmentStart, Vec3d segmentEnd) {
-        Vec3d segment = segmentEnd.subtract(segmentStart);
-        double segmentLenSq = segment.lengthSquared();
-        if (segmentLenSq < 1.0e-12d) {
-            return point.squaredDistanceTo(segmentStart);
-        }
-        double t = point.subtract(segmentStart).dotProduct(segment) / segmentLenSq;
-        t = clamp(t, 0.0d, 1.0d);
-        Vec3d closest = segmentStart.add(segment.multiply(t));
-        return point.squaredDistanceTo(closest);
+    private static boolean updateCombat(ServerWorld world, Entity entity, LeviathanCombatRuntime runtime) {
+        return LeviathanRuntimeService.updateCombat(world, entity, runtime, config, serverTicks, virtualStore);
     }
 
     private static void applyLoadedPassiveMovement(ServerWorld world, Entity entity, VirtualLeviathanStore.VirtualLeviathanState state) {
-        Vec3d heading = normalizeXZ(state.headingX(), state.headingZ());
-        Vec3d steered = chooseSubmergedDirection(world, posOf(entity), heading);
-        double speed = Math.max(0.01d, config.virtualSpeedBlocksPerTick);
-
-        entity.setVelocity(steered.x * speed, steered.y * speed, steered.z * speed);
-        faceAlong(entity, steered);
-    }
-
-    private static void circleAroundAnchor(ServerWorld world, Entity entity, Vec3d anchor, double radius, double speed) {
-        double safeRadius = Math.max(8.0d, radius);
-        double angle = (serverTicks % 3600L) * 0.055d;
-        Vec3d orbitPoint = new Vec3d(
-            anchor.x + Math.cos(angle) * safeRadius,
-            anchor.y,
-            anchor.z + Math.sin(angle) * safeRadius
-        );
-
-        Vec3d desired = orbitPoint.subtract(posOf(entity));
-        if (desired.length() < 1.0e-6d) {
-            return;
-        }
-
-        Vec3d steered = chooseSubmergedDirection(world, posOf(entity), desired.normalize());
-        entity.setVelocity(steered.multiply(Math.max(0.01d, speed)));
-        faceAlong(entity, steered);
-    }
-
-    private static ServerPlayerEntity findNearestTarget(ServerWorld world, Vec3d pos, int horizontalRadius, int verticalRadius) {
-        double bestSq = Double.POSITIVE_INFINITY;
-        ServerPlayerEntity best = null;
-        double maxHorizontalSq = (double) horizontalRadius * (double) horizontalRadius;
-        double maxVertical = Math.max(1.0d, (double) verticalRadius);
-
-        for (ServerPlayerEntity player : world.getPlayers()) {
-            if (player == null || player.isSpectator() || !player.isAlive()) {
-                continue;
-            }
-            Vec3d playerPos = posOf(player);
-            double dx = playerPos.x - pos.x;
-            double dz = playerPos.z - pos.z;
-            double horizontalSq = dx * dx + dz * dz;
-            if (horizontalSq > maxHorizontalSq) {
-                continue;
-            }
-            double dy = Math.abs(playerPos.y - pos.y);
-            if (dy > maxVertical) {
-                continue;
-            }
-            if (horizontalSq < bestSq) {
-                bestSq = horizontalSq;
-                best = player;
-            }
-        }
-
-        return best;
-    }
-
-    private static boolean isWithinEngagementRange(Vec3d from, Vec3d to, int horizontalRadius, int verticalRadius) {
-        double dx = to.x - from.x;
-        double dz = to.z - from.z;
-        double horizontalSq = dx * dx + dz * dz;
-        double maxHorizontalSq = (double) horizontalRadius * (double) horizontalRadius;
-        if (horizontalSq > maxHorizontalSq) {
-            return false;
-        }
-        double dy = Math.abs(to.y - from.y);
-        return dy <= Math.max(1.0d, (double) verticalRadius);
-    }
-
-    private static boolean hasLineOfEngagement(ServerWorld world, Entity from, ServerPlayerEntity target) {
-        HitResult hit = world.raycast(new RaycastContext(
-            from.getEyePos(),
-            target.getEyePos(),
-            RaycastContext.ShapeType.COLLIDER,
-            RaycastContext.FluidHandling.NONE,
-            from
-        ));
-        return hit.getType() == HitResult.Type.MISS;
-    }
-
-    private static Vec3d chooseSubmergedDirection(ServerWorld world, Vec3d start, Vec3d preferred) {
-        return chooseSubmergedDirection(world, start, preferred, false);
-    }
-
-    private static Vec3d chooseSubmergedDirection(ServerWorld world, Vec3d start, Vec3d preferred, boolean aggressiveAvoidance) {
-        Vec3d normalized = normalizeVectorStrict(preferred);
-        int probeDistance = Math.max(1, config.solidAvoidanceProbeDistanceBlocks);
-        if (aggressiveAvoidance) {
-            int chargeLookahead = Math.max(8, (int) Math.ceil(config.chargeSpeedBlocksPerTick * 12.0d));
-            probeDistance = Math.max(probeDistance, chargeLookahead);
-        }
-
-        if (pathIsSubmergedClear(world, start, normalized, probeDistance)) {
-            return normalized;
-        }
-        AtlantisMod.LOGGER.debug("[Atlantis][leviathan] submerged path blocked, probing alternatives start=({}, {}, {}) preferred=({}, {}, {})",
-            round1(start.x),
-            round1(start.y),
-            round1(start.z),
-            round2(normalized.x),
-            round2(normalized.y),
-            round2(normalized.z));
-
-        double baseYaw = Math.atan2(normalized.z, normalized.x);
-        int[] yawOffsets = aggressiveAvoidance
-            ? new int[] {15, -15, 30, -30, 45, -45, 65, -65, 90, -90, 120, -120, 150, -150, 170, -170}
-            : new int[] {20, -20, 40, -40, 60, -60, 80, -80, 110, -110, 150, -150};
-        double[] verticalOffsets = aggressiveAvoidance
-            ? new double[] {0.0, 0.25, -0.25, 0.45, -0.45, 0.65, -0.65, 0.8, -0.8}
-            : new double[] {0.0, 0.2, -0.2, 0.35, -0.35, 0.5, -0.5};
-
-        for (int yawOffset : yawOffsets) {
-            double yaw = baseYaw + Math.toRadians(yawOffset * config.solidAvoidanceTurnStrength);
-            for (double vertical : verticalOffsets) {
-                Vec3d candidate = normalizeVectorStrict(new Vec3d(Math.cos(yaw), vertical, Math.sin(yaw)));
-                if (pathIsSubmergedClear(world, start, candidate, probeDistance)) {
-                    AtlantisMod.LOGGER.debug("[Atlantis][leviathan] submerged path alternative chosen candidate=({}, {}, {})",
-                        round2(candidate.x),
-                        round2(candidate.y),
-                        round2(candidate.z));
-                    return candidate;
-                }
-            }
-        }
-
-        if (aggressiveAvoidance) {
-            Vec3d upForward = normalizeVectorStrict(new Vec3d(normalized.x * 0.4d, 0.9d, normalized.z * 0.4d));
-            if (pathIsSubmergedClear(world, start, upForward, probeDistance)) {
-                AtlantisMod.LOGGER.debug("[Atlantis][leviathan] submerged emergency path chosen upForward=({}, {}, {})",
-                    round2(upForward.x),
-                    round2(upForward.y),
-                    round2(upForward.z));
-                return upForward;
-            }
-
-            Vec3d downForward = normalizeVectorStrict(new Vec3d(normalized.x * 0.4d, -0.9d, normalized.z * 0.4d));
-            if (pathIsSubmergedClear(world, start, downForward, probeDistance)) {
-                AtlantisMod.LOGGER.debug("[Atlantis][leviathan] submerged emergency path chosen downForward=({}, {}, {})",
-                    round2(downForward.x),
-                    round2(downForward.y),
-                    round2(downForward.z));
-                return downForward;
-            }
-
-            Vec3d side = normalizeVectorStrict(new Vec3d(-normalized.z, 0.0d, normalized.x));
-            if (pathIsSubmergedClear(world, start, side, probeDistance)) {
-                AtlantisMod.LOGGER.debug("[Atlantis][leviathan] submerged emergency path chosen side=({}, {}, {})",
-                    round2(side.x),
-                    round2(side.y),
-                    round2(side.z));
-                return side;
-            }
-
-            Vec3d oppositeSide = side.multiply(-1.0d);
-            if (pathIsSubmergedClear(world, start, oppositeSide, probeDistance)) {
-                AtlantisMod.LOGGER.debug("[Atlantis][leviathan] submerged emergency path chosen oppositeSide=({}, {}, {})",
-                    round2(oppositeSide.x),
-                    round2(oppositeSide.y),
-                    round2(oppositeSide.z));
-                return oppositeSide;
-            }
-        }
-
-        AtlantisMod.LOGGER.debug("[Atlantis][leviathan] submerged path fallback to preferred vector");
-        return normalized;
-    }
-
-    private static boolean pathIsSubmergedClear(ServerWorld world, Vec3d start, Vec3d direction, int probeDistance) {
-        int maxProbe = Math.max(1, probeDistance);
-        int verticalClearance = Math.max(0, config.solidAvoidanceVerticalClearanceBlocks);
-
-        for (int i = 1; i <= maxProbe; i++) {
-            Vec3d sample = start.add(direction.multiply(i));
-            BlockPos base = BlockPos.ofFloored(sample);
-
-            if (!isChunkLoadedForBlock(world, base)) {
-                return false;
-            }
-
-            if (config.requireWaterForSpawn && !world.getFluidState(base).isOf(Fluids.WATER)) {
-                return false;
-            }
-
-            BlockState at = world.getBlockState(base);
-            if (at.isSolidBlock(world, base) && !world.getFluidState(base).isOf(Fluids.WATER)) {
-                return false;
-            }
-
-            for (int up = 1; up <= verticalClearance; up++) {
-                BlockPos check = base.up(up);
-                if (!isChunkLoadedForBlock(world, check)) {
-                    return false;
-                }
-                BlockState bs = world.getBlockState(check);
-                if (bs.isSolidBlock(world, check) && !world.getFluidState(check).isOf(Fluids.WATER)) {
-                    return false;
-                }
-            }
-        }
-
-        return true;
-    }
-
-    private static Vec3d normalizeVectorStrict(Vec3d vector) {
-        if (vector == null || !Double.isFinite(vector.x) || !Double.isFinite(vector.y) || !Double.isFinite(vector.z)) {
-            throw new IllegalStateException("Non-finite direction vector");
-        }
-        double len = vector.length();
-        if (len < 1.0e-6d) {
-            throw new IllegalStateException("Zero-length direction vector");
-        }
-        return vector.multiply(1.0d / len);
-    }
-
-    private static void faceAlong(Entity entity, Vec3d direction) {
-        Vec3d normalized = normalizeVectorStrict(direction);
-        float yaw = (float) Math.toDegrees(Math.atan2(normalized.z, normalized.x)) - 90.0f;
-        double horizontal = Math.sqrt(normalized.x * normalized.x + normalized.z * normalized.z);
-        float pitch = (float) -Math.toDegrees(Math.atan2(normalized.y, horizontal));
-        entity.setYaw(yaw);
-        entity.setBodyYaw(yaw);
-        entity.setHeadYaw(yaw);
-        entity.setPitch(pitch);
+        LeviathanRuntimeService.applyLoadedPassiveMovement(world, entity, state, config);
     }
 
     private static VirtualLeviathanStore.VirtualLeviathanState syncStateFromLoaded(Entity entity, UUID id) {
@@ -1384,7 +629,7 @@ public final class LeviathanManager {
             return normalizeHeadingStrict(vx, vz, id);
         }
 
-        CombatRuntime runtime = combatRuntimeById.get(id);
+        LeviathanCombatRuntime runtime = combatRuntimeById.get(id);
         if (runtime != null) {
             double rx = runtime.chargeDirection.x;
             double rz = runtime.chargeDirection.z;
@@ -1439,30 +684,11 @@ public final class LeviathanManager {
     }
 
     private static Map<UUID, Entity> loadedManagedById(ServerWorld world) {
-        Map<UUID, Entity> loaded = new HashMap<>();
-        for (Entity entity : world.iterateEntities()) {
-            if (!isManaged(entity)) {
-                continue;
-            }
-
-            Optional<UUID> id = LeviathanIdTags.getId(entity);
-            if (id.isEmpty()) {
-                UUID assigned = UUID.randomUUID();
-                entity.addCommandTag(LeviathanIdTags.toTag(assigned));
-                id = Optional.of(assigned);
-                AtlantisMod.LOGGER.warn("[Atlantis][leviathan] managed entity missing id tag; assigned id={} uuid={}",
-                    shortId(assigned),
-                    entity.getUuidAsString());
-            }
-
-            loaded.put(id.get(), entity);
+        Map<UUID, Entity> loaded = LeviathanManagedEntityIndex.snapshot(world);
+        if (AtlantisMod.LOGGER.isDebugEnabled()) {
+            AtlantisMod.LOGGER.debug("[Atlantis][leviathan] loaded managed scan complete count={}", loaded.size());
         }
-        AtlantisMod.LOGGER.debug("[Atlantis][leviathan] loaded managed scan complete count={}", loaded.size());
         return loaded;
-    }
-
-    public static boolean isManaged(Entity entity) {
-        return entity.getCommandTags().contains(MANAGED_TAG);
     }
 
     private static void applyConfiguredEntityTypes(LeviathansConfig newConfig) {
@@ -1532,17 +758,6 @@ public final class LeviathanManager {
         return depthHealthMultiplier * strength;
     }
 
-    private static double resolveEffectiveChargeDamage(Entity leviathan) {
-        Optional<UUID> id = LeviathanIdTags.getId(leviathan);
-        if (id.isPresent() && virtualStore != null) {
-            VirtualLeviathanStore.VirtualLeviathanState state = virtualStore.get(id.get());
-            if (state != null) {
-                return config.chargeDamage * state.damageMultiplier();
-            }
-        }
-        return config.chargeDamage;
-    }
-
     private static EntityType<?> resolveConfiguredEntityType(String entityTypeId) {
         Identifier id = Identifier.tryParse(entityTypeId);
         if (id == null) {
@@ -1574,11 +789,16 @@ public final class LeviathanManager {
         if (radiusBlocks <= 0) {
             return false;
         }
+        return isAnyPlayerNear(world.getPlayers(player -> player != null && !player.isSpectator() && player.isAlive()), pos, radiusBlocks);
+    }
+
+    private static boolean isAnyPlayerNear(List<ServerPlayerEntity> players, Vec3d pos, int radiusBlocks) {
+        if (radiusBlocks <= 0 || players == null || players.isEmpty()) {
+            return false;
+        }
+
         double r2 = (double) radiusBlocks * (double) radiusBlocks;
-        for (ServerPlayerEntity player : world.getPlayers()) {
-            if (player == null || player.isSpectator() || !player.isAlive()) {
-                continue;
-            }
+        for (ServerPlayerEntity player : players) {
             double dx = player.getX() - pos.x;
             double dy = player.getY() - pos.y;
             double dz = player.getZ() - pos.z;

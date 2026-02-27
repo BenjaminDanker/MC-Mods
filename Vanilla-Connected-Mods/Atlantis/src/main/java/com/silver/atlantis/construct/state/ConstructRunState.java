@@ -2,7 +2,7 @@ package com.silver.atlantis.construct.state;
 
 /**
  * Persistent construct progress so a restart can resume without redoing
- * already completed slices.
+ * already completed passes.
  */
 public record ConstructRunState(
     int version,
@@ -14,7 +14,7 @@ public record ConstructRunState(
     int rawCenterZ,
     int yOffsetBlocks,
     String pass, // SOLIDS | FLUIDS
-    int nextSliceIndex,
+    int nextPassIndex,
     String stage, // best-effort checkpoint
     Integer anchorToX,
     Integer anchorToY,

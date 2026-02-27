@@ -1,6 +1,6 @@
 package com.silver.atlantis.spawn.mixin;
 
-import com.silver.atlantis.spawn.SpecialItemConversionManager;
+import com.silver.atlantis.spawn.drop.SpecialItemConversionManager;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.server.network.ServerPlayerEntity;

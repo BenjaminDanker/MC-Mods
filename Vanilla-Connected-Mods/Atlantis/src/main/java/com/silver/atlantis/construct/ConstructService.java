@@ -8,19 +8,16 @@ import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
 
-import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
- * Runs schematic slice construction over many ticks.
+ * Runs Atlantis construct/undo jobs over many ticks.
  */
 public final class ConstructService {
 
-    private final Executor ioExecutor = Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r, "Atlantis-Construct-IO");
-        t.setDaemon(true);
-        return t;
-    });
+    private ExecutorService ioExecutor = newIoExecutor();
 
     private ConstructJob activeJob;
     private boolean paused;
@@ -81,24 +78,21 @@ public final class ConstructService {
         ServerTickEvents.END_SERVER_TICK.register(this::onEndTick);
     }
 
-    private boolean ensureWorldEditAvailable(ServerCommandSource source) {
-        // Construct depends on WorldEdit (and its embedded lin-bus classes). If these are missing,
-        // starting the construct job can crash the entire server tick loop.
-        return ensureClassPresent(source, "com.sk89q.worldedit.WorldEdit", "WorldEdit")
-            && ensureClassPresent(source, "org.enginehub.linbus.stream.LinStreamable", "lin-bus (LinStreamable)");
-    }
+    public synchronized void shutdown() {
+        if (ioExecutor == null) {
+            return;
+        }
 
-    private boolean ensureClassPresent(ServerCommandSource source, String className, String displayName) {
+        ioExecutor.shutdown();
         try {
-            Class.forName(className, false, ConstructService.class.getClassLoader());
-            return true;
-        } catch (Throwable t) {
-            AtlantisMod.LOGGER.error("Missing required construct dependency: {} ({})", displayName, className, t);
-            source.sendFeedback(
-                () -> Text.literal("Cannot start /construct: missing required dependency: " + displayName + ". Install the Fabric WorldEdit mod (EngineHub) and restart the server."),
-                false
-            );
-            return false;
+            if (!ioExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
+                ioExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            ioExecutor.shutdownNow();
+        } finally {
+            ioExecutor = null;
         }
     }
 
@@ -107,9 +101,7 @@ public final class ConstructService {
             return false;
         }
 
-        if (!ensureWorldEditAvailable(source)) {
-            return false;
-        }
+        ensureIoExecutorActive();
 
         paused = false;
         try {
@@ -117,7 +109,7 @@ public final class ConstructService {
         } catch (NoClassDefFoundError err) {
             AtlantisMod.LOGGER.error("Failed to start construct due to missing classes.", err);
             source.sendFeedback(
-                () -> Text.literal("Cannot start /construct: missing runtime class: " + err.getMessage() + ". Ensure the correct WorldEdit build (and dependencies) is installed."),
+                () -> Text.literal("Cannot start /construct: missing runtime class: " + err.getMessage() + "."),
                 false
             );
             activeJob = null;
@@ -132,9 +124,7 @@ public final class ConstructService {
             return false;
         }
 
-        if (!ensureWorldEditAvailable(source)) {
-            return false;
-        }
+        ensureIoExecutorActive();
 
         var resumeState = ConstructTask.tryLoadLatestResumableState(world);
         if (resumeState == null) {
@@ -147,7 +137,7 @@ public final class ConstructService {
         } catch (NoClassDefFoundError err) {
             AtlantisMod.LOGGER.error("Failed to resume construct due to missing classes.", err);
             source.sendFeedback(
-                () -> Text.literal("Cannot resume /construct: missing runtime class: " + err.getMessage() + ". Ensure the correct WorldEdit build (and dependencies) is installed."),
+                () -> Text.literal("Cannot resume /construct: missing runtime class: " + err.getMessage() + "."),
                 false
             );
             activeJob = null;
@@ -162,9 +152,7 @@ public final class ConstructService {
             return false;
         }
 
-        if (!ensureWorldEditAvailable(source)) {
-            return false;
-        }
+        ensureIoExecutorActive();
 
         paused = false;
         try {
@@ -172,7 +160,7 @@ public final class ConstructService {
         } catch (NoClassDefFoundError err) {
             AtlantisMod.LOGGER.error("Failed to start construct undo due to missing classes.", err);
             source.sendFeedback(
-                () -> Text.literal("Cannot start /construct undo: missing runtime class: " + err.getMessage() + ". Ensure the correct WorldEdit build (and dependencies) is installed."),
+                () -> Text.literal("Cannot start /construct undo: missing runtime class: " + err.getMessage() + "."),
                 false
             );
             activeJob = null;
@@ -228,5 +216,19 @@ public final class ConstructService {
             activeJob = null;
             paused = false;
         }
+    }
+
+    private synchronized void ensureIoExecutorActive() {
+        if (ioExecutor == null || ioExecutor.isShutdown() || ioExecutor.isTerminated()) {
+            ioExecutor = newIoExecutor();
+        }
+    }
+
+    private static ExecutorService newIoExecutor() {
+        return Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "Atlantis-Construct-IO");
+            t.setDaemon(true);
+            return t;
+        });
     }
 }

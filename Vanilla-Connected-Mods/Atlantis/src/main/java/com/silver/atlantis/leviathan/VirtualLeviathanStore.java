@@ -20,13 +20,18 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public final class VirtualLeviathanStore {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     public static final String FILE_NAME = "atlantis-leviathans-virtual.json";
 
     private final Path statePath;
-    private final List<VirtualLeviathanState> leviathans = new ArrayList<>();
+    private final ReadWriteLock lock = new ReentrantReadWriteLock();
+    private final Map<UUID, VirtualLeviathanState> leviathansById = new LinkedHashMap<>();
+    private List<VirtualLeviathanState> snapshotCache = List.of();
+    private boolean snapshotDirty = true;
     private boolean dirty;
 
     public VirtualLeviathanStore() {
@@ -35,75 +40,106 @@ public final class VirtualLeviathanStore {
         load();
     }
 
-    public synchronized List<VirtualLeviathanState> snapshot() {
-        return new ArrayList<>(leviathans);
-    }
-
-    public synchronized int size() {
-        return leviathans.size();
-    }
-
-    public synchronized VirtualLeviathanState get(UUID id) {
-        for (VirtualLeviathanState state : leviathans) {
-            if (state.id().equals(id)) {
-                return state;
+    public List<VirtualLeviathanState> snapshot() {
+        lock.readLock().lock();
+        try {
+            if (!snapshotDirty) {
+                return snapshotCache;
             }
+        } finally {
+            lock.readLock().unlock();
         }
-        return null;
+
+        lock.writeLock().lock();
+        try {
+            if (snapshotDirty) {
+                snapshotCache = List.copyOf(leviathansById.values());
+                snapshotDirty = false;
+            }
+            return snapshotCache;
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
-    public synchronized void upsert(VirtualLeviathanState state) {
-        int firstIndex = -1;
-        int duplicateRemovals = 0;
-        for (int i = 0; i < leviathans.size(); i++) {
-            if (leviathans.get(i).id().equals(state.id())) {
-                if (firstIndex == -1) {
-                    firstIndex = i;
-                    leviathans.set(i, state);
+    public int size() {
+        lock.readLock().lock();
+        try {
+            return leviathansById.size();
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    public VirtualLeviathanState get(UUID id) {
+        lock.readLock().lock();
+        try {
+            return leviathansById.get(id);
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    public void upsert(VirtualLeviathanState state) {
+        lock.writeLock().lock();
+        try {
+            VirtualLeviathanState previous = leviathansById.put(state.id(), state);
+
+            if (AtlantisMod.LOGGER.isDebugEnabled()) {
+                if (previous == null) {
+                    AtlantisMod.LOGGER.debug("[Atlantis][leviathan] virtual upsert add id={} pos=({}, {}, {})",
+                        shortId(state.id()),
+                        round1(state.pos().x),
+                        round1(state.pos().y),
+                        round1(state.pos().z));
                 } else {
-                    leviathans.remove(i);
-                    i--;
-                    duplicateRemovals++;
+                    AtlantisMod.LOGGER.debug("[Atlantis][leviathan] virtual upsert update id={} pos=({}, {}, {}) duplicatesRemoved={}",
+                        shortId(state.id()),
+                        round1(state.pos().x),
+                        round1(state.pos().y),
+                        round1(state.pos().z),
+                        0);
                 }
             }
-        }
 
-        if (firstIndex == -1) {
-            leviathans.add(state);
-            AtlantisMod.LOGGER.debug("[Atlantis][leviathan] virtual upsert add id={} pos=({}, {}, {})",
-                shortId(state.id()),
-                round1(state.pos().x),
-                round1(state.pos().y),
-                round1(state.pos().z));
-        } else {
-            AtlantisMod.LOGGER.debug("[Atlantis][leviathan] virtual upsert update id={} pos=({}, {}, {}) duplicatesRemoved={}",
-                shortId(state.id()),
-                round1(state.pos().x),
-                round1(state.pos().y),
-                round1(state.pos().z),
-                duplicateRemovals);
-        }
-
-        dirty = true;
-    }
-
-    public synchronized void remove(UUID id) {
-        if (leviathans.removeIf(state -> state.id().equals(id))) {
+            snapshotDirty = true;
             dirty = true;
-            AtlantisMod.LOGGER.debug("[Atlantis][leviathan] virtual remove id={}", shortId(id));
-        } else {
-            AtlantisMod.LOGGER.debug("[Atlantis][leviathan] virtual remove no-op id={}", shortId(id));
+        } finally {
+            lock.writeLock().unlock();
         }
     }
 
-    public synchronized void flush() {
-        if (!dirty) {
-            AtlantisMod.LOGGER.debug("[Atlantis][leviathan] virtual flush skipped (clean) path={}", statePath);
-            return;
+    public void remove(UUID id) {
+        lock.writeLock().lock();
+        try {
+            if (leviathansById.remove(id) != null) {
+                snapshotDirty = true;
+                dirty = true;
+                if (AtlantisMod.LOGGER.isDebugEnabled()) {
+                    AtlantisMod.LOGGER.debug("[Atlantis][leviathan] virtual remove id={}", shortId(id));
+                }
+            } else if (AtlantisMod.LOGGER.isDebugEnabled()) {
+                AtlantisMod.LOGGER.debug("[Atlantis][leviathan] virtual remove no-op id={}", shortId(id));
+            }
+        } finally {
+            lock.writeLock().unlock();
         }
-        save();
-        dirty = false;
-        AtlantisMod.LOGGER.info("[Atlantis][leviathan] virtual flush wrote {} records path={}", leviathans.size(), statePath);
+    }
+
+    public void flush() {
+        lock.writeLock().lock();
+        try {
+            if (!dirty) {
+                if (AtlantisMod.LOGGER.isDebugEnabled()) {
+                    AtlantisMod.LOGGER.debug("[Atlantis][leviathan] virtual flush skipped (clean) path={}", statePath);
+                }
+                return;
+            }
+            save();
+            dirty = false;
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     private void load() {
@@ -152,19 +188,20 @@ public final class VirtualLeviathanStore {
             byId.put(id, new VirtualLeviathanState(id, new Vec3d(x, y, z), headingX, headingZ, tick, entityTypeId, spawnY, scaleMultiplier, damageMultiplier, healthMultiplier));
         }
 
-        leviathans.clear();
-        leviathans.addAll(byId.values());
+        leviathansById.clear();
+        leviathansById.putAll(byId);
+        snapshotDirty = true;
         dirty = false;
-        AtlantisMod.LOGGER.info("[Atlantis][leviathan] virtual store loaded {} records path={}", leviathans.size(), statePath);
+        AtlantisMod.LOGGER.info("[Atlantis][leviathan] virtual store loaded {} records path={}", leviathansById.size(), statePath);
     }
 
-    private synchronized void save() {
+    private void save() {
         try {
             Files.createDirectories(statePath.getParent());
 
             JsonObject root = new JsonObject();
             JsonArray arr = new JsonArray();
-            for (VirtualLeviathanState leviathan : leviathans) {
+            for (VirtualLeviathanState leviathan : leviathansById.values()) {
                 JsonObject obj = new JsonObject();
                 obj.addProperty("id", leviathan.id().toString());
                 obj.addProperty("x", leviathan.pos().x);
@@ -183,7 +220,9 @@ public final class VirtualLeviathanStore {
             root.add("leviathans", arr);
 
             Files.writeString(statePath, GSON.toJson(root), StandardCharsets.UTF_8);
-            AtlantisMod.LOGGER.debug("[Atlantis][leviathan] virtual store save complete entries={} path={}", leviathans.size(), statePath);
+            if (AtlantisMod.LOGGER.isDebugEnabled()) {
+                AtlantisMod.LOGGER.debug("[Atlantis][leviathan] virtual store save complete entries={} path={}", leviathansById.size(), statePath);
+            }
         } catch (IOException e) {
             throw new IllegalStateException("Unable to write virtual leviathan store path=" + statePath + " error=" + e.getMessage(), e);
         }
@@ -195,7 +234,7 @@ public final class VirtualLeviathanStore {
     }
 
     private static String round1(double value) {
-        return String.format("%.1f", value);
+        return Double.toString(Math.round(value * 10.0d) / 10.0d);
     }
 
     private static UUID parseUuid(JsonObject obj, String key, int index) {

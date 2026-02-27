@@ -5,16 +5,22 @@ import com.silver.atlantis.construct.ConstructConfig;
 import com.silver.atlantis.construct.ConstructService;
 import com.silver.atlantis.find.FlatAreaSearchConfig;
 import com.silver.atlantis.find.FlatAreaSearchService;
-import com.silver.atlantis.spawn.SpawnCommandManager;
+import com.silver.atlantis.spawn.bounds.ActiveConstructBounds;
+import com.silver.atlantis.spawn.bounds.ActiveConstructBoundsResolver;
+import com.silver.atlantis.spawn.command.ProximitySpawnCommandManager;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.minecraft.network.packet.s2c.play.PositionFlag;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.command.ServerCommandSource;
+import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Box;
 import net.minecraft.world.World;
 
 import java.nio.file.Path;
+import java.util.Set;
 
 public final class CycleService {
 
@@ -23,7 +29,7 @@ public final class CycleService {
 
     private final FlatAreaSearchService searchService;
     private final ConstructService constructService;
-    private final SpawnCommandManager spawnCommandManager;
+    private final ProximitySpawnCommandManager spawnCommandManager;
 
     private final Path stateFile;
 
@@ -31,7 +37,7 @@ public final class CycleService {
     private long lastUndoCountdownCheckMillis = -1L;
     private long lastUndoCountdownCheckNanos = -1L;
 
-    public CycleService(FlatAreaSearchService searchService, ConstructService constructService, SpawnCommandManager spawnCommandManager) {
+    public CycleService(FlatAreaSearchService searchService, ConstructService constructService, ProximitySpawnCommandManager spawnCommandManager) {
         this.searchService = searchService;
         this.constructService = constructService;
         this.spawnCommandManager = spawnCommandManager;
@@ -221,7 +227,7 @@ public final class CycleService {
             return;
         }
 
-        if (searchService.isRunning() || constructService.isRunning()) {
+        if (searchService.isRunning() || constructService.isRunning() || spawnCommandManager.isStructureMobRunning()) {
             source.sendFeedback(() -> Text.literal("Cycle set: refused because a cycle job is currently running. Use /atlantis cycle step (which can cancel construct) or wait for it to finish."), false);
             return;
         }
@@ -283,7 +289,7 @@ public final class CycleService {
         setStage(source, stageNameRaw);
         // If setStage refused (e.g. job running), it will have messaged the user.
         // Only step if we're still enabled and not running jobs.
-        if (state == null || !state.enabled() || searchService.isRunning() || constructService.isRunning()) {
+        if (state == null || !state.enabled() || searchService.isRunning() || constructService.isRunning() || spawnCommandManager.isStructureMobRunning()) {
             return;
         }
         stepOnceNow(source);
@@ -366,24 +372,7 @@ public final class CycleService {
             }
 
             ConstructConfig defaults = ConstructConfig.defaults();
-            ConstructConfig runCfg = new ConstructConfig(
-                defaults.delayBetweenStagesTicks(),
-                defaults.delayBetweenSlicesTicks(),
-                defaults.maxChunksToLoadPerTick(),
-                CycleConfig.CONSTRUCT_Y_OFFSET_BLOCKS,
-                defaults.maxEntitiesToProcessPerTick(),
-                defaults.playerEjectMarginBlocks(),
-                defaults.playerEjectTeleportOffsetBlocks(),
-                defaults.pasteFlushEveryBlocks(),
-                defaults.tickTimeBudgetNanos(),
-                defaults.undoTickTimeBudgetNanos(),
-                defaults.undoFlushEveryBlocks(),
-                defaults.maxFluidNeighborUpdatesPerTick(),
-                defaults.expectedTickNanos(),
-                defaults.adaptiveScaleSmoothing(),
-                defaults.adaptiveScaleMin(),
-                defaults.adaptiveScaleMax()
-            );
+            ConstructConfig runCfg = defaults.withYOffsetBlocks(CycleConfig.CONSTRUCT_Y_OFFSET_BLOCKS);
 
             boolean started = constructService.start(actor, runCfg, overworld, new BlockPos(cx, cy, cz));
             if (!started) {
@@ -430,10 +419,25 @@ public final class CycleService {
 
         if (stage == CycleState.Stage.RUN_STRUCTUREMOB) {
             resetUndoCountdownCheck();
+            enforceStructureMobKeepout(server);
             try {
-                spawnCommandManager.runStructureMob(actor, false);
+                if (!spawnCommandManager.isStructureMobRunning()) {
+                    spawnCommandManager.runStructureMob(actor, false);
+                }
             } catch (Exception e) {
                 AtlantisMod.LOGGER.warn("structuremob failed during cycle: {}", e.getMessage());
+            }
+
+            state = new CycleState(CycleState.CURRENT_VERSION, true, state.nextRunAtEpochMillis(), CycleState.Stage.WAIT_STRUCTUREMOB.name(), state.lastCenterX(), state.lastCenterY(), state.lastCenterZ(), state.lastConstructRunId());
+            persistState();
+            return true;
+        }
+
+        if (stage == CycleState.Stage.WAIT_STRUCTUREMOB) {
+            resetUndoCountdownCheck();
+            enforceStructureMobKeepout(server);
+            if (spawnCommandManager.isStructureMobRunning()) {
+                return false;
             }
 
             // Wait 48 hours after structuremob before undo.
@@ -503,18 +507,110 @@ public final class CycleService {
         return false;
     }
 
+    private void enforceStructureMobKeepout(MinecraftServer server) {
+        if (server == null || state == null) {
+            return;
+        }
+
+        CycleState.Stage stage = parseStage(state.stage());
+        if (stage != CycleState.Stage.RUN_STRUCTUREMOB && stage != CycleState.Stage.WAIT_STRUCTUREMOB) {
+            return;
+        }
+
+        ActiveConstructBounds bounds = ActiveConstructBoundsResolver.tryResolveLatest();
+        if (bounds == null) {
+            return;
+        }
+
+        ServerWorld world = null;
+        String dimensionId = bounds.dimensionId();
+        for (ServerWorld candidate : server.getWorlds()) {
+            if (candidate.getRegistryKey().getValue().toString().equals(dimensionId)) {
+                world = candidate;
+                break;
+            }
+        }
+        if (world == null) {
+            return;
+        }
+
+        ConstructConfig config = ConstructConfig.defaults();
+        int configuredMargin = Math.max(0, config.playerEjectMarginBlocks());
+        int viewDistanceChunks = server.getPlayerManager().getViewDistance();
+        int simulationDistanceChunks = server.getPlayerManager().getSimulationDistance();
+        int chunkLoadRadiusBlocks = Math.max(viewDistanceChunks, simulationDistanceChunks) * 16;
+        int margin = Math.max(configuredMargin, chunkLoadRadiusBlocks + 32);
+        int offset = Math.max(64, config.playerEjectTeleportOffsetBlocks() + chunkLoadRadiusBlocks);
+
+        int minX = bounds.minX();
+        int minY = bounds.minY();
+        int minZ = bounds.minZ();
+        int maxX = bounds.maxX();
+        int maxY = bounds.maxY();
+        int maxZ = bounds.maxZ();
+
+        Box box = new Box(
+            minX - margin,
+            minY - margin,
+            minZ - margin,
+            maxX + margin + 1,
+            maxY + margin + 1,
+            maxZ + margin + 1
+        );
+
+        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+            if (player.getEntityWorld() != world) {
+                continue;
+            }
+
+            if (!box.contains(player.getX(), player.getY(), player.getZ())) {
+                continue;
+            }
+
+            double px = player.getX();
+            double pz = player.getZ();
+            double dxLeft = Math.abs(px - minX);
+            double dxRight = Math.abs(px - maxX);
+            double dzFront = Math.abs(pz - minZ);
+            double dzBack = Math.abs(pz - maxZ);
+
+            double best = dxLeft;
+            int tx = minX - margin - offset;
+            int tz = (int) Math.floor(pz);
+
+            if (dxRight < best) {
+                best = dxRight;
+                tx = maxX + margin + offset;
+                tz = (int) Math.floor(pz);
+            }
+            if (dzFront < best) {
+                best = dzFront;
+                tx = (int) Math.floor(px);
+                tz = minZ - margin - offset;
+            }
+            if (dzBack < best) {
+                tx = (int) Math.floor(px);
+                tz = maxZ + margin + offset;
+            }
+
+            int safeY = Math.max(world.getBottomY() + 1, player.getBlockY());
+            player.teleport(
+                world,
+                tx + 0.5,
+                safeY,
+                tz + 0.5,
+                Set.of(PositionFlag.DELTA_X, PositionFlag.DELTA_Y, PositionFlag.DELTA_Z),
+                player.getYaw(),
+                player.getPitch(),
+                true
+            );
+        }
+    }
+
     private boolean hasUndoHistory() {
-        String runId = com.silver.atlantis.construct.undo.UndoPaths.findLatestRunIdOrNull();
-        if (runId == null || runId.isBlank()) {
-            return false;
-        }
-        try {
-            java.nio.file.Path runDir = com.silver.atlantis.construct.undo.UndoPaths.runDir(runId);
-            java.nio.file.Path meta = com.silver.atlantis.construct.undo.UndoPaths.metadataFile(runDir);
-            return java.nio.file.Files.exists(meta);
-        } catch (Exception ignored) {
-            return false;
-        }
+        com.silver.atlantis.construct.undo.UndoPaths.pruneUnusableRunDirectories();
+        String runId = com.silver.atlantis.construct.undo.UndoPaths.findLatestUsableRunIdOrNull();
+        return runId != null && !runId.isBlank();
     }
 
     private CycleState.Stage parseStage(String raw) {

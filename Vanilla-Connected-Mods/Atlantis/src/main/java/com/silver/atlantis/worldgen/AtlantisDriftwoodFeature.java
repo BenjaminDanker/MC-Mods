@@ -39,7 +39,6 @@ public final class AtlantisDriftwoodFeature extends Feature<DefaultFeatureConfig
         Random random = context.getRandom();
         BlockPos origin = context.getOrigin();
         long calls = GENERATE_CALLS.incrementAndGet();
-        boolean verboseCall = AtlantisMod.LOGGER.isDebugEnabled() || calls <= 8;
 
         boolean placedAny = false;
         int placedBlocksThisCall = 0;
@@ -51,16 +50,6 @@ public final class AtlantisDriftwoodFeature extends Feature<DefaultFeatureConfig
         int rejectedBadFloor = 0;
         int rejectedNoReplaceable = 0;
         int rejectedNoColumnMatch = 0;
-        StringBuilder trace = verboseCall ? new StringBuilder(256) : null;
-
-        if (verboseCall) {
-            trace.append("call=").append(calls)
-                .append(" dim=").append(world.toServerWorld().getRegistryKey().getValue())
-                .append(" origin=").append(origin.getX()).append(',').append(origin.getY()).append(',').append(origin.getZ())
-                .append(" chunk=").append(origin.getX() >> 4).append(',').append(origin.getZ() >> 4)
-                .append(" attempts=").append(attempts)
-                .append(" thread=").append(Thread.currentThread().getName());
-        }
 
         for (int i = 0; i < attempts; i++) {
             int x = origin.getX() + random.nextBetween(-3, 3);
@@ -69,9 +58,6 @@ public final class AtlantisDriftwoodFeature extends Feature<DefaultFeatureConfig
             int floorY = findOceanFloorY(world, x, z);
             if (floorY == Integer.MIN_VALUE) {
                 rejectedNoColumnMatch++;
-                if (verboseCall && i < 4) {
-                    trace.append(" | i=").append(i).append(" reject=column xz=").append(x).append(',').append(z);
-                }
                 continue;
             }
 
@@ -79,11 +65,6 @@ public final class AtlantisDriftwoodFeature extends Feature<DefaultFeatureConfig
             BlockState waterState = world.getBlockState(pos);
             if (!waterState.getFluidState().isOf(Fluids.WATER)) {
                 rejectedNoWater++;
-                if (verboseCall && i < 4) {
-                    trace.append(" | i=").append(i).append(" reject=water xz=").append(x).append(',').append(z)
-                        .append(" y=").append(floorY + 1)
-                        .append(" block=").append(String.valueOf(waterState.getBlock()));
-                }
                 continue;
             }
 
@@ -91,11 +72,6 @@ public final class AtlantisDriftwoodFeature extends Feature<DefaultFeatureConfig
             BlockState floorState = world.getBlockState(floorPos);
             if (!isValidOceanFloor(floorState)) {
                 rejectedBadFloor++;
-                if (verboseCall && i < 4) {
-                    trace.append(" | i=").append(i).append(" reject=floor xz=").append(x).append(',').append(z)
-                        .append(" y=").append(floorY)
-                        .append(" floorBlock=").append(String.valueOf(floorState.getBlock()));
-                }
                 continue;
             }
 
@@ -111,9 +87,6 @@ public final class AtlantisDriftwoodFeature extends Feature<DefaultFeatureConfig
                 int segmentFloorY = findOceanFloorY(world, sx, sz);
                 if (segmentFloorY == Integer.MIN_VALUE) {
                     rejectedNoColumnMatch++;
-                    if (verboseCall && i < 4) {
-                        trace.append(" | i=").append(i).append(" reject=column-segment xz=").append(sx).append(',').append(sz);
-                    }
                     continue;
                 }
 
@@ -122,22 +95,12 @@ public final class AtlantisDriftwoodFeature extends Feature<DefaultFeatureConfig
                 BlockState existing = world.getBlockState(pos);
                 if (!canReplace(existing)) {
                     rejectedNoReplaceable++;
-                    if (verboseCall && i < 4) {
-                        trace.append(" | i=").append(i).append(" reject=replace xz=").append(sx).append(',').append(sz)
-                            .append(" y=").append(segmentFloorY + 1)
-                            .append(" block=").append(String.valueOf(existing.getBlock()));
-                    }
                     continue;
                 }
 
                 world.setBlockState(pos, log, Block.NOTIFY_LISTENERS);
                 placedAny = true;
                 placedBlocksThisCall++;
-                if (verboseCall && i < 4) {
-                    trace.append(" | i=").append(i).append(" place xz=").append(sx).append(',').append(sz)
-                        .append(" y=").append(segmentFloorY + 1)
-                        .append(" axis=").append(axis);
-                }
             }
         }
 
@@ -151,52 +114,7 @@ public final class AtlantisDriftwoodFeature extends Feature<DefaultFeatureConfig
         }
 
         if (placedAny) {
-            long placed = CHUNKS_WITH_PLACEMENT.incrementAndGet();
-            if (placed <= 8 || placed % 128 == 0) {
-                AtlantisMod.LOGGER.info(
-                    "[Atlantis][driftwood] placed chunk=({}, {}) dim={} placedBlocksThisCall={} totals: placedChunks={} placedBlocks={} generateCalls={}",
-                    origin.getX() >> 4,
-                    origin.getZ() >> 4,
-                    world.toServerWorld().getRegistryKey().getValue(),
-                    placedBlocksThisCall,
-                    placed,
-                    PLACED_BLOCKS_TOTAL.get(),
-                    calls
-                );
-            }
-        } else if (calls <= 5 || calls % 512 == 0) {
-            AtlantisMod.LOGGER.info(
-                "[Atlantis][driftwood] no placement chunk=({}, {}) dim={} generateCalls={} rejects: depth={} water={} floor={} replace={} column={}",
-                origin.getX() >> 4,
-                origin.getZ() >> 4,
-                world.toServerWorld().getRegistryKey().getValue(),
-                calls,
-                rejectedNoDepth,
-                rejectedNoWater,
-                rejectedBadFloor,
-                rejectedNoReplaceable,
-                rejectedNoColumnMatch
-            );
-        }
-
-        if (verboseCall && trace != null) {
-            AtlantisMod.LOGGER.info("[Atlantis][driftwood][trace] {}", trace);
-        }
-
-        if (calls % 256 == 0) {
-            long placedChunks = CHUNKS_WITH_PLACEMENT.get();
-            long placedBlocks = PLACED_BLOCKS_TOTAL.get();
-            AtlantisMod.LOGGER.info(
-                "[Atlantis][driftwood][summary] calls={} placedChunks={} placedBlocks={} rejectTotals(depth={}, water={}, floor={}, replace={}, column={})",
-                calls,
-                placedChunks,
-                placedBlocks,
-                REJECT_NO_DEPTH_TOTAL.get(),
-                REJECT_NO_WATER_TOTAL.get(),
-                REJECT_BAD_FLOOR_TOTAL.get(),
-                REJECT_NO_REPLACEABLE_TOTAL.get(),
-                REJECT_NO_COLUMN_MATCH_TOTAL.get()
-            );
+            CHUNKS_WITH_PLACEMENT.incrementAndGet();
         }
 
         return placedAny;

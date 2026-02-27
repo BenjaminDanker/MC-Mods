@@ -1,4 +1,4 @@
-package com.silver.atlantis.spawn;
+package com.silver.atlantis.spawn.drop;
 
 import com.silver.atlantis.AtlantisMod;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -33,6 +33,8 @@ public final class SpecialItemConversionManager {
 
     private static final Set<UUID> PENDING_PLAYERS = new HashSet<>();
     private static final Map<UUID, Long> NEXT_ALLOWED_TICK = new HashMap<>();
+    private static Item configuredSpecialDropItem;
+    private static boolean configuredSpecialDropItemResolved;
     private static long TICKS;
 
     private static boolean initialised;
@@ -102,6 +104,12 @@ public final class SpecialItemConversionManager {
             return;
         }
 
+        ItemStack rewardTemplate = SpecialSeaLanternItem.createOne();
+        if (rewardTemplate.isEmpty()) {
+            AtlantisMod.LOGGER.warn("Skipping conversion for {}: reward item could not be created", player.getNameForScoreboard());
+            return;
+        }
+
         tryMarkOceanDefeatedOnce(player);
 
         int toConsume = crafts * threshold;
@@ -110,10 +118,7 @@ public final class SpecialItemConversionManager {
         int remaining = crafts;
         while (remaining > 0) {
             int give = Math.min(remaining, 64);
-            ItemStack reward = SpecialSeaLanternItem.createOne();
-            if (reward.isEmpty()) {
-                return;
-            }
+            ItemStack reward = rewardTemplate.copy();
             reward.setCount(give);
 
             if (!player.getInventory().insertStack(reward)) {
@@ -191,13 +196,12 @@ public final class SpecialItemConversionManager {
             return false;
         }
 
-        Identifier configuredId = Identifier.tryParse(SpawnSpecialConfig.SPECIAL_DROP_ITEM_ID);
-        if (configuredId == null) {
+        Item configuredItem = getConfiguredSpecialDropItem();
+        if (configuredItem == null) {
             return false;
         }
 
-        Item configuredItem = Registries.ITEM.get(configuredId);
-        if (configuredItem == null || !stack.isOf(configuredItem)) {
+        if (!stack.isOf(configuredItem)) {
             return false;
         }
 
@@ -208,6 +212,30 @@ public final class SpecialItemConversionManager {
 
         String id = custom.getString("id").orElse("");
         return "special_drop".equals(id);
+    }
+
+    private static Item getConfiguredSpecialDropItem() {
+        if (configuredSpecialDropItemResolved) {
+            return configuredSpecialDropItem;
+        }
+
+        configuredSpecialDropItemResolved = true;
+        Identifier configuredId = Identifier.tryParse(SpawnSpecialConfig.SPECIAL_DROP_ITEM_ID);
+        if (configuredId == null) {
+            AtlantisMod.LOGGER.warn("Invalid special drop item id in config: {}", SpawnSpecialConfig.SPECIAL_DROP_ITEM_ID);
+            configuredSpecialDropItem = null;
+            return null;
+        }
+
+        Item item = Registries.ITEM.get(configuredId);
+        if (item == null) {
+            AtlantisMod.LOGGER.warn("Unknown special drop item in config: {}", SpawnSpecialConfig.SPECIAL_DROP_ITEM_ID);
+            configuredSpecialDropItem = null;
+            return null;
+        }
+
+        configuredSpecialDropItem = item;
+        return configuredSpecialDropItem;
     }
 
     private static NbtCompound readCustomData(ItemStack stack) {

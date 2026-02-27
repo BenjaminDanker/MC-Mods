@@ -1,4 +1,4 @@
-package com.silver.atlantis.spawn;
+package com.silver.atlantis.spawn.config;
 
 /**
  * Hard-coded difficulty tuning for Atlantis mob spawning.

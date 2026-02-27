@@ -15,9 +15,10 @@ import com.silver.atlantis.leviathan.LeviathanCommandManager;
 import com.silver.atlantis.leviathan.Leviathans;
 import com.silver.atlantis.protect.ProtectionBootstrap;
 import com.silver.atlantis.protect.ProtectionService;
-import com.silver.atlantis.spawn.SpawnCommandManager;
-import com.silver.atlantis.spawn.SpecialDropManager;
-import com.silver.atlantis.spawn.SpecialItemConversionManager;
+import com.silver.atlantis.spawn.command.ProximitySpawnCommandManager;
+import com.silver.atlantis.spawn.drop.SpecialDropManager;
+import com.silver.atlantis.spawn.drop.SpecialItemConversionManager;
+import com.silver.atlantis.spawn.service.ProximityMobManager;
 import com.silver.atlantis.worldgen.AtlantisWorldgen;
 import net.fabricmc.api.ModInitializer;
 import org.slf4j.Logger;
@@ -27,7 +28,8 @@ public final class AtlantisMod implements ModInitializer {
 	public static final String MOD_ID = "atlantis";
 	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
-	private final SpawnCommandManager spawnManager = new SpawnCommandManager();
+	private final ProximitySpawnCommandManager spawnManager = new ProximitySpawnCommandManager();
+	private final ProximityMobManager proximityMobManager = ProximityMobManager.getInstance();
 	private final FlatAreaSearchService flatAreaSearchService = new FlatAreaSearchService();
 	private final FindCommandManager findCommandManager = new FindCommandManager(flatAreaSearchService);
 	private final ProtectionService protectionService = new ProtectionService();
@@ -55,7 +57,7 @@ public final class AtlantisMod implements ModInitializer {
 		ProtectionBootstrap.loadAllPersisted();
 		heightCapService.register();
 		SpecialDropManager.init();
-		spawnManager.register();
+		proximityMobManager.register();
 		SpecialItemConversionManager.init();
 		AtlantisCompassOverrideManager.init();
 		flatAreaSearchService.register();

@@ -11,7 +11,7 @@ public record UndoRunMetadata(
     int rawCenterX,
     int rawCenterY,
     int rawCenterZ,
-    List<String> sliceFiles
+    List<String> undoFiles
 ) {
     public static final int CURRENT_VERSION = 1;
 }

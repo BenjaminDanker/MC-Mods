@@ -1,6 +1,6 @@
 package com.silver.atlantis.heightcap;
 
-import com.silver.atlantis.construct.SchematicSliceScanner;
+import com.silver.atlantis.construct.AtlantisSchematicPaths;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -18,7 +18,7 @@ final class HeightCapConfig {
     }
 
     static Path filePath() {
-        return SchematicSliceScanner.defaultSchematicDir().resolve(FILE_NAME);
+        return AtlantisSchematicPaths.schematicDir().resolve(FILE_NAME);
     }
 
     static boolean loadEnabledOrDefault(boolean defaultValue) {

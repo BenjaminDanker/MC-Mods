@@ -1,6 +1,7 @@
-package com.silver.atlantis.spawn;
+package com.silver.atlantis.spawn.config;
 
 import com.silver.atlantis.AtlantisMod;
+import com.silver.atlantis.spawn.drop.SpawnSpecialConfig;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -160,7 +161,6 @@ public final class SpawnMobConfig {
 
         catalogs.put(SpawnType.LAND, new Catalog(
             List.of(
-                new MobTypeConfig(8, "minecraft:spider"),
                 new MobTypeConfig(9, "minecraft:skeleton"),
                 new MobTypeConfig(10, "minecraft:zombie"),
                 new MobTypeConfig(13, "minecraft:husk"),
