@@ -1,0 +1,20 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.silver.viewextend.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "MinecraftServerMixin",
+    "ServerCommonNetworkHandlerMixin",
+    "ServerChunkLoadingManagerAccessor",
+    "ChunkDataS2CPacketAccessor",
+    "LightUpdateS2CPacketAccessor"
+  ],
+  "server": [],
+  "client": [
+    "client.ClientPlayNetworkHandlerMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
