@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "entitypruner",
+  "version": "${version}",
+  "name": "Entity Pruner",
+  "description": "Prunes entities (per chunk) to save memory and CPU.",
+  "authors": [
+    "Silver"
+  ],
+  "contact": {},
+  "license": "MIT",
+  "icon": "assets/entitypruner/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.silver.entitypruner.EntityPruner"
+    ]
+  },
+  "mixins": [
+    "entitypruner.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.14.22",
+    "minecraft": "~1.21.10",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
