@@ -14,7 +14,7 @@ public class ViewExtendMod implements ModInitializer {
         ViewExtendConfig config = ViewExtendConfig.load();
         service = new ViewExtendService(config);
         LOGGER.info(
-            "View Extend initialized (unsimulated-view-distance={}, max-chunks-per-player-per-tick={}, max-main-thread-prepared-chunks-per-tick={}, max-unloads-per-player-per-tick={}, lod1-start-distance={}, unload-buffer-chunks={}, unload-grace-ticks={}, pending-chunks-hard-limit={}, payload-cache-ttl-ticks={}, payload-cache-max-entries-per-player={}, client-reported-view-distance-hard-cap={}, global-packet-template-cache-max-entries={}, max-nbt-reads-per-tick={}, prepared-queue-hard-limit={}, tick-interval={}, metrics-info-logs-enabled={}, metrics-log-interval-ticks={})",
+            "View Extend initialized (unsimulated-view-distance={}, max-chunks-per-player-per-tick={}, max-main-thread-prepared-chunks-per-tick={}, max-unloads-per-player-per-tick={}, lod1-start-distance={}, unload-buffer-chunks={}, unload-grace-ticks={}, pending-chunks-hard-limit={}, payload-cache-ttl-ticks={}, payload-cache-max-entries-per-player={}, client-reported-view-distance-hard-cap={}, global-packet-template-cache-max-entries={}, max-nbt-reads-per-tick={}, prepared-queue-hard-limit={}, tick-interval={}, metrics-info-logs-enabled={}, metrics-log-interval-ticks={}, fallback-sky-light-level={}, fallback-block-light-level={}, ocean-fallback-enabled={}, ocean-fallback-sky-light-level={})",
                 config.unsimulatedViewDistance(),
                 config.maxChunksPerPlayerPerTick(),
                 config.maxMainThreadPreparedChunksPerTick(),
@@ -31,7 +31,11 @@ public class ViewExtendMod implements ModInitializer {
                 config.preparedQueueHardLimit(),
             config.tickInterval(),
             config.metricsInfoLogsEnabled(),
-            config.metricsLogIntervalTicks());
+            config.metricsLogIntervalTicks(),
+            config.fallbackSkyLightLevel(),
+            config.fallbackBlockLightLevel(),
+            config.oceanFallbackEnabled(),
+            config.oceanFallbackSkyLightLevel());
     }
 
     public static ViewExtendService getService() {

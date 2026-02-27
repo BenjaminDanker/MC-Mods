@@ -42,8 +42,6 @@ import net.minecraft.world.chunk.WorldChunk;
 import net.minecraft.world.chunk.light.LightingProvider;
 
 public final class ViewExtendService {
-    private static final byte[] FULL_BRIGHT_NIBBLE = createFilledNibble((byte) 0xFF);
-    private static final byte[] DARK_NIBBLE = createFilledNibble((byte) 0x00);
     private static final BitSet EMPTY_BIT_SET = new BitSet();
     private static final Map<Integer, byte[]> WATER_SKYLIGHT_FALLBACK_CACHE = new ConcurrentHashMap<>();
     private static final Map<Integer, int[]> RING_OFFSET_CACHE = new ConcurrentHashMap<>();
@@ -66,6 +64,9 @@ public final class ViewExtendService {
             Map.entry("minecraft:wooden_pressure_plate", "minecraft:oak_pressure_plate"));
 
     private final ViewExtendConfig config;
+    private final byte[] fallbackSkyLightNibble;
+    private final byte[] fallbackBlockLightNibble;
+    private final byte[] oceanFallbackSkyLightNibble;
     private final Long2ObjectOpenHashMap<PlayerState> statesByPlayer = new Long2ObjectOpenHashMap<>();
     private final ConcurrentLinkedQueue<PreparedChunkTask> preparedChunkQueue = new ConcurrentLinkedQueue<>();
     private final ConcurrentLinkedQueue<NbtReadRequest> nbtReadQueue = new ConcurrentLinkedQueue<>();
@@ -138,6 +139,9 @@ public final class ViewExtendService {
 
     public ViewExtendService(ViewExtendConfig config) {
         this.config = config;
+        this.fallbackSkyLightNibble = createLightLevelNibble(config.fallbackSkyLightLevel());
+        this.fallbackBlockLightNibble = createLightLevelNibble(config.fallbackBlockLightLevel());
+        this.oceanFallbackSkyLightNibble = createLightLevelNibble(config.oceanFallbackSkyLightLevel());
         this.effectiveChunkQueueBudget = config.maxChunksPerPlayerPerTick();
         this.effectivePreparedProcessBudget = config.maxMainThreadPreparedChunksPerTick();
         int workerThreads = Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors() / 2));
@@ -1019,7 +1023,7 @@ public final class ViewExtendService {
             ? "idle"
             : "active";
 
-        ViewExtendMod.LOGGER.info(
+        ViewExtendMod.LOGGER.debug(
             "[ViewExtend Metrics] windowState={} players={} trackedStates={} sentVisualChunks={} pendingVisualChunks={} preparedQueue={} nbtReadQueue={} globalTemplateCache={} globalTemplateBytes~={} payloadCacheEntries={} waterSkylightFallbackCache={} preparedQueued={} preparedProcessed={} preparedDropped={} nbtQueued={}(total={}) nbtProcessed={}(total={}) queueDeferrals={}(total={}) lodSends(0/1)={}/{}(total={}/{}) globalTemplateHits={}(total={}) globalTemplateMisses={}(total={}) cacheHits={}(total={}) cacheMisses={}(total={}) chunkPackets={}(total={}) unloadPackets={}(total={}) suppressedVanillaUnloads={}(total={}) forcedUpgradeUnloads={}(total={}) unsortedSectionInputs={}(total={}) loadDistancePackets={}(total={}) diskNbtReads={}(total={}) diskNbtMisses={}(total={}) deterministicLightSections(block/sky)={}/{}(total={}/{}) lightSourceSections sky(nbt/fallback/waterFallback)={}/{}/{}(total={}/{}/{}) block(nbt/fallback)={}/{}(total={}/{}) netBytes~={}(total={}) netKiBps~={}/s cpuMsps={} cpuSingleCore~{}% memUsedMiB={}/{}/{}",
             windowState,
                 onlinePlayers,
@@ -1093,7 +1097,7 @@ public final class ViewExtendService {
                 bytesToMiB(maxMemoryBytes));
 
         if (totalLegacyBlockIdRemaps > 0) {
-            ViewExtendMod.LOGGER.info(
+            ViewExtendMod.LOGGER.debug(
                     "[ViewExtend Metrics] legacyBlockIdRemaps={} (total={})",
                     totalLegacyBlockIdRemaps,
                     lifetimeLegacyBlockIdRemaps);
@@ -1183,15 +1187,21 @@ public final class ViewExtendService {
                     totalSkyLightFallbackSections++;
                     lifetimeSkyLightFallbackSections++;
                     if (forceFullBright) {
-                        skyNibbles.add(FULL_BRIGHT_NIBBLE);
+                        skyNibbles.add(fallbackSkyLightNibble);
                     } else {
                         if (isUnderwaterSection) {
-                            byte[] fallbackSky = getWaterAwareSkyLightFallback(sectionY);
-                            totalSkyLightWaterFallbackSections++;
-                            lifetimeSkyLightWaterFallbackSections++;
-                            skyNibbles.add(fallbackSky);
+                            if (config.oceanFallbackEnabled()) {
+                                // Use configured ocean fallback light level
+                                skyNibbles.add(oceanFallbackSkyLightNibble);
+                            } else {
+                                // Use gradient-based water-aware fallback
+                                byte[] fallbackSky = getWaterAwareSkyLightFallback(sectionY);
+                                totalSkyLightWaterFallbackSections++;
+                                lifetimeSkyLightWaterFallbackSections++;
+                                skyNibbles.add(fallbackSky);
+                            }
                         } else {
-                            skyNibbles.add(FULL_BRIGHT_NIBBLE);
+                            skyNibbles.add(fallbackSkyLightNibble);
                         }
                     }
                 }
@@ -1205,7 +1215,7 @@ public final class ViewExtendService {
             } else {
                 totalBlockLightFallbackSections++;
                 lifetimeBlockLightFallbackSections++;
-                blockNibbles.add(forceFullBright ? FULL_BRIGHT_NIBBLE : (hasSkyLight ? DARK_NIBBLE : FULL_BRIGHT_NIBBLE));
+                blockNibbles.add(forceFullBright ? fallbackSkyLightNibble : (hasSkyLight ? fallbackBlockLightNibble : fallbackSkyLightNibble));
             }
         }
 
@@ -1422,6 +1432,15 @@ public final class ViewExtendService {
             java.util.Arrays.fill(data, value);
         }
         return data;
+    }
+
+    private static byte[] createLightLevelNibble(int lightLevel) {
+        if (lightLevel < 0 || lightLevel > 15) {
+            throw new IllegalArgumentException("Light level must be 0-15, got: " + lightLevel);
+        }
+        // Each byte contains two 4-bit nibbles (high and low)
+        byte nibbleValue = (byte) ((lightLevel << 4) | lightLevel);
+        return createFilledNibble(nibbleValue);
     }
 
     /**

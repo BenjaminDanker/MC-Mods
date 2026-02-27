@@ -25,7 +25,11 @@ public record ViewExtendConfig(
     int preparedQueueHardLimit,
     int tickInterval,
     boolean metricsInfoLogsEnabled,
-    int metricsLogIntervalTicks) {
+    int metricsLogIntervalTicks,
+    int fallbackSkyLightLevel,
+    int fallbackBlockLightLevel,
+    boolean oceanFallbackEnabled,
+    int oceanFallbackSkyLightLevel) {
     private static final String FILE_NAME = "viewextend.properties";
     private static final String UNSIMULATED_VIEW_DISTANCE = "unsimulated-view-distance";
     private static final String MAX_CHUNKS_PER_PLAYER_PER_TICK = "max-chunks-per-player-per-tick";
@@ -45,6 +49,10 @@ public record ViewExtendConfig(
     private static final String TICK_INTERVAL = "tick-interval";
     private static final String METRICS_INFO_LOGS_ENABLED = "metrics-info-logs-enabled";
     private static final String METRICS_LOG_INTERVAL_TICKS = "metrics-log-interval-ticks";
+    private static final String FALLBACK_SKY_LIGHT_LEVEL = "fallback-sky-light-level";
+    private static final String FALLBACK_BLOCK_LIGHT_LEVEL = "fallback-block-light-level";
+    private static final String OCEAN_FALLBACK_ENABLED = "ocean-fallback-enabled";
+    private static final String OCEAN_FALLBACK_SKY_LIGHT_LEVEL = "ocean-fallback-sky-light-level";
 
     private static final int DEFAULT_UNSIMULATED_VIEW_DISTANCE = 96;
     private static final int DEFAULT_MAX_CHUNKS_PER_PLAYER_PER_TICK = 16;
@@ -64,6 +72,10 @@ public record ViewExtendConfig(
     private static final int DEFAULT_TICK_INTERVAL = 2;
     private static final boolean DEFAULT_METRICS_INFO_LOGS_ENABLED = true;
     private static final int DEFAULT_METRICS_LOG_INTERVAL_TICKS = 100;
+    private static final int DEFAULT_FALLBACK_SKY_LIGHT_LEVEL = 15;
+    private static final int DEFAULT_FALLBACK_BLOCK_LIGHT_LEVEL = 0;
+    private static final boolean DEFAULT_OCEAN_FALLBACK_ENABLED = false;
+    private static final int DEFAULT_OCEAN_FALLBACK_SKY_LIGHT_LEVEL = 0;
 
     public static ViewExtendConfig load() {
         Path configDir = Path.of("config");
@@ -179,6 +191,28 @@ public record ViewExtendConfig(
             DEFAULT_METRICS_LOG_INTERVAL_TICKS,
             20,
             72000);
+        int fallbackSkyLightLevel = parseInt(
+            properties,
+            FALLBACK_SKY_LIGHT_LEVEL,
+            DEFAULT_FALLBACK_SKY_LIGHT_LEVEL,
+            0,
+            15);
+        int fallbackBlockLightLevel = parseInt(
+            properties,
+            FALLBACK_BLOCK_LIGHT_LEVEL,
+            DEFAULT_FALLBACK_BLOCK_LIGHT_LEVEL,
+            0,
+            15);
+        boolean oceanFallbackEnabled = parseBoolean(
+            properties,
+            OCEAN_FALLBACK_ENABLED,
+            DEFAULT_OCEAN_FALLBACK_ENABLED);
+        int oceanFallbackSkyLightLevel = parseInt(
+            properties,
+            OCEAN_FALLBACK_SKY_LIGHT_LEVEL,
+            DEFAULT_OCEAN_FALLBACK_SKY_LIGHT_LEVEL,
+            0,
+            15);
 
         ViewExtendConfig config = new ViewExtendConfig(
             unsimulated,
@@ -198,7 +232,11 @@ public record ViewExtendConfig(
             preparedQueueHardLimit,
             tickInterval,
             metricsInfoLogsEnabled,
-            metricsLogIntervalTicks);
+            metricsLogIntervalTicks,
+            fallbackSkyLightLevel,
+            fallbackBlockLightLevel,
+            oceanFallbackEnabled,
+            oceanFallbackSkyLightLevel);
         writeDefaults(configDir, configPath, config);
         return config;
     }
@@ -259,6 +297,10 @@ public record ViewExtendConfig(
         properties.setProperty(TICK_INTERVAL, Integer.toString(config.tickInterval()));
         properties.setProperty(METRICS_INFO_LOGS_ENABLED, Boolean.toString(config.metricsInfoLogsEnabled()));
         properties.setProperty(METRICS_LOG_INTERVAL_TICKS, Integer.toString(config.metricsLogIntervalTicks()));
+        properties.setProperty(FALLBACK_SKY_LIGHT_LEVEL, Integer.toString(config.fallbackSkyLightLevel()));
+        properties.setProperty(FALLBACK_BLOCK_LIGHT_LEVEL, Integer.toString(config.fallbackBlockLightLevel()));
+        properties.setProperty(OCEAN_FALLBACK_ENABLED, Boolean.toString(config.oceanFallbackEnabled()));
+        properties.setProperty(OCEAN_FALLBACK_SKY_LIGHT_LEVEL, Integer.toString(config.oceanFallbackSkyLightLevel()));
 
         try (OutputStream output = Files.newOutputStream(configPath)) {
             properties.store(output, "View Extend server config");
