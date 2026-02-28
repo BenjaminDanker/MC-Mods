@@ -141,11 +141,11 @@ public final class DragonBreathModifier {
     }
 
     /**
-     * Removes any additional special dragon breath bottles from the player so they can only carry one.
+     * Removes any additional special dragon breath bottles from the player so they can only carry up to three.
      * Returns the number of bottles deleted for logging/metrics.
      */
     // Lol, very very special dragon breath
-    // Extra as in More than one Special Dragon Breath
+    // Extra as in More than 3 Special Dragon Breath
     public static int purgeExtraSpecialDragonBreath(ServerPlayerEntity player, String context) {
         if (player == null) {
             return 0;
@@ -158,7 +158,7 @@ public final class DragonBreathModifier {
             return 0;
         }
 
-        boolean keptOne = false;
+        int keptCount = 0;
         int removed = 0;
         for (int slot = 0; slot < inventory.size(); slot++) {
             ItemStack stack = inventory.getStack(slot);
@@ -166,13 +166,25 @@ public final class DragonBreathModifier {
                 continue;
             }
 
-            if (!keptOne) {
-                keptOne = true;
+            int stackCount = stack.getCount();
+            if (keptCount + stackCount <= 3) {
+                // We have room to keep this entire stack
+                keptCount += stackCount;
                 continue;
             }
 
-            removed += stack.getCount();
-            inventory.setStack(slot, ItemStack.EMPTY);
+            // We need to keep some (or none) and remove the rest
+            int keepFromThisStack = Math.max(0, 3 - keptCount);
+            int removeFromThisStack = stackCount - keepFromThisStack;
+            
+            keptCount += keepFromThisStack;
+            removed += removeFromThisStack;
+
+            if (keepFromThisStack > 0) {
+                stack.setCount(keepFromThisStack);
+            } else {
+                inventory.setStack(slot, ItemStack.EMPTY);
+            }
         }
 
         if (removed > 0) {

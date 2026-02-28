@@ -254,6 +254,21 @@ final class DragonChunkPreloader {
             }
 
             it.remove();
+            
+            // Broadcast chunk immediately to all players nearby to bypass View-Extend's slow radial scanner.
+            // This prevents the visual bug where dragons appear to fly into empty void before View-Extend catches up.
+            net.minecraft.world.chunk.WorldChunk chunk = world.getChunkManager().getWorldChunk(cx, cz);
+            if (chunk != null) {
+                net.minecraft.world.chunk.light.LightingProvider lightingProvider = world.getChunkManager().getLightingProvider();
+                net.minecraft.network.packet.s2c.play.ChunkDataS2CPacket packet = new net.minecraft.network.packet.s2c.play.ChunkDataS2CPacket(chunk, lightingProvider, null, null);
+                net.minecraft.network.packet.s2c.play.LightUpdateS2CPacket lightPacket = new net.minecraft.network.packet.s2c.play.LightUpdateS2CPacket(chunk.getPos(), lightingProvider, null, null);
+                for (net.minecraft.server.network.ServerPlayerEntity player : world.getPlayers()) {
+                    if (Math.max(Math.abs(player.getChunkPos().x - cx), Math.abs(player.getChunkPos().z - cz)) <= 127) {
+                        player.networkHandler.sendPacket(packet);
+                        player.networkHandler.sendPacket(lightPacket);
+                    }
+                }
+            }
         }
     }
 

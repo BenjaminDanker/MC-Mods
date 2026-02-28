@@ -670,11 +670,19 @@ public final class EnderDragonManager {
                         }
 
                         if (isSpawnReady(world, updated)) {
-                            dragon = spawnDragonFromVirtual(world, updated);
-                            if (dragon != null) {
-                                loaded.put(updated.id(), dragon);
-                            } else if (debug) {
-                                LOGGER.debug("[Sky-Islands][dragons][manager] id={} spawn attempted but returned null", shortId(updated.id()));
+                            long graceUntil = loadedSpawnGraceUntilTick.getOrDefault(updated.id(), 0L);
+                            if (serverTicks < graceUntil) {
+                                // Wait for the chunk to reach ENTITY_TICKING and loop it into iterateEntities
+                                if (debug) {
+                                    LOGGER.debug("[Sky-Islands][dragons][manager] id={} spawn skip (in grace period, waiting for entity load)", shortId(updated.id()));
+                                }
+                            } else {
+                                dragon = spawnDragonFromVirtual(world, updated);
+                                if (dragon != null) {
+                                    loaded.put(updated.id(), dragon);
+                                } else if (debug) {
+                                    LOGGER.debug("[Sky-Islands][dragons][manager] id={} spawn attempted but returned null", shortId(updated.id()));
+                                }
                             }
                         } else {
                             long nextLog = nextSpawnWaitLogTick.getOrDefault(updated.id(), 0L);
@@ -1265,45 +1273,69 @@ public final class EnderDragonManager {
             return;
         }
 
-        if (!config.autoDistancesFromServer) {
-            if (!effectiveDistancesInitialized) {
-                effectiveActivationRadiusBlocks = config.activationRadiusBlocks;
-                effectiveDespawnRadiusBlocks = config.despawnRadiusBlocks;
-                effectiveMinSpawnDistanceBlocks = config.minSpawnDistanceBlocks;
-                effectiveDistancesInitialized = true;
-            }
-            return;
-        }
-
         // Compute once per startup (these settings don't change often and we don't want per-tick churn).
         if (effectiveDistancesInitialized) {
             return;
         }
 
-        int viewChunks = server.getPlayerManager().getViewDistance();
-        int simChunks = server.getPlayerManager().getSimulationDistance();
+        int actBlocks = config.activationRadiusBlocks;
+        int despBlocks = config.despawnRadiusBlocks;
+        int minSpawnBlocks = config.minSpawnDistanceBlocks;
 
-        int viewBlocks = Math.max(0, viewChunks) * 16;
-        int simBlocks = Math.max(0, simChunks) * 16;
+        if (config.autoDistancesFromServer) {
+            int viewChunks = server.getPlayerManager().getViewDistance();
+            int simChunks = server.getPlayerManager().getSimulationDistance();
 
-        // Entity load radius: use simulation distance (when entities normally tick for players).
-        // Despawn radius: add a small hysteresis so we don't flap on the boundary.
-        effectiveActivationRadiusBlocks = Math.max(64, simBlocks);
-        effectiveDespawnRadiusBlocks = Math.max(effectiveActivationRadiusBlocks + 64, (simChunks + 4) * 16);
+            int viewBlocks = Math.max(0, viewChunks) * 16;
+            int simBlocks = Math.max(0, simChunks) * 16;
 
-        // Spawn rewind distance: use view distance so spawns happen outside view (avoid pop-in).
-        effectiveMinSpawnDistanceBlocks = Math.max(0, viewBlocks);
+            // Entity load radius: use simulation distance (when entities normally tick for players).
+            // Despawn radius: add a small hysteresis so we don't flap on the boundary.
+            actBlocks = Math.max(64, simBlocks);
+            despBlocks = Math.max(actBlocks + 64, (simChunks + 4) * 16);
 
+            // Spawn rewind distance: use view distance so spawns happen outside view (avoid pop-in).
+            minSpawnBlocks = Math.max(0, viewBlocks);
+        }
+        
+        // --- Integrate with View-Extend directly if present ---
+        if (net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("viewextend")) {
+            try {
+                Class<?> veMod = Class.forName("com.silver.viewextend.ViewExtendMod");
+                Object service = veMod.getMethod("getService").invoke(null);
+                if (service != null) {
+                    java.lang.reflect.Field configField = service.getClass().getDeclaredField("config");
+                    configField.setAccessible(true);
+                    Object veConfig = configField.get(service);
+                    int veDist = (Integer) veConfig.getClass().getMethod("unsimulatedViewDistance").invoke(veConfig);
+                    
+                    int veBlocks = veDist * 16;
+                    if (veBlocks > actBlocks) {
+                        actBlocks = veBlocks;
+                        // Add some hysteresis so we don't spam despawn/respawn on the very edge
+                        despBlocks = Math.max(despBlocks, veBlocks + 64);
+                        LOGGER.info("[Sky-Islands][dragons][manager] View-Extend detected! Scaled activation={} despawn={}", actBlocks, despBlocks);
+                    }
+                }
+            } catch (Throwable t) {
+                LOGGER.info("[Sky-Islands] Failed to load View-Extend config dynamically. Defaulting to safe massive bounds.", t);
+                int fallbackBlocks = 127 * 16; // The absolute max allowed in view-extend
+                if (fallbackBlocks > actBlocks) {
+                    actBlocks = fallbackBlocks;
+                    despBlocks = fallbackBlocks + 64;
+                }
+            }
+        }
+
+        effectiveActivationRadiusBlocks = actBlocks;
+        effectiveDespawnRadiusBlocks = despBlocks;
+        effectiveMinSpawnDistanceBlocks = minSpawnBlocks;
         effectiveDistancesInitialized = true;
 
-        if (LOGGER.isDebugEnabled()) {
-            LOGGER.debug("[Sky-Islands][dragons][manager] autoDistancesFromServer enabled viewChunks={} simChunks={} activation={} despawn={} minSpawnDistance={}",
-                    viewChunks,
-                    simChunks,
-                    effectiveActivationRadiusBlocks,
-                    effectiveDespawnRadiusBlocks,
-                    effectiveMinSpawnDistanceBlocks);
-        }
+        LOGGER.info("[Sky-Islands][dragons][manager] Effective server distances applied: activation={} despawn={} minSpawnDistance={}",
+                effectiveActivationRadiusBlocks,
+                effectiveDespawnRadiusBlocks,
+                effectiveMinSpawnDistanceBlocks);
     }
 
     private static EnderDragonEntity spawnDragonFromVirtual(ServerWorld world, VirtualDragonStore.VirtualDragonState state) {

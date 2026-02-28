@@ -307,6 +307,15 @@ public final class ViewExtendService {
             int chunkZ,
             boolean upgradePriority) {
         long chunkLong = ChunkPos.toLong(chunkX, chunkZ);
+        
+        int missingUntil = state.missingUntilTick.getOrDefault(chunkLong, 0);
+        if (this.ticks < missingUntil) {
+            // It's on cooldown for disk reads. But if it just finished generating and is now a full WorldChunk,
+            // we bypass the cooldown so it gets sent immediately!
+            if (!world.getChunkManager().isChunkLoaded(chunkX, chunkZ) || world.getChunkManager().getWorldChunk(chunkX, chunkZ) == null) {
+                return 0; // Skip, it's on cooldown and not in memory
+            }
+        }
 
         int desiredLodLevel = resolveLodLevel(centerX, centerZ, chunkX, chunkZ);
 
@@ -556,6 +565,10 @@ public final class ViewExtendService {
                 state.pending.remove(packed);
                 state.pendingLodByChunk.remove(packed);
                 state.unloadOutsideSinceTick.remove(packed);
+                
+                int cooldownTicks = task.missing() ? 100 : 200; // 5 seconds for missing, 10 for failed
+                state.missingUntilTick.put(packed, this.ticks + cooldownTicks);
+                
                 continue;
             }
 
@@ -1827,6 +1840,7 @@ public final class ViewExtendService {
         private final LongOpenHashSet pending = new LongOpenHashSet();
         private final Long2IntOpenHashMap sentLodByChunk = new Long2IntOpenHashMap();
         private final Long2IntOpenHashMap pendingLodByChunk = new Long2IntOpenHashMap();
+        private final Long2IntOpenHashMap missingUntilTick = new Long2IntOpenHashMap();
         private final Long2IntOpenHashMap unloadOutsideSinceTick = new Long2IntOpenHashMap();
         private final Long2ObjectLinkedOpenHashMap<CachedPayload> payloadCache = new Long2ObjectLinkedOpenHashMap<>();
         private final int selectionPhase;

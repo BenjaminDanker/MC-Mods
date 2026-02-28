@@ -5,8 +5,10 @@
   "mixins": [
     "BlockItemDragonHeadPlaceMixin",
     "EnderDragonEntityMixin",
+    "EntityTrackerMixin",
     "PhaseManagerMixin",
-    "ServerWorldDragonSpawnDebugMixin"
+    "ServerWorldDragonSpawnDebugMixin",
+    "ServerChunkLoadingManagerMixin"
   ],
   "injectors": {
     "defaultRequire": 1
