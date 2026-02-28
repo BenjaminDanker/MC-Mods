@@ -1289,7 +1289,7 @@ public final class ViewExtendService {
         return true;
     }
 
-    private int getEffectiveTotalDistance(ServerPlayerEntity player, int normalDistance) {
+    public int getEffectiveTotalDistance(ServerPlayerEntity player, int normalDistance) {
         int configuredTotal = normalDistance + config.unsimulatedViewDistance();
         int hardCap = config.clientReportedViewDistanceHardCap();
         int rawClientDistance = player.getViewDistance();

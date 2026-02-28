@@ -8,7 +8,8 @@
     "ServerCommonNetworkHandlerMixin",
     "ServerChunkLoadingManagerAccessor",
     "ChunkDataS2CPacketAccessor",
-    "LightUpdateS2CPacketAccessor"
+    "LightUpdateS2CPacketAccessor",
+    "EntityTrackerMixin"
   ],
   "server": [],
   "client": [
