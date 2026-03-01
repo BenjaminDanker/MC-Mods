@@ -35,6 +35,7 @@ public final class VillagerInterfaceCommands {
 
     private static void registerCommands(CommandDispatcher<ServerCommandSource> dispatcher) {
         dispatcher.register(CommandManager.literal("villagerinterface")
+            .requires(source -> source.hasPermissionLevel(2))
             .then(CommandManager.literal("devtest")
                 .executes(context -> executeDevTest(context.getSource(), 4))
                 .then(CommandManager.argument("count", IntegerArgumentType.integer(1, 32))
@@ -44,6 +45,7 @@ public final class VillagerInterfaceCommands {
                     )))));
 
         dispatcher.register(CommandManager.literal("vi")
+            .requires(source -> source.hasPermissionLevel(2))
             .then(CommandManager.literal("devtest")
                 .executes(context -> executeDevTest(context.getSource(), 4))
                 .then(CommandManager.argument("count", IntegerArgumentType.integer(1, 32))
