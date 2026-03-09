@@ -39,6 +39,8 @@ import java.util.Optional;
 
 public final class EnderDragonManager {
     public static final String MANAGED_TAG = "sky_islands_managed_dragon";
+    private static final int FEATHER_PLATFORM_RADIUS = 5;
+    private static final int FEATHER_PLATFORM_DROP_BELOW_BLOCKS = 6;
     private static final long RECENT_DEATH_GUARD_TICKS = 20L * 30L;
     private static final Map<UUID, Long> recentlyDiedUntilTick = new HashMap<>();
 
@@ -197,6 +199,7 @@ public final class EnderDragonManager {
 
         // Guaranteed special drop for managed dragons.
         if (dragon.getEntityWorld() instanceof ServerWorld serverWorld) {
+            spawnFeatherPlatform(serverWorld, dragon.getBlockPos());
             ItemStack feather = SpecialFeatherItem.createOne();
             ItemEntity entity = new ItemEntity(serverWorld, dragon.getX(), dragon.getY(), dragon.getZ(), feather);
             entity.setToDefaultPickupDelay();
@@ -223,6 +226,38 @@ public final class EnderDragonManager {
             inactiveChunkReleaseDone.remove(id);
             // Chunk tickets are also released on despawn/inactive; keep death cleanup minimal.
         });
+    }
+
+    private static void spawnFeatherPlatform(ServerWorld world, BlockPos dragonPos) {
+        if (world == null || dragonPos == null) {
+            return;
+        }
+
+        int platformY = Math.max(world.getBottomY(), dragonPos.getY() - FEATHER_PLATFORM_DROP_BELOW_BLOCKS);
+        BlockState grass = Blocks.GRASS_BLOCK.getDefaultState();
+        BlockPos center = new BlockPos(dragonPos.getX(), platformY, dragonPos.getZ());
+
+        for (int dx = -FEATHER_PLATFORM_RADIUS; dx <= FEATHER_PLATFORM_RADIUS; dx++) {
+            for (int dz = -FEATHER_PLATFORM_RADIUS; dz <= FEATHER_PLATFORM_RADIUS; dz++) {
+                if ((dx * dx) + (dz * dz) > (FEATHER_PLATFORM_RADIUS * FEATHER_PLATFORM_RADIUS)) {
+                    continue;
+                }
+
+                BlockPos pos = new BlockPos(dragonPos.getX() + dx, platformY, dragonPos.getZ() + dz);
+                BlockState existing = world.getBlockState(pos);
+                if (!existing.isAir()) {
+                    continue;
+                }
+
+                world.setBlockState(pos, grass);
+            }
+        }
+
+        BlockPos headPos = center.up();
+        if (world.getBlockState(headPos).isAir()) {
+            world.setBlockState(headPos, Blocks.DRAGON_HEAD.getDefaultState());
+            onPossibleDragonHeadPlaced(world, headPos);
+        }
     }
 
     public static int dumpDragons(ServerCommandSource source, boolean includeVirtual, boolean includeLoaded) {

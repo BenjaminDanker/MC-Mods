@@ -31,6 +31,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * transfer packet code.
  */
 public final class PortalInterceptor {
+    private static final String SKY_ISLANDS_ENTRANCE_PORTAL = "sky-island_entrance";
     private static ConfigManager configManager;
     private static final long REDIRECT_COOLDOWN_MS = 3_000L;
     private static final long EXIT_REQUIRED_OUTSIDE_MS = 1_000L;
@@ -310,10 +311,7 @@ public final class PortalInterceptor {
             return false;
         }
 
-        String destinationPortal = config.portalRedirectTargetPortal();
-        if (destinationPortal == null) {
-            destinationPortal = "";
-        }
+        String destinationPortal = resolvePortalHandoffName(config, targetServer.trim());
 
         EnderFightMod.LOGGER.info("Redirect triggered for {} -> {} via signed portal request", entity.getName().getString(), targetServer);
 
@@ -339,6 +337,10 @@ public final class PortalInterceptor {
         }
 
         return true;
+    }
+
+    private static String resolvePortalHandoffName(EndControlConfig config, String targetServer) {
+        return SKY_ISLANDS_ENTRANCE_PORTAL;
     }
     
     /**

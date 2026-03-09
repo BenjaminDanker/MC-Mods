@@ -19,6 +19,8 @@ import net.minecraft.world.World;
  * here so the tagging logic stays reusable.
  */
 public final class DragonBreathModifier {
+    public static final int MAX_SPECIAL_DRAGON_BREATH_BOTTLES = 3;
+
     private static ConfigManager configManager;
 
     private static final String KEY_SPECIAL_ID = "id";
@@ -140,12 +142,29 @@ public final class DragonBreathModifier {
         return nbt.getInt(KEY_USES_MAX).orElse(0);
     }
 
+    public static int countSpecialDragonBreath(PlayerInventory inventory) {
+        if (inventory == null) {
+            return 0;
+        }
+
+        int total = 0;
+        for (int slot = 0; slot < inventory.size(); slot++) {
+            ItemStack stack = inventory.getStack(slot);
+            if (isSpecialDragonBreath(stack)) {
+                total += stack.getCount();
+            }
+        }
+        return total;
+    }
+
+    public static boolean hasReachedSpecialDragonBreathLimit(PlayerInventory inventory) {
+        return countSpecialDragonBreath(inventory) >= MAX_SPECIAL_DRAGON_BREATH_BOTTLES;
+    }
+
     /**
      * Removes any additional special dragon breath bottles from the player so they can only carry up to three.
      * Returns the number of bottles deleted for logging/metrics.
      */
-    // Lol, very very special dragon breath
-    // Extra as in More than 3 Special Dragon Breath
     public static int purgeExtraSpecialDragonBreath(ServerPlayerEntity player, String context) {
         if (player == null) {
             return 0;
@@ -167,14 +186,14 @@ public final class DragonBreathModifier {
             }
 
             int stackCount = stack.getCount();
-            if (keptCount + stackCount <= 3) {
+            if (keptCount + stackCount <= MAX_SPECIAL_DRAGON_BREATH_BOTTLES) {
                 // We have room to keep this entire stack
                 keptCount += stackCount;
                 continue;
             }
 
             // We need to keep some (or none) and remove the rest
-            int keepFromThisStack = Math.max(0, 3 - keptCount);
+            int keepFromThisStack = Math.max(0, MAX_SPECIAL_DRAGON_BREATH_BOTTLES - keptCount);
             int removeFromThisStack = stackCount - keepFromThisStack;
             
             keptCount += keepFromThisStack;

@@ -55,12 +55,6 @@ public final class ConfigManager {
             portalRedirectTargetServer = "";
         }
 
-        String portalRedirectTargetPortal = loaded.portalRedirectTargetPortal();
-        if (portalRedirectTargetPortal == null) {
-            portalRedirectTargetPortal = "";
-            changed = true;
-        }
-
         String portalRequestSecret = loaded.portalRequestSecret();
         if (portalRequestSecret == null || portalRequestSecret.isBlank()) {
             portalRequestSecret = EndControlConfig.DEFAULT_PORTAL_REQUEST_SECRET;
@@ -102,7 +96,6 @@ public final class ConfigManager {
             customBreathId,
             portalRedirectEnabled,
             portalRedirectTargetServer,
-            portalRedirectTargetPortal,
             portalRequestSecret
         );
         this.config = updated;

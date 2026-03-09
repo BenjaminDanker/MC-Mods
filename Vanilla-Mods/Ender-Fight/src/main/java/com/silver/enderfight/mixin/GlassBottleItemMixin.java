@@ -9,7 +9,6 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.util.Hand;
 import net.minecraft.world.World;
-import net.minecraft.world.dimension.DimensionTypes;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -31,7 +30,7 @@ public abstract class GlassBottleItemMixin {
             return;
         }
 
-        if (!isEndDimension(world)) {
+        if (!isManagedEndDimension(world)) {
             EnderFightMod.LOGGER.info("Dragon breath tagging skipped: world {} is not an End dimension",
                 world.getRegistryKey().getValue());
             return;
@@ -42,9 +41,12 @@ public abstract class GlassBottleItemMixin {
         }
 
         PlayerInventory inventory = player.getInventory();
-        if (playerHasSpecialDragonBreath(inventory)) {
-            EnderFightMod.LOGGER.info("Dragon breath tagging skipped: player {} already holds a special bottle",
-                player.getName().getString());
+        int specialBottleCount = DragonBreathModifier.countSpecialDragonBreath(inventory);
+        if (specialBottleCount >= DragonBreathModifier.MAX_SPECIAL_DRAGON_BREATH_BOTTLES) {
+            EnderFightMod.LOGGER.info(
+                "Dragon breath tagging skipped: player {} already holds {} special bottles (limit={})",
+                player.getName().getString(), specialBottleCount,
+                DragonBreathModifier.MAX_SPECIAL_DRAGON_BREATH_BOTTLES);
             return;
         }
 
@@ -73,21 +75,6 @@ public abstract class GlassBottleItemMixin {
         for (int slot = 0; slot < inventory.size(); slot++) {
             ItemStack stack = inventory.getStack(slot);
             if (tryTagStackFromInventory(player, inventory, stack, world)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static boolean playerHasSpecialDragonBreath(PlayerInventory inventory) {
-        if (inventory == null) {
-            return false;
-        }
-
-        for (int slot = 0; slot < inventory.size(); slot++) {
-            ItemStack stack = inventory.getStack(slot);
-            if (DragonBreathModifier.isSpecialDragonBreath(stack)) {
                 return true;
             }
         }
@@ -143,7 +130,7 @@ public abstract class GlassBottleItemMixin {
         return DragonBreathModifier.markAsSpecialDragonBreath(stack, world);
     }
 
-    private static boolean isEndDimension(World world) {
-        return world != null && world.getDimensionEntry().matchesKey(DimensionTypes.THE_END);
+    private static boolean isManagedEndDimension(World world) {
+        return world != null && com.silver.enderfight.portal.PortalInterceptor.isManagedEndDimension(world.getRegistryKey());
     }
 }

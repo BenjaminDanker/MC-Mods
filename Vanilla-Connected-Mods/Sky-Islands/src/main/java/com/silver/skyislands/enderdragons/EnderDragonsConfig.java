@@ -229,7 +229,7 @@ public final class EnderDragonsConfig {
                 5,
                 20 * 30,
                 5000,
-                30000,
+                15000,
                 160,
                 32,
                 true,

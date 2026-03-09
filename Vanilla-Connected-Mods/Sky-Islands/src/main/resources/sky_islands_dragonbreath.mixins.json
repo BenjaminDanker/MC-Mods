@@ -1,0 +1,11 @@
+{
+  "required": true,
+  "package": "com.silver.skyislands.dragonbreath.mixins",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "GlassBottleItemMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

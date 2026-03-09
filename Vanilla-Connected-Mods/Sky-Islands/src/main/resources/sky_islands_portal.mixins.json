@@ -1,0 +1,11 @@
+{
+  "required": true,
+  "package": "com.silver.skyislands.portal.mixins",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "ServerPlayerEntityVoidRedirectMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

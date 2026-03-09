@@ -20,7 +20,6 @@ public final class EndControlConfig {
             DEFAULT_CUSTOM_BREATH_ID,
             false,
             "",
-            "",
             DEFAULT_PORTAL_REQUEST_SECRET
         );
     }
@@ -34,7 +33,6 @@ public final class EndControlConfig {
     private final String customBreathId;
     private final boolean portalRedirectEnabled;
     private final String portalRedirectTargetServer;
-    private final String portalRedirectTargetPortal;
     private final String portalRequestSecret;
 
     public EndControlConfig(
@@ -47,7 +45,6 @@ public final class EndControlConfig {
         String customBreathId,
         boolean portalRedirectEnabled,
         String portalRedirectTargetServer,
-        String portalRedirectTargetPortal,
         String portalRequestSecret
     ) {
         this.resetIntervalHours = resetIntervalHours;
@@ -59,7 +56,6 @@ public final class EndControlConfig {
         this.customBreathId = customBreathId;
         this.portalRedirectEnabled = portalRedirectEnabled;
         this.portalRedirectTargetServer = portalRedirectTargetServer;
-        this.portalRedirectTargetPortal = portalRedirectTargetPortal;
         this.portalRequestSecret = portalRequestSecret;
     }
 
@@ -97,10 +93,6 @@ public final class EndControlConfig {
 
     public String portalRedirectTargetServer() {
         return portalRedirectTargetServer;
-    }
-
-    public String portalRedirectTargetPortal() {
-        return portalRedirectTargetPortal;
     }
 
     public String portalRequestSecret() {

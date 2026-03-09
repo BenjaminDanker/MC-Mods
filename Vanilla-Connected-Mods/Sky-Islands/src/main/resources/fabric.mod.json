@@ -13,6 +13,8 @@
     ]
   },
   "mixins": [
+    "sky_islands_dragonbreath.mixins.json",
+    "sky_islands_portal.mixins.json",
     "sky_islands.mixins.json",
     "sky_islands_giantmobs.mixins.json",
     "sky_islands_nocreepers.mixins.json",
