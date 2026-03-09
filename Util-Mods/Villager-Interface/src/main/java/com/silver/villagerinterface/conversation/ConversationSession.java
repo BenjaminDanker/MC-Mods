@@ -5,12 +5,17 @@ import com.silver.villagerinterface.config.VillagerConfigEntry;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.stream.Stream;
 
 public final class ConversationSession {
     private final VillagerConfigEntry entry;
     private final int maxHistoryTurns;
     private final List<OllamaChatMessage> history = new ArrayList<>();
     private boolean awaitingResponse;
+    private boolean cancellationRequested;
+    private CompletableFuture<?> activeRequest;
+    private Stream<String> activeResponseStream;
     private BlacksmithInteraction.PendingModification pendingModification;
 
     public ConversationSession(VillagerConfigEntry entry, int maxHistoryTurns) {
@@ -22,12 +27,57 @@ public final class ConversationSession {
         return entry;
     }
 
-    public boolean isAwaitingResponse() {
+    public synchronized boolean isAwaitingResponse() {
         return awaitingResponse;
     }
 
-    public void setAwaitingResponse(boolean awaitingResponse) {
+    public synchronized void setAwaitingResponse(boolean awaitingResponse) {
         this.awaitingResponse = awaitingResponse;
+    }
+
+    public synchronized void beginRequest(CompletableFuture<?> activeRequest) {
+        this.awaitingResponse = true;
+        this.cancellationRequested = false;
+        this.activeRequest = activeRequest;
+        this.activeResponseStream = null;
+    }
+
+    public synchronized boolean attachResponseStream(Stream<String> responseStream) {
+        if (cancellationRequested) {
+            closeStream(responseStream);
+            return false;
+        }
+
+        this.activeResponseStream = responseStream;
+        return true;
+    }
+
+    public synchronized boolean isCancellationRequested() {
+        return cancellationRequested;
+    }
+
+    public synchronized boolean cancelActiveRequest() {
+        boolean hadActiveRequest = awaitingResponse || activeRequest != null || activeResponseStream != null;
+        cancellationRequested = hadActiveRequest;
+        awaitingResponse = false;
+
+        CompletableFuture<?> request = activeRequest;
+        activeRequest = null;
+        if (request != null) {
+            request.cancel(true);
+        }
+
+        Stream<String> responseStream = activeResponseStream;
+        activeResponseStream = null;
+        closeStream(responseStream);
+        return hadActiveRequest;
+    }
+
+    public synchronized void clearActiveRequest() {
+        awaitingResponse = false;
+        cancellationRequested = false;
+        activeRequest = null;
+        activeResponseStream = null;
     }
 
     public void addSystemPrompt(String prompt) {
@@ -71,6 +121,17 @@ public final class ConversationSession {
 
     public void setPendingModification(BlacksmithInteraction.PendingModification pendingModification) {
         this.pendingModification = pendingModification;
+    }
+
+    private void closeStream(Stream<String> responseStream) {
+        if (responseStream == null) {
+            return;
+        }
+
+        try {
+            responseStream.close();
+        } catch (Exception ignored) {
+        }
     }
 
     private void trimHistory() {

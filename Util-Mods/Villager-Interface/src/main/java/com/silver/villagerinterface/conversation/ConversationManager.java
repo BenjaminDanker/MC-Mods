@@ -28,6 +28,7 @@ import java.net.http.HttpTimeoutException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.concurrent.CancellationException;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -106,14 +107,15 @@ public final class ConversationManager {
             return true;
         }
 
-        if (session.isAwaitingResponse()) {
-            player.sendMessage(Text.literal("The villager is thinking...").formatted(Formatting.DARK_GRAY), false);
+        if (isExitKeyword(trimmed)) {
+            sendPlayerLine(player, trimmed);
+            boolean cancelled = session.cancelActiveRequest();
+            endConversation(player, cancelled ? "Conversation cancelled." : "Conversation ended.");
             return true;
         }
 
-        if (isExitKeyword(trimmed)) {
-            sendPlayerLine(player, trimmed);
-            endConversation(player, "Conversation ended.");
+        if (session.isAwaitingResponse()) {
+            player.sendMessage(Text.literal("The villager is thinking...").formatted(Formatting.DARK_GRAY), false);
             return true;
         }
 
@@ -132,7 +134,10 @@ public final class ConversationManager {
 
     public void onPlayerDisconnect(ServerPlayNetworkHandler handler, MinecraftServer server) {
         UUID playerId = handler.getPlayer().getUuid();
-        sessions.remove(playerId);
+        ConversationSession session = sessions.remove(playerId);
+        if (session != null) {
+            session.cancelActiveRequest();
+        }
         lastHandledTick.remove(playerId);
         interactCooldownUntilTick.remove(playerId);
         lastCooldownMessageTick.remove(playerId);
@@ -147,7 +152,10 @@ public final class ConversationManager {
             UUID playerId = entry.getKey();
             ServerPlayerEntity player = server.getPlayerManager().getPlayer(playerId);
             if (player == null) {
-                sessions.remove(playerId);
+                ConversationSession session = sessions.remove(playerId);
+                if (session != null) {
+                    session.cancelActiveRequest();
+                }
                 lastHandledTick.remove(playerId);
                 continue;
             }
@@ -219,7 +227,10 @@ public final class ConversationManager {
     }
 
     private void endConversation(ServerPlayerEntity player, String systemMessage) {
-        sessions.remove(player.getUuid());
+        ConversationSession session = sessions.remove(player.getUuid());
+        if (session != null) {
+            session.cancelActiveRequest();
+        }
         player.sendMessage(Text.literal(systemMessage), false);
     }
 
@@ -289,8 +300,6 @@ public final class ConversationManager {
     }
 
     private void sendOllamaRequest(ServerPlayerEntity player, ConversationSession session, List<OllamaChatMessage> messages) {
-
-        session.setAwaitingResponse(true);
         VillagerInterfaceConfig config = getConfig();
         URI endpoint = buildOllamaEndpoint(config.ollamaBaseUrl());
         OllamaChatRequest requestBody = new OllamaChatRequest(
@@ -307,23 +316,31 @@ public final class ConversationManager {
             .POST(HttpRequest.BodyPublishers.ofString(payload))
             .build();
 
-        httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofLines())
+        CompletableFuture<HttpResponse<Stream<String>>> responseFuture = httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofLines());
+        session.beginRequest(responseFuture);
+
+        responseFuture
             .whenComplete((response, error) -> {
                 MinecraftServer server = player.getEntityWorld().getServer();
                 server.execute(() -> {
                     if (!sessions.containsKey(player.getUuid())) {
-                        session.setAwaitingResponse(false);
+                        session.clearActiveRequest();
                         return;
                     }
 
                     if (error != null) {
-                        session.setAwaitingResponse(false);
+                        if (isRequestCancellation(error, session)) {
+                            session.clearActiveRequest();
+                            return;
+                        }
+
+                        session.clearActiveRequest();
                         handleOllamaError("Ollama request failed", error, player, "The villager is taking too long to respond.");
                         return;
                     }
 
                     if (response == null) {
-                        session.setAwaitingResponse(false);
+                        session.clearActiveRequest();
                         VillagerInterfaceMod.LOGGER.warn("Ollama response was null");
                         player.sendMessage(Text.literal("The villager seems distracted.").formatted(Formatting.DARK_GRAY), false);
                         return;
@@ -331,13 +348,18 @@ public final class ConversationManager {
 
                     int status = response.statusCode();
                     if (status < 200 || status >= 300) {
-                        session.setAwaitingResponse(false);
+                        session.clearActiveRequest();
                         VillagerInterfaceMod.LOGGER.warn("Ollama HTTP {}", status);
                         player.sendMessage(Text.literal("The villager seems distracted.").formatted(Formatting.DARK_GRAY), false);
                         return;
                     }
 
                     Stream<String> lines = response.body();
+                    if (!session.attachResponseStream(lines)) {
+                        session.clearActiveRequest();
+                        return;
+                    }
+
                     CompletableFuture.runAsync(() -> consumeConversationStream(server, player.getUuid(), session, lines));
                 });
             });
@@ -470,6 +492,11 @@ public final class ConversationManager {
         return error;
     }
 
+    private boolean isRequestCancellation(Throwable error, ConversationSession session) {
+        Throwable root = unwrap(error);
+        return session.isCancellationRequested() || root instanceof CancellationException;
+    }
+
     private void consumeTestStream(MinecraftServer server, UUID playerId, String villagerId, int index, Stream<String> lines, Instant startedAt) {
         StringBuilder full = new StringBuilder();
         long[] lastUpdate = new long[] { 0L };
@@ -521,6 +548,10 @@ public final class ConversationManager {
 
         try (Stream<String> stream = lines) {
             stream.forEach(line -> {
+                if (session.isCancellationRequested()) {
+                    return;
+                }
+
                 if (line == null || line.isBlank() || doneSeen[0]) {
                     return;
                 }
@@ -556,6 +587,10 @@ public final class ConversationManager {
                     lastUpdate[0] = now;
                 }
             });
+        } catch (Exception ex) {
+            if (!session.isCancellationRequested()) {
+                VillagerInterfaceMod.LOGGER.warn("Conversation stream failed: {}", ex.getMessage());
+            }
         }
 
         String finalText = full.toString().trim();
@@ -565,16 +600,16 @@ public final class ConversationManager {
     private void finishConversationStream(MinecraftServer server, UUID playerId, ConversationSession session, String fullText, int lastSentIndex, VillagerConfigEntry entry, boolean[] prefixSent) {
         ServerPlayerEntity player = server.getPlayerManager().getPlayer(playerId);
         if (player == null) {
-            session.setAwaitingResponse(false);
+            session.clearActiveRequest();
             return;
         }
 
         if (sessions.get(playerId) != session) {
-            session.setAwaitingResponse(false);
+            session.clearActiveRequest();
             return;
         }
 
-        session.setAwaitingResponse(false);
+        session.clearActiveRequest();
 
         String remaining = "";
         if (fullText != null && lastSentIndex < fullText.length()) {
