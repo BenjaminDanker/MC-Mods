@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "package": "com.silver.skyislands.giantmobs.mixins",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "EntityTrackerMixin",
+    "FallingBlockEntityInvoker",
+    "ServerChunkLoadingManagerMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

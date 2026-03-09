@@ -5,6 +5,7 @@ import net.fabricmc.api.ModInitializer;
 import com.silver.skyislands.command.SkyIslandsCommands;
 import com.silver.skyislands.dragonbreath.DragonBreathTracking;
 import com.silver.skyislands.enderdragons.EnderDragons;
+import com.silver.skyislands.giantmobs.GiantMobs;
 import com.silver.skyislands.nightghasts.NightGhasts;
 import com.silver.skyislands.nocreepers.NoCreepers;
 import com.silver.skyislands.specialitems.SpecialItemConversionManager;
@@ -34,6 +35,14 @@ public class SkyIslands implements ModInitializer {
         if (LOGGER.isDebugEnabled()) {
             LOGGER.debug("[Sky-Islands][init] EnderDragons.init() complete");
         }
+
+        GiantMobs.init();
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("[Sky-Islands][init] GiantMobs.init() complete");
+        }
+
+        PortalRedirector.init();
+        VoidDeathRedirectHandler.init();
 
         DragonBreathTracking.init();
         if (LOGGER.isDebugEnabled()) {

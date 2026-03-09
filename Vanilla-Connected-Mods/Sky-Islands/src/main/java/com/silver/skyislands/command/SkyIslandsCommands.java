@@ -2,6 +2,7 @@ package com.silver.skyislands.command;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.silver.skyislands.enderdragons.EnderDragonManager;
+import com.silver.skyislands.giantmobs.GiantMobManager;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
@@ -21,7 +22,7 @@ public final class SkyIslandsCommands {
         dispatcher.register(CommandManager.literal("skyislands")
                 .requires(source -> source.hasPermissionLevel(4))
                 .executes(ctx -> {
-                    ctx.getSource().sendFeedback(() -> Text.literal("Usage: /skyislands dragons [all|virtual|loaded]"), false);
+                                        ctx.getSource().sendFeedback(() -> Text.literal("Usage: /skyislands dragons [all|virtual|loaded] | /skyislands giants [all|virtual|loaded|projectiles]"), false);
                     return 1;
                 })
                 .then(CommandManager.literal("dragons")
@@ -32,6 +33,17 @@ public final class SkyIslandsCommands {
                                 .executes(ctx -> EnderDragonManager.dumpDragons(ctx.getSource(), true, false)))
                         .then(CommandManager.literal("loaded")
                                 .executes(ctx -> EnderDragonManager.dumpDragons(ctx.getSource(), false, true)))
+                )
+                .then(CommandManager.literal("giants")
+                        .executes(ctx -> GiantMobManager.dumpGiants(ctx.getSource(), true, true, true))
+                        .then(CommandManager.literal("all")
+                                .executes(ctx -> GiantMobManager.dumpGiants(ctx.getSource(), true, true, true)))
+                        .then(CommandManager.literal("virtual")
+                                .executes(ctx -> GiantMobManager.dumpGiants(ctx.getSource(), true, false, false)))
+                        .then(CommandManager.literal("loaded")
+                                .executes(ctx -> GiantMobManager.dumpGiants(ctx.getSource(), false, true, true)))
+                        .then(CommandManager.literal("projectiles")
+                                .executes(ctx -> GiantMobManager.dumpGiants(ctx.getSource(), false, false, true)))
                 ));
     }
 }

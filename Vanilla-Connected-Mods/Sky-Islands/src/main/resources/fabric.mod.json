@@ -14,6 +14,7 @@
   },
   "mixins": [
     "sky_islands.mixins.json",
+    "sky_islands_giantmobs.mixins.json",
     "sky_islands_nocreepers.mixins.json",
     "sky_islands_specialitems.mixins.json"
   ],
