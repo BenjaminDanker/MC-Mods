@@ -9,6 +9,7 @@
     "PistonHandlerMixin",
     "FireBlockMixin",
     "FlowableFluidMixin",
+    "ScreenHandlerMixin",
     "ScheduledTickViewMixin",
     "ServerPlayerEntityMixin",
     "EntityMixin"

@@ -12,6 +12,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(ServerPlayerEntity.class)
 public abstract class ServerPlayerEntityMixin {
 
+    @Inject(method = "dropSelectedItem(Z)Z", at = @At("HEAD"), cancellable = true)
+    private void spawnprotect$preventHotbarDrop(boolean entireStack, CallbackInfoReturnable<Boolean> cir) {
+        ServerPlayerEntity player = (ServerPlayerEntity) (Object) this;
+        if (SpawnProtectionManager.INSTANCE.shouldBlockDrop(player)) {
+            cir.setReturnValue(false);
+        }
+    }
+
     @Inject(method = "damage", at = @At("HEAD"), cancellable = true)
     private void spawnprotect$blockPvpDamage(ServerWorld world, DamageSource source, float amount, CallbackInfoReturnable<Boolean> cir) {
         if (!(source.getAttacker() instanceof ServerPlayerEntity attacker)) {

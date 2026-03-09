@@ -72,6 +72,18 @@ public final class SpawnProtectionManager {
         return isWithinProtectedBounds(playerWorld(player), pos);
     }
 
+    public boolean shouldBlockDrop(ServerPlayerEntity player) {
+        if (player == null) {
+            return false;
+        }
+
+        if (isAllowedBypass(player)) {
+            return false;
+        }
+
+        return isWithinProtectedBounds(playerWorld(player), player.getBlockPos());
+    }
+
     public boolean shouldBlockPvp(ServerPlayerEntity attacker, ServerPlayerEntity victim) {
         if (attacker == null || victim == null) {
             return false;
