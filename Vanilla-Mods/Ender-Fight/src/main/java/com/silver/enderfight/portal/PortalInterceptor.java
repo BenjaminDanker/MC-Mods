@@ -1,8 +1,8 @@
 package com.silver.enderfight.portal;
 
-import com.silver.wakeuplobby.portal.PortalRequestPayload;
-import com.silver.wakeuplobby.portal.PortalRequestPayloadCodec;
-import com.silver.wakeuplobby.portal.PortalRequestSigner;
+import com.silver.portalprotocol.PortalRequestPayload;
+import com.silver.portalprotocol.PortalRequestPayloadCodec;
+import com.silver.portalprotocol.PortalRequestSigner;
 import net.fabricmc.fabric.api.entity.event.v1.ServerEntityWorldChangeEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;

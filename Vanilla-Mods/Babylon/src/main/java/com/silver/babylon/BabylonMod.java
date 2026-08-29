@@ -2,10 +2,9 @@ package com.silver.babylon;
 
 import com.silver.babylon.config.BabylonConfig;
 import com.silver.babylon.config.BabylonConfigManager;
-import com.silver.wakeuplobby.portal.PortalRequestPayload;
-import com.silver.wakeuplobby.portal.PortalRequestPayloadCodec;
-import com.silver.wakeuplobby.portal.PortalRequestSigner;
-import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
+import com.silver.portalprotocol.PortalRequestPayload;
+import com.silver.portalprotocol.PortalRequestPayloadCodec;
+import com.silver.portalprotocol.PortalRequestSigner;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -51,12 +50,6 @@ public final class BabylonMod implements ModInitializer {
     @Override
     public void onInitialize() {
         this.config = new BabylonConfigManager().loadOrCreate();
-
-        try {
-            PayloadTypeRegistry.playS2C().register(PortalRequestPayload.PACKET_ID, PortalRequestPayload.codec);
-        } catch (IllegalArgumentException ex) {
-            LOGGER.debug("Portal request payload type already registered; skipping duplicate registration");
-        }
 
         ServerTickEvents.END_SERVER_TICK.register(this::tick);
 

@@ -7,7 +7,6 @@ import com.silver.enderfight.portal.PortalInterceptor;
 import com.silver.enderfight.portal.ReturnOverworldHandler;
 import com.silver.enderfight.portal.RespawnRedirectHandler;
 import com.silver.enderfight.command.EnderFightCommands;
-import com.silver.wakeuplobby.portal.PortalRequestPayload;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -30,12 +29,6 @@ public final class EnderFightMod implements ModInitializer {
     @Override
     public void onInitialize() {
         LOGGER.info("Initializing Ender Fight mod");
-
-        try {
-            PayloadTypeRegistry.playS2C().register(PortalRequestPayload.PACKET_ID, PortalRequestPayload.codec);
-        } catch (IllegalArgumentException ex) {
-            LOGGER.debug("Portal request payload type already registered; skipping duplicate registration");
-        }
 
         try {
             PayloadTypeRegistry.playC2S().register(ReturnOverworldHandler.PACKET_ID, ReturnOverworldHandler.codec);

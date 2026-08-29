@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "mc-portal-protocol",
+  "version": "${version}",
+  "name": "MC Portal Protocol",
+  "description": "Canonical WakeUpLobby portal-request protocol for Fabric backends.",
+  "authors": [
+    "Silver"
+  ],
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.silver.portalprotocol.PortalProtocolMod"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.17.3",
+    "fabric": "*",
+    "minecraft": "1.21.10",
+    "java": ">=21"
+  }
+}

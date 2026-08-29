@@ -10,15 +10,11 @@ base {
 	archivesName = project.archives_base_name
 }
 
-repositories {
-	// Additional repos can go here if needed.
-}
-
 loom {
 	splitEnvironmentSourceSets()
 
 	mods {
-		"sky_islands" {
+		"mc_portal_protocol" {
 			sourceSet sourceSets.main
 		}
 	}
@@ -29,7 +25,6 @@ dependencies {
 	mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
 	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
-	modImplementation "com.silver:mc-portal-protocol:1.0.0"
 }
 
 processResources {

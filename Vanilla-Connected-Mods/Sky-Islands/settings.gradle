@@ -10,3 +10,5 @@ pluginManagement {
 }
 
 rootProject.name = 'Sky-Islands'
+
+includeBuild('../../Util-Mods/MC-Portal-Protocol')

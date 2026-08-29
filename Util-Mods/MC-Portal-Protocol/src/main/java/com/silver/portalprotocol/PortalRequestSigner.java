@@ -1,4 +1,4 @@
-package com.silver.skyislands.proxy;
+package com.silver.portalprotocol;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;

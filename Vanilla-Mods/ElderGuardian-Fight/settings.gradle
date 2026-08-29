@@ -10,3 +10,5 @@ pluginManagement {
 }
 
 rootProject.name = 'ElderGuardian-Fight'
+
+includeBuild('../../Util-Mods/MC-Portal-Protocol')

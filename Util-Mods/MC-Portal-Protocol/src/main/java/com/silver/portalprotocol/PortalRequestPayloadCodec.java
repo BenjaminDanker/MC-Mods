@@ -1,4 +1,4 @@
-package com.silver.skyislands.proxy;
+package com.silver.portalprotocol;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
@@ -12,7 +12,11 @@ public final class PortalRequestPayloadCodec {
     private PortalRequestPayloadCodec() {
     }
 
-    public static byte[] encodeUnsigned(UUID playerId, String targetServer, String sourcePortal, long issuedAtMs, String nonce) {
+    public static byte[] encodeUnsigned(UUID playerId,
+                                        String targetServer,
+                                        String sourcePortal,
+                                        long issuedAtMs,
+                                        String nonce) {
         Objects.requireNonNull(playerId, "playerId");
         Objects.requireNonNull(targetServer, "targetServer");
         Objects.requireNonNull(sourcePortal, "sourcePortal");
@@ -29,7 +33,12 @@ public final class PortalRequestPayloadCodec {
         return out.toByteArray();
     }
 
-    public static byte[] encodeSigned(UUID playerId, String targetServer, String sourcePortal, long issuedAtMs, String nonce, byte[] signature) {
+    public static byte[] encodeSigned(UUID playerId,
+                                      String targetServer,
+                                      String sourcePortal,
+                                      long issuedAtMs,
+                                      String nonce,
+                                      byte[] signature) {
         Objects.requireNonNull(signature, "signature");
 
         byte[] unsigned = encodeUnsigned(playerId, targetServer, sourcePortal, issuedAtMs, nonce);
@@ -59,8 +68,8 @@ public final class PortalRequestPayloadCodec {
     }
 
     private static void writeLong(ByteArrayOutputStream out, long value) {
-        for (int i = 7; i >= 0; i--) {
-            out.write((int) (value >>> (i * 8)) & 0xFF);
+        for (int index = 7; index >= 0; index--) {
+            out.write((int) (value >>> (index * 8)) & 0xFF);
         }
     }
 

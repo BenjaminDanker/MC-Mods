@@ -1,4 +1,4 @@
-package com.silver.skyislands.proxy;
+package com.silver.portalprotocol;
 
 import net.minecraft.network.RegistryByteBuf;
 import net.minecraft.network.codec.PacketCodec;
@@ -7,10 +7,10 @@ import net.minecraft.util.Identifier;
 
 public record PortalRequestPayload(byte[] payload) implements CustomPayload {
     public static final Id<PortalRequestPayload> PACKET_ID =
-        new CustomPayload.Id<>(Identifier.of("wakeuplobby", "portal_request"));
+            new CustomPayload.Id<>(Identifier.of("wakeuplobby", "portal_request"));
 
     public static final PacketCodec<RegistryByteBuf, PortalRequestPayload> codec =
-        PacketCodec.of(PortalRequestPayload::write, PortalRequestPayload::read);
+            PacketCodec.of(PortalRequestPayload::write, PortalRequestPayload::read);
 
     public static PortalRequestPayload read(RegistryByteBuf buf) {
         int remaining = buf.readableBytes();

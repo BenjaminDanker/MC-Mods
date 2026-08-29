@@ -2,9 +2,9 @@ package com.silver.skyislands.portal;
 
 import com.silver.skyislands.config.SkyIslandsPortalConfig;
 import com.silver.skyislands.config.SkyIslandsPortalConfigManager;
-import com.silver.skyislands.proxy.PortalRequestPayload;
-import com.silver.skyislands.proxy.PortalRequestPayloadCodec;
-import com.silver.skyislands.proxy.PortalRequestSigner;
+import com.silver.portalprotocol.PortalRequestPayload;
+import com.silver.portalprotocol.PortalRequestPayloadCodec;
+import com.silver.portalprotocol.PortalRequestSigner;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;

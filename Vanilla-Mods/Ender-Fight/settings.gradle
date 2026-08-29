@@ -10,3 +10,5 @@ pluginManagement {
 }
 
 rootProject.name = 'Ender-Fight'
+
+includeBuild('../../Util-Mods/MC-Portal-Protocol')

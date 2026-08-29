@@ -1,7 +1,6 @@
 package com.silver.skyislands;
 
 import net.fabricmc.api.ModInitializer;
-import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 
 import com.silver.skyislands.command.SkyIslandsCommands;
 import com.silver.skyislands.dragonbreath.DragonBreathTracking;
@@ -11,7 +10,6 @@ import com.silver.skyislands.nightghasts.NightGhasts;
 import com.silver.skyislands.nocreepers.NoCreepers;
 import com.silver.skyislands.portal.PortalRedirector;
 import com.silver.skyislands.portal.VoidDeathRedirectHandler;
-import com.silver.skyislands.proxy.PortalRequestPayload;
 import com.silver.skyislands.specialitems.SpecialItemConversionManager;
 
 import org.slf4j.Logger;
@@ -24,12 +22,6 @@ public class SkyIslands implements ModInitializer {
     public void onInitialize() {
         if (LOGGER.isDebugEnabled()) {
             LOGGER.debug("[Sky-Islands][init] onInitialize() start");
-        }
-
-        try {
-            PayloadTypeRegistry.playS2C().register(PortalRequestPayload.PACKET_ID, PortalRequestPayload.codec);
-        } catch (IllegalArgumentException ex) {
-            LOGGER.debug("[Sky-Islands][init] portal request payload already registered");
         }
 
         SkyIslandsCommands.register();

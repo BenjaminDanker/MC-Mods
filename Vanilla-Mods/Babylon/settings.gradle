@@ -10,3 +10,5 @@ pluginManagement {
 }
 
 rootProject.name = 'Babylon'
+
+includeBuild('../../Util-Mods/MC-Portal-Protocol')
