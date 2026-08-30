@@ -1,6 +1,9 @@
 package com.silver.villagerinterface.conversation;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.google.gson.stream.JsonReader;
 import com.silver.villagerinterface.VillagerInterfaceMod;
 import com.silver.villagerinterface.config.VillagerConfigEntry;
@@ -81,7 +84,7 @@ public final class ConversationManager {
         }
 
         VillagerInterfaceConfig config = getConfig();
-        ConversationSession session = new ConversationSession(entry, config.maxHistoryTurns());
+        ConversationSession session = new ConversationSession(entry, config.conversation().maxHistoryTurns());
         session.addSystemPrompt(resolveSystemPrompt(entry));
         if (BlacksmithInteraction.isBlacksmith(entry)) {
             BlacksmithInteraction.addBlacksmithSystemRules(session);
@@ -200,7 +203,7 @@ public final class ConversationManager {
         return handledTick != null && handledTick == player.getEntityWorld().getServer().getTicks();
     }
 
-    public int runDevOllamaTest(ServerPlayerEntity player, int count) {
+    public int runDevProviderTest(ServerPlayerEntity player, int count) {
         VillagerInterfaceConfig config = getConfig();
         if (config.villagers().isEmpty()) {
             player.sendMessage(Text.literal("No villagers configured; unable to run test.").formatted(Formatting.DARK_GRAY), false);
@@ -208,11 +211,11 @@ public final class ConversationManager {
         }
 
         int total = Math.max(1, count);
-        player.sendMessage(Text.literal("Starting " + total + " Ollama test request(s)...").formatted(Formatting.GRAY), false);
+        player.sendMessage(Text.literal("Starting " + total + " " + providerDisplayName(config) + " test request(s)...").formatted(Formatting.GRAY), false);
 
         for (int i = 0; i < total; i++) {
             VillagerConfigEntry entry = config.villagers().get(i % config.villagers().size());
-            ConversationSession session = new ConversationSession(entry, config.maxHistoryTurns());
+            ConversationSession session = new ConversationSession(entry, config.conversation().maxHistoryTurns());
             session.addSystemPrompt(resolveSystemPrompt(entry));
             session.addUserMessage("This is a concurrent test request. Reply with at least 50 words and no more than 70 words.");
             requestTestReply(player, session, entry, i + 1, Instant.now());
@@ -284,37 +287,31 @@ public final class ConversationManager {
             session.addUserMessage(userMessage);
         }
 
-        sendOllamaRequest(player, session, session.history());
+        sendProviderRequest(player, session, session.history());
     }
 
     void requestTransientReply(ServerPlayerEntity player, ConversationSession session, String transientUserMessage, String transientSystemMessage) {
-        List<OllamaChatMessage> messages = new ArrayList<>(session.history());
+        List<ChatMessage> messages = new ArrayList<>(session.history());
         if (transientSystemMessage != null && !transientSystemMessage.isBlank()) {
-            messages.add(OllamaChatMessage.system(transientSystemMessage));
+            messages.add(ChatMessage.system(transientSystemMessage));
         }
         if (transientUserMessage != null && !transientUserMessage.isBlank()) {
-            messages.add(OllamaChatMessage.user(transientUserMessage));
+            messages.add(ChatMessage.user(transientUserMessage));
         }
 
-        sendOllamaRequest(player, session, messages);
+        sendProviderRequest(player, session, messages);
     }
 
-    private void sendOllamaRequest(ServerPlayerEntity player, ConversationSession session, List<OllamaChatMessage> messages) {
+    private void sendProviderRequest(ServerPlayerEntity player, ConversationSession session, List<ChatMessage> messages) {
         VillagerInterfaceConfig config = getConfig();
-        URI endpoint = buildOllamaEndpoint(config.ollamaBaseUrl());
-        OllamaChatRequest requestBody = new OllamaChatRequest(
-            config.ollamaModel(),
-            messages,
-            normalizeKeepAlive(config.ollamaKeepAlive()),
-            true
-        );
-        String payload = gson.toJson(requestBody);
-
-        HttpRequest request = HttpRequest.newBuilder(endpoint)
-            .timeout(Duration.ofSeconds(getConfig().ollamaTimeoutSeconds()))
-            .header("Content-Type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString(payload))
-            .build();
+        HttpRequest request;
+        try {
+            request = buildProviderRequest(config, messages);
+        } catch (IllegalStateException ex) {
+            VillagerInterfaceMod.LOGGER.warn("{} request was not sent: {}", providerDisplayName(config), ex.getMessage());
+            player.sendMessage(Text.literal("The villager cannot reach its configured AI provider.").formatted(Formatting.DARK_GRAY), false);
+            return;
+        }
 
         CompletableFuture<HttpResponse<Stream<String>>> responseFuture = httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofLines());
         session.beginRequest(responseFuture);
@@ -335,13 +332,13 @@ public final class ConversationManager {
                         }
 
                         session.clearActiveRequest();
-                        handleOllamaError("Ollama request failed", error, player, "The villager is taking too long to respond.");
+                        handleProviderError(providerDisplayName(config) + " request failed", error, player, "The villager is taking too long to respond.");
                         return;
                     }
 
                     if (response == null) {
                         session.clearActiveRequest();
-                        VillagerInterfaceMod.LOGGER.warn("Ollama response was null");
+                        VillagerInterfaceMod.LOGGER.warn("{} response was null", providerDisplayName(config));
                         player.sendMessage(Text.literal("The villager seems distracted.").formatted(Formatting.DARK_GRAY), false);
                         return;
                     }
@@ -349,7 +346,7 @@ public final class ConversationManager {
                     int status = response.statusCode();
                     if (status < 200 || status >= 300) {
                         session.clearActiveRequest();
-                        VillagerInterfaceMod.LOGGER.warn("Ollama HTTP {}", status);
+                        VillagerInterfaceMod.LOGGER.warn("{} HTTP {}", providerDisplayName(config), status);
                         player.sendMessage(Text.literal("The villager seems distracted.").formatted(Formatting.DARK_GRAY), false);
                         return;
                     }
@@ -360,29 +357,22 @@ public final class ConversationManager {
                         return;
                     }
 
-                    CompletableFuture.runAsync(() -> consumeConversationStream(server, player.getUuid(), session, lines));
+                    CompletableFuture.runAsync(() -> consumeConversationStream(server, player.getUuid(), session, lines, config.conversation().activeProvider()));
                 });
             });
     }
 
     private void requestTestReply(ServerPlayerEntity player, ConversationSession session, VillagerConfigEntry entry, int index, Instant startedAt) {
         VillagerInterfaceConfig config = getConfig();
-        URI endpoint = buildOllamaEndpoint(config.ollamaBaseUrl());
-        OllamaChatRequest requestBody = new OllamaChatRequest(
-            config.ollamaModel(),
-            session.history(),
-            normalizeKeepAlive(config.ollamaKeepAlive()),
-            true
-        );
-        String payload = gson.toJson(requestBody);
+        HttpRequest request;
+        try {
+            request = buildProviderRequest(config, session.history());
+        } catch (IllegalStateException ex) {
+            player.sendMessage(Text.literal("Test " + index + " cannot start: " + ex.getMessage()).formatted(Formatting.DARK_GRAY), false);
+            return;
+        }
 
         player.sendMessage(Text.literal(formatDevtestPrefix(index, entry.id(), "started") + " at " + startedAt).formatted(Formatting.DARK_GRAY), false);
-
-        HttpRequest request = HttpRequest.newBuilder(endpoint)
-            .timeout(Duration.ofSeconds(getConfig().ollamaTimeoutSeconds()))
-            .header("Content-Type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString(payload))
-            .build();
 
         httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofLines())
             .whenComplete((response, error) -> {
@@ -394,14 +384,14 @@ public final class ConversationManager {
                     }
 
                     if (error != null) {
-                        handleOllamaError("Ollama test " + index + " failed", error, current, "Test " + index + " timed out.");
+                        handleProviderError(providerDisplayName(config) + " test " + index + " failed", error, current, "Test " + index + " timed out.");
                         current.sendMessage(Text.literal(formatDevtestPrefix(index, entry.id(), "failed") + durationSince(startedAt)).formatted(Formatting.DARK_GRAY), false);
                         current.sendMessage(Text.literal("Test " + index + " (" + entry.id() + ") failed.").formatted(Formatting.DARK_GRAY), false);
                         return;
                     }
 
                     if (response == null) {
-                        VillagerInterfaceMod.LOGGER.warn("Ollama test {} response was null", index);
+                        VillagerInterfaceMod.LOGGER.warn("{} test {} response was null", providerDisplayName(config), index);
                         current.sendMessage(Text.literal(formatDevtestPrefix(index, entry.id(), "failed") + durationSince(startedAt)).formatted(Formatting.DARK_GRAY), false);
                         current.sendMessage(Text.literal("Test " + index + " (" + entry.id() + ") failed.").formatted(Formatting.DARK_GRAY), false);
                         return;
@@ -409,14 +399,14 @@ public final class ConversationManager {
 
                     int status = response.statusCode();
                     if (status < 200 || status >= 300) {
-                        VillagerInterfaceMod.LOGGER.warn("Ollama test {} HTTP {}", index, status);
+                        VillagerInterfaceMod.LOGGER.warn("{} test {} HTTP {}", providerDisplayName(config), index, status);
                         current.sendMessage(Text.literal(formatDevtestPrefix(index, entry.id(), "failed") + durationSince(startedAt)).formatted(Formatting.DARK_GRAY), false);
                         current.sendMessage(Text.literal("Test " + index + " (" + entry.id() + ") failed.").formatted(Formatting.DARK_GRAY), false);
                         return;
                     }
 
                     Stream<String> lines = response.body();
-                    CompletableFuture.runAsync(() -> consumeTestStream(server, player.getUuid(), entry.id(), index, lines, startedAt));
+                    CompletableFuture.runAsync(() -> consumeTestStream(server, player.getUuid(), entry.id(), index, lines, startedAt, config.conversation().activeProvider()));
                 });
             });
     }
@@ -433,7 +423,7 @@ public final class ConversationManager {
     private URI buildOllamaEndpoint(String baseUrl) {
         String normalized = baseUrl != null ? baseUrl.trim() : "";
         if (normalized.isEmpty()) {
-            normalized = VillagerInterfaceConfig.createDefault().ollamaBaseUrl();
+            normalized = VillagerInterfaceConfig.createDefault().ollama().baseUrl();
         }
         if (!normalized.endsWith("/")) {
             normalized += "/";
@@ -441,10 +431,65 @@ public final class ConversationManager {
         return URI.create(normalized + "api/chat");
     }
 
+    private URI buildOpenAiEndpoint(String baseUrl) {
+        String normalized = baseUrl != null ? baseUrl.trim() : "";
+        if (normalized.isEmpty()) {
+            normalized = VillagerInterfaceConfig.createDefault().openai().baseUrl();
+        }
+        if (!normalized.endsWith("/")) {
+            normalized += "/";
+        }
+        return URI.create(normalized + "chat/completions");
+    }
+
+    private HttpRequest buildProviderRequest(VillagerInterfaceConfig config, List<ChatMessage> messages) {
+        boolean openAi = "openai".equals(config.conversation().activeProvider());
+        if (!openAi) {
+            OllamaChatRequest payload = new OllamaChatRequest(
+                config.ollama().model(), messages, normalizeKeepAlive(config.ollama().keepAlive()), true
+            );
+            return HttpRequest.newBuilder(buildOllamaEndpoint(config.ollama().baseUrl()))
+                .timeout(Duration.ofSeconds(config.ollama().timeoutSeconds()))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(payload)))
+                .build();
+        }
+
+        String apiKey = config.openai().apiKey();
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new IllegalStateException("openai.apiKey is empty");
+        }
+        if (Boolean.TRUE.equals(config.openai().logUsage())) {
+            int characters = messages.stream()
+                .map(ChatMessage::content)
+                .filter(java.util.Objects::nonNull)
+                .mapToInt(String::length)
+                .sum();
+            VillagerInterfaceMod.LOGGER.info(
+                "OpenAI request: {} message(s), {} prompt character(s), reasoning={}, maxCompletionTokens={}",
+                messages.size(), characters, config.openai().reasoningEffort(), config.openai().maxCompletionTokens()
+            );
+        }
+        OpenAiChatRequest payload = new OpenAiChatRequest(
+            config.openai().model(), messages, config.openai().reasoningEffort(),
+            config.openai().maxCompletionTokens(), Boolean.TRUE.equals(config.openai().logUsage())
+        );
+        return HttpRequest.newBuilder(buildOpenAiEndpoint(config.openai().baseUrl()))
+            .timeout(Duration.ofSeconds(config.openai().timeoutSeconds()))
+            .header("Content-Type", "application/json")
+            .header("Authorization", "Bearer " + apiKey.trim())
+            .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(payload)))
+            .build();
+    }
+
+    private String providerDisplayName(VillagerInterfaceConfig config) {
+        return "openai".equals(config.conversation().activeProvider()) ? "OpenAI" : "Ollama";
+    }
+
     private String normalizeKeepAlive(String keepAlive) {
         String value = keepAlive != null ? keepAlive.trim() : "";
         if (value.isEmpty()) {
-            value = VillagerInterfaceConfig.createDefault().ollamaKeepAlive();
+            value = VillagerInterfaceConfig.createDefault().ollama().keepAlive();
         }
 
         if ("-1".equals(value)) {
@@ -458,22 +503,7 @@ public final class ConversationManager {
         return value;
     }
 
-    private OllamaChatResponse parseOllamaResponse(String body) {
-        if (body == null || body.isBlank()) {
-            return null;
-        }
-
-        try {
-            JsonReader reader = new JsonReader(new StringReader(body));
-            reader.setLenient(true);
-            return gson.fromJson(reader, OllamaChatResponse.class);
-        } catch (Exception ex) {
-            VillagerInterfaceMod.LOGGER.warn("Failed to parse Ollama response: {}", body);
-            return null;
-        }
-    }
-
-    private void handleOllamaError(String prefix, Throwable error, ServerPlayerEntity player, String timeoutMessage) {
+    private void handleProviderError(String prefix, Throwable error, ServerPlayerEntity player, String timeoutMessage) {
         Throwable root = unwrap(error);
         if (root instanceof HttpTimeoutException) {
             VillagerInterfaceMod.LOGGER.warn("{}: request timed out", prefix);
@@ -497,7 +527,7 @@ public final class ConversationManager {
         return session.isCancellationRequested() || root instanceof CancellationException;
     }
 
-    private void consumeTestStream(MinecraftServer server, UUID playerId, String villagerId, int index, Stream<String> lines, Instant startedAt) {
+    private void consumeTestStream(MinecraftServer server, UUID playerId, String villagerId, int index, Stream<String> lines, Instant startedAt, String provider) {
         StringBuilder full = new StringBuilder();
         long[] lastUpdate = new long[] { 0L };
         boolean[] doneSeen = new boolean[] { false };
@@ -513,14 +543,17 @@ public final class ConversationManager {
                     return;
                 }
 
-                OllamaChatStreamResponse parsed = parseStreamResponse(payload);
+                if ("openai".equals(provider)) {
+                    logOpenAiUsage(payload);
+                }
+
+                ChatStreamChunk parsed = parseStreamChunk(provider, payload);
                 if (parsed == null) {
                     return;
                 }
 
-                OllamaChatMessage message = parsed.message();
-                if (message != null && message.content() != null) {
-                    applyStreamChunk(full, message.content());
+                if (parsed.content() != null) {
+                    applyStreamChunk(full, parsed.content());
                 }
 
                 long now = System.currentTimeMillis();
@@ -538,7 +571,7 @@ public final class ConversationManager {
         server.execute(() -> sendDevtestFinal(server, playerId, villagerId, index, finalText, startedAt));
     }
 
-    private void consumeConversationStream(MinecraftServer server, UUID playerId, ConversationSession session, Stream<String> lines) {
+    private void consumeConversationStream(MinecraftServer server, UUID playerId, ConversationSession session, Stream<String> lines, String provider) {
         StringBuilder full = new StringBuilder();
         long[] lastUpdate = new long[] { 0L };
         int[] lastSentIndex = new int[] { 0 };
@@ -561,14 +594,17 @@ public final class ConversationManager {
                     return;
                 }
 
-                OllamaChatStreamResponse parsed = parseStreamResponse(payload);
+                if ("openai".equals(provider)) {
+                    logOpenAiUsage(payload);
+                }
+
+                ChatStreamChunk parsed = parseStreamChunk(provider, payload);
                 if (parsed == null) {
                     return;
                 }
 
-                OllamaChatMessage message = parsed.message();
-                if (message != null && message.content() != null) {
-                    applyStreamChunk(full, message.content());
+                if (parsed.content() != null) {
+                    applyStreamChunk(full, parsed.content());
                 }
 
                 long now = System.currentTimeMillis();
@@ -815,15 +851,74 @@ public final class ConversationManager {
         return trimmed;
     }
 
-    private OllamaChatStreamResponse parseStreamResponse(String payload) {
+    private ChatStreamChunk parseStreamChunk(String provider, String payload) {
+        if ("openai".equals(provider)) {
+            return parseOpenAiStreamChunk(payload);
+        }
+
         try {
             JsonReader reader = new JsonReader(new StringReader(payload));
             reader.setLenient(true);
-            return gson.fromJson(reader, OllamaChatStreamResponse.class);
+            OllamaChatStreamResponse response = gson.fromJson(reader, OllamaChatStreamResponse.class);
+            if (response == null || response.message() == null) {
+                return response != null && response.done() ? new ChatStreamChunk(null, true) : null;
+            }
+            return new ChatStreamChunk(response.message().content(), response.done());
         } catch (Exception ex) {
             VillagerInterfaceMod.LOGGER.warn("Failed to parse Ollama stream chunk: {}", payload);
             return null;
         }
+    }
+
+    private ChatStreamChunk parseOpenAiStreamChunk(String payload) {
+        try {
+            JsonObject root = JsonParser.parseString(payload).getAsJsonObject();
+            JsonArray choices = root.getAsJsonArray("choices");
+            if (choices == null || choices.isEmpty()) {
+                return null;
+            }
+            JsonObject choice = choices.get(0).getAsJsonObject();
+            JsonObject delta = choice.has("delta") && choice.get("delta").isJsonObject()
+                ? choice.getAsJsonObject("delta") : null;
+            String content = delta != null && delta.has("content") && !delta.get("content").isJsonNull()
+                ? delta.get("content").getAsString() : null;
+            boolean done = choice.has("finish_reason") && !choice.get("finish_reason").isJsonNull();
+            return new ChatStreamChunk(content, done);
+        } catch (Exception ex) {
+            VillagerInterfaceMod.LOGGER.warn("Failed to parse OpenAI stream chunk: {}", payload);
+            return null;
+        }
+    }
+
+    private void logOpenAiUsage(String payload) {
+        try {
+            JsonObject root = JsonParser.parseString(payload).getAsJsonObject();
+            if (!root.has("usage") || root.get("usage").isJsonNull()) {
+                return;
+            }
+            JsonObject usage = root.getAsJsonObject("usage");
+            JsonObject completionDetails = usage.has("completion_tokens_details")
+                && usage.get("completion_tokens_details").isJsonObject()
+                ? usage.getAsJsonObject("completion_tokens_details") : null;
+            JsonObject promptDetails = usage.has("prompt_tokens_details")
+                && usage.get("prompt_tokens_details").isJsonObject()
+                ? usage.getAsJsonObject("prompt_tokens_details") : null;
+            int reasoning = completionDetails != null && completionDetails.has("reasoning_tokens")
+                ? completionDetails.get("reasoning_tokens").getAsInt() : 0;
+            int cached = promptDetails != null && promptDetails.has("cached_tokens")
+                ? promptDetails.get("cached_tokens").getAsInt() : 0;
+            VillagerInterfaceMod.LOGGER.info(
+                "OpenAI usage: prompt={} completion={} reasoning={} cached={} total={}",
+                usageValue(usage, "prompt_tokens"), usageValue(usage, "completion_tokens"), reasoning,
+                cached, usageValue(usage, "total_tokens")
+            );
+        } catch (Exception ex) {
+            VillagerInterfaceMod.LOGGER.debug("Unable to parse OpenAI usage chunk: {}", ex.getMessage());
+        }
+    }
+
+    private int usageValue(JsonObject usage, String key) {
+        return usage.has(key) && !usage.get(key).isJsonNull() ? usage.get(key).getAsInt() : 0;
     }
 
     private void sendDevtestFinal(MinecraftServer server, UUID playerId, String villagerId, int index, String reply, Instant startedAt) {

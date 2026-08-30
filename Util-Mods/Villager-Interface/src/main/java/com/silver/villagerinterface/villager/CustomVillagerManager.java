@@ -39,7 +39,7 @@ public final class CustomVillagerManager {
 
     public void onServerTick(MinecraftServer server) {
         VillagerInterfaceConfig config = configManager.getConfig();
-        int intervalTicks = Math.max(20, config.checkIntervalSeconds() * 20);
+        int intervalTicks = Math.max(20, config.conversation().checkIntervalSeconds() * 20);
         if (server.getTicks() - lastCheckTick < intervalTicks) {
             return;
         }

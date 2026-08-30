@@ -36,83 +36,36 @@ public final class VillagerInterfaceConfig {
         - If asked “tell me everything,” give a structured overview first, then ask what part they want to dig into.
         """;
 
+    private final ConversationSettings conversation;
+    private final OllamaSettings ollama;
+    private final OpenAiSettings openai;
+    private final List<VillagerConfigEntry> villagers;
+
+    public VillagerInterfaceConfig(ConversationSettings conversation, OllamaSettings ollama, OpenAiSettings openai, List<VillagerConfigEntry> villagers) {
+        this.conversation = conversation;
+        this.ollama = ollama;
+        this.openai = openai;
+        this.villagers = villagers != null ? List.copyOf(villagers) : Collections.emptyList();
+    }
+
     public static VillagerInterfaceConfig createDefault() {
         return new VillagerInterfaceConfig(
-            10,
-            "http://localhost:11434",
-            "openhermes",
-            "-1",
-            120,
-            10,
+            new ConversationSettings("ollama", 10, 10),
+            new OllamaSettings("http://localhost:11434", "openhermes", "-1", 120),
+            new OpenAiSettings("https://api.openai.com/v1", "", "gpt-5.6-luna", "low", 0, 120, true),
             List.of(createDefaultVillagerEntry())
         );
     }
 
     public static VillagerConfigEntry createDefaultVillagerEntry() {
         return new VillagerConfigEntry(
-            "main",
-            "villager",
-            "Main Villager",
-            "minecraft:overworld",
-            new VillagerPosition(0.0, 64.0, 0.0),
-            0.0f,
-            0.0f,
-            5.0,
-            DEFAULT_SYSTEM_PROMPT
+            "main", "villager", "Main Villager", "minecraft:overworld",
+            new VillagerPosition(0.0, 64.0, 0.0), 0.0f, 0.0f, 5.0, DEFAULT_SYSTEM_PROMPT
         );
     }
 
-    private final int checkIntervalSeconds;
-    private final String ollamaBaseUrl;
-    private final String ollamaModel;
-    private final String ollamaKeepAlive;
-    private final int ollamaTimeoutSeconds;
-    private final int maxHistoryTurns;
-    private final List<VillagerConfigEntry> villagers;
-
-    public VillagerInterfaceConfig(
-        int checkIntervalSeconds,
-        String ollamaBaseUrl,
-        String ollamaModel,
-        String ollamaKeepAlive,
-        int ollamaTimeoutSeconds,
-        int maxHistoryTurns,
-        List<VillagerConfigEntry> villagers
-    ) {
-        this.checkIntervalSeconds = checkIntervalSeconds;
-        this.ollamaBaseUrl = ollamaBaseUrl;
-        this.ollamaModel = ollamaModel;
-        this.ollamaKeepAlive = ollamaKeepAlive;
-        this.ollamaTimeoutSeconds = ollamaTimeoutSeconds;
-        this.maxHistoryTurns = maxHistoryTurns;
-        this.villagers = villagers != null ? List.copyOf(villagers) : Collections.emptyList();
-    }
-
-    public int checkIntervalSeconds() {
-        return checkIntervalSeconds;
-    }
-
-    public String ollamaBaseUrl() {
-        return ollamaBaseUrl;
-    }
-
-    public String ollamaModel() {
-        return ollamaModel;
-    }
-
-    public String ollamaKeepAlive() {
-        return ollamaKeepAlive;
-    }
-
-    public int ollamaTimeoutSeconds() {
-        return ollamaTimeoutSeconds;
-    }
-
-    public int maxHistoryTurns() {
-        return maxHistoryTurns;
-    }
-
-    public List<VillagerConfigEntry> villagers() {
-        return villagers;
-    }
+    public ConversationSettings conversation() { return conversation; }
+    public OllamaSettings ollama() { return ollama; }
+    public OpenAiSettings openai() { return openai; }
+    public List<VillagerConfigEntry> villagers() { return villagers; }
 }

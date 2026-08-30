@@ -1,9 +1,9 @@
 package com.silver.villagerinterface.conversation;
 
 public final class OllamaChatResponse {
-    private OllamaChatMessage message;
+    private ChatMessage message;
 
-    public OllamaChatMessage message() {
+    public ChatMessage message() {
         return message;
     }
 }

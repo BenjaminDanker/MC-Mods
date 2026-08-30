@@ -11,7 +11,7 @@ import java.util.stream.Stream;
 public final class ConversationSession {
     private final VillagerConfigEntry entry;
     private final int maxHistoryTurns;
-    private final List<OllamaChatMessage> history = new ArrayList<>();
+    private final List<ChatMessage> history = new ArrayList<>();
     private boolean awaitingResponse;
     private boolean cancellationRequested;
     private CompletableFuture<?> activeRequest;
@@ -84,14 +84,14 @@ public final class ConversationSession {
         if (prompt == null || prompt.isBlank()) {
             return;
         }
-        history.add(OllamaChatMessage.system(prompt));
+        history.add(ChatMessage.system(prompt));
     }
 
     public void addSystemMessage(String message) {
         if (message == null || message.isBlank()) {
             return;
         }
-        history.add(OllamaChatMessage.system(message));
+        history.add(ChatMessage.system(message));
         trimHistory();
     }
 
@@ -99,7 +99,7 @@ public final class ConversationSession {
         if (message == null || message.isBlank()) {
             return;
         }
-        history.add(OllamaChatMessage.user(message));
+        history.add(ChatMessage.user(message));
         trimHistory();
     }
 
@@ -107,11 +107,11 @@ public final class ConversationSession {
         if (message == null || message.isBlank()) {
             return;
         }
-        history.add(OllamaChatMessage.assistant(message));
+        history.add(ChatMessage.assistant(message));
         trimHistory();
     }
 
-    public List<OllamaChatMessage> history() {
+    public List<ChatMessage> history() {
         return Collections.unmodifiableList(history);
     }
 
@@ -135,13 +135,26 @@ public final class ConversationSession {
     }
 
     private void trimHistory() {
-        int maxMessages = maxHistoryTurns * 2 + 1;
-        if (history.size() <= maxMessages) {
+        // System messages define the villager and must remain in every request. Only discard
+        // the oldest dialogue messages, retaining the configured number of user/assistant turns.
+        List<ChatMessage> systemMessages = new ArrayList<>();
+        List<ChatMessage> dialogueMessages = new ArrayList<>();
+        for (ChatMessage message : history) {
+            if ("system".equals(message.role())) {
+                systemMessages.add(message);
+            } else {
+                dialogueMessages.add(message);
+            }
+        }
+
+        int maxDialogueMessages = maxHistoryTurns * 2;
+        if (dialogueMessages.size() <= maxDialogueMessages) {
             return;
         }
 
-        int startIndex = history.size() - maxMessages;
-        List<OllamaChatMessage> trimmed = new ArrayList<>(history.subList(startIndex, history.size()));
+        int startIndex = dialogueMessages.size() - maxDialogueMessages;
+        List<ChatMessage> trimmed = new ArrayList<>(systemMessages);
+        trimmed.addAll(dialogueMessages.subList(startIndex, dialogueMessages.size()));
         history.clear();
         history.addAll(trimmed);
     }

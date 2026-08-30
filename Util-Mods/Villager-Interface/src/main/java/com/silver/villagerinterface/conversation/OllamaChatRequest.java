@@ -6,19 +6,19 @@ import java.util.List;
 
 public final class OllamaChatRequest {
     private final String model;
-    private final List<OllamaChatMessage> messages;
+    private final List<ChatMessage> messages;
     private final boolean stream;
     @SerializedName("keep_alive")
     private final String keepAlive;
 
-    public OllamaChatRequest(String model, List<OllamaChatMessage> messages, String keepAlive) {
+    public OllamaChatRequest(String model, List<ChatMessage> messages, String keepAlive) {
         this.model = model;
         this.messages = messages;
         this.stream = false;
         this.keepAlive = keepAlive;
     }
 
-    public OllamaChatRequest(String model, List<OllamaChatMessage> messages, String keepAlive, boolean stream) {
+    public OllamaChatRequest(String model, List<ChatMessage> messages, String keepAlive, boolean stream) {
         this.model = model;
         this.messages = messages;
         this.stream = stream;
@@ -29,7 +29,7 @@ public final class OllamaChatRequest {
         return model;
     }
 
-    public List<OllamaChatMessage> messages() {
+    public List<ChatMessage> messages() {
         return messages;
     }
 

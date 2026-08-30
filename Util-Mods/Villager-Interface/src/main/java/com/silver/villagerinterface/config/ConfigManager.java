@@ -2,6 +2,8 @@ package com.silver.villagerinterface.config;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.google.gson.JsonParseException;
 import com.silver.villagerinterface.VillagerInterfaceMod;
 import net.fabricmc.loader.api.FabricLoader;
@@ -14,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public final class ConfigManager {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -29,145 +32,121 @@ public final class ConfigManager {
     public void load() {
         if (!Files.exists(configPath)) {
             VillagerInterfaceMod.LOGGER.info("No Villager Interface config present, writing defaults to {}", configPath);
-            this.config = VillagerInterfaceConfig.createDefault();
+            config = VillagerInterfaceConfig.createDefault();
             save();
             return;
         }
 
         try (BufferedReader reader = Files.newBufferedReader(configPath, StandardCharsets.UTF_8)) {
-            VillagerInterfaceConfig loaded = GSON.fromJson(reader, VillagerInterfaceConfig.class);
-            this.config = coerceConfig(loaded != null ? loaded : VillagerInterfaceConfig.createDefault());
-        } catch (IOException | JsonParseException ex) {
+            JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
+            boolean legacyFormat = !root.has("conversation");
+            boolean needsOpenAiUpgrade = !legacyFormat && isMissingOpenAiFields(root);
+            VillagerInterfaceConfig loaded = legacyFormat
+                ? migrateLegacy(GSON.fromJson(root, LegacyConfig.class))
+                : GSON.fromJson(root, VillagerInterfaceConfig.class);
+            config = coerceConfig(loaded != null ? loaded : VillagerInterfaceConfig.createDefault());
+            if (legacyFormat || needsOpenAiUpgrade) {
+                VillagerInterfaceMod.LOGGER.info("Updating Villager Interface configuration");
+                save();
+            }
+        } catch (IOException | IllegalStateException | JsonParseException ex) {
             VillagerInterfaceMod.LOGGER.warn("Failed to read Villager Interface config, falling back to defaults", ex);
-            this.config = VillagerInterfaceConfig.createDefault();
+            config = VillagerInterfaceConfig.createDefault();
         }
     }
 
+    private VillagerInterfaceConfig migrateLegacy(LegacyConfig legacy) {
+        VillagerInterfaceConfig defaults = VillagerInterfaceConfig.createDefault();
+        if (legacy == null) {
+            return defaults;
+        }
+        return new VillagerInterfaceConfig(
+            new ConversationSettings("ollama", legacy.checkIntervalSeconds, legacy.maxHistoryTurns),
+            new OllamaSettings(legacy.ollamaBaseUrl, legacy.ollamaModel, legacy.ollamaKeepAlive, legacy.ollamaTimeoutSeconds),
+            defaults.openai(),
+            legacy.villagers
+        );
+    }
+
+    private boolean isMissingOpenAiFields(JsonObject root) {
+        if (!root.has("openai") || !root.get("openai").isJsonObject()) {
+            return true;
+        }
+        JsonObject openai = root.getAsJsonObject("openai");
+        return !openai.has("reasoningEffort")
+            || !openai.has("maxCompletionTokens")
+            || !openai.has("logUsage");
+    }
+
     private VillagerInterfaceConfig coerceConfig(VillagerInterfaceConfig loaded) {
-        boolean shouldSave = false;
+        VillagerInterfaceConfig defaults = VillagerInterfaceConfig.createDefault();
+        ConversationSettings conversation = loaded.conversation();
+        OllamaSettings ollama = loaded.ollama();
+        OpenAiSettings openai = loaded.openai();
 
-        int intervalSeconds = loaded.checkIntervalSeconds();
-        if (intervalSeconds <= 0) {
-            intervalSeconds = VillagerInterfaceConfig.createDefault().checkIntervalSeconds();
-            shouldSave = true;
+        String provider = conversation != null ? conversation.activeProvider() : null;
+        provider = provider != null ? provider.trim().toLowerCase(Locale.ROOT) : "";
+        if (!provider.equals("ollama") && !provider.equals("openai")) {
+            provider = defaults.conversation().activeProvider();
         }
+        int interval = positive(conversation != null ? conversation.checkIntervalSeconds() : 0, defaults.conversation().checkIntervalSeconds());
+        int history = positive(conversation != null ? conversation.maxHistoryTurns() : 0, defaults.conversation().maxHistoryTurns());
 
-        String ollamaBaseUrl = loaded.ollamaBaseUrl();
-        if (ollamaBaseUrl == null || ollamaBaseUrl.isBlank()) {
-            ollamaBaseUrl = VillagerInterfaceConfig.createDefault().ollamaBaseUrl();
-            shouldSave = true;
-        }
-
-        String ollamaModel = loaded.ollamaModel();
-        if (ollamaModel == null || ollamaModel.isBlank()) {
-            ollamaModel = VillagerInterfaceConfig.createDefault().ollamaModel();
-            shouldSave = true;
-        }
-
-        String ollamaKeepAlive = loaded.ollamaKeepAlive();
-        if (ollamaKeepAlive == null || ollamaKeepAlive.isBlank()) {
-            ollamaKeepAlive = VillagerInterfaceConfig.createDefault().ollamaKeepAlive();
-            shouldSave = true;
-        }
-
-        int ollamaTimeoutSeconds = loaded.ollamaTimeoutSeconds();
-        if (ollamaTimeoutSeconds <= 0) {
-            ollamaTimeoutSeconds = VillagerInterfaceConfig.createDefault().ollamaTimeoutSeconds();
-            shouldSave = true;
-        }
-
-        int maxHistoryTurns = loaded.maxHistoryTurns();
-        if (maxHistoryTurns <= 0) {
-            maxHistoryTurns = VillagerInterfaceConfig.createDefault().maxHistoryTurns();
-            shouldSave = true;
-        }
+        OllamaSettings safeOllama = new OllamaSettings(
+            nonBlank(ollama != null ? ollama.baseUrl() : null, defaults.ollama().baseUrl()),
+            nonBlank(ollama != null ? ollama.model() : null, defaults.ollama().model()),
+            nonBlank(ollama != null ? ollama.keepAlive() : null, defaults.ollama().keepAlive()),
+            positive(ollama != null ? ollama.timeoutSeconds() : 0, defaults.ollama().timeoutSeconds())
+        );
+        OpenAiSettings safeOpenAi = new OpenAiSettings(
+            nonBlank(openai != null ? openai.baseUrl() : null, defaults.openai().baseUrl()),
+            openai != null && openai.apiKey() != null ? openai.apiKey().trim() : "",
+            nonBlank(openai != null ? openai.model() : null, defaults.openai().model()),
+            reasoningEffort(openai != null ? openai.reasoningEffort() : null, defaults.openai().reasoningEffort()),
+            Math.max(0, openai != null ? openai.maxCompletionTokens() : 0),
+            positive(openai != null ? openai.timeoutSeconds() : 0, defaults.openai().timeoutSeconds()),
+            openai == null || openai.logUsage() == null || openai.logUsage()
+        );
 
         List<VillagerConfigEntry> entries = new ArrayList<>();
-        List<VillagerConfigEntry> loadedEntries = loaded.villagers();
-        if (loadedEntries != null) {
-            for (VillagerConfigEntry entry : loadedEntries) {
+        if (loaded.villagers() != null) {
+            for (VillagerConfigEntry entry : loaded.villagers()) {
                 if (entry == null || entry.id() == null || entry.id().isBlank()) {
                     continue;
                 }
-
-                String villagerType = entry.villagerType();
-                if (villagerType == null || villagerType.isBlank()) {
-                    villagerType = "villager";
-                    shouldSave = true;
-                }
-
-                String displayName = entry.displayName();
-                if (displayName == null || displayName.isBlank()) {
-                    displayName = entry.id();
-                    shouldSave = true;
-                }
-
-                String dimension = entry.dimension();
-                if (dimension == null || dimension.isBlank()) {
-                    dimension = "minecraft:overworld";
-                    shouldSave = true;
-                }
-
-                VillagerPosition position = entry.position();
-                if (position == null) {
-                    position = new VillagerPosition(0.0, 64.0, 0.0);
-                    shouldSave = true;
-                }
-
-                double maxDistance = entry.maxDistance();
-                if (maxDistance <= 0.0) {
-                    maxDistance = 5.0;
-                    shouldSave = true;
-                }
-
-                String systemPrompt = entry.systemPrompt();
-                if (systemPrompt == null || systemPrompt.isBlank()) {
-                    systemPrompt = VillagerInterfaceConfig.DEFAULT_SYSTEM_PROMPT;
-                    shouldSave = true;
-                }
-
                 entries.add(new VillagerConfigEntry(
                     entry.id(),
-                    villagerType,
-                    displayName,
-                    dimension,
-                    position,
-                    entry.yaw(),
-                    entry.pitch(),
-                    maxDistance,
-                    systemPrompt
+                    nonBlank(entry.villagerType(), "villager"),
+                    nonBlank(entry.displayName(), entry.id()),
+                    nonBlank(entry.dimension(), "minecraft:overworld"),
+                    entry.position() != null ? entry.position() : new VillagerPosition(0.0, 64.0, 0.0),
+                    entry.yaw(), entry.pitch(),
+                    entry.maxDistance() > 0.0 ? entry.maxDistance() : 5.0,
+                    nonBlank(entry.systemPrompt(), VillagerInterfaceConfig.DEFAULT_SYSTEM_PROMPT)
                 ));
             }
         }
-
         if (entries.isEmpty()) {
             entries.add(VillagerInterfaceConfig.createDefaultVillagerEntry());
-            shouldSave = true;
         }
 
-        VillagerInterfaceConfig coerced = new VillagerInterfaceConfig(
-            intervalSeconds,
-            ollamaBaseUrl,
-            ollamaModel,
-            ollamaKeepAlive,
-            ollamaTimeoutSeconds,
-            maxHistoryTurns,
-            entries
-        );
-        int loadedSize = loadedEntries != null ? loadedEntries.size() : 0;
-        if (shouldSave
-            || coerced.checkIntervalSeconds() != loaded.checkIntervalSeconds()
-            || entries.size() != loadedSize
-            || !coerced.ollamaBaseUrl().equals(loaded.ollamaBaseUrl())
-            || !coerced.ollamaModel().equals(loaded.ollamaModel())
-            || !coerced.ollamaKeepAlive().equals(loaded.ollamaKeepAlive())
-            || coerced.ollamaTimeoutSeconds() != loaded.ollamaTimeoutSeconds()
-            || coerced.maxHistoryTurns() != loaded.maxHistoryTurns()) {
-            this.config = coerced;
-            save();
-        }
+        return new VillagerInterfaceConfig(new ConversationSettings(provider, interval, history), safeOllama, safeOpenAi, entries);
+    }
 
-        return coerced;
+    private int positive(int value, int fallback) {
+        return value > 0 ? value : fallback;
+    }
+
+    private String nonBlank(String value, String fallback) {
+        return value != null && !value.isBlank() ? value.trim() : fallback;
+    }
+
+    private String reasoningEffort(String value, String fallback) {
+        String normalized = value != null ? value.trim().toLowerCase(Locale.ROOT) : "";
+        return switch (normalized) {
+            case "none", "low", "medium", "high", "xhigh", "max" -> normalized;
+            default -> fallback;
+        };
     }
 
     public void save() {
@@ -187,5 +166,16 @@ public final class ConfigManager {
 
     public Path getConfigPath() {
         return configPath;
+    }
+
+    /** JSON shape used before provider-specific configuration sections were introduced. */
+    private static final class LegacyConfig {
+        private int checkIntervalSeconds;
+        private String ollamaBaseUrl;
+        private String ollamaModel;
+        private String ollamaKeepAlive;
+        private int ollamaTimeoutSeconds;
+        private int maxHistoryTurns;
+        private List<VillagerConfigEntry> villagers;
     }
 }

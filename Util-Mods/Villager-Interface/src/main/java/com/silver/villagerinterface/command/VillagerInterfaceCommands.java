@@ -66,6 +66,6 @@ public final class VillagerInterfaceCommands {
             throw new SimpleCommandExceptionType(Text.literal("Conversation system not initialized.")).create();
         }
 
-        return manager.runDevOllamaTest(player, count);
+        return manager.runDevProviderTest(player, count);
     }
 }
