@@ -50,9 +50,9 @@ public final class VillagerInterfaceConfig {
 
     public static VillagerInterfaceConfig createDefault() {
         return new VillagerInterfaceConfig(
-            new ConversationSettings("ollama", 10, 10),
+            new ConversationSettings("ollama", 10, 3),
             new OllamaSettings("http://localhost:11434", "openhermes", "-1", 120),
-            new OpenAiSettings("https://api.openai.com/v1", "", "gpt-5.6-luna", "low", 0, 120, true),
+            new OpenAiSettings("https://api.openai.com/v1", "", "gpt-5.6-luna", "none", 256, 120, true),
             List.of(createDefaultVillagerEntry())
         );
     }

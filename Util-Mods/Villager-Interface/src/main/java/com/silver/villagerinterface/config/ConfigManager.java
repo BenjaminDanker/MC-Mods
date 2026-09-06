@@ -144,7 +144,7 @@ public final class ConfigManager {
     private String reasoningEffort(String value, String fallback) {
         String normalized = value != null ? value.trim().toLowerCase(Locale.ROOT) : "";
         return switch (normalized) {
-            case "none", "low", "medium", "high", "xhigh", "max" -> normalized;
+            case "none", "minimal", "low", "medium", "high", "xhigh", "max" -> normalized;
             default -> fallback;
         };
     }

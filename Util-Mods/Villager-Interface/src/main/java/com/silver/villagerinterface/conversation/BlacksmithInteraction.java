@@ -65,29 +65,25 @@ public final class BlacksmithInteraction {
 
         String[] parts = message.split("\\s+", 3);
         if (parts.length < 2 || !MOD_SOULBOUND.equalsIgnoreCase(parts[1])) {
-            String strict = "Strict rules: Only command supported is !modify Soulbound. Do not mention !confirm. Do not mention coins. Reply briefly with correct usage.";
-            manager.requestTransientReply(player, session, "The player attempted an invalid blacksmith modification command.", strict);
+            manager.sendDeterministicReply(player, session, "Only !modify Soulbound is supported.");
             return true;
         }
 
         ItemStack main = player.getMainHandStack();
         if (main == null || main.isEmpty()) {
-            String strict = "Strict rules: The player must hold exactly one item in their main hand to use !modify Soulbound. Do not mention !confirm. Do not mention coins.";
-            manager.requestTransientReply(player, session, "The player wants a Soulbound modification.", strict);
+            manager.sendDeterministicReply(player, session, "Hold exactly one item in your main hand, then use !modify Soulbound.");
             return true;
         }
 
         if (main.getCount() != 1) {
-            String strict = "Strict rules: The player must hold exactly one item (not a stack) in their main hand. Do not mention !confirm. Do not mention coins.";
-            manager.requestTransientReply(player, session, "The player wants a Soulbound modification.", strict);
+            manager.sendDeterministicReply(player, session, "Hold exactly one item, not a stack, then use !modify Soulbound.");
             return true;
         }
 
         int paymentSlot = findPaymentSlot(player, main.getItem());
         if (paymentSlot == -1) {
             String itemName = safeItemName(main);
-            String strict = "Strict rules: Cost is 1x additional item of the same type from inventory. No coins. The player lacks the required payment item. Tell them to bring another " + itemName + ". Do not mention !confirm.";
-            manager.requestTransientReply(player, session, "The player wants a Soulbound modification.", strict);
+            manager.sendDeterministicReply(player, session, "Bring one additional " + itemName + " as payment, then try again.");
             return true;
         }
 
@@ -95,17 +91,13 @@ public final class BlacksmithInteraction {
         try {
             soulboundMax = MpdsSoulboundApi.getSoulboundMax(player.getName().getString(), player.getUuidAsString());
         } catch (Exception e) {
-            String strict = "Strict rules: The Soulbound capacity system is unavailable right now (DB error). Tell the player to try again later. Do not mention coins. Do not mention !confirm.";
-            manager.requestTransientReply(player, session, "The player wants a Soulbound modification but DB lookup failed.", strict);
+            manager.sendDeterministicReply(player, session, "The Soulbound capacity system is unavailable. Try again later.");
             return true;
         }
 
         int soulboundCount = countSoulboundItems(player);
         if (soulboundCount >= soulboundMax) {
-            String strict = "Strict rules: The player has no remaining Soulbound crafting capacity. Use this phrasing: 'Your Soul isn't large enough or you have too many Soulbound items.' "
-                + "If you mention numbers, include this exact sentence on its own line: 'Your Soulbound capacity is " + soulboundCount + " out of a maximum of " + soulboundMax + " items.' "
-                + "Do not mention coins. Do not mention !confirm.";
-            manager.requestTransientReply(player, session, "The player wants a Soulbound modification but has no capacity.", strict);
+            manager.sendDeterministicReply(player, session, "Your Soul isn't large enough or you have too many Soulbound items.\nYour Soulbound capacity is " + soulboundCount + " out of a maximum of " + soulboundMax + " items.");
             return true;
         }
 
@@ -113,14 +105,7 @@ public final class BlacksmithInteraction {
         session.setPendingModification(pending);
 
         String itemName = safeItemName(main);
-        String strict = "A Soulbound modification quote is pending confirmation. Exact cost: consume 1x additional " + itemName + " (same item type) from the player's inventory. "
-            + "Do not mention coins. Explain the modification as: the item travels with the player across dimensions and is not dropped on death. "
-            + "Important: it CAN still be manually dropped by the player; do NOT claim it prevents accidental dropping/removal. "
-            + "Do NOT claim it prevents other players from using the item. "
-            + "Add a warning: Soulbound cannot be undone by normal means. "
-                + "Include this exact sentence on its own line: 'Your Soulbound capacity is " + soulboundCount + " out of a maximum of " + soulboundMax + " items.' "
-            + "Then include this exact sentence on its own line: \"" + CONFIRM_PROMPT + "\"";
-        manager.requestTransientReply(player, session, "Quote and explain the Soulbound modification for the player's selected item.", strict);
+        manager.sendDeterministicReply(player, session, "The cost is one additional " + itemName + ". Soulbound items travel across dimensions and are not dropped on death, but can still be manually dropped and used by others. This cannot be undone by normal means.\nYour Soulbound capacity is " + soulboundCount + " out of a maximum of " + soulboundMax + " items.\n" + CONFIRM_PROMPT);
         return true;
     }
 
@@ -134,15 +119,13 @@ public final class BlacksmithInteraction {
         ItemStack main = player.getMainHandStack();
         if (main == null || main.isEmpty() || main.getItem() != pending.item()) {
             session.setPendingModification(null);
-            String strict = "Strict rules: The player is not holding the expected item anymore. The pending quote was cancelled. Tell them to retry with !modify Soulbound. Do not mention coins.";
-            manager.requestTransientReply(player, session, "The player tried to confirm a blacksmith modification.", strict);
+            manager.sendDeterministicReply(player, session, "The pending quote was cancelled because you are not holding the expected item. Retry with !modify Soulbound.");
             return true;
         }
 
         if (main.getCount() != 1) {
             session.setPendingModification(null);
-            String strict = "Strict rules: The player must hold exactly one item (not a stack). Tell them to hold a single item then retry !modify Soulbound. Do not mention coins.";
-            manager.requestTransientReply(player, session, "The player tried to confirm a blacksmith modification.", strict);
+            manager.sendDeterministicReply(player, session, "Hold exactly one item, not a stack, then retry with !modify Soulbound.");
             return true;
         }
 
@@ -150,8 +133,7 @@ public final class BlacksmithInteraction {
         if (paymentSlot == -1) {
             session.setPendingModification(null);
             String itemName = safeItemName(main);
-            String strict = "Strict rules: The player no longer has the required cost item. Cost is 1x additional " + itemName + " (same item type). No coins. Tell them to bring another and retry !modify Soulbound.";
-            manager.requestTransientReply(player, session, "The player tried to confirm a blacksmith modification.", strict);
+            manager.sendDeterministicReply(player, session, "You no longer have the additional " + itemName + " required as payment. Retry with !modify Soulbound.");
             return true;
         }
 
@@ -160,18 +142,14 @@ public final class BlacksmithInteraction {
             soulboundMax = MpdsSoulboundApi.getSoulboundMax(player.getName().getString(), player.getUuidAsString());
         } catch (Exception e) {
             session.setPendingModification(null);
-            String strict = "Strict rules: The Soulbound capacity system is unavailable right now (DB error). Tell the player to try again later and retry !modify Soulbound. Do not mention coins. Do not mention !confirm.";
-            manager.requestTransientReply(player, session, "The player tried to confirm a Soulbound modification but DB lookup failed.", strict);
+            manager.sendDeterministicReply(player, session, "The Soulbound capacity system is unavailable. Try !modify Soulbound again later.");
             return true;
         }
 
         int soulboundCount = countSoulboundItems(player);
         if (soulboundCount >= soulboundMax) {
             session.setPendingModification(null);
-            String strict = "Strict rules: The player has no remaining Soulbound crafting capacity. Use this phrasing: 'Your Soul isn't large enough or you have too many Soulbound items.' "
-                + "If you mention numbers, include this exact sentence on its own line: 'Your Soulbound capacity is " + soulboundCount + " out of a maximum of " + soulboundMax + " items.' "
-                + "Do not mention coins. Do not mention !confirm.";
-            manager.requestTransientReply(player, session, "The player tried to confirm a Soulbound modification but has no capacity.", strict);
+            manager.sendDeterministicReply(player, session, "Your Soul isn't large enough or you have too many Soulbound items.\nYour Soulbound capacity is " + soulboundCount + " out of a maximum of " + soulboundMax + " items.");
             return true;
         }
 
@@ -197,11 +175,7 @@ public final class BlacksmithInteraction {
 
         session.setPendingModification(null);
         String itemName = safeItemName(modified);
-        String strict = "The deal is complete. Cost consumed: 1x additional " + itemName + " (same item type). The selected item is now Soulbound. "
-            + "Soulbound means the item travels with the player across dimensions and is not dropped on death; it CAN still be manually dropped; it does NOT prevent other players from using it. "
-            + "Remind them it cannot be undone by normal means. "
-            + "Do not mention coins. Provide a short confirmation to the player.";
-        manager.requestTransientReply(player, session, "Confirm the Soulbound modification is complete.", strict);
+        manager.sendDeterministicReply(player, session, itemName + " is now Soulbound. It travels across dimensions and is not dropped on death, but can still be manually dropped and used by others. This cannot be undone by normal means.");
         return true;
     }
 

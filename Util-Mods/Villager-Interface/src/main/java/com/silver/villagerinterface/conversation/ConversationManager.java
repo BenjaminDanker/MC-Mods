@@ -93,7 +93,7 @@ public final class ConversationManager {
 
         player.sendMessage(Text.literal("Please be patient with the dumb villagers. Type '!exit' to end the conversation.").formatted(Formatting.GRAY), false);
         player.sendMessage(Text.empty(), false);
-        requestReply(player, session, "The player approaches. Greet them briefly.", true);
+        sendDeterministicReply(player, session, "Hmph. What do you need?");
         return true;
     }
 
@@ -290,6 +290,14 @@ public final class ConversationManager {
         sendProviderRequest(player, session, session.history());
     }
 
+    void sendDeterministicReply(ServerPlayerEntity player, ConversationSession session, String reply) {
+        if (reply == null || reply.isBlank()) {
+            return;
+        }
+        sendVillagerLine(player, session.entry(), reply);
+        session.addAssistantMessage(reply);
+    }
+
     void requestTransientReply(ServerPlayerEntity player, ConversationSession session, String transientUserMessage, String transientSystemMessage) {
         List<ChatMessage> messages = new ArrayList<>(session.history());
         if (transientSystemMessage != null && !transientSystemMessage.isBlank()) {
@@ -306,7 +314,7 @@ public final class ConversationManager {
         VillagerInterfaceConfig config = getConfig();
         HttpRequest request;
         try {
-            request = buildProviderRequest(config, messages);
+            request = buildProviderRequest(config, messages, session.entry().id());
         } catch (IllegalStateException ex) {
             VillagerInterfaceMod.LOGGER.warn("{} request was not sent: {}", providerDisplayName(config), ex.getMessage());
             player.sendMessage(Text.literal("The villager cannot reach its configured AI provider.").formatted(Formatting.DARK_GRAY), false);
@@ -366,7 +374,7 @@ public final class ConversationManager {
         VillagerInterfaceConfig config = getConfig();
         HttpRequest request;
         try {
-            request = buildProviderRequest(config, session.history());
+            request = buildProviderRequest(config, session.history(), entry.id());
         } catch (IllegalStateException ex) {
             player.sendMessage(Text.literal("Test " + index + " cannot start: " + ex.getMessage()).formatted(Formatting.DARK_GRAY), false);
             return;
@@ -442,7 +450,7 @@ public final class ConversationManager {
         return URI.create(normalized + "chat/completions");
     }
 
-    private HttpRequest buildProviderRequest(VillagerInterfaceConfig config, List<ChatMessage> messages) {
+    private HttpRequest buildProviderRequest(VillagerInterfaceConfig config, List<ChatMessage> messages, String villagerId) {
         boolean openAi = "openai".equals(config.conversation().activeProvider());
         if (!openAi) {
             OllamaChatRequest payload = new OllamaChatRequest(
@@ -472,7 +480,8 @@ public final class ConversationManager {
         }
         OpenAiChatRequest payload = new OpenAiChatRequest(
             config.openai().model(), messages, config.openai().reasoningEffort(),
-            config.openai().maxCompletionTokens(), Boolean.TRUE.equals(config.openai().logUsage())
+            config.openai().maxCompletionTokens(), Boolean.TRUE.equals(config.openai().logUsage()),
+            "villagerinterface-v1:" + villagerId
         );
         return HttpRequest.newBuilder(buildOpenAiEndpoint(config.openai().baseUrl()))
             .timeout(Duration.ofSeconds(config.openai().timeoutSeconds()))
