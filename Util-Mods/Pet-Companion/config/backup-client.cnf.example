@@ -1,0 +1,8 @@
+# Install as /etc/pet-companion/backup-client.cnf, owned by pet-backup, mode 0600.
+# Use a dedicated least-privilege MariaDB backup account. Never commit its password.
+[client]
+host=127.0.0.1
+port=3306
+user=pet_backup
+password=
+protocol=tcp

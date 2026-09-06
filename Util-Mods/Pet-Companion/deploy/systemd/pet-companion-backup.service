@@ -1,0 +1,30 @@
+[Unit]
+Description=Pet Companion MariaDB logical backup
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=pet-backup
+Group=pet-backup
+EnvironmentFile=/etc/pet-companion/pet-backup.env
+ExecStart=/opt/pet-companion/ops/backup_pet_database.sh /var/backups/pet-companion /etc/pet-companion/backup-client.cnf ${PET_BACKUP_DATABASE}
+UMask=0077
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadOnlyPaths=/etc/pet-companion/backup-client.cnf
+ReadWritePaths=/var/backups/pet-companion
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX

@@ -1,0 +1,17 @@
+pluginManagement {
+    repositories {
+        maven {
+            name = 'Fabric'
+            url = 'https://maven.fabricmc.net/'
+        }
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'Pet-Companion'
+
+include 'pet-common'
+include 'pet-service'
+include 'pet-fabric'
+include 'pet-velocity'

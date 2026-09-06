@@ -1,0 +1,15 @@
+{
+  "id": "evt_subscription_created_001",
+  "type": "customer.subscription.created",
+  "created": 2000000010,
+  "data": {"object": {
+    "id": "sub_test_001",
+    "customer": "cus_test_001",
+    "status": "active",
+    "current_period_start": 2000000000,
+    "current_period_end": 2002592000,
+    "cancel_at_period_end": false,
+    "metadata": {"minecraft_uuid": "11111111-1111-1111-1111-111111111111"},
+    "items": {"data": [{"price": {"id": "price_pet_monthly"}}]}
+  }}
+}

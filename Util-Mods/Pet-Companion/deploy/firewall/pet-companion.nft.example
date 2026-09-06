@@ -1,0 +1,20 @@
+#!/usr/sbin/nft -f
+
+# TEMPLATE ONLY. Replace documentation-range addresses, review the host's existing
+# nftables policy, and merge these rules instead of blindly flushing any ruleset.
+define pet_service_ipv4 = 192.0.2.10
+define pet_private_clients = {
+    192.0.2.11, # Fabric backend 1
+    192.0.2.12, # Fabric backend 2
+    192.0.2.20  # Velocity / HTTPS reverse proxy
+}
+
+table inet pet_companion {
+    chain protect_service_port {
+        type filter hook input priority 0; policy accept;
+
+        iifname "lo" tcp dport 8787 accept
+        ip daddr $pet_service_ipv4 ip saddr $pet_private_clients tcp dport 8787 accept
+        ip daddr $pet_service_ipv4 tcp dport 8787 counter drop
+    }
+}

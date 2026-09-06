@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Pet Companion MariaDB backup
+
+[Timer]
+OnCalendar=*-*-* 03:15:00 UTC
+RandomizedDelaySec=15m
+Persistent=true
+Unit=pet-companion-backup.service
+
+[Install]
+WantedBy=timers.target

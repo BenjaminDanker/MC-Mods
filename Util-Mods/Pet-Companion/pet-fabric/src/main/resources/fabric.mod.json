@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "pet_companion",
+  "version": "${version}",
+  "name": "Pet Companion",
+  "description": "Persistent cosmetic AI pet physical integration.",
+  "authors": [
+    "BenjaminDanker"
+  ],
+  "license": "MIT",
+  "environment": "server",
+  "entrypoints": {
+    "main": [
+      "com.silver.aipets.fabric.PetCompanionMod"
+    ]
+  },
+  "mixins": [
+    "pet_companion.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.17.3",
+    "fabric-api": "*",
+    "minecraft": "~1.21.10",
+    "java": ">=21"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "id": "evt_invoice_failed_001",
+  "type": "invoice.payment_failed",
+  "created": 2000000030,
+  "data": {"object": {
+    "id": "in_test_failed_001",
+    "customer": "cus_test_001",
+    "subscription": "sub_test_001",
+    "lines": {"data": [{"period": {"start": 2000000000, "end": 2002592000}}]}
+  }}
+}

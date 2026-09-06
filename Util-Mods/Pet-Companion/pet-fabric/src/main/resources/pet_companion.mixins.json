@@ -1,0 +1,26 @@
+{
+  "required": true,
+  "package": "com.silver.aipets.fabric.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "AnimalEntityMixin",
+    "CatEntityMixin",
+    "CatEntityVariantInvoker",
+    "EntityMixin",
+    "LivingEntityMixin",
+    "MobEntityAccessor",
+    "MobEntityMixin",
+    "PassiveEntityMixin",
+    "PetCompassHopperMixin",
+    "PetCompassItemEntityMixin",
+    "PetCompassSlotMixin",
+    "PetPrivateChatBroadcastMixin",
+    "PetPrivateChatNetworkHandlerMixin",
+    "TameableEntityMixin",
+    "WolfEntityMixin",
+    "WolfEntityVariantInvoker"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

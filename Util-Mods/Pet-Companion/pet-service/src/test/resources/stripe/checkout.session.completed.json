@@ -1,0 +1,17 @@
+{
+  "id": "evt_checkout_001",
+  "type": "checkout.session.completed",
+  "created": 2000000000,
+  "data": {"object": {
+    "id": "cs_test_001",
+    "mode": "subscription",
+    "client_reference_id": "11111111-1111-1111-1111-111111111111",
+    "customer": "cus_test_001",
+    "subscription": "sub_test_001",
+    "metadata": {
+      "minecraft_uuid": "11111111-1111-1111-1111-111111111111",
+      "account_link_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "stripe_price_id": "price_pet_monthly"
+    }
+  }}
+}

@@ -1,0 +1,11 @@
+{
+  "id": "evt_invoice_paid_001",
+  "type": "invoice.paid",
+  "created": 2000000040,
+  "data": {"object": {
+    "id": "in_test_paid_001",
+    "customer": "cus_test_001",
+    "subscription": "sub_test_001",
+    "lines": {"data": [{"period": {"start": 2002592000, "end": 2005184000}}]}
+  }}
+}

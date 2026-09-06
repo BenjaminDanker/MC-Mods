@@ -1,0 +1,11 @@
+# Copy to the Fabric config directory as pet-companion.properties.
+# The token value itself must be provided through the named environment variable.
+# Use a distinct persistent 32+ character secret for compass signatures on every backend.
+authority.enabled=false
+authority.backend-id=ocean
+authority.base-url=http://127.0.0.1:8787/
+authority.token-environment=PET_SERVICE_TOKEN
+authority.compass-signing-environment=PET_COMPASS_SIGNING_SECRET
+authority.backend-friendly-names=ocean=Ocean;survival=Survival;waiting=Waiting Lobby
+authority.connect-timeout-ms=2000
+authority.request-timeout-ms=3000

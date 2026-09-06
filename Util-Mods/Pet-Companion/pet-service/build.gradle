@@ -1,0 +1,26 @@
+plugins {
+    id 'java-library'
+    id 'application'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+    withSourcesJar()
+}
+
+dependencies {
+    api project(':pet-common')
+    implementation 'com.zaxxer:HikariCP:7.0.2'
+    runtimeOnly 'org.mariadb.jdbc:mariadb-java-client:3.5.7'
+    runtimeOnly 'org.slf4j:slf4j-jdk14:2.0.18'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.11.3'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.11.3'
+}
+
+application {
+    mainClass = 'com.silver.aipets.service.PetServiceApplication'
+    applicationName = 'pet-service'
+}

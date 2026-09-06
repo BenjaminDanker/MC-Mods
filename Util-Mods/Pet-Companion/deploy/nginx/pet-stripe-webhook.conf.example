@@ -1,0 +1,77 @@
+# Review and install inside nginx's http context. Only the opaque Checkout bootstrap,
+# its inert result/portal-return pages, and Stripe's signed webhook are public.
+limit_req_zone $binary_remote_addr zone=pet_stripe_webhook:10m rate=10r/s;
+limit_req_zone $binary_remote_addr zone=pet_checkout_launch:10m rate=5r/s;
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name pets.example.invalid;
+
+    ssl_certificate /etc/letsencrypt/live/pets.example.invalid/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/pets.example.invalid/privkey.pem;
+
+    server_tokens off;
+    client_max_body_size 256k;
+    client_body_timeout 10s;
+
+    location = /v1/stripe/webhook {
+        limit_except POST { deny all; }
+        limit_req zone=pet_stripe_webhook burst=20 nodelay;
+
+        proxy_http_version 1.1;
+        proxy_pass http://127.0.0.1:8787;
+        proxy_connect_timeout 2s;
+        proxy_send_timeout 10s;
+        proxy_read_timeout 10s;
+        proxy_request_buffering on;
+        proxy_buffering off;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
+    # Tokens are 256-bit base64url values. Disable access logging so an unconsumed
+    # bearer URL does not enter ordinary proxy logs or analytics.
+    location ~ ^/checkout/[A-Za-z0-9_-]{43}$ {
+        limit_except GET { deny all; }
+        limit_req zone=pet_checkout_launch burst=10 nodelay;
+        access_log off;
+
+        proxy_http_version 1.1;
+        proxy_pass http://127.0.0.1:8787;
+        proxy_connect_timeout 2s;
+        proxy_send_timeout 10s;
+        proxy_read_timeout 15s;
+        proxy_buffering off;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
+    location = /checkout/success {
+        limit_except GET { deny all; }
+        proxy_pass http://127.0.0.1:8787;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
+    location = /checkout/cancel {
+        limit_except GET { deny all; }
+        proxy_pass http://127.0.0.1:8787;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
+    location = /checkout/return {
+        limit_except GET { deny all; }
+        proxy_pass http://127.0.0.1:8787;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
+    location / {
+        return 404;
+    }
+}
