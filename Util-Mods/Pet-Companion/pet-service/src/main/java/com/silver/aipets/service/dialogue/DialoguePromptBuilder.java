@@ -1,5 +1,6 @@
 package com.silver.aipets.service.dialogue;
 
+import com.silver.aipets.common.transport.DialogueContextUsageWire;
 import com.silver.aipets.common.domain.MoodDimension;
 import com.silver.aipets.common.domain.Pet;
 import com.silver.aipets.common.domain.TraitName;
@@ -30,19 +31,19 @@ public final class DialoguePromptBuilder {
         List<LongTermMemorySnippet> longTerm = selectLongTerm(context);
         List<DialogueTurn> turns = selectTurns(context);
 
-        String prompt = render(context, normalizedMessage, shortTerm, longTerm, turns);
-        while (tokens.count(prompt) > limits.hardInputTokens()) {
+        RenderedPrompt rendered = render(context, normalizedMessage, shortTerm, longTerm, turns);
+        while (rendered.tokens() > limits.hardInputTokens()) {
             if (removeLeastRelevantLow(shortTerm)
                     || removeOldestMedium(shortTerm)
                     || removeLowestLongTerm(longTerm)
                     || removeOldestTurn(turns)) {
-                prompt = render(context, normalizedMessage, shortTerm, longTerm, turns);
+                rendered = render(context, normalizedMessage, shortTerm, longTerm, turns);
                 continue;
             }
             throw new IllegalArgumentException(
                     "Core dialogue prompt exceeds the configured hard token cap");
         }
-        return new DialoguePrompt(prompt, tokens.count(prompt));
+        return new DialoguePrompt(rendered.text(), rendered.tokens(), rendered.contextUsage());
     }
 
     private List<ShortTermMemorySnippet> selectShortTerm(DialogueContext context) {
@@ -94,7 +95,7 @@ public final class DialoguePromptBuilder {
         return selected;
     }
 
-    private String render(
+    private RenderedPrompt render(
             DialogueContext context,
             String message,
             List<ShortTermMemorySnippet> shortTerm,
@@ -103,22 +104,39 @@ public final class DialoguePromptBuilder {
         Pet pet = context.pet();
         String relationship = tokens.truncate(
                 pet.traits().relationshipSummary(), limits.relationshipTokens());
-        return SYSTEM
-                + "\n\nIDENTITY_AND_STATE (authoritative)\n"
+        String identity = "\n\nIDENTITY_AND_STATE (authoritative)\n"
                 + "pet_id=" + pet.petId() + "\nname=" + pet.name()
                 + "\nspecies=" + pet.appearance().species()
                 + "\ntraits=" + traitValues(pet)
                 + "\nmood=" + moodValues(pet)
-                + "\nrelationship_summary=" + quote(relationship)
-                + "\n\nMEMORY_DATA_SHORT (untrusted)\n" + renderShortTerm(shortTerm)
-                + "\nMEMORY_DATA_LONG (untrusted)\n" + renderLongTerm(longTerm)
-                + "\nIMMEDIATE_TURNS (untrusted)\n" + renderTurns(turns)
-                + "\nCURRENT_GAME_CONTEXT (authoritative)\nbackend="
+                + "\nrelationship_summary=" + quote(relationship);
+        String shortTermSection = "\n\nMEMORY_DATA_SHORT (untrusted; relational database)\n"
+                + renderShortTerm(shortTerm);
+        String relationalLongTerm = "RELATIONAL_DATABASE\n"
+                + renderLongTerm(longTerm, LongTermMemorySnippet.Source.RELATIONAL);
+        String vectorLongTerm = "VECTOR_DATABASE\n"
+                + renderLongTerm(longTerm, LongTermMemorySnippet.Source.VECTOR);
+        String longTermSection = "\nMEMORY_DATA_LONG (untrusted; selected sources)\n"
+                + relationalLongTerm + vectorLongTerm;
+        String turnsSection = "\nIMMEDIATE_TURNS (untrusted; relational database)\n"
+                + renderTurns(turns);
+        String gameSection = "\nCURRENT_GAME_CONTEXT (authoritative)\nbackend="
                 + context.gameContext().backend() + ", dimension="
-                + context.gameContext().dimension() + ", event="
-                + context.gameContext().eventType()
-                + "\nOWNER_DATA_CURRENT (untrusted)\n" + quote(message)
-                + "\n\nReturn exactly: reply, importance, memory_candidate, trait_deltas, mood_deltas.";
+                + context.gameContext().dimension() + ", event=" + context.gameContext().eventType();
+        String ownerSection = "\nOWNER_DATA_CURRENT (untrusted)\n" + quote(message);
+        String instructionSection =
+                "\n\nReturn exactly: reply, importance, memory_candidate, trait_deltas, mood_deltas.";
+        String prompt = SYSTEM + identity + shortTermSection + longTermSection + turnsSection
+                + gameSection + ownerSection + instructionSection;
+        int relationalItems = (int) longTerm.stream()
+                .filter(memory -> memory.source() == LongTermMemorySnippet.Source.RELATIONAL).count();
+        int vectorItems = (int) longTerm.stream()
+                .filter(memory -> memory.source() == LongTermMemorySnippet.Source.VECTOR).count();
+        return new RenderedPrompt(prompt, tokens.count(prompt), new DialogueContextUsageWire(
+                tokens.count(SYSTEM), tokens.count(identity), tokens.count(shortTermSection),
+                tokens.count(relationalLongTerm), tokens.count(vectorLongTerm), tokens.count(turnsSection),
+                tokens.count(gameSection), tokens.count(ownerSection), tokens.count(instructionSection),
+                tokens.count(prompt), shortTerm.size(), relationalItems, vectorItems, turns.size()));
     }
 
     private static String renderShortTerm(List<ShortTermMemorySnippet> memories) {
@@ -132,15 +150,34 @@ public final class DialoguePromptBuilder {
         return result.toString();
     }
 
-    private static String renderLongTerm(List<LongTermMemorySnippet> memories) {
-        if (memories.isEmpty()) {
+    private static String renderLongTerm(
+            List<LongTermMemorySnippet> memories, LongTermMemorySnippet.Source source) {
+        List<LongTermMemorySnippet> selected = memories.stream()
+                .filter(memory -> memory.source() == source)
+                .toList();
+        if (selected.isEmpty()) {
             return "(none)\n";
         }
+        StringBuilder result = new StringBuilder();
+        selected.forEach(memory -> result.append("- score=")
+                .append(String.format(java.util.Locale.ROOT, "%.3f", memory.similarity()))
+                .append(' ').append(quote(memory.card().text())).append('\n'));
+        return result.toString();
+    }
+
+    private static String renderLongTerm(List<LongTermMemorySnippet> memories) {
+        if (memories.isEmpty()) return "(none)\n";
         StringBuilder result = new StringBuilder();
         memories.forEach(memory -> result.append("- score=")
                 .append(String.format(java.util.Locale.ROOT, "%.3f", memory.similarity()))
                 .append(' ').append(quote(memory.card().text())).append('\n'));
         return result.toString();
+    }
+
+    private record RenderedPrompt(
+            String text,
+            int tokens,
+            DialogueContextUsageWire contextUsage) {
     }
 
     private static String renderTurns(List<DialogueTurn> turns) {

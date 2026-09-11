@@ -30,6 +30,13 @@ public final class InMemoryPetSleepStateStore implements PetSleepStateStore {
     }
 
     @Override
+    public List<UUID> findOwnerUuids() {
+        synchronized (monitor) {
+            return List.copyOf(petByOwner.keySet());
+        }
+    }
+
+    @Override
     public Optional<PetSleepState> find(UUID petId) {
         Objects.requireNonNull(petId, "petId");
         synchronized (monitor) {

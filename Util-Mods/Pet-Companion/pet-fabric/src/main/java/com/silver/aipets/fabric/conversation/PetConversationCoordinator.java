@@ -4,6 +4,7 @@ import com.silver.aipets.common.domain.BackendId;
 import com.silver.aipets.common.observability.StructuredPetEvent;
 import com.silver.aipets.common.domain.Pet;
 import com.silver.aipets.common.domain.PlacedPlacement;
+import com.silver.aipets.common.transport.SubscriptionAccessWireResult;
 import com.silver.aipets.fabric.PetCompanionMod;
 import com.silver.aipets.fabric.authority.PetAuthorityGateway;
 import com.silver.aipets.fabric.authority.PetAuthoritySnapshot;
@@ -20,6 +21,8 @@ import net.minecraft.text.Text;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -38,7 +41,11 @@ import java.util.function.Supplier;
  */
 public final class PetConversationCoordinator implements PetInteractionHandler {
     private static final Text SLEEPING = Text.literal("Your pet is sleeping and cannot chat yet.");
-    private static final Text INACTIVE = Text.literal("Your pet is quiet because AI access is inactive.");
+    private static final Text INACTIVE = Text.literal(
+            "Your pet is quiet right now. Check /pet billing for your membership status.");
+    private static final DateTimeFormatter RENEWAL_TIME = DateTimeFormatter
+            .ofPattern("MMM d, yyyy 'at' HH:mm 'UTC'")
+            .withZone(ZoneOffset.UTC);
     private static final Text UNAVAILABLE = Text.literal("Your pet cannot chat right now. Please try again.");
 
     private final BackendId backendId;
@@ -128,6 +135,7 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
     }
 
     public void tick() {
+        sessions.keepOpenSessionsAlive(clock.instant());
         sessions.purgeExpired(clock.instant());
     }
 
@@ -139,6 +147,13 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
     public void onPetUnloaded(Entity entity) {
         if (entity instanceof PetEntityData data && data.aipets$isPet()) {
             sessions.cancelPet(data.aipets$getPetId());
+            if (entity.getEntityWorld() instanceof ServerWorld world) {
+                ServerPlayerEntity owner = world.getServer().getPlayerManager()
+                        .getPlayer(data.aipets$getOwnerUuid());
+                if (owner != null) {
+                    textUi.close(owner, "Your pet moved away, so the conversation has ended.");
+                }
+            }
         }
     }
 
@@ -178,7 +193,7 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
             return;
         }
         if (!snapshot.aiAccessEnabled()) {
-            owner.sendMessage(INACTIVE, false);
+            showHibernating(server, owner, pet, ownerUuid);
             return;
         }
         if (!matchesAuthority(snapshot, ownerUuid, petId, entityId, owner)) {
@@ -194,8 +209,15 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
                     owner,
                     session,
                     snapshot.pet().name(),
-                    input -> server.execute(() ->
-                            submitOnServer(server, ownerUuid, session.sessionId(), input)),
+                    input -> {
+                        Runnable submission = () -> submitOnServer(
+                                server, ownerUuid, session.sessionId(), input);
+                        // Chat packets normally arrive on the server thread. Execute directly
+                        // there so an input cannot be stranded in an executor queue; retain the
+                        // marshal for compatibility with alternate network implementations.
+                        if (server.isOnThread()) submission.run();
+                        else server.execute(submission);
+                    },
                     () -> sessions.cancelSession(session.sessionId()));
         } catch (RuntimeException uiFailure) {
             sessions.cancelOwner(ownerUuid);
@@ -218,12 +240,13 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
         TameableEntity pet = owner == null ? null
                 : resolveSessionPet(owner, session).orElse(null);
         if (owner == null || pet == null) {
-            completeFailure(server, session, requestId,
-                    "Move closer to your placed pet before sending a message.", null);
+            endConversation(server, session, requestId,
+                    "Your pet moved away, so the conversation has ended.", null);
             return;
         }
         if (((PetEntityData) pet).aipets$isSleeping()) {
-            completeFailure(server, session, requestId, SLEEPING.getString(), null);
+            endConversation(server, session, requestId,
+                    "Your pet fell asleep, so the conversation has ended.", null);
             return;
         }
 
@@ -245,11 +268,13 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
         TameableEntity pet = owner == null ? null
                 : resolveSessionPet(owner, session).orElse(null);
         if (owner == null || pet == null) {
-            completeFailure(server, session, requestId, null, failure);
+            endConversation(server, session, requestId,
+                    "Your pet moved away, so the conversation has ended.", failure);
             return;
         }
         if (((PetEntityData) pet).aipets$isSleeping()) {
-            completeFailure(server, session, requestId, SLEEPING.getString(), null);
+            endConversation(server, session, requestId,
+                    "Your pet fell asleep, so the conversation has ended.", null);
             return;
         }
         if (failure != null || optionalSnapshot == null || optionalSnapshot.isEmpty()) {
@@ -259,17 +284,18 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
         }
         PetAuthoritySnapshot snapshot = optionalSnapshot.orElseThrow();
         if (snapshot.sleeping()) {
-            completeFailure(server, session, requestId, SLEEPING.getString(), null);
+            endConversation(server, session, requestId,
+                    "Your pet fell asleep, so the conversation has ended.", null);
             return;
         }
         if (!snapshot.aiAccessEnabled()) {
-            completeFailure(server, session, requestId, INACTIVE.getString(), null);
+            endHibernatingConversation(server, session, requestId, owner, pet);
             return;
         }
         if (!matchesAuthority(snapshot, session.ownerUuid(), session.petId(),
                 session.petEntityUuid(), owner)) {
-            completeFailure(server, session, requestId,
-                    "Your pet's placed state changed. Open the conversation again.", null);
+            endConversation(server, session, requestId,
+                    "Your pet moved, so the conversation has ended.", null);
             return;
         }
 
@@ -293,16 +319,18 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
         TameableEntity pet = owner == null ? null
                 : resolveSessionPet(owner, session).orElse(null);
         if (owner == null || pet == null) {
-            sessions.complete(session.sessionId(), requestId, clock.instant());
+            endConversation(server, session, requestId,
+                    "Your pet moved away, so the conversation has ended.", null);
             return;
         }
         if (((PetEntityData) pet).aipets$isSleeping()) {
-            completeFailure(server, session, requestId, SLEEPING.getString(), null);
+            endConversation(server, session, requestId,
+                    "Your pet fell asleep, so the conversation has ended.", null);
             return;
         }
         if (failure != null || response == null) {
             completeFailure(server, session, requestId,
-                    "Your pet cannot find the words right now.", failure);
+                    "Your pet is having trouble answering. You can try again, or type !exit.", failure);
             return;
         }
         if (!response.requestId().equals(requestId)
@@ -320,7 +348,7 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
         try {
             displays.show(pet, response.message());
         } catch (RuntimeException displayFailure) {
-            feedback(owner, "Your pet replied, but the speech display could not be shown.");
+            feedback(owner, "Your pet replied, but its words could not be shown. You can keep talking or type !exit.");
             logFailure("speech-display", session.ownerUuid(), session.petId(), requestId, displayFailure);
         }
     }
@@ -395,14 +423,100 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
         }
     }
 
-    private static void feedbackRejectedSubmission(
+    private void showHibernating(
+            MinecraftServer server,
+            ServerPlayerEntity owner,
+            TameableEntity pet,
+            UUID ownerUuid) {
+        timed(authority.findSubscriptionDetails(ownerUuid), authorityTimeout).whenComplete((details, failure) ->
+                server.execute(() -> {
+                    ServerPlayerEntity current = server.getPlayerManager().getPlayer(ownerUuid);
+                    if (current == null || failure != null || details == null) {
+                        if (current != null) current.sendMessage(INACTIVE, false);
+                        return;
+                    }
+                    if (!isBudgetExhausted(details)) {
+                        current.sendMessage(INACTIVE, false);
+                        return;
+                    }
+                    current.sendMessage(Text.literal(hibernationMessage(details)), false);
+                    try {
+                        displays.show(pet, "Zzzz...");
+                    } catch (RuntimeException displayFailure) {
+                        logFailure("hibernation-display", ownerUuid,
+                                ((PetEntityData) pet).aipets$getPetId(), null, displayFailure);
+                    }
+                }));
+    }
+
+    private void endHibernatingConversation(
+            MinecraftServer server,
+            PetConversationSession session,
+            UUID requestId,
+            ServerPlayerEntity owner,
+            TameableEntity pet) {
+        timed(authority.findSubscriptionDetails(session.ownerUuid()), authorityTimeout).whenComplete((details, failure) ->
+                server.execute(() -> {
+                    boolean exhausted = failure == null && details != null && isBudgetExhausted(details);
+                    String message = exhausted
+                            ? hibernationMessage(details)
+                            : INACTIVE.getString();
+                    endConversation(server, session, requestId, message, failure);
+                    if (exhausted) {
+                        try {
+                            displays.show(pet, "Zzzz...");
+                        } catch (RuntimeException displayFailure) {
+                            logFailure("hibernation-display", session.ownerUuid(),
+                                    session.petId(), requestId, displayFailure);
+                        }
+                    }
+                }));
+    }
+
+    private static String hibernationMessage(SubscriptionAccessWireResult details) {
+        String periodEnd = details.currentPeriodEnd();
+        if (periodEnd != null) {
+            try {
+                return "Your pet is hibernating until "
+                        + RENEWAL_TIME.format(Instant.parse(periodEnd)) + ".";
+            } catch (RuntimeException ignored) {
+                // Use a generic player-facing message if an upstream timestamp is malformed.
+            }
+        }
+        return "Your pet is hibernating until your subscription renews.";
+    }
+
+    private static boolean isBudgetExhausted(SubscriptionAccessWireResult details) {
+        return details.remainingUsd() != null && details.remainingUsd().signum() <= 0;
+    }
+
+    private void endConversation(
+            MinecraftServer server,
+            PetConversationSession session,
+            UUID requestId,
+            String playerMessage,
+            Throwable failure) {
+        if (!sessions.end(session.sessionId(), requestId, clock.instant())) return;
+        ServerPlayerEntity player = server.getPlayerManager().getPlayer(session.ownerUuid());
+        if (player != null) textUi.close(player, playerMessage);
+        if (failure != null) {
+            logFailure("dialogue-request", session.ownerUuid(), session.petId(), requestId, failure);
+        }
+    }
+
+    private void feedbackRejectedSubmission(
             ServerPlayerEntity player, PetConversationSessionRegistry.BeginStatus status) {
         if (player == null) return;
+        if (status == PetConversationSessionRegistry.BeginStatus.EXPIRED
+                || status == PetConversationSessionRegistry.BeginStatus.SESSION_NOT_FOUND) {
+            textUi.close(player, "That pet conversation has ended. Right-click your pet to start another.");
+            return;
+        }
         String message = switch (status) {
             case INVALID_INPUT -> "Enter a non-empty message within the configured length limit.";
             case COOLDOWN -> "Your pet needs a moment before another message.";
             case ALREADY_SUBMITTING -> "Your pet is already thinking about a reply.";
-            case EXPIRED, SESSION_NOT_FOUND -> "That conversation expired. Right-click your pet again.";
+            case EXPIRED, SESSION_NOT_FOUND -> throw new IllegalStateException("Handled above");
             case OWNER_MISMATCH -> "That conversation does not belong to you.";
             case ACCEPTED -> throw new IllegalArgumentException("Accepted is not a rejection");
         };

@@ -6,4 +6,9 @@ import java.util.UUID;
 @FunctionalInterface
 public interface SubscriptionAccess {
     boolean canAdopt(UUID ownerUuid);
+
+    /** Returns the lifecycle projection when the backing implementation can provide it. */
+    default SubscriptionAccessDetails details(UUID ownerUuid) {
+        return new SubscriptionAccessDetails(canAdopt(ownerUuid), "UNKNOWN", false, null);
+    }
 }

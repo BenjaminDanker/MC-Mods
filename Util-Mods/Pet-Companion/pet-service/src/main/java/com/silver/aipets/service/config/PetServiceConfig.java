@@ -1,13 +1,16 @@
 package com.silver.aipets.service.config;
 
 import java.net.URI;
+import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.LinkedHashSet;
+import java.util.UUID;
 import com.silver.aipets.common.domain.PetSpecies;
+import com.silver.aipets.service.billing.AiPricing;
 
 /** Environment-only service configuration. Secret values are never included in {@link #toString()}. */
 public final class PetServiceConfig {
@@ -20,12 +23,19 @@ public final class PetServiceConfig {
     public static final String AI_ENABLED_ENV = "PET_AI_ENABLED";
     public static final String STRIPE_ENABLED_ENV = "PET_STRIPE_ENABLED";
     public static final String STRIPE_PRICE_ID_ENV = "PET_STRIPE_PRICE_ID";
+    public static final String SUBSCRIPTION_GROSS_USD_ENV = "PET_SUBSCRIPTION_GROSS_USD";
+    public static final String STRIPE_PAYMENT_PERCENT_ENV = "PET_STRIPE_PAYMENT_PERCENT";
+    public static final String STRIPE_FIXED_FEE_USD_ENV = "PET_STRIPE_FIXED_FEE_USD";
+    public static final String STRIPE_BILLING_PERCENT_ENV = "PET_STRIPE_BILLING_PERCENT";
     public static final String STRIPE_SECRET_KEY_ENV = "PET_STRIPE_SECRET_KEY";
     public static final String STRIPE_WEBHOOK_SECRET_ENV = "PET_STRIPE_WEBHOOK_SECRET";
     public static final String PUBLIC_BASE_URL_ENV = "PET_PUBLIC_BASE_URL";
     public static final String ACCOUNT_LINK_PEPPER_ENV = "PET_ACCOUNT_LINK_PEPPER";
     public static final String STRIPE_PAYMENT_GRACE_DAYS_ENV = "PET_STRIPE_PAYMENT_GRACE_DAYS";
     public static final String ACCOUNT_LINK_TTL_MINUTES_ENV = "PET_ACCOUNT_LINK_TTL_MINUTES";
+    /** Explicitly scoped development substitute for Stripe entitlement during staging only. */
+    public static final String DUMMY_SUBSCRIPTION_ENABLED_ENV = "PET_DUMMY_SUBSCRIPTION_ENABLED";
+    public static final String DUMMY_SUBSCRIPTION_OWNER_UUID_ENV = "PET_DUMMY_SUBSCRIPTION_OWNER_UUID";
     public static final String QDRANT_ENABLED_ENV = "PET_QDRANT_ENABLED";
     public static final String QDRANT_URL_ENV = "PET_QDRANT_URL";
     public static final String QDRANT_COLLECTION_ENV = "PET_QDRANT_COLLECTION";
@@ -36,6 +46,13 @@ public final class PetServiceConfig {
     public static final String OPENAI_BASE_URL_ENV = "PET_OPENAI_BASE_URL";
     public static final String EMBEDDING_MODEL_ENV = "PET_EMBEDDING_MODEL";
     public static final String EMBEDDING_DIMENSION_ENV = "PET_EMBEDDING_DIMENSION";
+    public static final String DIALOGUE_ENABLED_ENV = "PET_DIALOGUE_ENABLED";
+    public static final String DIALOGUE_MODEL_ENV = "PET_DIALOGUE_MODEL";
+    public static final String MODERATION_MODEL_ENV = "PET_MODERATION_MODEL";
+    public static final String DIALOGUE_TIMEOUT_MS_ENV = "PET_DIALOGUE_TIMEOUT_MS";
+    public static final String DIALOGUE_DAILY_REPLY_CAP_ENV = "PET_DIALOGUE_DAILY_REPLY_CAP";
+    public static final String CONSOLIDATION_ENABLED_ENV = "PET_CONSOLIDATION_ENABLED";
+    public static final String CONSOLIDATION_MODEL_ENV = "PET_CONSOLIDATION_MODEL";
 
     private final String bindAddress;
     private final int port;
@@ -56,12 +73,15 @@ public final class PetServiceConfig {
     private final boolean aiEnabled;
     private final boolean stripeEnabled;
     private final String stripePriceId;
+    private final AiPricing aiPricing;
     private final String stripeSecretKey;
     private final String stripeWebhookSecret;
     private final URI publicBaseUri;
     private final String accountLinkPepper;
     private final int stripePaymentGraceDays;
     private final int accountLinkTtlMinutes;
+    private final boolean dummySubscriptionEnabled;
+    private final UUID dummySubscriptionOwnerUuid;
     private final boolean qdrantEnabled;
     private final URI qdrantUri;
     private final String qdrantCollection;
@@ -72,6 +92,13 @@ public final class PetServiceConfig {
     private final URI openAiBaseUri;
     private final String embeddingModel;
     private final int embeddingDimension;
+    private final boolean dialogueEnabled;
+    private final String dialogueModel;
+    private final String moderationModel;
+    private final long dialogueTimeoutMs;
+    private final int dialogueDailyReplyCap;
+    private final boolean consolidationEnabled;
+    private final String consolidationModel;
 
     private PetServiceConfig(
             String bindAddress,
@@ -93,12 +120,15 @@ public final class PetServiceConfig {
             boolean aiEnabled,
             boolean stripeEnabled,
             String stripePriceId,
+            AiPricing aiPricing,
             String stripeSecretKey,
             String stripeWebhookSecret,
             URI publicBaseUri,
             String accountLinkPepper,
             int stripePaymentGraceDays,
             int accountLinkTtlMinutes,
+            boolean dummySubscriptionEnabled,
+            UUID dummySubscriptionOwnerUuid,
             boolean qdrantEnabled,
             URI qdrantUri,
             String qdrantCollection,
@@ -108,7 +138,14 @@ public final class PetServiceConfig {
             String openAiApiKey,
             URI openAiBaseUri,
             String embeddingModel,
-            int embeddingDimension) {
+            int embeddingDimension,
+            boolean dialogueEnabled,
+            String dialogueModel,
+            String moderationModel,
+            long dialogueTimeoutMs,
+            int dialogueDailyReplyCap,
+            boolean consolidationEnabled,
+            String consolidationModel) {
         this.bindAddress = bindAddress;
         this.port = port;
         this.backlog = backlog;
@@ -128,12 +165,15 @@ public final class PetServiceConfig {
         this.aiEnabled = aiEnabled;
         this.stripeEnabled = stripeEnabled;
         this.stripePriceId = stripePriceId;
+        this.aiPricing = aiPricing;
         this.stripeSecretKey = stripeSecretKey;
         this.stripeWebhookSecret = stripeWebhookSecret;
         this.publicBaseUri = publicBaseUri;
         this.accountLinkPepper = accountLinkPepper;
         this.stripePaymentGraceDays = stripePaymentGraceDays;
         this.accountLinkTtlMinutes = accountLinkTtlMinutes;
+        this.dummySubscriptionEnabled = dummySubscriptionEnabled;
+        this.dummySubscriptionOwnerUuid = dummySubscriptionOwnerUuid;
         this.qdrantEnabled = qdrantEnabled;
         this.qdrantUri = qdrantUri;
         this.qdrantCollection = qdrantCollection;
@@ -144,6 +184,13 @@ public final class PetServiceConfig {
         this.openAiBaseUri = openAiBaseUri;
         this.embeddingModel = embeddingModel;
         this.embeddingDimension = embeddingDimension;
+        this.dialogueEnabled = dialogueEnabled;
+        this.dialogueModel = dialogueModel;
+        this.moderationModel = moderationModel;
+        this.dialogueTimeoutMs = dialogueTimeoutMs;
+        this.dialogueDailyReplyCap = dialogueDailyReplyCap;
+        this.consolidationEnabled = consolidationEnabled;
+        this.consolidationModel = consolidationModel;
     }
 
     public static PetServiceConfig fromEnvironment(Map<String, String> environment) {
@@ -183,6 +230,13 @@ public final class PetServiceConfig {
         boolean aiEnabled = booleanValue(environment, AI_ENABLED_ENV, true);
         boolean stripeEnabled = booleanValue(environment, STRIPE_ENABLED_ENV, false);
         String stripePriceId = stripeEnabled ? required(environment, STRIPE_PRICE_ID_ENV) : "";
+        AiPricing aiPricing = new AiPricing(
+                decimal(environment, SUBSCRIPTION_GROSS_USD_ENV, "2.00"),
+                decimal(environment, STRIPE_PAYMENT_PERCENT_ENV, "2.9"),
+                decimal(environment, STRIPE_FIXED_FEE_USD_ENV, "0.30"),
+                decimal(environment, STRIPE_BILLING_PERCENT_ENV, "0.7"),
+                new BigDecimal("0.20"), new BigDecimal("0.02"),
+                new BigDecimal("1.20"), new BigDecimal("0.02"));
         String stripeSecretKey = stripeEnabled ? required(environment, STRIPE_SECRET_KEY_ENV) : "";
         String stripeWebhookSecret = stripeEnabled
                 ? required(environment, STRIPE_WEBHOOK_SECRET_ENV) : "";
@@ -198,6 +252,16 @@ public final class PetServiceConfig {
         if (stripeEnabled) {
             validateStripeConfiguration(
                     stripePriceId, stripeSecretKey, stripeWebhookSecret, accountLinkPepper);
+        }
+        boolean dummySubscriptionEnabled = booleanValue(
+                environment, DUMMY_SUBSCRIPTION_ENABLED_ENV, false);
+        UUID dummySubscriptionOwnerUuid = dummySubscriptionEnabled
+                ? uuid(environment, DUMMY_SUBSCRIPTION_OWNER_UUID_ENV)
+                : null;
+        if (dummySubscriptionEnabled && stripeEnabled) {
+            throw new IllegalArgumentException(
+                    DUMMY_SUBSCRIPTION_ENABLED_ENV + " cannot be combined with "
+                            + STRIPE_ENABLED_ENV);
         }
         boolean qdrantEnabled = booleanValue(environment, QDRANT_ENABLED_ENV, false);
         URI qdrantUri = qdrantEnabled
@@ -236,22 +300,63 @@ public final class PetServiceConfig {
             throw new IllegalArgumentException(
                     QDRANT_DIMENSION_ENV + " must equal " + EMBEDDING_DIMENSION_ENV);
         }
+        boolean dialogueEnabled = booleanValue(environment, DIALOGUE_ENABLED_ENV, false);
+        String dialogueModel = optional(environment, DIALOGUE_MODEL_ENV, "gpt-5.6-luna");
+        String moderationModel = optional(
+                environment, MODERATION_MODEL_ENV, "omni-moderation-latest");
+        long dialogueTimeoutMs = longValue(
+                environment, DIALOGUE_TIMEOUT_MS_ENV, 10_000L, 1_000L, 60_000L);
+        int dialogueDailyReplyCap = integer(
+                environment, DIALOGUE_DAILY_REPLY_CAP_ENV, 100, 1, 10_000);
+        validateModelName(dialogueModel, DIALOGUE_MODEL_ENV);
+        validateModelName(moderationModel, MODERATION_MODEL_ENV);
+        if (dialogueEnabled && openAiApiKey.isBlank()) {
+            throw new IllegalArgumentException(
+                    DIALOGUE_ENABLED_ENV + " requires " + OPENAI_API_KEY_ENV);
+        }
+        boolean consolidationEnabled = booleanValue(environment, CONSOLIDATION_ENABLED_ENV, false);
+        String consolidationModel = optional(
+                environment, CONSOLIDATION_MODEL_ENV, "gpt-5.6-luna");
+        validateModelName(consolidationModel, CONSOLIDATION_MODEL_ENV);
+        if (consolidationEnabled && openAiApiKey.isBlank()) {
+            throw new IllegalArgumentException(
+                    CONSOLIDATION_ENABLED_ENV + " requires " + OPENAI_API_KEY_ENV);
+        }
 
         return new PetServiceConfig(
                 bindAddress, port, backlog, workerThreads, workerQueue, shutdownGrace,
                 bearerToken, jdbcUrl, databaseUser, databasePassword,
                 poolMaximum, poolMinimum, connectionTimeout, validationTimeout,
                 allowedSpecies, rawTextRetentionDays, aiEnabled,
-                stripeEnabled, stripePriceId, stripeSecretKey, stripeWebhookSecret,
+                stripeEnabled, stripePriceId, aiPricing, stripeSecretKey, stripeWebhookSecret,
                 publicBaseUri, accountLinkPepper,
                 stripePaymentGraceDays, accountLinkTtlMinutes,
+                dummySubscriptionEnabled, dummySubscriptionOwnerUuid,
                 qdrantEnabled, qdrantUri, qdrantCollection, qdrantDimension,
                 qdrantApiKey, qdrantTimeoutMs,
-                openAiApiKey, openAiBaseUri, embeddingModel, embeddingDimension);
+                openAiApiKey, openAiBaseUri, embeddingModel, embeddingDimension,
+                dialogueEnabled, dialogueModel, moderationModel, dialogueTimeoutMs,
+                dialogueDailyReplyCap,
+                consolidationEnabled, consolidationModel);
     }
 
     private static URI validateQdrantUri(String encoded) {
         return validateHttpOrigin(encoded, QDRANT_URL_ENV);
+    }
+
+    private static void validateModelName(String value, String environmentName) {
+        if (value.isBlank() || value.length() > 191 || containsWhitespace(value)) {
+            throw new IllegalArgumentException(environmentName + " is invalid");
+        }
+    }
+
+    private static UUID uuid(Map<String, String> environment, String name) {
+        String encoded = required(environment, name);
+        try {
+            return UUID.fromString(encoded);
+        } catch (IllegalArgumentException malformed) {
+            throw new IllegalArgumentException(name + " must be a UUID", malformed);
+        }
     }
 
     private static URI validateHttpOrigin(String encoded, String environmentName) {
@@ -416,6 +521,21 @@ public final class PetServiceConfig {
         return value;
     }
 
+    private static BigDecimal decimal(
+            Map<String, String> environment, String key, String fallback) {
+        String encoded = environment.get(key);
+        try {
+            BigDecimal value = encoded == null || encoded.isBlank()
+                    ? new BigDecimal(fallback) : new BigDecimal(encoded.trim());
+            if (value.scale() > 8 || value.signum() < 0) {
+                throw new IllegalArgumentException(key + " must be a non-negative decimal with <= 8 decimals");
+            }
+            return value;
+        } catch (NumberFormatException malformed) {
+            throw new IllegalArgumentException(key + " must be a decimal", malformed);
+        }
+    }
+
     private static boolean containsWhitespace(String value) {
         return value.chars().anyMatch(Character::isWhitespace);
     }
@@ -510,8 +630,20 @@ public final class PetServiceConfig {
         return stripeEnabled;
     }
 
+    public boolean dummySubscriptionEnabled() {
+        return dummySubscriptionEnabled;
+    }
+
+    public UUID dummySubscriptionOwnerUuid() {
+        return dummySubscriptionOwnerUuid;
+    }
+
     public String stripePriceId() {
         return stripePriceId;
+    }
+
+    public AiPricing aiPricing() {
+        return aiPricing;
     }
 
     public String stripeSecretKey() {
@@ -578,6 +710,34 @@ public final class PetServiceConfig {
         return embeddingDimension;
     }
 
+    public boolean dialogueEnabled() {
+        return dialogueEnabled;
+    }
+
+    public String dialogueModel() {
+        return dialogueModel;
+    }
+
+    public String moderationModel() {
+        return moderationModel;
+    }
+
+    public long dialogueTimeoutMs() {
+        return dialogueTimeoutMs;
+    }
+
+    public int dialogueDailyReplyCap() {
+        return dialogueDailyReplyCap;
+    }
+
+    public boolean consolidationEnabled() {
+        return consolidationEnabled;
+    }
+
+    public String consolidationModel() {
+        return consolidationModel;
+    }
+
     @Override
     public String toString() {
         return "PetServiceConfig[bindAddress=" + bindAddress
@@ -593,12 +753,22 @@ public final class PetServiceConfig {
                 + ", rawTextRetentionDays=" + rawTextRetentionDays
                 + ", aiEnabled=" + aiEnabled
                 + ", stripeEnabled=" + stripeEnabled
+                + ", subscriptionGrossUsd=" + aiPricing.subscriptionGrossUsd()
+                + ", aiNetBudgetUsd=" + aiPricing.netBudgetUsd()
+                + ", dummySubscriptionEnabled=" + dummySubscriptionEnabled
                 + ", qdrantEnabled=" + qdrantEnabled
                 + ", qdrantCollection=" + qdrantCollection
                 + ", qdrantDimension=" + qdrantDimension
                 + ", qdrantTimeoutMs=" + qdrantTimeoutMs
                 + ", embeddingModel=" + embeddingModel
                 + ", embeddingDimension=" + embeddingDimension
+                + ", dialogueEnabled=" + dialogueEnabled
+                + ", dialogueModel=" + dialogueModel
+                + ", moderationModel=" + moderationModel
+                + ", dialogueTimeoutMs=" + dialogueTimeoutMs
+                + ", dialogueDailyReplyCap=" + dialogueDailyReplyCap
+                + ", consolidationEnabled=" + consolidationEnabled
+                + ", consolidationModel=" + consolidationModel
                 + ", stripePaymentGraceDays=" + stripePaymentGraceDays
                 + ", accountLinkTtlMinutes=" + accountLinkTtlMinutes
                 + "]";

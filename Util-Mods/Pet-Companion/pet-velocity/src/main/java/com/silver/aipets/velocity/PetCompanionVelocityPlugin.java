@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 
 import java.time.Clock;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -42,7 +43,18 @@ public final class PetCompanionVelocityPlugin {
             reporter = new PetNetworkPresenceReporter(
                     new HttpPresenceGateway(configured.orElseThrow()),
                     Clock.systemUTC(), UUID::randomUUID);
-            proxy.getAllPlayers().forEach(player -> publishOnline(player.getUniqueId()));
+            Set<UUID> onlineOwners = proxy.getAllPlayers().stream()
+                    .map(player -> player.getUniqueId())
+                    .collect(java.util.stream.Collectors.toUnmodifiableSet());
+            reporter.reconcileOnline(onlineOwners).whenComplete((value, failure) -> {
+                if (failure != null) {
+                    logger.warn(StructuredPetEvent.operation("presence_reconcile")
+                            .count(onlineOwners.size()).failure(failure).outcome("failed").toJson());
+                } else {
+                    logger.info(StructuredPetEvent.operation("presence_reconcile")
+                            .count(onlineOwners.size()).outcome("applied").toJson());
+                }
+            });
             logger.info(StructuredPetEvent.operation("velocity_presence_config")
                     .outcome("enabled").toJson());
         } catch (RuntimeException failure) {

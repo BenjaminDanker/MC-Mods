@@ -99,7 +99,7 @@ public final class DialogueService {
         Objects.requireNonNull(playerInput, "playerInput");
         if (!aiEnabled.getAsBoolean()) {
             return DialogueResult.denied(
-                    DialogueResultStatus.NO_AI_ACCESS, "AI conversation is temporarily disabled.");
+                    DialogueResultStatus.NO_AI_ACCESS, "Your pet is quiet right now. Please try again later.");
         }
         if (!context.pet().ownerUuid().equals(ownerUuid)) {
             return DialogueResult.denied(
@@ -107,7 +107,7 @@ public final class DialogueService {
         }
         if (!context.aiAccessEnabled()) {
             return DialogueResult.denied(
-                    DialogueResultStatus.NO_AI_ACCESS, "AI conversation is not active.");
+                    DialogueResultStatus.NO_AI_ACCESS, "Your pet is quiet right now. Check your pet membership.");
         }
         if (context.sleeping()) {
             return DialogueResult.denied(
@@ -123,8 +123,12 @@ public final class DialogueService {
         DialogueAdmissionController.Admission acquired = admission.acquire(
                 context.pet().petId(), ownerUuid, startedAt);
         if (acquired.permit().isEmpty()) {
+            String message = acquired.denial().orElse(null)
+                    == DialogueAdmissionController.Denial.BUDGET_EXHAUSTED
+                    ? "Your conversation balance is used for this billing period. It will refresh with your next payment."
+                    : "Your pet is too distracted to reply right now.";
             return DialogueResult.denied(
-                    DialogueResultStatus.LIMITED, "Your pet is too distracted to reply right now.");
+                    DialogueResultStatus.LIMITED, message);
         }
         DialogueAdmissionController.Permit permit = acquired.permit().orElseThrow();
         DialoguePrompt prompt;
@@ -168,7 +172,7 @@ public final class DialogueService {
             permit.providerFailed(response.estimatedCost(), failedAt);
             state.recordUsage(usage(
                     callId, requestId, context, response, failedAt,
-                    DialogueUsage.Status.REJECTED, Optional.of("INVALID_OUTPUT")));
+                    DialogueUsage.Status.REJECTED, Optional.of("INVALID_OUTPUT"), prompt));
             logModelCall(requestId, context, response, "invalid_output", failure);
             return DialogueResult.denied(
                     DialogueResultStatus.INVALID_MODEL_OUTPUT, "Your pet's reply was unclear.");
@@ -177,7 +181,7 @@ public final class DialogueService {
         Instant completedAt = clock.instant();
         DialogueUsage usage = usage(
                 callId, requestId, context, response, completedAt,
-                DialogueUsage.Status.SUCCEEDED, Optional.empty());
+                DialogueUsage.Status.SUCCEEDED, Optional.empty(), prompt);
         try {
             DialoguePersistResult persisted = state.commit(new DialoguePersistRequest(
                     Objects.requireNonNull(eventIds.get(), "eventIds returned null"),
@@ -227,12 +231,14 @@ public final class DialogueService {
             DialogueModelResponse response,
             Instant at,
             DialogueUsage.Status status,
-            Optional<String> category) {
+            Optional<String> category,
+            DialoguePrompt prompt) {
         return new DialogueUsage(
                 callId, requestId, context.pet().petId(), context.pet().ownerUuid(),
                 model.model(), response.providerId(), response.inputTokens(),
                 response.cachedInputTokens(), response.outputTokens(), response.estimatedCost(),
-                response.latencyMillis(), status, category.map(DialogueService::safeCategory), at);
+                response.latencyMillis(), status, category.map(DialogueService::safeCategory), at,
+                Optional.of(prompt.contextUsage()));
     }
 
     private static String safeCategory(String category) {

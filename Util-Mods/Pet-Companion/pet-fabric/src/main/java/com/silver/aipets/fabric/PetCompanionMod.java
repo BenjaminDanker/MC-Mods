@@ -13,8 +13,12 @@ import com.silver.aipets.fabric.compass.PetCompassSigner;
 import com.silver.aipets.fabric.config.PetPhysicalConfig;
 import com.silver.aipets.fabric.config.PetServiceClientConfig;
 import com.silver.aipets.fabric.conversation.PetConversationCoordinator;
+import com.silver.aipets.fabric.conversation.ConfiguredPetDialogueGateway;
+import com.silver.aipets.fabric.conversation.HttpPetDialogueGateway;
 import com.silver.aipets.fabric.conversation.PetDialogueGateway;
 import com.silver.aipets.fabric.conversation.PrivateChatPetTextInputUi;
+import com.silver.aipets.fabric.metrics.HttpPetMetricsReporter;
+import com.silver.aipets.fabric.metrics.PetMetricsReporter;
 import com.silver.aipets.fabric.interaction.PetInteractionRouter;
 import com.silver.aipets.fabric.entity.PetEntityFactory;
 import com.silver.aipets.fabric.placement.PetPickupCoordinator;
@@ -62,6 +66,8 @@ public final class PetCompanionMod implements ModInitializer {
             new AtomicReference<>();
     private static final AtomicReference<PetAuthorityGateway> AUTHORITY_GATEWAY =
             new AtomicReference<>();
+    private static final AtomicReference<PetMetricsReporter> METRICS_REPORTER =
+            new AtomicReference<>();
     private static final AtomicReference<BackendId> AUTHORITY_BACKEND =
             new AtomicReference<>();
     private static final AtomicReference<PetPlacementCoordinator> PLACEMENT_COORDINATOR =
@@ -90,11 +96,12 @@ public final class PetCompanionMod implements ModInitializer {
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
                 PetCommands.register(dispatcher));
         UseEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
-            var result = PetInteractionRouter.interact(player, entity);
+            var result = PetInteractionRouter.interact(player, entity, hand);
             if (!world.isClient() && result == net.minecraft.util.ActionResult.PASS
                     && PRIVATE_CHAT_INPUT.isActive(player.getUuid())) {
                 // Switching to another entity (including an interactive villager) ends pet input.
-                PRIVATE_CHAT_INPUT.cancelOwner(player.getUuid());
+                PRIVATE_CHAT_INPUT.endOwner((net.minecraft.server.network.ServerPlayerEntity) player,
+                        "Your pet conversation has ended.");
             }
             return result;
         });
@@ -116,6 +123,7 @@ public final class PetCompanionMod implements ModInitializer {
             SPEECH_DISPLAY_MANAGER.tick(server);
         });
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            PetCommands.refreshVisibility(handler.player);
             petCompassManager().ifPresent(manager -> manager.validateAsync(handler.player));
             transferCoordinator().ifPresentOrElse(coordinator ->
                     coordinator.claimDestination(handler.player).thenAccept(outcome -> {
@@ -131,6 +139,7 @@ public final class PetCompanionMod implements ModInitializer {
         });
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
             UUID ownerUuid = handler.player.getUuid();
+            PetCommands.clearPlayerState(ownerUuid);
             PRIVATE_CHAT_INPUT.cancelOwner(ownerUuid);
             conversationCoordinator().ifPresent(coordinator ->
                     coordinator.onOwnerDisconnected(ownerUuid));
@@ -142,6 +151,8 @@ public final class PetCompanionMod implements ModInitializer {
             conversationCoordinator().ifPresent(PetConversationCoordinator::clear);
             PRIVATE_CHAT_INPUT.clear();
             SPEECH_DISPLAY_MANAGER.clear();
+            PetMetricsReporter reporter = METRICS_REPORTER.getAndSet(null);
+            closeMetricsReporter(reporter);
         });
         configureAuthorityClient();
         LOGGER.info(StructuredPetEvent.operation("fabric_startup")
@@ -159,19 +170,34 @@ public final class PetCompanionMod implements ModInitializer {
                 backendId,
                 gateway,
                 ephemeralCompassSecret,
-                Map.of(backendId, backendId.value()));
+                Map.of(backendId, backendId.value()),
+                PetMetricsReporter.noop());
     }
 
     /** Installs authority plus the persistent server-side compass verifier. */
     public static Runnable installAuthorityGateway(
+        BackendId backendId,
+        PetAuthorityGateway gateway,
+        String compassSigningSecret,
+        Map<BackendId, String> backendFriendlyNames) {
+        return installAuthorityGateway(
+                backendId, gateway, compassSigningSecret, backendFriendlyNames,
+                PetMetricsReporter.noop());
+    }
+
+    /** Installs authority and an optional non-blocking central metrics reporter. */
+    public static Runnable installAuthorityGateway(
             BackendId backendId,
             PetAuthorityGateway gateway,
             String compassSigningSecret,
-            Map<BackendId, String> backendFriendlyNames) {
+            Map<BackendId, String> backendFriendlyNames,
+            PetMetricsReporter metricsReporter) {
         PetAuthorityGateway installedGateway = Objects.requireNonNull(gateway, "gateway");
+        PetMetricsReporter installedMetrics = Objects.requireNonNull(metricsReporter, "metricsReporter");
         PetEntityReconciler reconciler = new PetEntityReconciler(
                 Objects.requireNonNull(backendId, "backendId"),
-                installedGateway);
+                installedGateway,
+                installedMetrics);
         PetEntityRecoveryCoordinator recoveryCoordinator = new PetEntityRecoveryCoordinator(
                 backendId, installedGateway, reconciler, new PetEntityFactory());
         PetPlacementCoordinator placementCoordinator = new PetPlacementCoordinator(
@@ -209,9 +235,14 @@ public final class PetCompanionMod implements ModInitializer {
                 PetTransferConfig.defaults(),
                 Clock.systemUTC(),
                 UUID::randomUUID,
-                UUID::randomUUID);
+                UUID::randomUUID,
+                installedMetrics);
         AUTHORITY_GATEWAY.set(installedGateway);
         AUTHORITY_BACKEND.set(backendId);
+        PetMetricsReporter previousMetrics = METRICS_REPORTER.getAndSet(installedMetrics);
+        if (previousMetrics != installedMetrics) {
+            closeMetricsReporter(previousMetrics);
+        }
         ENTITY_RECONCILER.set(reconciler);
         ENTITY_RECOVERY.set(recoveryCoordinator);
         PLACEMENT_COORDINATOR.set(placementCoordinator);
@@ -221,6 +252,9 @@ public final class PetCompanionMod implements ModInitializer {
         TRANSFER_COORDINATOR.set(transferCoordinator);
         return () -> {
             TRANSFER_COORDINATOR.compareAndSet(transferCoordinator, null);
+            if (METRICS_REPORTER.compareAndSet(installedMetrics, null)) {
+                closeMetricsReporter(installedMetrics);
+            }
             RECALL_COORDINATOR.compareAndSet(recallCoordinator, null);
             COMPASS_MANAGER.compareAndSet(compassManager, null);
             compassManager.clear();
@@ -358,18 +392,41 @@ public final class PetCompanionMod implements ModInitializer {
                 return;
             }
             PetServiceClientConfig config = configured.orElseThrow();
+            HttpPetMetricsReporter metricsReporter = new HttpPetMetricsReporter(config);
             installAuthorityGateway(
                     config.backendId(),
                     new HttpPetAuthorityGateway(
                             config,
                             new PetWireCodec(AppearanceRules.defaults())),
                     config.compassSigningSecret(),
-                    config.backendFriendlyNames());
+                    config.backendFriendlyNames(),
+                    metricsReporter);
+            if ("service".equals(config.conversationMode())) {
+                installConversationGateway(new HttpPetDialogueGateway(config));
+            } else {
+                ConfiguredPetDialogueGateway.Mode dialogueMode =
+                        "staging".equals(config.conversationMode())
+                                ? ConfiguredPetDialogueGateway.Mode.STAGING
+                                : ConfiguredPetDialogueGateway.Mode.DISABLED;
+                installConversationGateway(new ConfiguredPetDialogueGateway(dialogueMode));
+            }
             LOGGER.info(StructuredPetEvent.operation("authority_client_config")
                     .backend(config.backendId()).outcome("enabled").toJson());
+            LOGGER.info(StructuredPetEvent.operation("conversation_transport")
+                    .backend(config.backendId()).outcome(config.conversationMode()).toJson());
         } catch (Exception failure) {
             LOGGER.error(StructuredPetEvent.operation("authority_client_config")
                     .failure(failure).outcome("invalid_disabled").toJson());
+        }
+    }
+
+    private static void closeMetricsReporter(PetMetricsReporter reporter) {
+        if (reporter instanceof AutoCloseable closeable) {
+            try {
+                closeable.close();
+            } catch (Exception ignored) {
+                // Diagnostic transport shutdown must never affect Minecraft shutdown.
+            }
         }
     }
 }

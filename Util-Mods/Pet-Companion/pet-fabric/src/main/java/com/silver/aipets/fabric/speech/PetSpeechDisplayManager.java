@@ -38,7 +38,9 @@ public final class PetSpeechDisplayManager {
                 world, SpawnReason.COMMAND);
         if (display == null) throw new IllegalStateException("Minecraft did not create a Text Display");
         display.setText(Text.literal(prepared.wrappedText()));
-        display.setBillboardMode(DisplayEntity.BillboardMode.FIXED);
+        // CENTER is rendered per-client toward that viewer's camera. The server only
+        // maintains the display's position above the pet and never rotates per viewer.
+        display.setBillboardMode(DisplayEntity.BillboardMode.CENTER);
         display.setLineWidth(policy.wrapColumns() * 6);
         display.setViewRange(policy.viewRange());
         position(display, pet);
@@ -96,7 +98,7 @@ public final class PetSpeechDisplayManager {
     private void position(DisplayEntity.TextDisplayEntity display, TameableEntity pet) {
         display.refreshPositionAndAngles(
                 pet.getX(), pet.getY() + pet.getHeight() + policy.verticalGap(), pet.getZ(),
-                MathHelper.wrapDegrees(pet.getYaw() + policy.yawOffsetDegrees()), 0.0F);
+                0.0F, 0.0F);
     }
 
     private static void requirePet(TameableEntity pet) {

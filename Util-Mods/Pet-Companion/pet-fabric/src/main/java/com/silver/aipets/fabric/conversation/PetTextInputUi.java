@@ -13,4 +13,8 @@ public interface PetTextInputUi {
             String petName,
             Consumer<String> onSubmit,
             Runnable onCancel);
+
+    /** Ends any open input owned by this player. Implementations may notify the player. */
+    default void close(ServerPlayerEntity owner, String message) {
+    }
 }

@@ -19,7 +19,8 @@ public abstract class CatEntityMixin {
     private void aipets$reserveInteraction(
             PlayerEntity player, Hand hand, CallbackInfoReturnable<ActionResult> cir) {
         if (aipets$isMarkedPet()) {
-            cir.setReturnValue(PetInteractionRouter.interact(player, (CatEntity) (Object) this));
+            cir.setReturnValue(PetInteractionRouter.interact(
+                    player, (CatEntity) (Object) this, hand));
         }
     }
 

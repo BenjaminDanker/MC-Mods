@@ -131,6 +131,14 @@ The core value proposition is:
 - **CONFIGURABLE DEFAULT:** Speech is visible to nearby players. Add a future privacy setting only if requested.
 - Only the owner can open the pet conversation UI in the first release.
 
+#### User-approved superseding decision (2026-09-08)
+
+The owner approved replacing the fixed pet-facing Text Display requirement above with
+Minecraft's client-side `BillboardMode.CENTER`. The display remains above and follows the
+pet's position, but each client faces it toward its own camera; the server does not perform
+per-viewer rotation. The original fixed-orientation requirement is retained above as historical
+specification context and is superseded for this implementation.
+
 ### 2.7 Physical placement rules
 
 - **MUST:** The pet has three authoritative physical states:

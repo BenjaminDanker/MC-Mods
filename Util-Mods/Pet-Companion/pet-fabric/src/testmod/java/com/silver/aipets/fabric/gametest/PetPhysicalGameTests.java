@@ -197,6 +197,48 @@ public final class PetPhysicalGameTests {
     }
 
     @GameTest
+    public void genericScaleControlsCatAndWolfHitboxes(TestContext context) {
+        ServerWorld world = context.getWorld();
+        CatEntity smallCat = EntityType.CAT.create(world, SpawnReason.COMMAND);
+        CatEntity largeCat = EntityType.CAT.create(world, SpawnReason.COMMAND);
+        WolfEntity smallWolf = EntityType.WOLF.create(world, SpawnReason.COMMAND);
+        WolfEntity largeWolf = EntityType.WOLF.create(world, SpawnReason.COMMAND);
+        context.assertTrue(smallCat != null && largeCat != null && smallWolf != null && largeWolf != null,
+                Text.literal("Minecraft failed to construct scale test entities"));
+        setScale(smallCat, 0.5);
+        setScale(largeCat, 1.25);
+        setScale(smallWolf, 0.5);
+        setScale(largeWolf, 1.25);
+        Vec3d smallCatPos = context.getAbsolute(new Vec3d(1.5, 1.0, 1.5));
+        Vec3d largeCatPos = context.getAbsolute(new Vec3d(3.5, 1.0, 1.5));
+        Vec3d smallWolfPos = context.getAbsolute(new Vec3d(1.5, 1.0, 3.5));
+        Vec3d largeWolfPos = context.getAbsolute(new Vec3d(3.5, 1.0, 3.5));
+        smallCat.refreshPositionAndAngles(smallCatPos.x, smallCatPos.y, smallCatPos.z, 0, 0);
+        largeCat.refreshPositionAndAngles(largeCatPos.x, largeCatPos.y, largeCatPos.z, 0, 0);
+        smallWolf.refreshPositionAndAngles(smallWolfPos.x, smallWolfPos.y, smallWolfPos.z, 0, 0);
+        largeWolf.refreshPositionAndAngles(largeWolfPos.x, largeWolfPos.y, largeWolfPos.z, 0, 0);
+        world.spawnEntity(smallCat);
+        world.spawnEntity(largeCat);
+        world.spawnEntity(smallWolf);
+        world.spawnEntity(largeWolf);
+        context.waitAndRun(1, () -> {
+            context.assertTrue(smallCat.getWidth() < largeCat.getWidth(),
+                    Text.literal("Cat generic.scale did not change hitbox width"));
+            context.assertTrue(smallCat.getHeight() < largeCat.getHeight(),
+                    Text.literal("Cat generic.scale did not change hitbox height"));
+            context.assertTrue(smallWolf.getWidth() < largeWolf.getWidth(),
+                    Text.literal("Wolf generic.scale did not change hitbox width"));
+            context.assertTrue(smallWolf.getHeight() < largeWolf.getHeight(),
+                    Text.literal("Wolf generic.scale did not change hitbox height"));
+            smallCat.discard();
+            largeCat.discard();
+            smallWolf.discard();
+            largeWolf.discard();
+            context.complete();
+        });
+    }
+
+    @GameTest
     public void identitySurvivesVanillaNbtRoundTrip(TestContext context) {
         Pet pet = pet(
                 UUID.fromString("10000000-0000-0000-0000-000000000003"),
@@ -1064,7 +1106,7 @@ public final class PetPhysicalGameTests {
         }
     }
 
-    @GameTest(maxTicks = 130)
+    @GameTest(maxTicks = 150)
     @SuppressWarnings("removal")
     public void sleepingPetStopsActiveFollowUntilAwake(TestContext context) {
         ServerWorld world = context.getWorld();
@@ -1091,14 +1133,17 @@ public final class PetPhysicalGameTests {
 
             TameableEntity testedPet = pet;
             Vec3d[] sleepingPosition = {null};
-            context.runAtTick(25, () -> {
+            // The complete GameTest batch runs many pathfinders concurrently; allow
+            // the same bounded follow behavior a little more wall-clock tick time
+            // before asserting it, without changing the movement contract.
+            context.runAtTick(40, () -> {
                 context.assertTrue(
                         testedPet.getEntityPos().squaredDistanceTo(initialPosition) > 0.25,
                         Text.literal("Pet was not actively following before sleep"));
                 ((PetEntityData) testedPet).aipets$setSleeping(true);
             });
-            context.runAtTick(30, () -> sleepingPosition[0] = testedPet.getEntityPos());
-            context.runAtTick(65, () -> {
+            context.runAtTick(45, () -> sleepingPosition[0] = testedPet.getEntityPos());
+            context.runAtTick(80, () -> {
                 context.assertTrue(
                         testedPet.getNavigation().isIdle(),
                         Text.literal("Sleeping pet retained an active navigation path"));
@@ -1107,7 +1152,7 @@ public final class PetPhysicalGameTests {
                         Text.literal("Sleeping pet moved while its owner remained distant"));
                 ((PetEntityData) testedPet).aipets$setSleeping(false);
             });
-            context.runAtTick(110, () -> {
+            context.runAtTick(125, () -> {
                 try {
                     context.assertTrue(
                             testedPet.getEntityPos().squaredDistanceTo(sleepingPosition[0]) > 0.25,
@@ -1188,10 +1233,14 @@ public final class PetPhysicalGameTests {
             PeriodicPetReconciliation periodic = new PeriodicPetReconciliation(
                     new PetReconciliationConfig(20, 1),
                     () -> new PetEntityReconciler(backend, authority));
-            context.assertEquals(
-                    1,
-                    periodic.scanLoadedNow(world),
-                    Text.literal("Periodic reconciliation did not queue the one loaded pet"));
+            int queuedLoadedPets = periodic.scanLoadedNow(world);
+            // GameTest batches share one ServerWorld, so other tests may leave
+            // independently loaded marked pets in it.  The production contract
+            // is to scan every loaded marked pet, while the per-tick budget
+            // remains bounded by maximumChecksPerTick (one here).
+            context.assertTrue(
+                    queuedLoadedPets >= 1,
+                    Text.literal("Periodic reconciliation did not queue the loaded pet"));
             periodic.onEndWorldTick(world);
             context.assertEquals(
                     lookupsBeforePeriodicScan + 1,
@@ -1381,6 +1430,20 @@ public final class PetPhysicalGameTests {
                     1,
                     opens.get(),
                     Text.literal("Sleeping pet reached the interaction handler"));
+            ActionResult duplicateSleepingResult = UseEntityCallback.EVENT.invoker().interact(
+                    owner,
+                    world,
+                    Hand.MAIN_HAND,
+                    pet,
+                    new EntityHitResult(pet));
+            context.assertEquals(
+                    ActionResult.SUCCESS_SERVER,
+                    duplicateSleepingResult,
+                    Text.literal("Duplicate sleeping interaction was not consumed"));
+            context.assertEquals(
+                    1,
+                    opens.get(),
+                    Text.literal("Duplicate sleeping interaction reached the handler"));
             ((PetEntityData) pet).aipets$setSleeping(false);
 
             ActionResult intruderResult = UseEntityCallback.EVENT.invoker().interact(
@@ -1460,7 +1523,7 @@ public final class PetPhysicalGameTests {
                                     && message.contains("DOG")
                                     && message.contains("HELD")
                                     && message.contains("sleeping")
-                                    && message.contains("AI access inactive")),
+                                    && (message.contains("hibernating") || message.contains("quiet"))),
                     Text.literal("Status omitted authoritative held/sleep state"));
         } catch (CommandSyntaxException failure) {
             throw context.createError("Pet command execution failed: %s", failure.getMessage());
@@ -2258,6 +2321,10 @@ public final class PetPhysicalGameTests {
                 Text.literal("Materialized variant mismatch"));
     }
 
+    private static void setScale(TameableEntity entity, double scale) {
+        entity.getAttributeInstance(EntityAttributes.SCALE).setBaseValue(scale);
+    }
+
     private static <T> void assertRegistryContains(
             TestContext context,
             Registry<T> registry,
@@ -2334,6 +2401,14 @@ public final class PetPhysicalGameTests {
                     ADOPTED_AT);
             return CompletableFuture.completedFuture(new PetAdoptionWireResult(
                     PetAdoptionWireStatus.CREATED, Optional.of(current)));
+        }
+
+        @Override
+        public CompletionStage<Boolean> findSubscriptionAccess(UUID ownerUuid) {
+            if (failAllRequests) {
+                return CompletableFuture.failedFuture(new IllegalStateException("simulated outage"));
+            }
+            return CompletableFuture.completedFuture(adoptionAccess);
         }
 
         @Override

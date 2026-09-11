@@ -5,6 +5,7 @@ import com.silver.aipets.common.domain.PetMood;
 import com.silver.aipets.common.domain.PetTraits;
 import com.silver.aipets.common.domain.TraitCategory;
 import com.silver.aipets.common.domain.TraitName;
+import com.silver.aipets.common.transport.DialogueContextUsageWireCodec;
 import com.silver.aipets.service.persistence.PetPersistenceException;
 
 import javax.sql.DataSource;
@@ -69,8 +70,8 @@ public final class JdbcDialogueStateStore implements DialogueStateStore {
             INSERT INTO ai_usage (
                 call_id, pet_id, owner_uuid, operation, model, request_id, provider_id,
                 input_tokens, cached_input_tokens, output_tokens, estimated_cost,
-                latency_ms, status, error_category, created_at)
-            VALUES (?, ?, ?, 'DIALOGUE', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                latency_ms, status, error_category, context_json, created_at)
+            VALUES (?, ?, ?, 'DIALOGUE', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """;
 
     private final DataSource dataSource;
@@ -313,7 +314,13 @@ public final class JdbcDialogueStateStore implements DialogueStateStore {
             statement.setString(12, usage.status().name());
             if (usage.errorCategory().isPresent()) statement.setString(13, usage.errorCategory().orElseThrow());
             else statement.setNull(13, Types.VARCHAR);
-            statement.setObject(14, utc(usage.createdAt()));
+            if (usage.contextUsage().isPresent()) {
+                statement.setString(14, new DialogueContextUsageWireCodec().encode(
+                        usage.contextUsage().orElseThrow()));
+            } else {
+                statement.setNull(14, Types.LONGVARCHAR);
+            }
+            statement.setObject(15, utc(usage.createdAt()));
             requireOne(statement.executeUpdate(), "AI usage insert");
         }
     }

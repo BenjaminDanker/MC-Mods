@@ -5,6 +5,7 @@ import com.silver.aipets.service.dialogue.DialogueModelResponse;
 import com.silver.aipets.service.dialogue.DialogueUsage;
 import com.silver.aipets.service.memory.LongTermMemoryCard;
 import com.silver.aipets.service.subscription.SubscriptionAccess;
+import com.silver.aipets.service.billing.AiBudgetService;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -33,6 +34,7 @@ public final class ConsolidationWorker {
     private final Supplier<UUID> jobIds;
     private final Supplier<UUID> requestIds;
     private final BooleanSupplier aiEnabled;
+    private final AiBudgetService budget;
 
     public ConsolidationWorker(
             ConsolidationConfig config,
@@ -66,6 +68,25 @@ public final class ConsolidationWorker {
             Supplier<UUID> jobIds,
             Supplier<UUID> requestIds,
             BooleanSupplier aiEnabled) {
+        this(config, repository, subscriptions, selector, prompts, model, codec, validator,
+                embeddingEnqueuer, clock, jobIds, requestIds, aiEnabled, AiBudgetService.UNLIMITED);
+    }
+
+    public ConsolidationWorker(
+            ConsolidationConfig config,
+            ConsolidationRepository repository,
+            SubscriptionAccess subscriptions,
+            ConsolidationCandidateSelector selector,
+            ConsolidationPromptBuilder prompts,
+            ConsolidationModelClient model,
+            ConsolidationOutputCodec codec,
+            ConsolidationOutputValidator validator,
+            Consumer<LongTermMemoryCard> embeddingEnqueuer,
+            Clock clock,
+            Supplier<UUID> jobIds,
+            Supplier<UUID> requestIds,
+            BooleanSupplier aiEnabled,
+            AiBudgetService budget) {
         this.config = Objects.requireNonNull(config, "config");
         this.repository = Objects.requireNonNull(repository, "repository");
         this.subscriptions = Objects.requireNonNull(subscriptions, "subscriptions");
@@ -79,6 +100,7 @@ public final class ConsolidationWorker {
         this.jobIds = Objects.requireNonNull(jobIds, "jobIds");
         this.requestIds = Objects.requireNonNull(requestIds, "requestIds");
         this.aiEnabled = Objects.requireNonNull(aiEnabled, "aiEnabled");
+        this.budget = Objects.requireNonNull(budget, "budget");
     }
 
     public ConsolidationRepository.EnqueueResult enqueueAtSleepStart(
@@ -126,7 +148,21 @@ public final class ConsolidationWorker {
             reschedule(job, workerId, now, failure);
             return;
         }
-        UUID requestId = Objects.requireNonNull(requestIds.get(), "requestIds returned null");
+        AiBudgetService.Reservation reservation = budget.tryReserve(
+                pet.ownerUuid(), new BigDecimal("0.00216"), now).orElse(null);
+        if (reservation == null) {
+            repository.retry(job, workerId, now, now.plus(Duration.ofHours(1)),
+                    "AI_BUDGET_EXHAUSTED");
+            return;
+        }
+        UUID requestId;
+        try {
+            requestId = Objects.requireNonNull(requestIds.get(), "requestIds returned null");
+        } catch (RuntimeException failure) {
+            budget.settle(reservation, BigDecimal.ZERO);
+            reschedule(job, workerId, now, failure);
+            return;
+        }
         DialogueModelResponse response;
         try {
             response = model.complete(
@@ -135,6 +171,7 @@ public final class ConsolidationWorker {
         } catch (RuntimeException failure) {
             repository.recordUsage(failedUsage(requestId, pet, now, failure));
             reschedule(job, workerId, now, failure);
+            budget.settle(reservation, BigDecimal.ZERO);
             return;
         }
         ValidatedConsolidationOutput output;
@@ -149,6 +186,7 @@ public final class ConsolidationWorker {
                     requestId, pet, response, now,
                     DialogueUsage.Status.REJECTED, Optional.of("INVALID_OUTPUT")));
             reschedule(job, workerId, now, failure);
+            budget.settle(reservation, response.estimatedCost());
             return;
         }
         DialogueUsage usage = responseUsage(
@@ -166,7 +204,10 @@ public final class ConsolidationWorker {
         } catch (RuntimeException failure) {
             repository.recordUsage(usage);
             reschedule(job, workerId, now, failure);
+            budget.settle(reservation, usage.estimatedCost());
+            return;
         }
+        budget.settle(reservation, usage.estimatedCost());
     }
 
     private void reschedule(

@@ -50,6 +50,11 @@ class PetConversationSessionRegistryTest {
         assertFalse(registry.complete(firstSession, UUID.randomUUID(), start));
         assertTrue(registry.current(firstSession, request, start).isPresent());
         assertTrue(registry.complete(firstSession, request, start));
+        assertEquals(1, registry.activeCount());
+        assertEquals(
+                PetConversationSessionRegistry.BeginStatus.COOLDOWN,
+                registry.beginSubmission(
+                        firstSession, owner, UUID.randomUUID(), "again", start.plusSeconds(1)).status());
 
         PetConversationSession reopened = registry.open(
                 owner, pet, entity, new BackendId("survival"),

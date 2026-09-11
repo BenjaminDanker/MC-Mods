@@ -1,6 +1,7 @@
 package com.silver.aipets.fabric.mixin;
 
 import com.silver.aipets.fabric.compass.PetCompassItem;
+import com.silver.aipets.fabric.PetCompanionMod;
 import net.minecraft.entity.ItemEntity;
 import net.minecraft.item.ItemStack;
 import org.spongepowered.asm.mixin.Mixin;
@@ -18,6 +19,7 @@ public abstract class PetCompassItemEntityMixin {
     @Inject(method = "tick", at = @At("HEAD"), cancellable = true)
     private void aipets$removeDroppedPetCompass(CallbackInfo callback) {
         if (PetCompassItem.isCandidate(getStack())) {
+            PetCompanionMod.petCompassManager().ifPresent(manager -> manager.onDropped(getStack()));
             ((ItemEntity) (Object) this).discard();
             callback.cancel();
         }

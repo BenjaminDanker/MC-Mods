@@ -8,8 +8,8 @@ java {
 
 dependencies {
     implementation project(':pet-common')
-    compileOnly 'com.velocitypowered:velocity-api:3.2.0-SNAPSHOT'
-    annotationProcessor 'com.velocitypowered:velocity-api:3.2.0-SNAPSHOT'
+    compileOnly 'com.velocitypowered:velocity-api:3.4.0-SNAPSHOT'
+    annotationProcessor 'com.velocitypowered:velocity-api:3.4.0-SNAPSHOT'
     compileOnly 'org.slf4j:slf4j-api:2.0.13'
 
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.11.3'

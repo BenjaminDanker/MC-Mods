@@ -30,7 +30,7 @@ public final class JdbcRetentionCleanupRepository implements RetentionCleanupRep
             locked_by,locked_until,last_error_sanitized
             """;
     private static final String INSERT = """
-            INSERT INTO jobs (job_id,job_type,pet_id,idempotency_key,payload_json,status,
+            INSERT IGNORE INTO jobs (job_id,job_type,pet_id,idempotency_key,payload_json,status,
                 attempt_count,not_before,created_at,updated_at)
             VALUES (?,?,NULL,?,?,'PENDING',0,?,?,?)
             """;
@@ -89,17 +89,17 @@ public final class JdbcRetentionCleanupRepository implements RetentionCleanupRep
             statement.setString(1, proposed.jobId().toString()); statement.setString(2, TYPE);
             statement.setString(3, proposed.idempotencyKey()); statement.setString(4, payload(proposed));
             statement.setObject(5, utc(proposed.notBefore())); statement.setObject(6, utc(proposed.scheduledAt()));
-            statement.setObject(7, utc(proposed.scheduledAt())); requireOne(statement.executeUpdate(), "retention enqueue");
-            return new EnqueueResult(proposed, true);
-        } catch (SQLException failure) {
-            if (!constraint(failure)) throw persistence("Could not enqueue retention cleanup", failure);
+            statement.setObject(7, utc(proposed.scheduledAt()));
+            if (statement.executeUpdate() == 1) return new EnqueueResult(proposed, true);
+
+            // Idempotent daily scheduling normally collides on the unique key. INSERT IGNORE
+            // avoids a noisy MariaDB duplicate-key warning; still require the expected row so
+            // an unrelated collision cannot be mistaken for success.
             RetentionCleanupJob existing = findByKey(proposed.idempotencyKey()).orElseThrow(() ->
-                    persistence("Retention key collision without row", failure));
-            if (!existing.rawCutoff().equals(proposed.rawCutoff())) {
-                // Same UTC day may be observed at different instants; first cutoff remains authoritative.
-                return new EnqueueResult(existing, false);
-            }
+                    persistence("Retention key collision without row", null));
             return new EnqueueResult(existing, false);
+        } catch (SQLException failure) {
+            throw persistence("Could not enqueue retention cleanup", failure);
         }
     }
 
@@ -259,9 +259,6 @@ public final class JdbcRetentionCleanupRepository implements RetentionCleanupRep
     private static String bounded(String value) {
         String safe = value == null || value.isBlank() ? "RuntimeException" : value;
         return safe.substring(0, Math.min(safe.length(), 128));
-    }
-    private static boolean constraint(SQLException failure) {
-        return failure.getSQLState() != null && failure.getSQLState().startsWith("23");
     }
     private static void requireOne(int rows, String operation) throws SQLException {
         if (rows != 1) throw new SQLException(operation + " did not affect one row");

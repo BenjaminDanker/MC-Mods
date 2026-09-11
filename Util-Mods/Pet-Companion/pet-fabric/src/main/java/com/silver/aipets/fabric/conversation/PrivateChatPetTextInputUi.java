@@ -22,6 +22,7 @@ public final class PrivateChatPetTextInputUi implements PetTextInputUi {
     private final Clock clock;
     private final Map<UUID, ActiveInput> active = new ConcurrentHashMap<>();
     private final Map<UUID, Integer> lastHandledTick = new ConcurrentHashMap<>();
+    private final Map<UUID, Boolean> suppressNextBroadcast = new ConcurrentHashMap<>();
 
     public PrivateChatPetTextInputUi(Clock clock) {
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -42,12 +43,16 @@ public final class PrivateChatPetTextInputUi implements PetTextInputUi {
         Objects.requireNonNull(session, "session");
         Objects.requireNonNull(petName, "petName");
         ActiveInput replacement = new ActiveInput(
-                session, Objects.requireNonNull(onSubmit, "onSubmit"),
+                session, petName, Objects.requireNonNull(onSubmit, "onSubmit"),
                 Objects.requireNonNull(onCancel, "onCancel"));
+        ActiveInput current = active.get(owner.getUuid());
+        if (current != null && current.session().sessionId().equals(session.sessionId())) {
+            return;
+        }
         ActiveInput previous = active.put(owner.getUuid(), replacement);
         if (previous != null) previous.onCancel().run();
         owner.sendMessage(Text.literal(
-                "Chatting privately with " + petName + ". Type a message, or !exit to cancel.")
+                "Chatting privately with " + petName + ". Type messages normally; use !exit when you're done.")
                 .formatted(Formatting.GRAY), false);
     }
 
@@ -57,17 +62,18 @@ public final class PrivateChatPetTextInputUi implements PetTextInputUi {
         ActiveInput current = active.get(player.getUuid());
         if (current == null) return false;
         lastHandledTick.put(player.getUuid(), player.getEntityWorld().getServer().getTicks());
+        suppressNextBroadcast.put(player.getUuid(), Boolean.TRUE);
 
         String message = rawMessage == null ? "" : rawMessage.strip();
         if (message.isEmpty()) return true;
         if (EXIT.equalsIgnoreCase(message)) {
             if (active.remove(player.getUuid(), current)) {
                 current.onCancel().run();
-                player.sendMessage(Text.literal("Pet conversation cancelled."), false);
+                player.sendMessage(Text.literal(
+                        "Your conversation with " + current.petName() + " has ended."), false);
             }
             return true;
         }
-        if (!active.remove(player.getUuid(), current)) return true;
 
         player.sendMessage(Text.literal("<" + player.getName().getString() + "> " + message)
                 .formatted(Formatting.GRAY), false);
@@ -81,27 +87,20 @@ public final class PrivateChatPetTextInputUi implements PetTextInputUi {
     public boolean shouldSuppressBroadcast(ServerPlayerEntity player) {
         Objects.requireNonNull(player, "player");
         if (active.containsKey(player.getUuid())) return true;
+        if (suppressNextBroadcast.remove(player.getUuid()) != null) return true;
         Integer handledTick = lastHandledTick.get(player.getUuid());
         return handledTick != null
-                && handledTick == player.getEntityWorld().getServer().getTicks();
+                && player.getEntityWorld().getServer().getTicks() - handledTick <= 5;
     }
 
     public void tick(MinecraftServer server) {
         Objects.requireNonNull(server, "server");
-        active.forEach((ownerUuid, current) -> {
-            if (!current.session().isExpired(clock.instant())) return;
-            if (!active.remove(ownerUuid, current)) return;
-            current.onCancel().run();
-            ServerPlayerEntity player = server.getPlayerManager().getPlayer(ownerUuid);
-            if (player != null) {
-                player.sendMessage(Text.literal(
-                        "Pet conversation expired. Right-click your pet again."), false);
-            }
-        });
         lastHandledTick.entrySet().removeIf(entry -> {
             ServerPlayerEntity player = server.getPlayerManager().getPlayer(entry.getKey());
-            return player == null
-                    || entry.getValue() + 1 < player.getEntityWorld().getServer().getTicks();
+            boolean expired = player == null
+                    || entry.getValue() + 5 < player.getEntityWorld().getServer().getTicks();
+            if (expired) suppressNextBroadcast.remove(entry.getKey());
+            return expired;
         });
     }
 
@@ -114,6 +113,23 @@ public final class PrivateChatPetTextInputUi implements PetTextInputUi {
         ActiveInput removed = active.remove(ownerUuid);
         if (removed != null) removed.onCancel().run();
         lastHandledTick.remove(ownerUuid);
+        suppressNextBroadcast.remove(ownerUuid);
+    }
+
+    @Override
+    public void close(ServerPlayerEntity owner, String message) {
+        Objects.requireNonNull(owner, "owner");
+        ActiveInput removed = active.remove(owner.getUuid());
+        if (removed != null) {
+            removed.onCancel().run();
+            owner.sendMessage(Text.literal(message), false);
+        }
+        lastHandledTick.remove(owner.getUuid());
+        suppressNextBroadcast.remove(owner.getUuid());
+    }
+
+    public void endOwner(ServerPlayerEntity owner, String message) {
+        close(owner, message);
     }
 
     public void cancelPet(UUID petId) {
@@ -130,14 +146,17 @@ public final class PrivateChatPetTextInputUi implements PetTextInputUi {
         active.values().forEach(current -> current.onCancel().run());
         active.clear();
         lastHandledTick.clear();
+        suppressNextBroadcast.clear();
     }
 
     private record ActiveInput(
             PetConversationSession session,
+            String petName,
             Consumer<String> onSubmit,
             Runnable onCancel) {
         private ActiveInput {
             Objects.requireNonNull(session, "session");
+            Objects.requireNonNull(petName, "petName");
             Objects.requireNonNull(onSubmit, "onSubmit");
             Objects.requireNonNull(onCancel, "onCancel");
         }

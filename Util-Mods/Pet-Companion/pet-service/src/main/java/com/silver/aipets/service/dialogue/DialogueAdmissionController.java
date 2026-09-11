@@ -12,10 +12,14 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import com.silver.aipets.service.billing.AiBudgetService;
+import com.silver.aipets.service.billing.AiPricing;
 
 /** Atomic cooldown/daily/concurrency/spend/circuit admission with one active call per pet. */
 public final class DialogueAdmissionController {
     private final DialogueLimits limits;
+    private final AiBudgetService budget;
+    private final AiPricing pricing;
     private final Set<UUID> activePets = new HashSet<>();
     private final Map<UUID, Instant> lastSuccessByOwner = new HashMap<>();
     private final Map<OwnerDay, Integer> successesByOwnerDay = new HashMap<>();
@@ -26,7 +30,14 @@ public final class DialogueAdmissionController {
     private Optional<Instant> circuitOpenUntil = Optional.empty();
 
     public DialogueAdmissionController(DialogueLimits limits) {
+        this(limits, AiBudgetService.UNLIMITED, AiPricing.defaults());
+    }
+
+    public DialogueAdmissionController(
+            DialogueLimits limits, AiBudgetService budget, AiPricing pricing) {
         this.limits = Objects.requireNonNull(limits, "limits");
+        this.budget = Objects.requireNonNull(budget, "budget");
+        this.pricing = Objects.requireNonNull(pricing, "pricing");
     }
 
     public synchronized Admission acquire(UUID petId, UUID ownerUuid, Instant now) {
@@ -59,9 +70,14 @@ public final class DialogueAdmissionController {
         if (activeGlobal >= limits.globalConcurrency()) {
             return Admission.denied(Denial.GLOBAL_CONCURRENCY);
         }
+        Optional<AiBudgetService.Reservation> reservation = budget.tryReserve(
+                ownerUuid, pricing.maximumDialogueCost(limits.hardInputTokens(), 800), now);
+        if (reservation.isEmpty()) {
+            return Admission.denied(Denial.BUDGET_EXHAUSTED);
+        }
         activePets.add(petId);
         activeGlobal++;
-        return Admission.allowed(new Permit(this, petId, ownerUuid, now));
+        return Admission.allowed(new Permit(this, petId, ownerUuid, now, reservation.orElseThrow()));
     }
 
     private synchronized void success(Permit permit, BigDecimal cost, Instant completedAt) {
@@ -70,6 +86,7 @@ public final class DialogueAdmissionController {
         if (cost.signum() < 0) {
             throw new IllegalArgumentException("cost cannot be negative");
         }
+        budget.settle(permit.reservation, cost);
         LocalDate day = completedAt.atZone(ZoneOffset.UTC).toLocalDate();
         YearMonth month = YearMonth.from(completedAt.atZone(ZoneOffset.UTC));
         lastSuccessByOwner.put(permit.ownerUuid, completedAt);
@@ -87,6 +104,7 @@ public final class DialogueAdmissionController {
         if (billedCost.signum() < 0) {
             throw new IllegalArgumentException("billedCost cannot be negative");
         }
+        budget.settle(permit.reservation, billedCost);
         LocalDate day = failedAt.atZone(ZoneOffset.UTC).toLocalDate();
         YearMonth month = YearMonth.from(failedAt.atZone(ZoneOffset.UTC));
         dailyCost.merge(day, billedCost, BigDecimal::add);
@@ -104,6 +122,7 @@ public final class DialogueAdmissionController {
         if (billedCost.signum() < 0) {
             throw new IllegalArgumentException("billedCost cannot be negative");
         }
+        budget.settle(permit.reservation, billedCost);
         LocalDate day = failedAt.atZone(ZoneOffset.UTC).toLocalDate();
         YearMonth month = YearMonth.from(failedAt.atZone(ZoneOffset.UTC));
         dailyCost.merge(day, billedCost, BigDecimal::add);
@@ -124,6 +143,7 @@ public final class DialogueAdmissionController {
         DAILY_REPLY_CAP,
         GLOBAL_CONCURRENCY,
         GLOBAL_COST_CAP,
+        BUDGET_EXHAUSTED,
         CIRCUIT_OPEN
     }
 
@@ -150,17 +170,20 @@ public final class DialogueAdmissionController {
         private final UUID petId;
         private final UUID ownerUuid;
         private final Instant acquiredAt;
+        private final AiBudgetService.Reservation reservation;
         private boolean closed = true;
 
         private Permit(
                 DialogueAdmissionController controller,
                 UUID petId,
                 UUID ownerUuid,
-                Instant acquiredAt) {
+                Instant acquiredAt,
+                AiBudgetService.Reservation reservation) {
             this.controller = controller;
             this.petId = petId;
             this.ownerUuid = ownerUuid;
             this.acquiredAt = acquiredAt;
+            this.reservation = reservation;
         }
 
         public void succeeded(BigDecimal cost, Instant completedAt) {

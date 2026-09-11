@@ -62,6 +62,23 @@ public final class JdbcPetSleepStateStore implements PetSleepStateStore {
     }
 
     @Override
+    public List<UUID> findOwnerUuids() {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT owner_uuid FROM pets ORDER BY owner_uuid")) {
+            try (ResultSet rows = statement.executeQuery()) {
+                List<UUID> owners = new ArrayList<>();
+                while (rows.next()) {
+                    owners.add(UUID.fromString(rows.getString(1)));
+                }
+                return List.copyOf(owners);
+            }
+        } catch (SQLException failure) {
+            throw new PetPersistenceException("Could not list pet owners", failure);
+        }
+    }
+
+    @Override
     public Optional<PetSleepState> find(UUID petId) {
         Objects.requireNonNull(petId, "petId");
         try (Connection connection = dataSource.getConnection();

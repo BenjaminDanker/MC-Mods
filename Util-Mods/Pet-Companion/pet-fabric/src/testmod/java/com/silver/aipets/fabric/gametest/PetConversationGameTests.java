@@ -201,20 +201,20 @@ public final class PetConversationGameTests {
                     context.createError("Valid correlated reply did not create a Text Display"));
             context.assertEquals(1, displays.activeCount(),
                     Text.literal("Reply created more than one active display"));
-            context.assertEquals(DisplayEntity.BillboardMode.FIXED, first.getBillboardMode(),
-                    Text.literal("Speech display is not fixed-orientation"));
-            context.assertTrue(Math.abs(first.getY() - (pet.getY() + pet.getHeight() + 0.35F)) < 0.01,
+            context.assertEquals(DisplayEntity.BillboardMode.CENTER, first.getBillboardMode(),
+                    Text.literal("Speech display is not client-side camera-facing"));
+            context.assertTrue(Math.abs(first.getY() - (pet.getY() + pet.getHeight() + 0.65F)) < 0.01,
                     Text.literal("Speech display is not above the scaled pet"));
-            context.assertTrue(Math.abs(MathHelper.wrapDegrees(first.getYaw() - (pet.getYaw() + 180.0F))) < 0.01,
-                    Text.literal("Speech display yaw does not track pet yaw plus 180 degrees"));
+            context.assertTrue(Math.abs(first.getYaw()) < 0.01F,
+                    Text.literal("Speech display retained server-side viewer rotation"));
 
             pet.refreshPositionAndAngles(near.x + 2, near.y, near.z + 1, 75.0F, 0.0F);
             displays.tick(world.getServer());
             context.assertTrue(Math.abs(first.getX() - pet.getX()) < 0.01
                             && Math.abs(first.getZ() - pet.getZ()) < 0.01,
                     Text.literal("Visible speech display did not follow pet position"));
-            context.assertTrue(Math.abs(MathHelper.wrapDegrees(first.getYaw() - 255.0F)) < 0.01,
-                    Text.literal("Visible speech display did not follow pet facing"));
+            context.assertTrue(Math.abs(first.getYaw()) < 0.01F,
+                    Text.literal("Visible speech display should not rotate on the server"));
 
             DisplayEntity.TextDisplayEntity replacement = displays.show(pet, "A newer reply replaces it.");
             context.assertTrue(first.isRemoved(), Text.literal("New reply left old display alive"));
@@ -290,6 +290,11 @@ public final class PetConversationGameTests {
         public CompletionStage<Optional<PetAuthoritySnapshot>> findByOwner(UUID ownerUuid) {
             return CompletableFuture.completedFuture(
                     snapshot.pet().ownerUuid().equals(ownerUuid) ? Optional.of(snapshot) : Optional.empty());
+        }
+
+        @Override
+        public CompletionStage<Boolean> findSubscriptionAccess(UUID ownerUuid) {
+            return CompletableFuture.completedFuture(snapshot.aiAccessEnabled());
         }
 
         @Override

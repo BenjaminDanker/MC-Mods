@@ -1,6 +1,7 @@
 package com.silver.aipets.service.http;
 
 import com.silver.aipets.service.subscription.CheckoutLaunchService;
+import com.silver.aipets.service.subscription.ActiveSubscriptionException;
 import com.silver.aipets.service.subscription.InvalidAccountLinkException;
 import com.silver.aipets.service.subscription.StripeCheckoutSession;
 import com.sun.net.httpserver.HttpExchange;
@@ -38,17 +39,17 @@ public final class CheckoutHttpHandler implements HttpHandler {
             String path = exchange.getRequestURI().getRawPath();
             if ((PREFIX + "success").equals(path)) {
                 page(exchange, 200, "Checkout returned",
-                        "Return to Minecraft. Only Stripe's verified webhook can enable access.");
+                        "You're all set. Return to Minecraft and continue your adoption there.");
                 return;
             }
             if ((PREFIX + "cancel").equals(path)) {
                 page(exchange, 200, "Checkout cancelled",
-                        "Nothing was activated. You can open the Minecraft link again before it expires.");
+                        "No changes were made. Return to Minecraft whenever you're ready.");
                 return;
             }
             if ((PREFIX + "return").equals(path)) {
                 page(exchange, 200, "Billing portal closed",
-                        "Your billing changes are applied through Stripe's verified webhooks.");
+                        "Return to Minecraft and we'll let you know when your change is ready.");
                 return;
             }
             if (!path.startsWith(PREFIX)
@@ -64,8 +65,11 @@ public final class CheckoutHttpHandler implements HttpHandler {
             StripeCheckoutSession session = checkout.launch(token);
             exchange.getResponseHeaders().set("Location", session.checkoutUrl().toString());
             exchange.sendResponseHeaders(303, -1);
+        } catch (ActiveSubscriptionException alreadyActive) {
+            page(exchange, 409, "Subscription already active",
+                    "This account already has an active membership. Return to Minecraft to continue.");
         } catch (InvalidAccountLinkException | IllegalArgumentException invalid) {
-            page(exchange, 404, "Link expired", "Run /pet link in Minecraft for a new link.");
+            page(exchange, 404, "Link expired", "Run /pet adopt in Minecraft for a new link.");
         } catch (RuntimeException failure) {
             page(exchange, 503, "Checkout unavailable", "Please retry this link in a moment.");
         } finally {

@@ -8,6 +8,8 @@ import java.util.function.Function;
 
 /** Atomic persistence boundary for restart-safe sleep evaluation. */
 public interface PetSleepStateStore {
+    List<UUID> findOwnerUuids();
+
     Optional<PetSleepState> find(UUID petId);
 
     Optional<PetSleepTransition> updateForOwner(

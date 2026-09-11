@@ -5,6 +5,7 @@ import com.silver.aipets.common.transport.PetPresenceWireRequest;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -47,6 +48,10 @@ public final class PetNetworkPresenceReporter {
                 clock.instant()));
     }
 
+    public CompletableFuture<Void> reconcileOnline(Set<UUID> onlineOwnerUuids) {
+        return publishReconciliation(Set.copyOf(onlineOwnerUuids), 1);
+    }
+
     public int pendingOwners() { return tails.size(); }
 
     private CompletableFuture<Void> enqueue(PetPresenceWireRequest event) {
@@ -76,6 +81,24 @@ public final class PetNetworkPresenceReporter {
                             () -> { },
                             CompletableFuture.delayedExecutor(delayMillis, TimeUnit.MILLISECONDS))
                     .thenCompose(ignored -> publish(event, attempt + 1));
+        }).thenCompose(stage -> stage);
+    }
+
+    private CompletableFuture<Void> publishReconciliation(Set<UUID> onlineOwnerUuids, int attempt) {
+        CompletableFuture<Void> published;
+        try {
+            published = gateway.reconcile(onlineOwnerUuids).toCompletableFuture();
+        } catch (RuntimeException failure) {
+            published = CompletableFuture.failedFuture(failure);
+        }
+        return published.handle((value, failure) -> {
+            if (failure == null) return CompletableFuture.<Void>completedFuture(null);
+            if (attempt >= 3) return CompletableFuture.<Void>failedFuture(failure);
+            long delayMillis = retryBaseDelay.toMillis() * (1L << (attempt - 1));
+            return CompletableFuture.runAsync(
+                            () -> { },
+                            CompletableFuture.delayedExecutor(delayMillis, TimeUnit.MILLISECONDS))
+                    .thenCompose(ignored -> publishReconciliation(onlineOwnerUuids, attempt + 1));
         }).thenCompose(stage -> stage);
     }
 

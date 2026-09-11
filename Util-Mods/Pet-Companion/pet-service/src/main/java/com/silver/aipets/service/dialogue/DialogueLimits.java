@@ -31,7 +31,7 @@ public record DialogueLimits(
                 || relationshipTokens >= hardInputTokens || shortTermTokens >= hardInputTokens
                 || longTermTokens >= hardInputTokens || recentTurnTokens >= hardInputTokens
                 || maximumRecentTurns < 1 || maximumRecentTurns > 20
-                || dailySuccessfulReplyCap < 1 || dailySuccessfulReplyCap > 10_000
+                || dailySuccessfulReplyCap < 1
                 || globalConcurrency < 1 || globalConcurrency > 1_000
                 || circuitFailureThreshold < 1 || circuitFailureThreshold > 100) {
             throw new IllegalArgumentException("Dialogue limits are outside safe bounds");
@@ -47,11 +47,20 @@ public record DialogueLimits(
     }
 
     public static DialogueLimits defaults() {
+        return defaults(100);
+    }
+
+    public static DialogueLimits defaults(int dailySuccessfulReplyCap) {
         return new DialogueLimits(
                 500, 300, 4_000, 250, 1_200, 600, 700, 4,
-                Duration.ofSeconds(5), 100, 8, Duration.ofSeconds(10),
+                Duration.ofSeconds(5), dailySuccessfulReplyCap, 8, Duration.ofSeconds(10),
                 new BigDecimal("25.00"), new BigDecimal("500.00"),
                 5, Duration.ofMinutes(1));
+    }
+
+    /** Production profile: the subscription token budget, rather than reply count, is authoritative. */
+    public static DialogueLimits defaultsWithoutReplyCap() {
+        return defaults(Integer.MAX_VALUE);
     }
 
     private static void requirePositive(Duration value, String name) {

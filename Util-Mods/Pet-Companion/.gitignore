@@ -1,8 +1,10 @@
 .gradle/
+.gradle-local/
 .local/
 build/
 */build/
 run/
 *.log
+*.tar.gz
 .idea/
 *.iml

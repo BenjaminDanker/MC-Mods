@@ -19,6 +19,9 @@ public abstract class PetPrivateChatNetworkHandlerMixin {
     @Inject(method = "onChatMessage", at = @At("HEAD"))
     private void aipets$capturePrivatePetMessage(
             ChatMessageC2SPacket packet, CallbackInfo callback) {
+        // Keep vanilla's signing/chain handling intact. The broadcast hook consumes the
+        // captured message after this hook, including !exit, so private input never becomes
+        // public chat without invalidating the secure-chat chain.
         PetCompanionMod.privateChatInput().handleChatMessage(player, packet.chatMessage());
     }
 }

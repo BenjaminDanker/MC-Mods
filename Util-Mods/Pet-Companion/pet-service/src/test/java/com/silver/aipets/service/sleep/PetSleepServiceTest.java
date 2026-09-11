@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.UUID;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -78,6 +79,31 @@ final class PetSleepServiceTest {
         PetSleepTransition completed = service(store, exactEnd).processDue(10).getFirst();
         assertEquals(PetSleepEvent.SLEEP_COMPLETED, completed.event());
         assertEquals(exactEnd.plus(Duration.ofHours(23)), completed.state().forcedSleepDueAt());
+    }
+
+    @Test
+    void proxyRestartReconciliationStartsAbsenceForPersistedOnlineOwner() {
+        UUID staleOwner = UUID.fromString("10000000-0000-0000-0000-000000000003");
+        UUID stillOnlineOwner = UUID.fromString("10000000-0000-0000-0000-000000000004");
+        InMemoryPetSleepStateStore store = new InMemoryPetSleepStateStore();
+        store.put(staleOwner, PetSleepState.initial(
+                UUID.fromString("20000000-0000-0000-0000-000000000003"), START, POLICY));
+        store.put(stillOnlineOwner, PetSleepState.initial(
+                UUID.fromString("20000000-0000-0000-0000-000000000004"), START, POLICY));
+        service(store, START).ownerOnline(staleOwner);
+        service(store, START).ownerOnline(stillOnlineOwner);
+
+        Instant reconciliationTime = START.plusSeconds(60);
+        int changed = service(store, reconciliationTime)
+                .reconcileOnlineOwners(Set.of(stillOnlineOwner), reconciliationTime);
+
+        assertEquals(2, changed);
+        assertFalse(store.find(UUID.fromString("20000000-0000-0000-0000-000000000003"))
+                .orElseThrow().ownerNetworkOnline());
+        assertTrue(store.find(UUID.fromString("20000000-0000-0000-0000-000000000004"))
+                .orElseThrow().ownerNetworkOnline());
+        assertTrue(store.find(UUID.fromString("20000000-0000-0000-0000-000000000003"))
+                .orElseThrow().ownerLastLogoutAt().isPresent());
     }
 
     private static PetSleepService service(InMemoryPetSleepStateStore store, Instant instant) {

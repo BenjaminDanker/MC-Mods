@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import com.silver.aipets.common.domain.PetSpecies;
 import java.util.Set;
+import java.math.BigDecimal;
 
 class PetServiceConfigTest {
     private static final String TOKEN = "service-token-0123456789-0123456789-ab";
@@ -25,8 +26,12 @@ class PetServiceConfigTest {
         assertEquals(4, config.poolMaximumSize());
         assertEquals(Set.of(PetSpecies.CAT, PetSpecies.DOG), config.allowedSpecies());
         assertEquals(7, config.rawTextRetentionDays());
+        assertEquals(100, config.dialogueDailyReplyCap());
+        assertEquals(0, config.aiPricing().netBudgetUsd().compareTo(new BigDecimal("1.628")));
         assertEquals(true, config.aiEnabled());
         assertFalse(config.qdrantEnabled());
+        assertFalse(config.dummySubscriptionEnabled());
+        assertFalse(config.consolidationEnabled());
         assertFalse(config.toString().contains(TOKEN));
         assertFalse(config.toString().contains("database-secret"));
 
@@ -67,6 +72,13 @@ class PetServiceConfigTest {
         assertThrows(IllegalArgumentException.class,
                 () -> PetServiceConfig.fromEnvironment(customRetention));
 
+        Map<String, String> customReplyCap = new HashMap<>(valid);
+        customReplyCap.put(PetServiceConfig.DIALOGUE_DAILY_REPLY_CAP_ENV, "25");
+        assertEquals(25, PetServiceConfig.fromEnvironment(customReplyCap).dialogueDailyReplyCap());
+        customReplyCap.put(PetServiceConfig.DIALOGUE_DAILY_REPLY_CAP_ENV, "0");
+        assertThrows(IllegalArgumentException.class,
+                () -> PetServiceConfig.fromEnvironment(customReplyCap));
+
         Map<String, String> aiDisabled = new HashMap<>(valid);
         aiDisabled.put(PetServiceConfig.AI_ENABLED_ENV, "false");
         assertFalse(PetServiceConfig.fromEnvironment(aiDisabled).aiEnabled());
@@ -101,6 +113,30 @@ class PetServiceConfigTest {
         assertFalse(stripeConfig.toString().contains("whsec_test_signing_secret"));
         assertFalse(stripeConfig.toString().contains("test-account-link-pepper"));
 
+        stripeEnabled.put(PetServiceConfig.SUBSCRIPTION_GROSS_USD_ENV, "3.00");
+        stripeEnabled.put(PetServiceConfig.STRIPE_PAYMENT_PERCENT_ENV, "3.0");
+        stripeEnabled.put(PetServiceConfig.STRIPE_FIXED_FEE_USD_ENV, "0.30");
+        stripeEnabled.put(PetServiceConfig.STRIPE_BILLING_PERCENT_ENV, "1.0");
+        assertEquals(0, PetServiceConfig.fromEnvironment(stripeEnabled).aiPricing()
+                .netBudgetUsd().compareTo(new BigDecimal("2.58")));
+
+        Map<String, String> dummy = new HashMap<>(valid);
+        dummy.put(PetServiceConfig.DUMMY_SUBSCRIPTION_ENABLED_ENV, "true");
+        dummy.put(PetServiceConfig.DUMMY_SUBSCRIPTION_OWNER_UUID_ENV,
+                "123e4567-e89b-12d3-a456-426614174000");
+        PetServiceConfig dummyConfig = PetServiceConfig.fromEnvironment(dummy);
+        assertEquals(true, dummyConfig.dummySubscriptionEnabled());
+        assertEquals("123e4567-e89b-12d3-a456-426614174000",
+                dummyConfig.dummySubscriptionOwnerUuid().toString());
+        dummy.remove(PetServiceConfig.DUMMY_SUBSCRIPTION_OWNER_UUID_ENV);
+        assertThrows(IllegalArgumentException.class,
+                () -> PetServiceConfig.fromEnvironment(dummy));
+        dummy.put(PetServiceConfig.DUMMY_SUBSCRIPTION_OWNER_UUID_ENV,
+                "123e4567-e89b-12d3-a456-426614174000");
+        dummy.put(PetServiceConfig.STRIPE_ENABLED_ENV, "true");
+        assertThrows(IllegalArgumentException.class,
+                () -> PetServiceConfig.fromEnvironment(dummy));
+
         Map<String, String> qdrant = new HashMap<>(valid);
         qdrant.put(PetServiceConfig.QDRANT_ENABLED_ENV, "true");
         qdrant.put(PetServiceConfig.QDRANT_URL_ENV, "http://127.0.0.1:6333/");
@@ -115,6 +151,11 @@ class PetServiceConfigTest {
         assertEquals(1536, qdrantConfig.qdrantDimension());
         assertFalse(qdrantConfig.toString().contains("qdrant-test-secret"));
         assertFalse(qdrantConfig.toString().contains("openai-test-secret"));
+        qdrant.put(PetServiceConfig.CONSOLIDATION_ENABLED_ENV, "true");
+        qdrant.put(PetServiceConfig.CONSOLIDATION_MODEL_ENV, "gpt-5.6-luna");
+        PetServiceConfig consolidationConfig = PetServiceConfig.fromEnvironment(qdrant);
+        assertEquals(true, consolidationConfig.consolidationEnabled());
+        assertEquals("gpt-5.6-luna", consolidationConfig.consolidationModel());
         qdrant.put(PetServiceConfig.QDRANT_URL_ENV, "http://user:pass@127.0.0.1:6333");
         assertThrows(IllegalArgumentException.class,
                 () -> PetServiceConfig.fromEnvironment(qdrant));

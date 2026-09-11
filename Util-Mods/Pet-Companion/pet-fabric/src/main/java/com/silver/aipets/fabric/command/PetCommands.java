@@ -15,6 +15,9 @@ import com.silver.aipets.common.transport.AccountLinkWireResult;
 import com.silver.aipets.common.transport.AccountLinkWireStatus;
 import com.silver.aipets.common.transport.CustomerPortalWireResult;
 import com.silver.aipets.common.transport.CustomerPortalWireStatus;
+import com.silver.aipets.common.transport.SubscriptionAccessWireResult;
+import com.silver.aipets.common.transport.DialogueContextUsageWire;
+import com.silver.aipets.common.transport.DialogueHistoryWireResult;
 import com.silver.aipets.common.transport.RecallResetWireResult;
 import com.silver.aipets.common.transport.RecallResetWireStatus;
 import com.silver.aipets.fabric.PetCompanionMod;
@@ -42,35 +45,54 @@ import net.minecraft.text.ClickEvent;
 import net.minecraft.util.Formatting;
 
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.net.URI;
 import java.time.ZoneOffset;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 import static net.minecraft.server.command.CommandManager.literal;
 import static net.minecraft.server.command.CommandManager.argument;
 
 /** Player command surface; physical mutations delegate to commit-safe async coordinators. */
 public final class PetCommands {
+    private static final Map<UUID, Boolean> HAS_PET = new ConcurrentHashMap<>();
+    private static final Map<UUID, UUID> BILLING_WATCHES = new ConcurrentHashMap<>();
+
     private PetCommands() {
     }
 
     public static void register(CommandDispatcher<ServerCommandSource> dispatcher) {
         dispatcher.register(literal("pet")
                 .executes(PetCommands::help)
+                .then(literal("help")
+                        .requires(PetCommands::hasPetAccess)
+                        .executes(PetCommands::help))
                 .then(literal("status")
-                        .requires(source -> PetPermissions.check(source, PetPermission.USE))
+                        .requires(source -> hasPetAccess(source)
+                                && PetPermissions.check(source, PetPermission.USE))
                         .executes(PetCommands::status))
                 .then(literal("link")
-                        .requires(source -> PetPermissions.check(source, PetPermission.USE))
+                        .requires(source -> hasPetAccess(source)
+                                && PetPermissions.check(source, PetPermission.USE))
                         .executes(PetCommands::link))
                 .then(literal("portal")
-                        .requires(source -> PetPermissions.check(source, PetPermission.USE))
+                        .requires(source -> hasPetAccess(source)
+                                && PetPermissions.check(source, PetPermission.USE))
                         .executes(PetCommands::portal))
+                .then(literal("billing")
+                        .requires(source -> hasPetAccess(source)
+                                && PetPermissions.check(source, PetPermission.USE))
+                        .executes(PetCommands::billing))
                 .then(literal("adopt")
-                        .requires(source -> PetPermissions.check(source, PetPermission.ADOPT))
+                        .requires(source -> !hasPetAccess(source)
+                                && PetPermissions.check(source, PetPermission.ADOPT))
                         .executes(context -> adoptionMenu(context, null))
                         .then(literal("cat")
                                 .executes(context -> adoptionMenu(context, PetSpecies.CAT))
@@ -79,35 +101,51 @@ public final class PetCommands {
                         .then(literal("dog")
                                 .executes(context -> adoptionMenu(context, PetSpecies.DOG))
                                 .then(argument("name", StringArgumentType.greedyString())
-                                        .executes(context -> adopt(context, PetSpecies.DOG)))))
+                                        .executes(context -> adopt(context, PetSpecies.DOG))))
+                        .then(literal("subscribe")
+                                .executes(PetCommands::link)))
                 .then(literal("place")
-                        .requires(source -> PetPermissions.check(source, PetPermission.USE))
+                        .requires(source -> hasPetAccess(source)
+                                && PetPermissions.check(source, PetPermission.USE))
                         .executes(PetCommands::place))
                 .then(literal("pickup")
-                        .requires(source -> PetPermissions.check(source, PetPermission.USE))
+                        .requires(source -> hasPetAccess(source)
+                                && PetPermissions.check(source, PetPermission.USE))
                         .executes(PetCommands::pickup))
                 .then(literal("recall")
-                        .requires(source -> PetPermissions.check(source, PetPermission.RECALL))
+                        .requires(source -> hasPetAccess(source)
+                                && PetPermissions.check(source, PetPermission.RECALL))
                         .executes(PetCommands::recall))
                 .then(literal("compass")
-                        .requires(source -> PetPermissions.check(source, PetPermission.COMPASS))
+                        .requires(source -> hasPetAccess(source)
+                                && PetPermissions.check(source, PetPermission.COMPASS))
                         .executes(PetCommands::compass))
                 .then(literal("admin")
+                        .requires(PetCommands::hasAdminAccess)
                         .then(literal("inspect")
                                 .requires(source -> PetPermissions.check(
                                         source, PetPermission.ADMIN_INSPECT))
+                                .executes(PetCommands::adminInspect)
                                 .then(argument("ownerUuid", StringArgumentType.word())
                                         .executes(PetCommands::adminInspect)))
                         .then(literal("recover")
                                 .requires(source -> PetPermissions.check(
                                         source, PetPermission.ADMIN_RECOVER))
+                                .executes(PetCommands::adminRecover)
                                 .then(argument("ownerUuid", StringArgumentType.word())
                                         .executes(PetCommands::adminRecover)))
                         .then(literal("recall-reset")
                                 .requires(source -> PetPermissions.check(
                                         source, PetPermission.ADMIN_RECOVER))
+                                .executes(PetCommands::adminRecallReset)
                                 .then(argument("ownerUuid", StringArgumentType.word())
                                         .executes(PetCommands::adminRecallReset)))
+                        .then(literal("history")
+                                .requires(source -> PetPermissions.check(
+                                        source, PetPermission.ADMIN_MEMORY))
+                                .executes(PetCommands::adminHistory)
+                                .then(argument("ownerUuid", StringArgumentType.word())
+                                        .executes(PetCommands::adminHistory)))
                         .then(literal("reconcile")
                                 .requires(source -> PetPermissions.check(
                                         source, PetPermission.ADMIN_RECONCILE))
@@ -116,24 +154,70 @@ public final class PetCommands {
 
     private static int help(CommandContext<ServerCommandSource> context) {
         ServerCommandSource source = context.getSource();
-        StringBuilder commands = new StringBuilder(
-                "Pet Companion: /pet status, /pet link, /pet portal, /pet place, /pet pickup");
-        if (PetPermissions.check(source, PetPermission.ADOPT)) {
-            commands.append(", /pet adopt <cat|dog> <name>");
+        boolean ownsPet = hasPetAccess(source);
+        boolean canUse = ownsPet && PetPermissions.check(source, PetPermission.USE);
+        StringBuilder index = new StringBuilder("Pet Companion:");
+        if (canUse) {
+            index.append(" /pet status, /pet billing, /pet place, /pet pickup");
+        }
+        if (!ownsPet && PetPermissions.check(source, PetPermission.ADOPT)) {
+            index.append(", /pet adopt <cat|dog> <name>");
         }
         if (PetPermissions.check(source, PetPermission.RECALL)) {
-            commands.append(", /pet recall");
+            index.append(", /pet recall");
         }
         if (PetPermissions.check(source, PetPermission.COMPASS)) {
-            commands.append(", /pet compass");
+            index.append(", /pet compass");
         }
-        if (PetPermissions.check(source, PetPermission.ADMIN_INSPECT)) {
-            commands.append(", /pet admin …");
+        if (hasAdminAccess(source)) {
+            index.append(", /pet admin …");
         }
-        context.getSource().sendFeedback(
-                () -> Text.literal(commands.toString())
+        source.sendFeedback(
+                () -> Text.literal(index.toString())
                         .formatted(Formatting.AQUA),
                 false);
+        if (canUse) {
+            source.sendFeedback(() -> Text.empty()
+                    .append(Text.literal("VIEW     ").formatted(Formatting.YELLOW, Formatting.BOLD))
+                    .append(commandAction("[STATUS]", "/pet status")), false);
+            source.sendFeedback(() -> Text.empty()
+                    .append(Text.literal("BILLING  ").formatted(Formatting.YELLOW, Formatting.BOLD))
+                    .append(commandAction("[OPEN BILLING MENU]", "/pet billing")), false);
+            source.sendFeedback(() -> Text.empty()
+                    .append(Text.literal("PET      ").formatted(Formatting.YELLOW, Formatting.BOLD))
+                    .append(commandAction("[PLACE]", "/pet place"))
+                    .append(Text.literal("  "))
+                    .append(commandAction("[PICKUP]", "/pet pickup")), false);
+            source.sendFeedback(() -> Text.literal(
+                    "Tip: hold Shift and right-click your pet to pick them up quickly.")
+                    .formatted(Formatting.GRAY), false);
+        }
+        if (!ownsPet && PetPermissions.check(source, PetPermission.ADOPT)) {
+            source.sendFeedback(() -> Text.empty()
+                    .append(Text.literal("ADOPTION ").formatted(Formatting.YELLOW, Formatting.BOLD))
+                    .append(commandAction("[OPEN MENU]", "/pet adopt"))
+                    .append(Text.literal("  Choose a species, then name it.")), false);
+        }
+        if (PetPermissions.check(source, PetPermission.RECALL)
+                || PetPermissions.check(source, PetPermission.COMPASS)) {
+            source.sendFeedback(() -> Text.empty()
+                    .append(Text.literal("TOOLS    ").formatted(Formatting.YELLOW, Formatting.BOLD))
+                    .append(PetPermissions.check(source, PetPermission.RECALL)
+                            ? commandAction("[RECALL]", "/pet recall")
+                            : Text.empty())
+                    .append(PetPermissions.check(source, PetPermission.RECALL)
+                            && PetPermissions.check(source, PetPermission.COMPASS)
+                            ? Text.literal("  ")
+                            : Text.empty())
+                    .append(PetPermissions.check(source, PetPermission.COMPASS)
+                            ? commandAction("[COMPASS]", "/pet compass")
+                            : Text.empty()), false);
+        }
+        if (hasAdminAccess(source)) {
+            source.sendFeedback(() -> Text.literal(
+                    "ADMIN    /pet admin inspect|recover|recall-reset|history|reconcile (permission-gated; UUID defaults to you)")
+                    .formatted(Formatting.DARK_GRAY), false);
+        }
         return 1;
     }
 
@@ -146,19 +230,48 @@ public final class PetCommands {
         }
         Optional<PetAuthorityGateway> gateway = PetCompanionMod.authorityGateway();
         if (gateway.isEmpty()) {
-            source.sendError(Text.literal("Pet authority service is not configured."));
+            source.sendError(Text.literal("Pet Companion is temporarily unavailable."));
             return 0;
         }
         UUID ownerUuid = player.getUuid();
         source.sendFeedback(
-                () -> Text.literal("Creating your secure pet checkout link…")
+                () -> Text.literal("Checking your subscription status…")
                         .formatted(Formatting.GRAY),
                 false);
         try {
-            gateway.orElseThrow().createAccountLink(ownerUuid).whenComplete((result, failure) ->
-                    onServer(source, () -> completeLink(source, ownerUuid, result, failure)));
+            gateway.orElseThrow().findSubscriptionDetails(ownerUuid).whenComplete((details, statusFailure) ->
+                    onServer(source, () -> {
+                        if (statusFailure != null || details == null) {
+                            source.sendError(Text.literal(
+                                    "Subscription status is temporarily unavailable; no checkout link was created."));
+                            return;
+                        }
+                        if (details.aiAccessEnabled()) {
+                            source.sendFeedback(() -> Text.literal("SUBSCRIPTION ALREADY ACTIVE")
+                                    .formatted(Formatting.YELLOW, Formatting.BOLD), false);
+                            source.sendFeedback(() -> Text.empty()
+                                    .append(Text.literal(
+                                            "No new checkout was created. " + billingStateText(details)
+                                                    + " Manage it in ")
+                                            .formatted(Formatting.GRAY))
+                                    .append(commandAction("[STRIPE BILLING PORTAL]", "/pet portal"))
+                                    .append(Text.literal(".")), false);
+                            return;
+                        }
+                        source.sendFeedback(() -> Text.literal("Creating your secure pet checkout link…")
+                                .formatted(Formatting.GRAY), false);
+                        try {
+                            gateway.orElseThrow().createAccountLink(ownerUuid).whenComplete((result, failure) ->
+                                    onServer(source, () -> completeLink(
+                                            source, ownerUuid, gateway.orElseThrow(), details,
+                                            result, failure)));
+                        } catch (RuntimeException failure) {
+                            source.sendError(Text.literal("Account linking is temporarily unavailable."));
+                        }
+                    }));
         } catch (RuntimeException failure) {
-            source.sendError(Text.literal("Account linking is temporarily unavailable."));
+            source.sendError(Text.literal(
+                    "Subscription status is temporarily unavailable; no checkout link was created."));
             return 0;
         }
         return 1;
@@ -167,6 +280,8 @@ public final class PetCommands {
     private static void completeLink(
             ServerCommandSource source,
             UUID ownerUuid,
+            PetAuthorityGateway gateway,
+            SubscriptionAccessWireResult baseline,
             AccountLinkWireResult result,
             Throwable failure) {
         if (source.getServer().getPlayerManager().getPlayer(ownerUuid) == null) return;
@@ -182,16 +297,19 @@ public final class PetCommands {
             return;
         }
         URI checkoutUrl = URI.create(result.checkoutUrl().orElseThrow());
+        source.sendFeedback(() -> Text.literal("STRIPE CHECKOUT")
+                .formatted(Formatting.GREEN, Formatting.BOLD), false);
         source.sendFeedback(() -> Text.empty()
-                        .append(Text.literal("Open secure pet checkout ")
-                                .formatted(Formatting.GREEN))
-                        .append(Text.literal("[CLICK HERE]")
+                        .append(Text.literal("Open the one checkout link below, finish payment in your browser, then return to Minecraft. ")
+                                .formatted(Formatting.GRAY))
+                        .append(Text.literal("[OPEN STRIPE CHECKOUT]")
                                 .formatted(Formatting.AQUA, Formatting.UNDERLINE)
                                 .styled(style -> style.withClickEvent(
                                         new ClickEvent.OpenUrl(checkoutUrl))))
                         .append(Text.literal(" (expires "
                                 + formatUtc(result.expiresAt().orElseThrow()) + ")")
                                 .formatted(Formatting.GRAY)), false);
+        watchBilling(source, ownerUuid, gateway, baseline);
     }
 
     private static int portal(CommandContext<ServerCommandSource> context) {
@@ -203,17 +321,24 @@ public final class PetCommands {
         }
         Optional<PetAuthorityGateway> gateway = PetCompanionMod.authorityGateway();
         if (gateway.isEmpty()) {
-            source.sendError(Text.literal("Pet authority service is not configured."));
+            source.sendError(Text.literal("Pet Companion is temporarily unavailable."));
             return 0;
         }
         UUID ownerUuid = player.getUuid();
-        source.sendFeedback(
-                () -> Text.literal("Creating your secure billing-management link…")
-                        .formatted(Formatting.GRAY),
-                false);
+        source.sendFeedback(() -> Text.literal("Preparing your secure billing page…")
+                .formatted(Formatting.GRAY), false);
         try {
-            gateway.orElseThrow().createCustomerPortal(ownerUuid).whenComplete((result, failure) ->
-                    onServer(source, () -> completePortal(source, ownerUuid, result, failure)));
+            gateway.orElseThrow().findSubscriptionDetails(ownerUuid).whenComplete((baseline, statusFailure) ->
+                    onServer(source, () -> {
+                        if (statusFailure != null || baseline == null) {
+                            source.sendError(Text.literal("Billing is temporarily unavailable; please retry."));
+                            return;
+                        }
+                        gateway.orElseThrow().createCustomerPortal(ownerUuid).whenComplete((result, failure) ->
+                                onServer(source, () -> completePortal(
+                                        source, ownerUuid, gateway.orElseThrow(), baseline,
+                                        result, failure)));
+                    }));
         } catch (RuntimeException failure) {
             source.sendError(Text.literal("Billing management is temporarily unavailable."));
             return 0;
@@ -221,9 +346,79 @@ public final class PetCommands {
         return 1;
     }
 
+    private static int billing(CommandContext<ServerCommandSource> context) {
+        ServerCommandSource source = context.getSource();
+        ServerPlayerEntity player = source.getPlayer();
+        if (player == null) {
+            source.sendError(Text.literal("This command is available only to players."));
+            return 0;
+        }
+        Optional<PetAuthorityGateway> gateway = PetCompanionMod.authorityGateway();
+        if (gateway.isEmpty()) {
+            source.sendError(Text.literal("Pet Companion is temporarily unavailable."));
+            return 0;
+        }
+        UUID ownerUuid = player.getUuid();
+        source.sendFeedback(() -> Text.literal("BILLING — checking your subscription…")
+                .formatted(Formatting.GRAY), false);
+        try {
+            gateway.orElseThrow().findSubscriptionDetails(ownerUuid).whenComplete((details, failure) ->
+                    onServer(source, () -> completeBilling(source, ownerUuid, details, failure)));
+        } catch (RuntimeException failure) {
+            source.sendError(Text.literal("Subscription status is temporarily unavailable; please retry."));
+            return 0;
+        }
+        return 1;
+    }
+
+    private static void completeBilling(
+            ServerCommandSource source,
+            UUID ownerUuid,
+            SubscriptionAccessWireResult details,
+            Throwable failure) {
+        if (source.getServer().getPlayerManager().getPlayer(ownerUuid) == null) return;
+        if (failure != null || details == null) {
+            source.sendError(Text.literal("Subscription status is temporarily unavailable; please retry."));
+            return;
+        }
+        source.sendFeedback(() -> Text.literal("BILLING")
+                .formatted(Formatting.AQUA, Formatting.BOLD), false);
+        if (hasAdminAccess(source)
+                && details.budgetUsd() != null
+                && details.remainingUsd() != null) {
+            source.sendFeedback(() -> Text.literal(
+                    "Admin quota: " + usd(details.budgetUsd())
+                            + " total • " + usd(details.remainingUsd()) + " remaining"
+                            + (details.consumedUsd() == null
+                            ? "" : " • " + usd(details.consumedUsd()) + " consumed"))
+                    .formatted(Formatting.LIGHT_PURPLE), false);
+        }
+        if (details.aiAccessEnabled()) {
+            source.sendFeedback(() -> Text.literal(
+                    "Your subscription is active. " + billingStateText(details))
+                    .formatted(Formatting.GRAY), false);
+            source.sendFeedback(() -> Text.empty()
+                    .append(Text.literal("Next action: ").formatted(Formatting.GRAY))
+                    .append(commandAction("[MANAGE / CANCEL IN STRIPE]", "/pet portal")), false);
+        } else {
+            source.sendFeedback(() -> Text.literal(
+                    "No active subscription is linked to this Minecraft account.")
+                    .formatted(Formatting.GRAY), false);
+            source.sendFeedback(() -> Text.empty()
+                    .append(Text.literal("Next action: ").formatted(Formatting.GRAY))
+                    .append(commandAction("[START SUBSCRIPTION]", "/pet link")), false);
+        }
+    }
+
+    private static String usd(java.math.BigDecimal value) {
+        return "$" + value.stripTrailingZeros().toPlainString();
+    }
+
     private static void completePortal(
             ServerCommandSource source,
             UUID ownerUuid,
+            PetAuthorityGateway gateway,
+            SubscriptionAccessWireResult baseline,
             CustomerPortalWireResult result,
             Throwable failure) {
         if (source.getServer().getPlayerManager().getPlayer(ownerUuid) == null) return;
@@ -232,10 +427,11 @@ public final class PetCommands {
             return;
         }
         if (result.status() == CustomerPortalWireStatus.NOT_LINKED) {
-            source.sendFeedback(
-                    () -> Text.literal("No Stripe subscription is linked yet; use /pet link.")
-                            .formatted(Formatting.YELLOW),
-                    false);
+            source.sendFeedback(() -> Text.literal("NO BILLING ACCOUNT LINKED")
+                    .formatted(Formatting.YELLOW, Formatting.BOLD), false);
+            source.sendFeedback(() -> Text.empty()
+                    .append(Text.literal("Start checkout first: ").formatted(Formatting.GRAY))
+                    .append(commandAction("[SUBSCRIBE]", "/pet link")), false);
             return;
         }
         if (result.status() == CustomerPortalWireStatus.RATE_LIMITED) {
@@ -246,13 +442,158 @@ public final class PetCommands {
             return;
         }
         URI portalUrl = URI.create(result.portalUrl().orElseThrow());
+        source.sendFeedback(() -> Text.literal("BILLING PORTAL READY")
+                .formatted(Formatting.GREEN, Formatting.BOLD), false);
+
         source.sendFeedback(() -> Text.empty()
-                .append(Text.literal("Manage or cancel your pet subscription ")
-                        .formatted(Formatting.GREEN))
-                .append(Text.literal("[OPEN BILLING PORTAL]")
+                .append(Text.literal("[OPEN STRIPE BILLING PORTAL]")
                         .formatted(Formatting.AQUA, Formatting.UNDERLINE)
                         .styled(style -> style.withClickEvent(
                                 new ClickEvent.OpenUrl(portalUrl)))), false);
+        watchBilling(source, ownerUuid, gateway, baseline);
+    }
+
+    /** Refreshes the command tree after the authoritative ownership read completes. */
+    public static void refreshVisibility(ServerPlayerEntity player) {
+        Objects.requireNonNull(player, "player");
+        Optional<PetAuthorityGateway> gateway = PetCompanionMod.authorityGateway();
+        if (gateway.isEmpty()) return;
+        UUID ownerUuid = player.getUuid();
+        gateway.orElseThrow().findByOwner(ownerUuid).whenComplete((snapshot, failure) -> {
+            if (failure != null || snapshot == null) return;
+            player.getEntityWorld().getServer().execute(() -> {
+                ServerPlayerEntity current = player.getEntityWorld().getServer()
+                        .getPlayerManager().getPlayer(ownerUuid);
+                if (current == null) return;
+                HAS_PET.put(ownerUuid, snapshot.isPresent());
+                current.getEntityWorld().getServer().getCommandManager().sendCommandTree(current);
+            });
+        });
+    }
+
+    public static void clearPlayerState(UUID ownerUuid) {
+        HAS_PET.remove(ownerUuid);
+        BILLING_WATCHES.remove(ownerUuid);
+    }
+
+    private static boolean hasPetAccess(ServerCommandSource source) {
+        ServerPlayerEntity player = source.getPlayer();
+        return player == null || Boolean.TRUE.equals(HAS_PET.get(player.getUuid()));
+    }
+
+    private static boolean hasAdminAccess(ServerCommandSource source) {
+        return PetPermissions.check(source, PetPermission.ADMIN_INSPECT)
+                || PetPermissions.check(source, PetPermission.ADMIN_RECOVER)
+                || PetPermissions.check(source, PetPermission.ADMIN_RECONCILE)
+                || PetPermissions.check(source, PetPermission.ADMIN_SUBSCRIPTION)
+                || PetPermissions.check(source, PetPermission.ADMIN_MEMORY);
+    }
+
+    private static void rememberOwnership(
+            ServerCommandSource source, UUID ownerUuid, boolean hasPet) {
+        HAS_PET.put(ownerUuid, hasPet);
+        ServerPlayerEntity player = source.getServer().getPlayerManager().getPlayer(ownerUuid);
+        if (player != null) source.getServer().getCommandManager().sendCommandTree(player);
+    }
+
+    private static void watchBilling(
+            ServerCommandSource source,
+            UUID ownerUuid,
+            PetAuthorityGateway gateway,
+            SubscriptionAccessWireResult baseline) {
+        UUID watchId = UUID.randomUUID();
+        BILLING_WATCHES.put(ownerUuid, watchId);
+        pollBilling(source, ownerUuid, gateway, baseline, watchId, 0);
+    }
+
+    private static void pollBilling(
+            ServerCommandSource source,
+            UUID ownerUuid,
+            PetAuthorityGateway gateway,
+            SubscriptionAccessWireResult baseline,
+            UUID watchId,
+            int attempt) {
+        if (attempt >= 60 || !watchId.equals(BILLING_WATCHES.get(ownerUuid))) {
+            BILLING_WATCHES.remove(ownerUuid, watchId);
+            return;
+        }
+        CompletableFuture.delayedExecutor(5, TimeUnit.SECONDS).execute(() -> {
+            if (!watchId.equals(BILLING_WATCHES.get(ownerUuid))) return;
+            try {
+                gateway.findSubscriptionDetails(ownerUuid).whenComplete((current, failure) ->
+                        onServer(source, () -> {
+                            ServerPlayerEntity player = source.getServer().getPlayerManager()
+                                    .getPlayer(ownerUuid);
+                            if (player == null) {
+                                BILLING_WATCHES.remove(ownerUuid, watchId);
+                                return;
+                            }
+                            if (failure == null && current != null
+                                    && billingChanged(baseline, current)) {
+                                BILLING_WATCHES.remove(ownerUuid, watchId);
+                                announceBillingChange(source, baseline, current);
+                                return;
+                            }
+                            pollBilling(source, ownerUuid, gateway, baseline, watchId, attempt + 1);
+                        }));
+            } catch (RuntimeException failure) {
+                onServer(source, () -> pollBilling(
+                        source, ownerUuid, gateway, baseline, watchId, attempt + 1));
+            }
+        });
+    }
+
+    private static boolean billingChanged(
+            SubscriptionAccessWireResult before, SubscriptionAccessWireResult after) {
+        return before.aiAccessEnabled() != after.aiAccessEnabled()
+                || before.cancelAtPeriodEnd() != after.cancelAtPeriodEnd()
+                || !Objects.equals(before.status(), after.status());
+    }
+
+    private static void announceBillingChange(
+            ServerCommandSource source,
+            SubscriptionAccessWireResult before,
+            SubscriptionAccessWireResult after) {
+        if (!before.aiAccessEnabled() && after.aiAccessEnabled()) {
+            source.sendFeedback(() -> Text.empty()
+                    .append(Text.literal("Your membership is active! ")
+                            .formatted(Formatting.GREEN))
+                    .append(commandAction("[CONTINUE TO ADOPTION]", "/pet adopt")), false);
+            return;
+        }
+        if (after.cancelAtPeriodEnd()) {
+            source.sendFeedback(() -> Text.literal("Cancellation scheduled. "
+                    + billingStateText(after)).formatted(Formatting.YELLOW), false);
+            return;
+        }
+        if (!after.aiAccessEnabled() || "CANCELED".equals(after.status())) {
+            source.sendFeedback(() -> Text.literal("Your subscription has been cancelled.")
+                    .formatted(Formatting.YELLOW), false);
+        }
+    }
+
+    private static Text commandAction(String label, String command) {
+        return Text.literal(label)
+                .formatted(Formatting.GREEN, Formatting.UNDERLINE)
+                .styled(style -> style.withClickEvent(new ClickEvent.RunCommand(command)));
+    }
+
+    private static String billingStateText(SubscriptionAccessWireResult details) {
+        if (details.cancelAtPeriodEnd() && details.currentPeriodEnd() != null) {
+            try {
+                return "Your membership remains active until "
+                        + formatUtc(Instant.parse(details.currentPeriodEnd()))
+                        + "; cancellation is scheduled for then.";
+            } catch (RuntimeException ignored) {
+                return "Your membership remains active through the current paid period; cancellation is scheduled.";
+            }
+        }
+        return switch (details.status()) {
+            case "PAST_DUE" -> "There is a payment problem; your membership is in its grace period.";
+            case "CANCELED" -> "This membership is canceled.";
+            case "TRIALING" -> "Your trial is active.";
+            default -> "You can update payment or cancel from the billing page.";
+        };
     }
 
     private static int recall(CommandContext<ServerCommandSource> context) {
@@ -264,7 +605,7 @@ public final class PetCommands {
         }
         Optional<PetRecallCoordinator> configured = PetCompanionMod.recallCoordinator();
         if (configured.isEmpty()) {
-            source.sendError(Text.literal("Pet authority service is not configured."));
+            source.sendError(Text.literal("Pet Companion is temporarily unavailable."));
             return 0;
         }
         UUID ownerUuid = player.getUuid();
@@ -313,7 +654,7 @@ public final class PetCommands {
                     "The pet could not spawn; it is held and this month's recall was not used.";
             case SPAWN_FAILED_UNRESOLVED ->
                     "The pet could not spawn; an administrator should reconcile it.";
-            case AUTHORITY_REJECTED -> "The authoritative pet state changed; check /pet status.";
+            case AUTHORITY_REJECTED -> "Your pet's location changed; check /pet status and try again.";
             case SERVICE_FAILURE -> "Pet recall is temporarily unavailable.";
             case RECALLED, UNAVAILABLE -> throw new IllegalStateException("Handled above");
         };
@@ -335,7 +676,7 @@ public final class PetCommands {
         }
         Optional<PetAuthorityGateway> gateway = PetCompanionMod.authorityGateway();
         if (gateway.isEmpty()) {
-            source.sendError(Text.literal("Pet authority service is not configured."));
+            source.sendError(Text.literal("Pet Companion is temporarily unavailable."));
             return 0;
         }
         PetAdoptionWireRequest request;
@@ -350,7 +691,7 @@ public final class PetCommands {
         }
 
         UUID ownerUuid = player.getUuid();
-        source.sendFeedback(() -> Text.literal("Checking adoption access…").formatted(Formatting.GRAY), false);
+        source.sendFeedback(() -> Text.literal("Preparing your adoption…").formatted(Formatting.GRAY), false);
         try {
             gateway.orElseThrow().adopt(request).whenComplete((result, failure) ->
                     onServer(source, () -> completeAdoption(source, ownerUuid, result, failure)));
@@ -368,7 +709,29 @@ public final class PetCommands {
             return 0;
         }
         if (species == null) {
-            PetAdoptionMenu.open(source);
+            Optional<PetAuthorityGateway> gateway = PetCompanionMod.authorityGateway();
+            if (gateway.isEmpty()) {
+                source.sendError(Text.literal("Pet Companion is temporarily unavailable."));
+                return 0;
+            }
+            UUID ownerUuid = source.getPlayer().getUuid();
+            source.sendFeedback(() -> Text.literal("Opening the adoption center…")
+                    .formatted(Formatting.GRAY), false);
+            try {
+                gateway.orElseThrow().findSubscriptionDetails(ownerUuid).whenComplete((details, failure) ->
+                        onServer(source, () -> {
+                            if (source.getServer().getPlayerManager().getPlayer(ownerUuid) == null) return;
+                            if (failure != null || details == null) {
+                                source.sendError(Text.literal(
+                                        "Subscription status is temporarily unavailable; please retry."));
+                                return;
+                            }
+                            PetAdoptionMenu.open(source, details.aiAccessEnabled());
+                        }));
+            } catch (RuntimeException failure) {
+                source.sendError(Text.literal("Subscription status is temporarily unavailable; please retry."));
+                return 0;
+            }
         } else {
             PetAdoptionMenu.choose(source, species);
         }
@@ -389,20 +752,23 @@ public final class PetCommands {
         }
         if (result.status() == PetAdoptionWireStatus.SUBSCRIPTION_REQUIRED) {
             source.sendFeedback(
-                    () -> Text.literal("An active subscription is required to adopt a pet.")
+                    () -> Text.empty()
+                            .append(Text.literal("A pet membership is needed first. "))
+                            .append(commandAction("[CONTINUE TO SUBSCRIPTION]", "/pet adopt subscribe"))
                             .formatted(Formatting.YELLOW),
                     false);
             return;
         }
         if (result.status() == PetAdoptionWireStatus.SPECIES_UNAVAILABLE) {
             source.sendFeedback(
-                    () -> Text.literal("That pet species is disabled by the server allowlist.")
+                    () -> Text.literal("That kind of pet isn't available right now.")
                             .formatted(Formatting.YELLOW),
                     false);
             return;
         }
         Pet pet = result.pet().orElseThrow();
         if (result.status() == PetAdoptionWireStatus.EXISTING) {
+            rememberOwnership(source, ownerUuid, true);
             source.sendFeedback(
                     () -> Text.literal("You already own " + pet.name() + "; adoption did not reroll it.")
                             .formatted(Formatting.YELLOW),
@@ -414,6 +780,14 @@ public final class PetCommands {
                                 + pet.appearance().species().name().toLowerCase(Locale.ROOT) + ".")
                         .formatted(Formatting.GREEN),
                 false);
+        rememberOwnership(source, ownerUuid, true);
+        source.sendFeedback(() -> Text.literal(
+                "Use /pet place to bring your new friend into the world. To pick them up before leaving, "
+                        + "hold Shift and right-click them (or use /pet pickup).")
+                .formatted(Formatting.GRAY), false);
+        source.sendFeedback(() -> Text.literal(
+                "Run /pet help whenever you want to see everything you can do together.")
+                .formatted(Formatting.GRAY), false);
     }
 
     private static int compass(CommandContext<ServerCommandSource> context) {
@@ -426,7 +800,7 @@ public final class PetCommands {
         Optional<PetAuthorityGateway> gateway = PetCompanionMod.authorityGateway();
         Optional<PetCompassManager> manager = PetCompanionMod.petCompassManager();
         if (gateway.isEmpty() || manager.isEmpty()) {
-            source.sendError(Text.literal("Pet authority service is not configured."));
+            source.sendError(Text.literal("Pet Companion is temporarily unavailable."));
             return 0;
         }
 
@@ -486,6 +860,9 @@ public final class PetCommands {
                 () -> Text.literal("Pet compass " + verb + ": " + result.presentation() + cleanup)
                         .formatted(Formatting.GREEN),
                 false);
+        source.sendFeedback(() -> Text.literal(
+                "Drop the pet compass whenever you no longer want it.")
+                .formatted(Formatting.GRAY), false);
     }
 
     private static int place(CommandContext<ServerCommandSource> context) {
@@ -497,7 +874,7 @@ public final class PetCommands {
         }
         Optional<PetPlacementCoordinator> configured = PetCompanionMod.placementCoordinator();
         if (configured.isEmpty()) {
-            source.sendError(Text.literal("Pet authority service is not configured."));
+            source.sendError(Text.literal("Pet Companion is temporarily unavailable."));
             return 0;
         }
         UUID ownerUuid = player.getUuid();
@@ -538,7 +915,7 @@ public final class PetCommands {
             case PLAYER_CONTEXT_CHANGED -> "Placement stopped because your player context changed.";
             case SPAWN_FAILED_COMPENSATED -> "The pet could not spawn and was safely returned to held.";
             case SPAWN_FAILED_UNRESOLVED -> "The pet could not spawn; an administrator should reconcile it.";
-            case AUTHORITY_REJECTED -> "The authoritative pet state changed; check /pet status.";
+            case AUTHORITY_REJECTED -> "Your pet's location changed; check /pet status and try again.";
             case SERVICE_FAILURE -> "Pet placement is temporarily unavailable.";
             case PLACED -> throw new IllegalStateException("Handled above");
         };
@@ -554,7 +931,7 @@ public final class PetCommands {
         }
         Optional<PetPickupCoordinator> configured = PetCompanionMod.pickupCoordinator();
         if (configured.isEmpty()) {
-            source.sendError(Text.literal("Pet authority service is not configured."));
+            source.sendError(Text.literal("Pet Companion is temporarily unavailable."));
             return 0;
         }
         UUID ownerUuid = player.getUuid();
@@ -589,10 +966,10 @@ public final class PetCommands {
         }
         String message = switch (outcome.status()) {
             case NO_PET -> "You have not adopted a pet yet.";
-            case NOT_PLACED_HERE -> "Your pet is not placed on this backend and dimension.";
-            case ENTITY_MISSING_OR_STALE -> "The authoritative pet entity is missing or stale.";
+            case NOT_PLACED_HERE -> "Your pet is somewhere else right now.";
+            case ENTITY_MISSING_OR_STALE -> "Your pet could not be found here; try /pet status.";
             case OUT_OF_RANGE -> "Move within 4 blocks of your pet to pick it up.";
-            case AUTHORITY_REJECTED -> "The authoritative pet state changed; check /pet status.";
+            case AUTHORITY_REJECTED -> "Your pet's location changed; check /pet status and try again.";
             case SERVICE_FAILURE -> "Pet pickup is temporarily unavailable.";
             case PICKED_UP -> throw new IllegalStateException("Handled above");
         };
@@ -608,7 +985,7 @@ public final class PetCommands {
         }
         Optional<PetAuthorityGateway> configured = PetCompanionMod.authorityGateway();
         if (configured.isEmpty()) {
-            source.sendError(Text.literal("Pet authority service is not configured."));
+            source.sendError(Text.literal("Pet Companion is temporarily unavailable."));
             return 0;
         }
 
@@ -638,12 +1015,14 @@ public final class PetCommands {
             return;
         }
         if (snapshot.isEmpty()) {
+            rememberOwnership(source, ownerUuid, false);
             source.sendFeedback(
                     () -> Text.literal("You have not adopted a pet yet.").formatted(Formatting.YELLOW),
                     false);
             return;
         }
         PetAuthoritySnapshot authority = snapshot.orElseThrow();
+        rememberOwnership(source, ownerUuid, true);
         source.sendFeedback(
                 () -> statusText(
                         authority.pet(), authority.sleeping(), authority.aiAccessEnabled()),
@@ -662,9 +1041,11 @@ public final class PetCommands {
             default -> "HELD";
         };
         String sleep = sleeping ? " • sleeping" : " • awake";
-        String aiAccess = aiAccessEnabled ? " • AI access active" : " • AI access inactive";
+        String membership = sleeping
+                ? " • resting until they wake up"
+                : aiAccessEnabled ? " • ready to chat" : " • quiet for now";
         return Text.literal(pet.name() + " (" + pet.appearance().species() + ") — "
-                        + location + sleep + aiAccess)
+                        + location + sleep + membership)
                 .formatted(Formatting.AQUA);
     }
 
@@ -833,8 +1214,105 @@ public final class PetCommands {
         return 1;
     }
 
+    private static int adminHistory(CommandContext<ServerCommandSource> context) {
+        ServerCommandSource source = context.getSource();
+        UUID ownerUuid = ownerArgument(context);
+        if (ownerUuid == null) return 0;
+        Optional<PetAuthorityGateway> gateway = requireAdminGateway(source);
+        if (gateway.isEmpty()) return 0;
+        source.sendFeedback(() -> Text.literal(
+                "Loading recent conversation history for " + ownerUuid + "…")
+                .formatted(Formatting.GRAY), false);
+        try {
+            gateway.orElseThrow().findDialogueHistory(ownerUuid).whenComplete((history, failure) ->
+                    onServer(source, () -> completeAdminHistory(source, history, failure)));
+        } catch (RuntimeException failure) {
+            source.sendError(Text.literal("Conversation history is temporarily unavailable."));
+            return 0;
+        }
+        return 1;
+    }
+
+    private static void completeAdminHistory(
+            ServerCommandSource source,
+            DialogueHistoryWireResult history,
+            Throwable failure) {
+        if (failure != null || history == null) {
+            source.sendError(Text.literal("Conversation history is temporarily unavailable."));
+            return;
+        }
+        source.sendFeedback(() -> Text.literal(
+                "DIALOGUE HISTORY — " + history.petName() + " (owner " + history.ownerUuid() + ")")
+                .formatted(Formatting.AQUA, Formatting.BOLD), false);
+        if (history.conversations().isEmpty()) {
+            source.sendFeedback(() -> Text.literal("No retained conversation entries.")
+                    .formatted(Formatting.GRAY), false);
+        } else {
+            history.conversations().forEach(entry -> {
+                source.sendFeedback(() -> Text.literal(
+                        formatUtc(entry.occurredAt()) + " [" + entry.importance() + "] "
+                                + "owner: " + (entry.ownerText() == null ? "(expired)" : entry.ownerText()))
+                        .formatted(Formatting.GRAY), false);
+                if (entry.petReply() != null) {
+                    source.sendFeedback(() -> Text.literal("  pet: " + entry.petReply())
+                            .formatted(Formatting.WHITE), false);
+                }
+            });
+        }
+        source.sendFeedback(() -> Text.literal("PROVIDER USAGE")
+                .formatted(Formatting.LIGHT_PURPLE, Formatting.BOLD), false);
+        if (history.usage().isEmpty()) {
+            source.sendFeedback(() -> Text.literal("No provider usage recorded.")
+                    .formatted(Formatting.GRAY), false);
+            return;
+        }
+        history.usage().forEach(entry -> {
+            source.sendFeedback(() -> Text.literal(
+                    formatUtc(entry.createdAt()) + " " + entry.operation() + " " + entry.model()
+                            + " — input=" + entry.inputTokens()
+                            + " cached=" + entry.cachedInputTokens()
+                            + " output=" + entry.outputTokens()
+                            + " cost=" + usd(entry.estimatedCost())
+                    + " status=" + entry.status())
+                    .formatted(Formatting.GRAY), false);
+            if (entry.context().isPresent()) {
+                source.sendFeedback(() -> Text.literal(
+                        "  prompt parts: " + formatContext(entry.context().orElseThrow()))
+                        .formatted(Formatting.DARK_GRAY), false);
+            } else {
+                source.sendFeedback(() -> Text.literal(
+                        "  prompt parts: not captured for this older/provider-only usage record")
+                        .formatted(Formatting.DARK_GRAY), false);
+            }
+        });
+    }
+
+    private static String formatContext(DialogueContextUsageWire context) {
+        return "total=" + context.totalPromptTokens()
+                + " [system " + context.systemTokens()
+                + ", identity " + context.identityTokens()
+                + ", short-term DB " + context.shortTermDbTokens()
+                + ", long-term relational DB " + context.longTermRelationalTokens()
+                + ", long-term vector DB " + context.longTermVectorTokens()
+                + ", recent turns DB " + context.recentTurnsDbTokens()
+                + ", game " + context.gameContextTokens()
+                + ", owner input " + context.ownerInputTokens()
+                + ", instructions " + context.instructionTokens() + "]";
+    }
+
     private static UUID ownerArgument(CommandContext<ServerCommandSource> context) {
-        String value = StringArgumentType.getString(context, "ownerUuid");
+        String value;
+        try {
+            value = StringArgumentType.getString(context, "ownerUuid");
+        } catch (IllegalArgumentException missing) {
+            ServerPlayerEntity player = context.getSource().getPlayer();
+            if (player == null) {
+                context.getSource().sendError(Text.literal(
+                        "ownerUuid is required when running this command from the console."));
+                return null;
+            }
+            return player.getUuid();
+        }
         try {
             UUID parsed = UUID.fromString(value);
             if (!parsed.toString().equals(value)) throw new IllegalArgumentException();
@@ -848,7 +1326,7 @@ public final class PetCommands {
     private static Optional<PetAuthorityGateway> requireAdminGateway(ServerCommandSource source) {
         Optional<PetAuthorityGateway> gateway = PetCompanionMod.authorityGateway();
         if (gateway.isEmpty()) {
-            source.sendError(Text.literal("Pet authority service is not configured."));
+            source.sendError(Text.literal("Pet Companion is temporarily unavailable."));
         }
         return gateway;
     }

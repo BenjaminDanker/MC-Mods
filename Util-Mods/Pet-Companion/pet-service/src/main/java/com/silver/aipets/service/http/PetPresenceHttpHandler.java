@@ -2,6 +2,8 @@ package com.silver.aipets.service.http;
 
 import com.silver.aipets.common.transport.PetPresenceWireCodec;
 import com.silver.aipets.common.transport.PetPresenceWireRequest;
+import com.silver.aipets.common.transport.PetPresenceReconcileWireCodec;
+import com.silver.aipets.common.transport.PetPresenceReconcileWireRequest;
 import com.silver.aipets.service.sleep.PetSleepEvent;
 import com.silver.aipets.service.sleep.PetSleepService;
 import com.silver.aipets.service.sleep.PetSleepTransition;
@@ -17,7 +19,7 @@ import java.util.Optional;
 
 /** Authenticated Velocity-only whole-network presence ingestion. */
 public final class PetPresenceHttpHandler implements HttpHandler {
-    private static final int MAX_BODY = 1_024;
+    private static final int MAX_BODY = 512 * 1_024;
     private final PetSleepService sleep;
     private final PetPresenceWireCodec codec;
     private final byte[] expectedAuthorization;
@@ -40,7 +42,8 @@ public final class PetPresenceHttpHandler implements HttpHandler {
                 send(exchange, 401, "{\"error\":\"UNAUTHORIZED\"}"); return;
             }
             if (!"POST".equals(exchange.getRequestMethod())
-                    || !"/v1/presence".equals(exchange.getRequestURI().getRawPath())
+                    || !("/v1/presence".equals(exchange.getRequestURI().getRawPath())
+                    || "/v1/presence/reconcile".equals(exchange.getRequestURI().getRawPath()))
                     || exchange.getRequestURI().getRawQuery() != null) {
                 send(exchange, 404, "{\"error\":\"NOT_FOUND\"}"); return;
             }
@@ -48,7 +51,16 @@ public final class PetPresenceHttpHandler implements HttpHandler {
             if (body.length > MAX_BODY) {
                 send(exchange, 413, "{\"error\":\"PAYLOAD_TOO_LARGE\"}"); return;
             }
-            PetPresenceWireRequest request = codec.decode(new String(body, StandardCharsets.UTF_8));
+            String encoded = new String(body, StandardCharsets.UTF_8);
+            if ("/v1/presence/reconcile".equals(exchange.getRequestURI().getRawPath())) {
+                PetPresenceReconcileWireRequest request =
+                        new PetPresenceReconcileWireCodec().decode(encoded);
+                int changed = sleep.reconcileOnlineOwners(
+                        request.onlineOwnerUuids(), request.occurredAt());
+                send(exchange, 200, "{\"status\":\"RECONCILED\",\"changed\":" + changed + "}");
+                return;
+            }
+            PetPresenceWireRequest request = codec.decode(encoded);
             Optional<PetSleepTransition> result = request.online()
                     ? sleep.ownerOnline(request.ownerUuid(), request.occurredAt())
                     : sleep.ownerOffline(request.ownerUuid(), request.absenceSessionId().orElseThrow(),

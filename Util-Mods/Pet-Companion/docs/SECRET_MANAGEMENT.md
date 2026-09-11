@@ -6,10 +6,13 @@ environment variables.
 
 ## Files and ownership
 
-Install `/etc/pet-companion/pet-service.env` as `root:pet-companion` mode `0640` (or stricter) and
-the MariaDB dump client file as `root:pet-backup` mode `0640` or `pet-backup:pet-backup` mode
-`0600`. The systemd units run under distinct non-login users. Do not put a password directly in a
-unit's `ExecStart`, where it can appear in process inspection.
+For a user-service deployment, install the environment file under that operator account's protected
+configuration directory (for example, `%h/.config/pet-companion/pet-service.env`) with mode `0600`
+(or stricter). Template/system-service installs may instead use
+`/etc/pet-companion/pet-service.env` with the service account as owner and mode `0640` (or stricter).
+The MariaDB dump client file remains
+`root:pet-backup` mode `0640` or `pet-backup:pet-backup` mode `0600`. Do not put a password directly
+in a unit's `ExecStart`, where it can appear in process inspection.
 
 The service environment currently owns:
 
@@ -18,11 +21,17 @@ The service environment currently owns:
 - `PET_DB_USER` and `PET_DB_PASSWORD` — least-privilege pet-service database account;
 - `PET_STRIPE_WEBHOOK_SECRET` — environment-specific Stripe endpoint signing secret;
 - `PET_ACCOUNT_LINK_PEPPER` — independent HMAC key for one-time opaque-link digests.
+- `PET_DUMMY_SUBSCRIPTION_OWNER_UUID` — staging-only single-owner entitlement selector; keep
+  `PET_DUMMY_SUBSCRIPTION_ENABLED=false` outside a controlled test and never use wildcard access.
 
 Every Fabric backend resolves the environment names configured by
 `authority.token-environment` and `authority.compass-signing-environment`. Velocity reads its
-service token and private origin from its process environment. Model/vector secrets must follow
-the same pattern when their providers are selected; do not add placeholder live keys now.
+service token and private origin from its process environment. Model/vector secrets follow the
+same pattern. On the current Pi, the selected embedding/vector endpoint is staged. Dialogue uses
+the same `PET_OPENAI_API_KEY` when `PET_DIALOGUE_ENABLED=true`; its selected model settings are
+`PET_DIALOGUE_MODEL=gpt-5.6-luna` (reasoning disabled) and `PET_MODERATION_MODEL=omni-moderation-latest`. Do not add
+placeholder live keys, and leave the dialogue switch false until paid traffic is intentionally
+staged.
 
 Use separate development/test/production values. The service token, compass key, Stripe signing
 secret, link pepper, database password, and future provider keys must all be distinct.

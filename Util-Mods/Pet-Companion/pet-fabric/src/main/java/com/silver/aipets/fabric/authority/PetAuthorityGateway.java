@@ -7,6 +7,8 @@ import com.silver.aipets.common.transport.PetRecallWireResult;
 import com.silver.aipets.common.transport.AccountLinkWireResult;
 import com.silver.aipets.common.transport.CustomerPortalWireResult;
 import com.silver.aipets.common.transport.RecallResetWireResult;
+import com.silver.aipets.common.transport.SubscriptionAccessWireResult;
+import com.silver.aipets.common.transport.DialogueHistoryWireResult;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -23,6 +25,23 @@ public interface PetAuthorityGateway {
     default CompletionStage<CustomerPortalWireResult> createCustomerPortal(UUID ownerUuid) {
         return CompletableFuture.failedFuture(
                 new UnsupportedOperationException("Customer Portal is not configured"));
+    }
+
+    /** Returns the authoritative adoption entitlement for this UUID. */
+    default CompletionStage<Boolean> findSubscriptionAccess(UUID ownerUuid) {
+        return CompletableFuture.failedFuture(
+                new UnsupportedOperationException("Subscription access is not configured"));
+    }
+
+    /** Returns the bounded lifecycle projection used by the billing UI. */
+    default CompletionStage<SubscriptionAccessWireResult> findSubscriptionDetails(UUID ownerUuid) {
+        return findSubscriptionAccess(ownerUuid)
+                .thenApply(SubscriptionAccessWireResult::new);
+    }
+
+    default CompletionStage<DialogueHistoryWireResult> findDialogueHistory(UUID ownerUuid) {
+        return CompletableFuture.failedFuture(
+                new UnsupportedOperationException("Dialogue history is not configured"));
     }
 
     default CompletionStage<RecallResetWireResult> resetRecall(UUID petId) {

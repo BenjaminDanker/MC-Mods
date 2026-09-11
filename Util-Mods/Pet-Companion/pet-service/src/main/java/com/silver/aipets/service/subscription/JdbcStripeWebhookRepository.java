@@ -216,7 +216,7 @@ public final class JdbcStripeWebhookRepository implements StripeWebhookRepositor
                        current_period_start, current_period_end,
                        cancel_at_period_end, grace_ends_at, last_stripe_event_at
                 FROM subscriptions
-                WHERE """ + column + " = ? FOR UPDATE")) {
+                """ + "WHERE " + column + " = ? FOR UPDATE")) {
             select.setString(1, value);
             try (ResultSet rows = select.executeQuery()) {
                 if (!rows.next()) return Optional.empty();

@@ -19,7 +19,8 @@ public abstract class WolfEntityMixin {
     private void aipets$reserveInteraction(
             PlayerEntity player, Hand hand, CallbackInfoReturnable<ActionResult> cir) {
         if (aipets$isMarkedPet()) {
-            cir.setReturnValue(PetInteractionRouter.interact(player, (WolfEntity) (Object) this));
+            cir.setReturnValue(PetInteractionRouter.interact(
+                    player, (WolfEntity) (Object) this, hand));
         }
     }
 

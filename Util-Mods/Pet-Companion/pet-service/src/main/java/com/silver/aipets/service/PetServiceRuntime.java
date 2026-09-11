@@ -18,10 +18,13 @@ import com.silver.aipets.service.http.PetPresenceHttpHandler;
 import com.silver.aipets.service.http.AccountLinkHttpHandler;
 import com.silver.aipets.service.http.CheckoutHttpHandler;
 import com.silver.aipets.service.http.CustomerPortalHttpHandler;
+import com.silver.aipets.service.http.SubscriptionAccessHttpHandler;
 import com.silver.aipets.service.http.StripeWebhookHttpHandler;
 import com.silver.aipets.service.http.RecallAdminHttpHandler;
 import com.silver.aipets.service.metrics.MetricsHttpHandler;
+import com.silver.aipets.service.metrics.JdbcOperationalMetricsSampler;
 import com.silver.aipets.service.metrics.PetOperationalMetrics;
+import com.silver.aipets.service.metrics.PetMetricsEventHttpHandler;
 import com.silver.aipets.service.persistence.JdbcPetRepository;
 import com.silver.aipets.service.persistence.PetDataSourceFactory;
 import com.silver.aipets.service.placement.PetPlacementService;
@@ -44,6 +47,15 @@ import com.silver.aipets.service.retention.JdbcRetentionCleanupRepository;
 import com.silver.aipets.service.retention.RetentionCleanupScheduler;
 import com.silver.aipets.service.retention.RetentionCleanupWorker;
 import com.silver.aipets.service.retention.RetentionPolicy;
+import com.silver.aipets.service.consolidation.ConsolidationCandidateSelector;
+import com.silver.aipets.service.consolidation.ConsolidationConfig;
+import com.silver.aipets.service.consolidation.ConsolidationOutputCodec;
+import com.silver.aipets.service.consolidation.ConsolidationOutputValidator;
+import com.silver.aipets.service.consolidation.ConsolidationScheduler;
+import com.silver.aipets.service.consolidation.ConsolidationWorker;
+import com.silver.aipets.service.consolidation.JdbcConsolidationRepository;
+import com.silver.aipets.service.consolidation.OpenAiConsolidationModelClient;
+import com.silver.aipets.service.consolidation.SleepConsolidationTrigger;
 import com.silver.aipets.service.sleep.JdbcPetSleepStateStore;
 import com.silver.aipets.service.sleep.PetSleepPolicy;
 import com.silver.aipets.service.sleep.PetSleepScheduler;
@@ -52,12 +64,37 @@ import com.silver.aipets.service.transfer.PetTransferExpiryScheduler;
 import com.silver.aipets.service.transfer.PetTransferExpiryWorker;
 import com.silver.aipets.service.memory.JdbcLongTermMemoryStore;
 import com.silver.aipets.service.vector.EmbeddingScheduler;
+import com.silver.aipets.service.vector.EmbeddingModelClient;
 import com.silver.aipets.service.vector.JdbcEmbeddingJobStore;
 import com.silver.aipets.service.vector.MemoryEmbeddingWorker;
 import com.silver.aipets.service.vector.MemoryReindexService;
+import com.silver.aipets.service.vector.MemoryRetrievalService;
 import com.silver.aipets.service.vector.OpenAiEmbeddingModelClient;
 import com.silver.aipets.service.vector.QdrantVectorMemoryRepository;
 import com.silver.aipets.service.http.MemoryReindexHttpHandler;
+import com.silver.aipets.service.http.PetDialogueHttpHandler;
+import com.silver.aipets.service.http.DialogueAdminHistoryHttpHandler;
+import com.silver.aipets.service.dialogue.UnavailableDialogueResponder;
+import com.silver.aipets.service.dialogue.DialogueAdmissionController;
+import com.silver.aipets.service.dialogue.DialogueLimits;
+import com.silver.aipets.service.dialogue.DialogueOutputCodec;
+import com.silver.aipets.service.dialogue.DialogueOutputValidator;
+import com.silver.aipets.service.dialogue.DialoguePromptBuilder;
+import com.silver.aipets.service.dialogue.DialogueService;
+import com.silver.aipets.service.dialogue.DialogueWireResponder;
+import com.silver.aipets.service.dialogue.JdbcDialogueContextLoader;
+import com.silver.aipets.service.dialogue.JdbcDialogueHistoryReader;
+import com.silver.aipets.service.dialogue.JdbcDialogueStateStore;
+import com.silver.aipets.service.dialogue.JdbcDialogueAdminHistoryReader;
+import com.silver.aipets.service.dialogue.JTokkitDialogueTokenCounter;
+import com.silver.aipets.service.dialogue.ModeratedDialogueSafety;
+import com.silver.aipets.service.dialogue.OpenAiDialogueModelClient;
+import com.silver.aipets.service.dialogue.OpenAiModerationClient;
+import com.silver.aipets.service.dialogue.DialogueMemoryRetriever;
+import com.silver.aipets.service.dialogue.RelationalDialogueMemoryRetriever;
+import com.silver.aipets.service.dialogue.VectorDialogueMemoryRetriever;
+import com.silver.aipets.service.billing.AiBudgetService;
+import com.silver.aipets.service.billing.JdbcAiBudgetService;
 import com.sun.net.httpserver.HttpServer;
 import com.zaxxer.hikari.HikariDataSource;
 
@@ -73,9 +110,11 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.Random;
 import java.security.SecureRandom;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 /** Owns the standalone HTTP server, bounded worker executor, and bounded database pool. */
 public final class PetServiceRuntime implements AutoCloseable {
@@ -87,6 +126,7 @@ public final class PetServiceRuntime implements AutoCloseable {
     private final RetentionCleanupScheduler retentionScheduler;
     private final PetTransferExpiryScheduler transferExpiryScheduler;
     private final EmbeddingScheduler embeddingScheduler;
+    private final ConsolidationScheduler consolidationScheduler;
     private final AtomicBoolean closed = new AtomicBoolean();
 
     private PetServiceRuntime(
@@ -97,7 +137,8 @@ public final class PetServiceRuntime implements AutoCloseable {
             PetSleepScheduler sleepScheduler,
             RetentionCleanupScheduler retentionScheduler,
             PetTransferExpiryScheduler transferExpiryScheduler,
-            EmbeddingScheduler embeddingScheduler) {
+            EmbeddingScheduler embeddingScheduler,
+            ConsolidationScheduler consolidationScheduler) {
         this.config = config;
         this.dataSource = dataSource;
         this.workers = workers;
@@ -106,6 +147,7 @@ public final class PetServiceRuntime implements AutoCloseable {
         this.retentionScheduler = retentionScheduler;
         this.transferExpiryScheduler = transferExpiryScheduler;
         this.embeddingScheduler = embeddingScheduler;
+        this.consolidationScheduler = consolidationScheduler;
     }
 
     public static PetServiceRuntime create(PetServiceConfig config) throws IOException {
@@ -116,6 +158,7 @@ public final class PetServiceRuntime implements AutoCloseable {
         RetentionCleanupScheduler retentionScheduler = null;
         PetTransferExpiryScheduler transferExpiryScheduler = null;
         EmbeddingScheduler embeddingScheduler = null;
+        ConsolidationScheduler consolidationScheduler = null;
         try {
             HttpServer server = HttpServer.create(
                     new InetSocketAddress(
@@ -125,11 +168,44 @@ public final class PetServiceRuntime implements AutoCloseable {
             PetWireCodec petCodec = new PetWireCodec(appearanceRules);
             JdbcPetRepository repository = new JdbcPetRepository(dataSource, appearanceRules);
             JdbcSubscriptionAccess subscriptions = new JdbcSubscriptionAccess(dataSource);
+            com.silver.aipets.service.subscription.SubscriptionAccess subscriptionAccess =
+                    new com.silver.aipets.service.subscription.SubscriptionAccess() {
+                        @Override
+                        public boolean canAdopt(UUID ownerUuid) {
+                            return details(ownerUuid).aiAccessEnabled();
+                        }
+
+                        @Override
+                        public com.silver.aipets.service.subscription.SubscriptionAccessDetails details(
+                                UUID ownerUuid) {
+                            if (config.dummySubscriptionEnabled()
+                                    && ownerUuid.equals(config.dummySubscriptionOwnerUuid())) {
+                                return new com.silver.aipets.service.subscription.SubscriptionAccessDetails(
+                                        true, "ACTIVE", false, null);
+                            }
+                            return subscriptions.details(ownerUuid);
+                        }
+                    };
             com.silver.aipets.service.subscription.SubscriptionAccess aiAccess =
-                    ownerUuid -> config.aiEnabled() && subscriptions.canAdopt(ownerUuid);
+                    ownerUuid -> config.aiEnabled() && subscriptionAccess.canAdopt(ownerUuid);
+            AiBudgetService budget = (config.stripeEnabled() || config.dummySubscriptionEnabled())
+                    ? new JdbcAiBudgetService(dataSource, subscriptionAccess, config.aiPricing())
+                    : AiBudgetService.UNLIMITED;
             JdbcPetSleepStateStore sleepStore = new JdbcPetSleepStateStore(dataSource);
+            AtomicReference<Consumer<com.silver.aipets.service.sleep.PetSleepTransition>>
+                    consolidationTrigger = new AtomicReference<>(ignored -> { });
             PetSleepService sleepService =
-                    new PetSleepService(sleepStore, PetSleepPolicy.defaults(), Clock.systemUTC());
+                    new PetSleepService(
+                            sleepStore, PetSleepPolicy.defaults(), Clock.systemUTC(),
+                            transition -> {
+                                try {
+                                    consolidationTrigger.get().accept(transition);
+                                } catch (RuntimeException failure) {
+                                    System.getLogger(PetServiceRuntime.class.getName()).log(
+                                            System.Logger.Level.WARNING,
+                                            "Sleep consolidation trigger failed safely", failure);
+                                }
+                            });
             sleepScheduler = new PetSleepScheduler(
                     sleepService,
                     100,
@@ -157,6 +233,8 @@ public final class PetServiceRuntime implements AutoCloseable {
                             100,
                             Duration.ofSeconds(5));
             PetOperationalMetrics metrics = new PetOperationalMetrics();
+            JdbcOperationalMetricsSampler metricsSampler =
+                    new JdbcOperationalMetricsSampler(dataSource, metrics);
             server.createContext(
                     "/v1/pets",
                     new MetricsHttpHandler(new PetAuthorityHttpHandler(
@@ -172,7 +250,7 @@ public final class PetServiceRuntime implements AutoCloseable {
                     new MetricsHttpHandler(new PetAdoptionHttpHandler(
                             new PetAdoptionService(
                                     repository,
-                                    subscriptions,
+                                    aiAccess,
                                     new PetRandomizer(
                                             appearanceRules,
                                             AppearanceCatalog.vanilla12110(),
@@ -185,36 +263,163 @@ public final class PetServiceRuntime implements AutoCloseable {
                             new PetAdoptionWireCodec(petCodec),
                             config.bearerToken()), metrics));
             server.createContext(
+                    "/v1/subscriptions",
+                    new MetricsHttpHandler(new SubscriptionAccessHttpHandler(
+                            subscriptionAccess, config.bearerToken(), budget), metrics));
+            server.createContext(
                     "/health",
                     new MetricsHttpHandler(new PetHealthHttpHandler(
-                            new JdbcPetReadinessProbe(
-                                    dataSource, config.validationTimeoutMs(), config.stripeEnabled()),
-                            config.bearerToken(), metrics), metrics));
+                    new JdbcPetReadinessProbe(
+                            dataSource,
+                            config.validationTimeoutMs(),
+                            config.stripeEnabled(),
+                            config.qdrantEnabled(),
+                            (config.qdrantEnabled()
+                                    || config.dialogueEnabled()
+                                    || config.consolidationEnabled())
+                                    && !config.openAiApiKey().isBlank()),
+                            config.bearerToken(), metrics, metricsSampler::sample), metrics));
             server.createContext(
                     "/v1/presence",
                     new MetricsHttpHandler(
                             new PetPresenceHttpHandler(sleepService, config.bearerToken()), metrics));
+            server.createContext(
+                    "/v1/metrics/events",
+                    new MetricsHttpHandler(
+                            new PetMetricsEventHttpHandler(metrics, config.bearerToken()), metrics));
+            server.createContext(
+                    "/v1/admin/dialogue/history/",
+                    new MetricsHttpHandler(new DialogueAdminHistoryHttpHandler(
+                            new JdbcDialogueAdminHistoryReader(dataSource, repository),
+                            config.bearerToken()), metrics));
+            JdbcLongTermMemoryStore sharedMemories =
+                    (config.dialogueEnabled() || config.qdrantEnabled())
+                            ? new JdbcLongTermMemoryStore(dataSource) : null;
+            QdrantVectorMemoryRepository sharedVectors = null;
+            EmbeddingModelClient sharedEmbeddingModel = null;
+            AtomicReference<MemoryEmbeddingWorker> embeddingWorkerRef = new AtomicReference<>();
             if (config.qdrantEnabled()) {
-                JdbcLongTermMemoryStore memories = new JdbcLongTermMemoryStore(dataSource);
+                sharedVectors = QdrantVectorMemoryRepository.fromConfig(config);
+                sharedEmbeddingModel = OpenAiEmbeddingModelClient.fromConfig(config);
+            }
+            if (config.dialogueEnabled()) {
+                // Token/dollar budget is authoritative in production; retain the legacy counter only
+                // as an effectively unreachable integer safety ceiling for compatibility.
+                DialogueLimits dialogueLimits = DialogueLimits.defaultsWithoutReplyCap();
+                DialogueMemoryRetriever memoryRetriever =
+                        new RelationalDialogueMemoryRetriever(sharedMemories);
+                if (config.qdrantEnabled()) {
+                    memoryRetriever = new VectorDialogueMemoryRetriever(
+                            new MemoryRetrievalService(
+                                    sharedMemories,
+                                    sharedVectors,
+                                    sharedEmbeddingModel,
+                                    workers,
+                                    Clock.systemUTC(),
+                                    metrics,
+                                    new com.silver.aipets.service.vector.JdbcEmbeddingUsageRecorder(dataSource, repository),
+                                    budget,
+                                    petId -> repository.findById(petId).map(com.silver.aipets.common.domain.Pet::ownerUuid)),
+                            memoryRetriever);
+                }
+                JdbcDialogueContextLoader contexts = new JdbcDialogueContextLoader(
+                        repository,
+                        new JdbcPetSleepStateReader(dataSource),
+                        memoryRetriever,
+                        new JdbcDialogueHistoryReader(dataSource),
+                        aiAccess);
+                OpenAiModerationClient moderation = new OpenAiModerationClient(
+                        config.openAiBaseUri(), config.moderationModel(), config.openAiApiKey(),
+                        Duration.ofMillis(config.dialogueTimeoutMs()));
+                DialogueService dialogue = new DialogueService(
+                        dialogueLimits,
+                        new ModeratedDialogueSafety(moderation),
+                        new DialoguePromptBuilder(dialogueLimits, new JTokkitDialogueTokenCounter()),
+                        new OpenAiDialogueModelClient(
+                                config.openAiBaseUri(), config.dialogueModel(), config.openAiApiKey(),
+                                Duration.ofMillis(config.dialogueTimeoutMs()), "pet_dialogue", config.aiPricing()),
+                        new DialogueOutputCodec(),
+                        new DialogueOutputValidator(dialogueLimits),
+                        new DialogueAdmissionController(dialogueLimits, budget, config.aiPricing()),
+                        new JdbcDialogueStateStore(dataSource, UUID::randomUUID),
+                        Clock.systemUTC(), UUID::randomUUID, UUID::randomUUID,
+                        () -> config.aiEnabled(), metrics);
+                server.createContext(
+                        "/v1/dialogue",
+                        new MetricsHttpHandler(new PetDialogueHttpHandler(
+                                new DialogueWireResponder(contexts, dialogue, Clock.systemUTC()),
+                                config.bearerToken()), metrics));
+            } else {
+                // Keep the authenticated route explicit while paid model calls are disabled.
+                server.createContext(
+                        "/v1/dialogue",
+                        new MetricsHttpHandler(new PetDialogueHttpHandler(
+                                new UnavailableDialogueResponder(
+                                        "Pet conversation is temporarily unavailable."),
+                                config.bearerToken()), metrics));
+            }
+            if (config.qdrantEnabled()) {
                 JdbcEmbeddingJobStore jobs = new JdbcEmbeddingJobStore(dataSource);
                 MemoryEmbeddingWorker embeddingWorker = new MemoryEmbeddingWorker(
-                        memories,
+                        sharedMemories,
                         jobs,
-                        OpenAiEmbeddingModelClient.fromConfig(config),
-                        QdrantVectorMemoryRepository.fromConfig(config),
+                        sharedEmbeddingModel,
+                        sharedVectors,
                         Clock.systemUTC(),
                         UUID::randomUUID,
                         5,
                         Duration.ofMinutes(2),
-                        Duration.ofSeconds(30));
+                        Duration.ofSeconds(30),
+                        new com.silver.aipets.service.vector.JdbcEmbeddingUsageRecorder(dataSource, repository),
+                        budget,
+                        petId -> repository.findById(petId).map(com.silver.aipets.common.domain.Pet::ownerUuid));
+                embeddingWorkerRef.set(embeddingWorker);
                 server.createContext(
                         "/v1/admin/memory/reindex",
                         new MetricsHttpHandler(new MemoryReindexHttpHandler(
-                                new MemoryReindexService(memories, embeddingWorker),
+                                new MemoryReindexService(sharedMemories, embeddingWorker),
                                 config.bearerToken()), metrics));
                 embeddingScheduler = new EmbeddingScheduler(
                         embeddingWorker, 4, Duration.ofSeconds(15),
                         "embedding-" + UUID.randomUUID(), metrics);
+            }
+            if (config.consolidationEnabled()) {
+                ConsolidationConfig consolidationConfig = ConsolidationConfig.defaults();
+                JTokkitDialogueTokenCounter consolidationTokens =
+                        new JTokkitDialogueTokenCounter();
+                ConsolidationWorker consolidationWorker = new ConsolidationWorker(
+                        consolidationConfig,
+                        new JdbcConsolidationRepository(
+                                dataSource, repository, UUID::randomUUID, UUID::randomUUID),
+                        aiAccess,
+                        new ConsolidationCandidateSelector(consolidationConfig, consolidationTokens),
+                        new com.silver.aipets.service.consolidation.ConsolidationPromptBuilder(
+                                consolidationConfig, consolidationTokens),
+                        new OpenAiConsolidationModelClient(
+                                config.openAiBaseUri(), config.consolidationModel(),
+                                config.openAiApiKey(),
+                                Duration.ofMillis(config.dialogueTimeoutMs()), config.aiPricing()),
+                        new ConsolidationOutputCodec(),
+                        new ConsolidationOutputValidator(consolidationConfig, consolidationTokens),
+                        card -> {
+                            MemoryEmbeddingWorker worker = embeddingWorkerRef.get();
+                            if (worker != null) {
+                                try {
+                                    worker.enqueue(card);
+                                } catch (RuntimeException ignored) {
+                                    // The authoritative SQL card remains pending for reindex recovery.
+                                }
+                            }
+                        },
+                        Clock.systemUTC(), UUID::randomUUID, UUID::randomUUID,
+                        config::aiEnabled, budget);
+                consolidationTrigger.set(new SleepConsolidationTrigger(consolidationWorker));
+                consolidationScheduler = new ConsolidationScheduler(
+                        consolidationWorker,
+                        "consolidation-" + UUID.randomUUID(),
+                        4,
+                        Duration.ofSeconds(30),
+                        metrics);
             }
             Clock adminClock = Clock.systemUTC();
             server.createContext(
@@ -243,7 +448,8 @@ public final class PetServiceRuntime implements AutoCloseable {
                                         accountLinks,
                                         new StripeHttpCheckoutClient(config.stripeSecretKey()),
                                         config.stripePriceId(),
-                                        config.publicBaseUri()),
+                                        config.publicBaseUri(),
+                                        subscriptionAccess),
                                 billingClock), metrics));
                 server.createContext(
                         "/v1/customer-portal/",
@@ -269,10 +475,13 @@ public final class PetServiceRuntime implements AutoCloseable {
             server.setExecutor(workers);
             return new PetServiceRuntime(
                     config, dataSource, workers, server, sleepScheduler, retentionScheduler,
-                    transferExpiryScheduler, embeddingScheduler);
+                    transferExpiryScheduler, embeddingScheduler, consolidationScheduler);
         } catch (IOException | RuntimeException failure) {
             if (embeddingScheduler != null) {
                 embeddingScheduler.close();
+            }
+            if (consolidationScheduler != null) {
+                consolidationScheduler.close();
             }
             if (transferExpiryScheduler != null) {
                 transferExpiryScheduler.close();
@@ -301,6 +510,9 @@ public final class PetServiceRuntime implements AutoCloseable {
         if (embeddingScheduler != null) {
             embeddingScheduler.start();
         }
+        if (consolidationScheduler != null) {
+            consolidationScheduler.start();
+        }
     }
 
     public InetSocketAddress address() {
@@ -318,6 +530,9 @@ public final class PetServiceRuntime implements AutoCloseable {
         transferExpiryScheduler.close();
         if (embeddingScheduler != null) {
             embeddingScheduler.close();
+        }
+        if (consolidationScheduler != null) {
+            consolidationScheduler.close();
         }
         workers.shutdown();
         try {

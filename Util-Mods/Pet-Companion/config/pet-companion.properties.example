@@ -8,4 +8,8 @@ authority.token-environment=PET_SERVICE_TOKEN
 authority.compass-signing-environment=PET_COMPASS_SIGNING_SECRET
 authority.backend-friendly-names=ocean=Ocean;survival=Survival;waiting=Waiting Lobby
 authority.connect-timeout-ms=2000
-authority.request-timeout-ms=3000
+# Model calls commonly take 2–3 seconds; leave room for persistence and HTTP response time.
+authority.request-timeout-ms=15000
+# Conversation transport: staging gives deterministic local replies for acceptance tests;
+# service uses the authenticated central dialogue endpoint; disabled reports unavailable.
+conversation.mode=disabled

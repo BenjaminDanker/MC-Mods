@@ -41,7 +41,7 @@ public final class PetConversationSessionRegistry {
 
     public static PetConversationSessionRegistry defaults() {
         return new PetConversationSessionRegistry(
-                Duration.ofSeconds(30), Duration.ofSeconds(5), 500, UUID::randomUUID);
+                Duration.ofMinutes(10), Duration.ofSeconds(5), 500, UUID::randomUUID);
     }
 
     public synchronized PetConversationSession open(
@@ -102,7 +102,7 @@ public final class PetConversationSessionRegistry {
 
         PetConversationSession submitting = new PetConversationSession(
                 current.sessionId(), current.ownerUuid(), current.petId(), current.petEntityUuid(),
-                current.backendId(), current.dimensionId(), current.expiresAt(),
+                current.backendId(), current.dimensionId(), now.plus(lifetime),
                 PetConversationSession.State.SUBMITTING, Optional.of(correlationId));
         bySession.put(sessionId, submitting);
         petCooldownUntil.put(current.petId(), now.plus(cooldown));
@@ -125,8 +125,20 @@ public final class PetConversationSessionRegistry {
                 ? Optional.of(current) : Optional.empty();
     }
 
-    /** Completes only the currently correlated request; stale async completions cannot evict a new session. */
+    /** Completes the correlated request and reopens the same private conversation. */
     public synchronized boolean complete(UUID sessionId, UUID correlationId, Instant now) {
+        Optional<PetConversationSession> matched = current(sessionId, correlationId, now);
+        if (matched.isEmpty()) return false;
+        PetConversationSession current = matched.orElseThrow();
+        bySession.put(sessionId, new PetConversationSession(
+                current.sessionId(), current.ownerUuid(), current.petId(), current.petEntityUuid(),
+                current.backendId(), current.dimensionId(), now.plus(lifetime),
+                PetConversationSession.State.OPEN, Optional.empty()));
+        return true;
+    }
+
+    /** Terminates only the currently correlated request and its conversation. */
+    public synchronized boolean end(UUID sessionId, UUID correlationId, Instant now) {
         if (current(sessionId, correlationId, now).isEmpty()) return false;
         removeIndexed(sessionId);
         return true;
@@ -154,6 +166,18 @@ public final class PetConversationSessionRegistry {
                 .forEach(this::removeIndexed);
         petCooldownUntil.entrySet().removeIf(entry -> !now.isBefore(entry.getValue()));
         return before - bySession.size();
+    }
+
+    /** Keeps deliberately open UI sessions alive; submitting requests retain a hard deadline. */
+    public synchronized void keepOpenSessionsAlive(Instant now) {
+        Objects.requireNonNull(now, "now");
+        bySession.replaceAll((sessionId, current) ->
+                current.state() == PetConversationSession.State.OPEN
+                        ? new PetConversationSession(
+                                current.sessionId(), current.ownerUuid(), current.petId(),
+                                current.petEntityUuid(), current.backendId(), current.dimensionId(),
+                                now.plus(lifetime), current.state(), current.correlationId())
+                        : current);
     }
 
     public synchronized int activeCount() {

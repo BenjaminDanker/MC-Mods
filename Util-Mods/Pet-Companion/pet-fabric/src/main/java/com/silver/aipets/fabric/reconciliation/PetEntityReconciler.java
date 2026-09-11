@@ -12,6 +12,8 @@ import com.silver.aipets.fabric.authority.PetAuthorityGateway;
 import com.silver.aipets.fabric.authority.PetAuthoritySnapshot;
 import com.silver.aipets.fabric.entity.PetEntityController;
 import com.silver.aipets.fabric.entity.PetEntityData;
+import com.silver.aipets.fabric.metrics.PetMetricsReporter;
+import com.silver.aipets.fabric.metrics.PetMetricsClassifier;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.passive.TameableEntity;
 import net.minecraft.server.MinecraftServer;
@@ -25,10 +27,19 @@ import java.util.concurrent.CompletableFuture;
 public final class PetEntityReconciler {
     private final BackendId backendId;
     private final PetAuthorityGateway authority;
+    private final PetMetricsReporter metrics;
 
     public PetEntityReconciler(BackendId backendId, PetAuthorityGateway authority) {
+        this(backendId, authority, PetMetricsReporter.noop());
+    }
+
+    public PetEntityReconciler(
+            BackendId backendId,
+            PetAuthorityGateway authority,
+            PetMetricsReporter metrics) {
         this.backendId = Objects.requireNonNull(backendId, "backendId");
         this.authority = Objects.requireNonNull(authority, "authority");
+        this.metrics = Objects.requireNonNull(metrics, "metrics");
     }
 
     public CompletableFuture<PetEntityReconciliationResult> reconcileLoaded(
@@ -94,6 +105,7 @@ public final class PetEntityReconciler {
         }
         if (snapshot.isEmpty()) {
             discard(entity, identity, entityRecordVersion, null, null);
+            record(PetMetricsClassifier.missingEntityDiscard());
             result.complete(PetEntityReconciliationResult.of(
                     PetEntityReconciliationStatus.STALE_DISCARDED));
             return;
@@ -107,6 +119,7 @@ public final class PetEntityReconciler {
                 entityRecordVersion);
         if (decision.shouldDiscard()) {
             discard(entity, identity, entityRecordVersion, pet, decision);
+            record(PetMetricsClassifier.entityDiscard(decision));
             result.complete(PetEntityReconciliationResult.decided(
                     PetEntityReconciliationStatus.STALE_DISCARDED,
                     decision));
@@ -165,6 +178,14 @@ public final class PetEntityReconciler {
             action.run();
         } else {
             server.execute(action);
+        }
+    }
+
+    private void record(com.silver.aipets.common.transport.PetMetricWireEvent.Metric metric) {
+        try {
+            metrics.increment(metric);
+        } catch (RuntimeException ignored) {
+            // Diagnostics must never affect entity reconciliation.
         }
     }
 }

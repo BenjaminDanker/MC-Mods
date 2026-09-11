@@ -1,6 +1,6 @@
 # AI pet database migrations
 
-`migrations/V001__create_ai_pet_schema.sql` is the forward-only MariaDB baseline for the authoritative pet store. `V002__make_recall_operations_replayable.sql` adds the request fingerprint and exact stored response required by the recall workflow. `V003__bind_account_links_to_stripe_checkout.sql` binds each opened opaque link to the exact Stripe Checkout Session consumed by its webhook. Apply all migration files in version order.
+`migrations/V001__create_ai_pet_schema.sql` is the forward-only MariaDB baseline for the authoritative pet store. `V002__make_recall_operations_replayable.sql` adds the request fingerprint and exact stored response required by the recall workflow. `V003__bind_account_links_to_stripe_checkout.sql` binds each opened opaque link to the exact Stripe Checkout Session consumed by its webhook. `V004__persist_dialogue_context_usage.sql` adds bounded prompt-part accounting to provider usage rows without storing raw prompts. Apply all migration files in version order.
 
 The migration is additive and contains no credentials, `USE` statement, startup hook, or vector-vendor dependency. The handoff identifies the host-native Raspberry Pi MariaDB as the selected SQL server and `minecraft` as its current database, but deployment inspection still must confirm whether these tables belong directly in `minecraft` or in a separate database on that same instance. Select the approved database explicitly when applying it.
 
@@ -25,6 +25,8 @@ The migration is additive and contains no credentials, `USE` statement, startup 
      < db/migrations/V002__make_recall_operations_replayable.sql
    mariadb --defaults-extra-file=/secure/path/client.cnf --database=confirmed_pet_database \
      < db/migrations/V003__bind_account_links_to_stripe_checkout.sql
+   mariadb --defaults-extra-file=/secure/path/client.cnf --database=confirmed_pet_database \
+     < db/migrations/V004__persist_dialogue_context_usage.sql
    ```
 
 3. Apply each migration exactly once through the chosen migration/operator process. MariaDB DDL causes implicit commits, so a migration file is not an all-or-nothing transaction. Never run migrations automatically from pet-service startup.
@@ -73,6 +75,5 @@ Production schema removal or incompatible correction requires a new, reviewed fo
 
 Repository tooling under `deploy/scripts/` creates consistent streamed logical backups, verifies
 their SHA-256/gzip integrity, guards restore behind an explicit confirmation, and checks all V001
-tables/V002/V003 columns plus required pet aggregate rows after restore. This complements rather than
-silently replacing the host's existing retention, encryption, monitoring, off-host replication,
-and point-in-time recovery policy.
+tables/V002/V003 columns plus required pet aggregate rows after restore. The selected deployment
+uses this local backup/restore path; no separate encrypted/off-host policy is required for release.

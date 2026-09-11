@@ -1,0 +1,18 @@
+# Template only: replace petcompanion@vps.example.invalid with the operator's
+# restricted VPS account and hostname before installing this unit. Do not commit
+# a real SSH endpoint here.
+[Unit]
+Description=Pet Companion Stripe reverse tunnel to public VPS
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/ssh -N -T -i %h/.ssh/pet-companion-vps -o IdentitiesOnly=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=yes -R 127.0.0.1:18788:127.0.0.1:8788 petcompanion@vps.example.invalid
+Restart=always
+RestartSec=5
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

@@ -38,6 +38,11 @@ public final class JdbcLongTermMemoryStore implements LongTermMemoryStore {
     private static final String LIST_AFTER = "SELECT " + COLUMNS + """
              FROM long_term_memories
              WHERE active = TRUE AND memory_id > ?
+            ORDER BY memory_id LIMIT ?
+            """;
+    private static final String LIST_PET = "SELECT " + COLUMNS + """
+             FROM long_term_memories
+             WHERE pet_id = ? AND active = TRUE
              ORDER BY memory_id LIMIT ?
             """;
     private static final String READY = """
@@ -117,6 +122,30 @@ public final class JdbcLongTermMemoryStore implements LongTermMemoryStore {
             return new MemoryPage(cards, next);
         } catch (SQLException | RuntimeException failure) {
             throw persistence("Could not page active long-term memories", failure);
+        }
+    }
+
+    @Override
+    public MemoryPage listActiveForPet(UUID petId, int limit) {
+        Objects.requireNonNull(petId, "petId");
+        if (limit < 1 || limit > 1_000) {
+            throw new IllegalArgumentException("limit must be between 1 and 1000");
+        }
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(LIST_PET)) {
+            statement.setString(1, petId.toString());
+            statement.setInt(2, limit + 1);
+            List<LongTermMemoryCard> cards = new ArrayList<>();
+            try (ResultSet rows = statement.executeQuery()) {
+                while (rows.next()) cards.add(map(rows));
+            }
+            boolean hasMore = cards.size() > limit;
+            if (hasMore) cards.removeLast();
+            Optional<UUID> next = hasMore && !cards.isEmpty()
+                    ? Optional.of(cards.getLast().memoryId()) : Optional.empty();
+            return new MemoryPage(cards, next);
+        } catch (SQLException | RuntimeException failure) {
+            throw persistence("Could not page pet long-term memories", failure);
         }
     }
 

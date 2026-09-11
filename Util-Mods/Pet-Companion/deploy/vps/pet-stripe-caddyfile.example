@@ -1,0 +1,24 @@
+# Public VPS HTTPS edge. Use the purchased Minecraft domain on HTTPS; Minecraft
+# traffic remains on port 25565 and is unaffected by this port-443 site.
+mc-multi-world.space {
+    tls force_automate
+
+    @webhook path /v1/stripe/webhook
+    handle @webhook {
+        reverse_proxy 127.0.0.1:18788
+    }
+
+    @checkout path_regexp checkout ^/checkout/[A-Za-z0-9_-]{43}$
+    handle @checkout {
+        reverse_proxy 127.0.0.1:18788
+    }
+
+    @return path /checkout/success /checkout/cancel /checkout/return
+    handle @return {
+        reverse_proxy 127.0.0.1:18788
+    }
+
+    handle {
+        respond "not found" 404
+    }
+}

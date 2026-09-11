@@ -14,7 +14,7 @@ import java.util.UUID;
 public final class JdbcSubscriptionAccess implements SubscriptionAccess {
     private static final String SELECT_ACCESS = """
             SELECT status, ai_access_enabled, cancel_at_period_end,
-                   current_period_end, grace_ends_at
+                   current_period_start, current_period_end, grace_ends_at
             FROM subscriptions
             WHERE owner_uuid = ?
             """;
@@ -27,19 +27,26 @@ public final class JdbcSubscriptionAccess implements SubscriptionAccess {
 
     @Override
     public boolean canAdopt(UUID ownerUuid) {
+        return details(ownerUuid).aiAccessEnabled();
+    }
+
+    @Override
+    public SubscriptionAccessDetails details(UUID ownerUuid) {
         Objects.requireNonNull(ownerUuid, "ownerUuid");
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(SELECT_ACCESS)) {
             statement.setString(1, ownerUuid.toString());
             try (ResultSet rows = statement.executeQuery()) {
                 if (!rows.next()) {
-                    return false;
+                    return new SubscriptionAccessDetails(false, "INACTIVE", false, null);
                 }
                 String status = rows.getString("status");
                 java.time.Instant now = java.time.Instant.now();
+                java.sql.Timestamp periodStart = rows.getTimestamp("current_period_start");
                 java.sql.Timestamp periodEnd = rows.getTimestamp("current_period_end");
                 java.sql.Timestamp graceEnd = rows.getTimestamp("grace_ends_at");
-                boolean withinPaidPeriod = !rows.getBoolean("cancel_at_period_end")
+                boolean cancelAtPeriodEnd = rows.getBoolean("cancel_at_period_end");
+                boolean withinPaidPeriod = !cancelAtPeriodEnd
                         || periodEnd == null || periodEnd.toInstant().isAfter(now);
                 boolean lifecycleAllows = ("ACTIVE".equals(status) || "TRIALING".equals(status))
                         ? withinPaidPeriod
@@ -50,7 +57,12 @@ public final class JdbcSubscriptionAccess implements SubscriptionAccess {
                     throw new PetPersistenceException(
                             "Subscription uniqueness invariant is violated", null);
                 }
-                return allowed;
+                return new SubscriptionAccessDetails(
+                        allowed,
+                        status,
+                        cancelAtPeriodEnd,
+                        periodStart == null ? null : periodStart.toInstant(),
+                        periodEnd == null ? null : periodEnd.toInstant());
             }
         } catch (SQLException failure) {
             throw new PetPersistenceException("Could not read subscription access", failure);

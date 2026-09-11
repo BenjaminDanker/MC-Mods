@@ -16,6 +16,8 @@ import com.silver.aipets.fabric.authority.PetAuthoritySnapshot;
 import com.silver.aipets.fabric.entity.PetEntityData;
 import com.silver.aipets.fabric.entity.PetEntityFactory;
 import com.silver.aipets.fabric.entity.PreparedPetEntity;
+import com.silver.aipets.fabric.metrics.PetMetricsReporter;
+import com.silver.aipets.fabric.metrics.PetMetricsClassifier;
 import com.silver.aipets.fabric.placement.SafePlacementFinder;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.passive.TameableEntity;
@@ -46,6 +48,7 @@ public final class PetTransferCoordinator {
     private final Supplier<UUID> transferIds;
     private final Supplier<UUID> operationIds;
     private final EntitySpawner entitySpawner;
+    private final PetMetricsReporter metrics;
 
     public PetTransferCoordinator(
             BackendId backendId,
@@ -57,7 +60,21 @@ public final class PetTransferCoordinator {
             Supplier<UUID> transferIds,
             Supplier<UUID> operationIds) {
         this(backendId, authority, safePlacementFinder, entityFactory, config, clock,
-                transferIds, operationIds, ServerWorld::spawnEntity);
+                transferIds, operationIds, ServerWorld::spawnEntity, PetMetricsReporter.noop());
+    }
+
+    public PetTransferCoordinator(
+            BackendId backendId,
+            PetAuthorityGateway authority,
+            SafePlacementFinder safePlacementFinder,
+            PetEntityFactory entityFactory,
+            PetTransferConfig config,
+            Clock clock,
+            Supplier<UUID> transferIds,
+            Supplier<UUID> operationIds,
+            PetMetricsReporter metrics) {
+        this(backendId, authority, safePlacementFinder, entityFactory, config, clock,
+                transferIds, operationIds, ServerWorld::spawnEntity, metrics);
     }
 
     PetTransferCoordinator(
@@ -70,6 +87,21 @@ public final class PetTransferCoordinator {
             Supplier<UUID> transferIds,
             Supplier<UUID> operationIds,
             EntitySpawner entitySpawner) {
+        this(backendId, authority, safePlacementFinder, entityFactory, config, clock,
+                transferIds, operationIds, entitySpawner, PetMetricsReporter.noop());
+    }
+
+    private PetTransferCoordinator(
+            BackendId backendId,
+            PetAuthorityGateway authority,
+            SafePlacementFinder safePlacementFinder,
+            PetEntityFactory entityFactory,
+            PetTransferConfig config,
+            Clock clock,
+            Supplier<UUID> transferIds,
+            Supplier<UUID> operationIds,
+            EntitySpawner entitySpawner,
+            PetMetricsReporter metrics) {
         this.backendId = Objects.requireNonNull(backendId, "backendId");
         this.authority = Objects.requireNonNull(authority, "authority");
         this.safePlacementFinder = Objects.requireNonNull(safePlacementFinder, "safePlacementFinder");
@@ -79,6 +111,7 @@ public final class PetTransferCoordinator {
         this.transferIds = Objects.requireNonNull(transferIds, "transferIds");
         this.operationIds = Objects.requireNonNull(operationIds, "operationIds");
         this.entitySpawner = Objects.requireNonNull(entitySpawner, "entitySpawner");
+        this.metrics = Objects.requireNonNull(metrics, "metrics");
     }
 
     /** Called by the portal pre-transfer hook; it always completes without blocking server I/O. */
@@ -89,6 +122,7 @@ public final class PetTransferCoordinator {
         MinecraftServer server = initiatingPlayer.getEntityWorld().getServer();
         UUID ownerUuid = initiatingPlayer.getUuid();
         CompletableFuture<PetTransferOutcome> outcome = new CompletableFuture<>();
+        observe(outcome, true);
         try {
             authority.findByOwner(ownerUuid).whenComplete((snapshot, failure) -> {
                 if (failure != null || snapshot == null) {
@@ -115,6 +149,7 @@ public final class PetTransferCoordinator {
         MinecraftServer server = joiningPlayer.getEntityWorld().getServer();
         UUID ownerUuid = joiningPlayer.getUuid();
         CompletableFuture<PetTransferOutcome> outcome = new CompletableFuture<>();
+        observe(outcome, false);
         try {
             authority.findByOwner(ownerUuid).whenComplete((snapshot, failure) -> {
                 if (failure != null || snapshot == null) {
@@ -493,6 +528,20 @@ public final class PetTransferCoordinator {
 
     private static void onServer(MinecraftServer server, Runnable action) {
         if (server.isOnThread()) action.run(); else server.execute(action);
+    }
+
+    private void observe(CompletableFuture<PetTransferOutcome> outcome, boolean source) {
+        outcome.whenComplete((resolved, failure) -> {
+            if (failure != null || resolved == null) return;
+            java.util.Optional<com.silver.aipets.common.transport.PetMetricWireEvent.Metric> metric =
+                    PetMetricsClassifier.transferFailure(source, resolved.status());
+            if (metric.isEmpty()) return;
+            try {
+                metrics.increment(metric.orElseThrow());
+            } catch (RuntimeException ignored) {
+                // Metrics are diagnostic only and cannot change transfer safety.
+            }
+        });
     }
 
     @FunctionalInterface

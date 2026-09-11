@@ -3,6 +3,7 @@ package com.silver.aipets.service.vector;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.silver.aipets.service.billing.AiPricing;
 import com.silver.aipets.service.config.PetServiceConfig;
 
 import java.io.IOException;
@@ -11,7 +12,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Objects;
+import java.util.Optional;
 
 /** OpenAI embeddings client; sends only the bounded text supplied by the embedding boundary. */
 public final class OpenAiEmbeddingModelClient implements EmbeddingModelClient {
@@ -21,6 +24,7 @@ public final class OpenAiEmbeddingModelClient implements EmbeddingModelClient {
     private final int dimension;
     private final String apiKey;
     private final Duration timeout;
+    private final AiPricing pricing;
 
     public OpenAiEmbeddingModelClient(
             URI baseUri,
@@ -28,6 +32,16 @@ public final class OpenAiEmbeddingModelClient implements EmbeddingModelClient {
             int dimension,
             String apiKey,
             Duration timeout) {
+        this(baseUri, model, dimension, apiKey, timeout, AiPricing.defaults());
+    }
+
+    public OpenAiEmbeddingModelClient(
+            URI baseUri,
+            String model,
+            int dimension,
+            String apiKey,
+            Duration timeout,
+            AiPricing pricing) {
         Objects.requireNonNull(baseUri, "baseUri");
         if (baseUri.getHost() == null
                 || !("http".equalsIgnoreCase(baseUri.getScheme())
@@ -42,6 +56,7 @@ public final class OpenAiEmbeddingModelClient implements EmbeddingModelClient {
         this.dimension = dimension;
         this.apiKey = bounded(apiKey, "apiKey", 512);
         this.timeout = Objects.requireNonNull(timeout, "timeout");
+        this.pricing = Objects.requireNonNull(pricing, "pricing");
         if (timeout.isZero() || timeout.isNegative()) {
             throw new IllegalArgumentException("timeout must be positive");
         }
@@ -55,7 +70,7 @@ public final class OpenAiEmbeddingModelClient implements EmbeddingModelClient {
         }
         return new OpenAiEmbeddingModelClient(
                 config.openAiBaseUri(), config.embeddingModel(), config.embeddingDimension(),
-                config.openAiApiKey(), Duration.ofMillis(config.qdrantTimeoutMs()));
+                config.openAiApiKey(), Duration.ofMillis(config.qdrantTimeoutMs()), config.aiPricing());
     }
 
     @Override
@@ -65,6 +80,11 @@ public final class OpenAiEmbeddingModelClient implements EmbeddingModelClient {
 
     @Override
     public EmbeddingVector embed(String normalizedText) {
+        return embedWithUsage(normalizedText).embedding();
+    }
+
+    @Override
+    public EmbeddingModelResponse embedWithUsage(String normalizedText) {
         Objects.requireNonNull(normalizedText, "normalizedText");
         if (normalizedText.isBlank() || normalizedText.length() > 4_000) {
             throw new IllegalArgumentException("normalizedText length is invalid");
@@ -80,6 +100,7 @@ public final class OpenAiEmbeddingModelClient implements EmbeddingModelClient {
                 .header("Accept", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
                 .build();
+        Instant started = Instant.now();
         final HttpResponse<String> response;
         try {
             response = client.send(request, HttpResponse.BodyHandlers.ofString());
@@ -107,13 +128,36 @@ public final class OpenAiEmbeddingModelClient implements EmbeddingModelClient {
             for (int index = 0; index < values.size(); index++) {
                 vector[index] = values.get(index).getAsFloat();
             }
-            return new EmbeddingVector(model, vector);
+            int inputTokens = 0;
+            JsonObject usage = root.getAsJsonObject("usage");
+            if (usage != null && usage.has("prompt_tokens")) {
+                inputTokens = integer(usage, "prompt_tokens");
+            }
+            long latency = Math.max(0L, Duration.between(started, Instant.now()).toMillis());
+            return new EmbeddingModelResponse(
+                    new EmbeddingVector(model, vector),
+                    Optional.ofNullable(root.get("id"))
+                            .filter(element -> element.isJsonPrimitive())
+                            .map(element -> element.getAsString()),
+                    inputTokens, pricing.embeddingCost(inputTokens), latency);
         } catch (RuntimeException malformed) {
             if (malformed instanceof VectorStoreUnavailableException unavailable) {
                 throw unavailable;
             }
             throw new VectorStoreUnavailableException("Embedding provider response was invalid", malformed);
         }
+    }
+
+    private static int integer(JsonObject object, String name) {
+        if (!object.has(name) || !object.get(name).isJsonPrimitive()
+                || !object.getAsJsonPrimitive(name).isNumber()) {
+            throw new IllegalArgumentException(name + " is missing");
+        }
+        int value = object.get(name).getAsInt();
+        if (value < 0 || object.get(name).getAsDouble() != value) {
+            throw new IllegalArgumentException(name + " is invalid");
+        }
+        return value;
     }
 
     private static String bounded(String value, String name, int maximum) {

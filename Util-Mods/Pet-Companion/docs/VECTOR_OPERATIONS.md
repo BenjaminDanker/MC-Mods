@@ -8,9 +8,13 @@ default output; changing model or dimensions requires a new collection/reindex.
 
 Qdrant is a separate open-source HTTP service, so MariaDB remains authoritative without a vector
 extension or schema replacement. The adapter is implemented in `QdrantVectorMemoryRepository`;
-the OpenAI client is implemented in `OpenAiEmbeddingModelClient`. Production endpoint, API-key
-delivery, collection sizing, authentication, and backup/restore details still require staging
-and host approval.
+the OpenAI client is implemented in `OpenAiEmbeddingModelClient`. The Raspberry Pi now runs
+Qdrant `1.19.1` on loopback `127.0.0.1:6333` with an API key stored outside Git; an isolated
+authenticated smoke test created a temporary collection, upserted/searched one vector, and
+deleted it. The selected credentials/model settings are now active in the protected Pi service
+environment; the service reports vector/model `CONFIGURED`. Collection sizing and production
+worker scheduling still require staging and host approval; the current deployment relies on the
+rebuildable MariaDB source of truth rather than a separate encrypted Qdrant backup.
 
 ## Invariants
 

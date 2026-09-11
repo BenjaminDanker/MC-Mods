@@ -27,10 +27,10 @@ public record PetSpeechPolicy(
     }
 
     public static PetSpeechPolicy defaults() {
-        // Text Display's visible face is opposite vanilla entity forward, hence +180°.
+        // Billboard orientation is client-side; yaw is retained only for source compatibility.
         return new PetSpeechPolicy(
                 240, 38, Duration.ofSeconds(5), Duration.ofSeconds(12),
-                0.35F, 180.0F, 1.0F);
+                0.65F, 0.0F, 1.0F);
     }
 
     public PreparedSpeech prepare(String untrusted) {

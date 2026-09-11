@@ -7,17 +7,20 @@ import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AsyncPetDialogueDispatcherTest {
     @Test
@@ -58,6 +61,49 @@ class AsyncPetDialogueDispatcherTest {
         }
     }
 
+    @Test
+    void remainsNonBlockingAndHandlesARepresentativeConcurrentBurst() throws Exception {
+        ExecutorService executor = Executors.newFixedThreadPool(8);
+        ExecutorService callers = Executors.newFixedThreadPool(8);
+        try {
+            CountDownLatch gatewayStarted = new CountDownLatch(1);
+            CountDownLatch releaseGateway = new CountDownLatch(1);
+            AsyncPetDialogueDispatcher delayed = new AsyncPetDialogueDispatcher(
+                    ignored -> {
+                        gatewayStarted.countDown();
+                        try {
+                            releaseGateway.await(2, TimeUnit.SECONDS);
+                        } catch (InterruptedException interrupted) {
+                            Thread.currentThread().interrupt();
+                        }
+                        return CompletableFuture.completedFuture(response());
+                    }, Duration.ofSeconds(3), executor);
+            long started = System.nanoTime();
+            CompletableFuture<PetDialogueResponse> delayedResult = delayed.submit(request());
+            assertTrue(gatewayStarted.await(1, TimeUnit.SECONDS));
+            assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) < 250);
+            releaseGateway.countDown();
+            assertEquals(PetDialogueResponse.Status.SUCCEEDED, delayedResult.join().status());
+
+            AtomicInteger calls = new AtomicInteger();
+            AsyncPetDialogueDispatcher burst = new AsyncPetDialogueDispatcher(
+                    ignored -> {
+                        calls.incrementAndGet();
+                        return CompletableFuture.completedFuture(response());
+                    }, Duration.ofSeconds(2), executor);
+            CompletableFuture<?>[] submissions = new CompletableFuture<?>[32];
+            for (int index = 0; index < submissions.length; index++) {
+                submissions[index] = CompletableFuture.supplyAsync(
+                        () -> burst.submit(request()), callers).thenCompose(stage -> stage);
+            }
+            CompletableFuture.allOf(submissions).join();
+            assertEquals(32, calls.get());
+        } finally {
+            callers.shutdownNow();
+            executor.shutdownNow();
+        }
+    }
+
     private static PetDialogueRequest request() {
         return new PetDialogueRequest(
                 UUID.fromString("50000000-0000-0000-0000-0000000000aa"),
@@ -66,5 +112,12 @@ class AsyncPetDialogueDispatcherTest {
                 UUID.fromString("10000000-0000-0000-0000-0000000000aa"),
                 UUID.fromString("30000000-0000-0000-0000-0000000000aa"),
                 new BackendId("survival"), "minecraft:overworld", "Hello");
+    }
+
+    private static PetDialogueResponse response() {
+        PetDialogueRequest request = request();
+        return new PetDialogueResponse(
+                request.requestId(), request.sessionId(), request.petId(),
+                PetDialogueResponse.Status.SUCCEEDED, "Hello there.");
     }
 }

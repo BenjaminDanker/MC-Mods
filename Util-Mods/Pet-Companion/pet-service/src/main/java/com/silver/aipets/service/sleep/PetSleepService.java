@@ -6,8 +6,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /** Coordinates whole-network presence and bounded restart-safe due processing. */
 public final class PetSleepService {
@@ -15,6 +17,7 @@ public final class PetSleepService {
     private final PetSleepPolicy policy;
     private final Clock clock;
     private final Consumer<PetSleepTransition> transitionListener;
+    private final Supplier<UUID> absenceIds;
 
     public PetSleepService(PetSleepStateStore store, PetSleepPolicy policy, Clock clock) {
         this(store, policy, clock, transition -> { });
@@ -25,10 +28,20 @@ public final class PetSleepService {
             PetSleepPolicy policy,
             Clock clock,
             Consumer<PetSleepTransition> transitionListener) {
+        this(store, policy, clock, transitionListener, UUID::randomUUID);
+    }
+
+    public PetSleepService(
+            PetSleepStateStore store,
+            PetSleepPolicy policy,
+            Clock clock,
+            Consumer<PetSleepTransition> transitionListener,
+            Supplier<UUID> absenceIds) {
         this.store = Objects.requireNonNull(store, "store");
         this.policy = Objects.requireNonNull(policy, "policy");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.transitionListener = Objects.requireNonNull(transitionListener, "transitionListener");
+        this.absenceIds = Objects.requireNonNull(absenceIds, "absenceIds");
     }
 
     public Optional<PetSleepTransition> ownerOnline(UUID ownerUuid) {
@@ -56,6 +69,22 @@ public final class PetSleepService {
                         state, false, absenceSessionId, occurredAt));
         transition.ifPresent(transitionListener);
         return transition;
+    }
+
+    /** Reconciles persisted presence after a proxy restart without touching sleep state directly. */
+    public int reconcileOnlineOwners(Set<UUID> onlineOwnerUuids, Instant occurredAt) {
+        Objects.requireNonNull(onlineOwnerUuids, "onlineOwnerUuids");
+        Objects.requireNonNull(occurredAt, "occurredAt");
+        int changed = 0;
+        for (UUID ownerUuid : store.findOwnerUuids()) {
+            Optional<PetSleepTransition> transition = onlineOwnerUuids.contains(ownerUuid)
+                    ? ownerOnline(ownerUuid, occurredAt)
+                    : ownerOffline(ownerUuid, absenceIds.get(), occurredAt);
+            if (transition.isPresent() && transition.orElseThrow().changed()) {
+                changed++;
+            }
+        }
+        return changed;
     }
 
     public PetSleepTransition evaluate(UUID petId) {

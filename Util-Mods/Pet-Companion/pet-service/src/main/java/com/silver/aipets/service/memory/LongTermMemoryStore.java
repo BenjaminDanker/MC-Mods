@@ -10,6 +10,9 @@ public interface LongTermMemoryStore {
 
     MemoryPage listActive(Optional<UUID> afterMemoryId, int limit);
 
+    /** Returns a bounded active page for one pet without scanning other owners' cards. */
+    MemoryPage listActiveForPet(UUID petId, int limit);
+
     void markEmbeddingReady(
             UUID petId, UUID memoryId, long expectedVersion, String model, String reference, Instant at);
 

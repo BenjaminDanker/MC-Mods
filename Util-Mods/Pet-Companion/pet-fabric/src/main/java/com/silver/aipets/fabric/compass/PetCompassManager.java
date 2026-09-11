@@ -36,6 +36,7 @@ public final class PetCompassManager {
     private final PetCompassSigner signer;
     private final Map<BackendId, String> friendlyNames;
     private final Set<UUID> inFlight = ConcurrentHashMap.newKeySet();
+    private final Set<UUID> trackedOwners = ConcurrentHashMap.newKeySet();
     private long ticks;
 
     public PetCompassManager(
@@ -61,6 +62,7 @@ public final class PetCompassManager {
 
         Reconciliation reconciliation = reconcileInventory(player, Optional.of(snapshot));
         if (reconciliation.kept().isPresent()) {
+            trackedOwners.add(player.getUuid());
             return new PetCompassIssueResult(
                     PetCompassIssueStatus.REFRESHED,
                     reconciliation.presentation(),
@@ -82,6 +84,7 @@ public final class PetCompassManager {
                     reconciliation.removed());
         }
         player.getInventory().markDirty();
+        trackedOwners.add(player.getUuid());
         return new PetCompassIssueResult(
                 PetCompassIssueStatus.ISSUED,
                 presentation,
@@ -94,9 +97,20 @@ public final class PetCompassManager {
                 .isPresent();
     }
 
+    /** Stops refresh work immediately when a bound compass is discarded into the world. */
+    public void onDropped(ItemStack stack) {
+        PetCompassItem.trustedMarker(Objects.requireNonNull(stack, "stack"), signer)
+                .ifPresent(marker -> trackedOwners.remove(marker.ownerUuid()));
+    }
+
     public void validateAsync(ServerPlayerEntity player) {
         UUID ownerUuid = player.getUuid();
-        if (!containsCandidate(player.getInventory()) || !inFlight.add(ownerUuid)) {
+        if (!containsCandidate(player.getInventory())) {
+            trackedOwners.remove(ownerUuid);
+            return;
+        }
+        trackedOwners.add(ownerUuid);
+        if (!inFlight.add(ownerUuid)) {
             return;
         }
         try {
@@ -138,14 +152,17 @@ public final class PetCompassManager {
         if (ticks % REFRESH_INTERVAL_TICKS != 0L) {
             return;
         }
-        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
-            validateAsync(player);
+        for (UUID ownerUuid : Set.copyOf(trackedOwners)) {
+            ServerPlayerEntity player = server.getPlayerManager().getPlayer(ownerUuid);
+            if (player == null) trackedOwners.remove(ownerUuid);
+            else validateAsync(player);
         }
     }
 
     public void clear() {
         ticks = 0L;
         inFlight.clear();
+        trackedOwners.clear();
     }
 
     private Reconciliation reconcileInventory(

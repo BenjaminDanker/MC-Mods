@@ -81,7 +81,16 @@ public final class PetFollowOwnerGoal extends Goal {
         }
 
         double squaredDistance = pet.squaredDistanceTo(owner);
-        pet.getNavigation().startMovingTo(owner, config.speedForSquaredDistance(squaredDistance));
+        // Use the owner's precise position rather than the entity-target overload.  The
+        // latter resolves the target to a navigation node/entity anchor, which makes an
+        // otherwise clear diagonal run look like a sequence of block-to-block corrections.
+        // The coordinate overload still uses the mob navigation/pathfinder, so collision
+        // handling and the existing stuck recovery remain unchanged.
+        pet.getNavigation().startMovingTo(
+                owner.getX(),
+                owner.getY(),
+                owner.getZ(),
+                config.speedForSquaredDistance(squaredDistance));
     }
 
     private PlayerEntity findLocalOwner() {

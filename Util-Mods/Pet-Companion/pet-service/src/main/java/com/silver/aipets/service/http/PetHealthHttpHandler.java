@@ -22,6 +22,7 @@ public final class PetHealthHttpHandler implements HttpHandler {
     private final PetReadinessProbe readiness;
     private final byte[] expectedAuthorization;
     private final PetOperationalMetrics metrics;
+    private final Runnable metricsRefresh;
 
     public PetHealthHttpHandler(PetReadinessProbe readiness, String bearerToken) {
         this(readiness, bearerToken, new PetOperationalMetrics());
@@ -29,8 +30,15 @@ public final class PetHealthHttpHandler implements HttpHandler {
 
     public PetHealthHttpHandler(
             PetReadinessProbe readiness, String bearerToken, PetOperationalMetrics metrics) {
+        this(readiness, bearerToken, metrics, () -> { });
+    }
+
+    public PetHealthHttpHandler(
+            PetReadinessProbe readiness, String bearerToken,
+            PetOperationalMetrics metrics, Runnable metricsRefresh) {
         this.readiness = Objects.requireNonNull(readiness, "readiness");
         this.metrics = Objects.requireNonNull(metrics, "metrics");
+        this.metricsRefresh = Objects.requireNonNull(metricsRefresh, "metricsRefresh");
         Objects.requireNonNull(bearerToken, "bearerToken");
         if (bearerToken.length() < 32 || bearerToken.isBlank()) {
             throw new IllegalArgumentException("bearerToken must contain at least 32 characters");
@@ -69,6 +77,11 @@ public final class PetHealthHttpHandler implements HttpHandler {
                 }
                 case "/health/metrics" -> {
                     responseHeaders.set("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
+                    try {
+                        metricsRefresh.run();
+                    } catch (RuntimeException failure) {
+                        // Metrics are diagnostic only and must never make the endpoint fail.
+                    }
                     send(exchange, 200, metrics.prometheusSnapshot());
                 }
                 default -> send(exchange, 404, NOT_FOUND);

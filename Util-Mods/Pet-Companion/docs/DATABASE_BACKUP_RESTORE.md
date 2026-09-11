@@ -1,9 +1,9 @@
 # MariaDB backup and restore runbook
 
 This runbook provides repository-side tooling; it does not prove that the Raspberry Pi's existing
-backup job includes the selected database. Confirm the actual schema, MariaDB version, storage,
-retention, encryption, off-host destination, recovery-point objective, and recovery-time objective
-before production writes.
+backup job includes the selected database. Confirm the actual schema, MariaDB version, and local
+storage before production writes. This runbook intentionally does not require encrypted off-host
+replication, alerting, retention policy, or RPO/RTO measurement for the current deployment.
 
 ## Install and schedule
 
@@ -28,8 +28,7 @@ Install `pet-companion-backup.service` and `.timer`, run `systemd-analyze verify
 `systemctl daemon-reload`, then execute one manual unit before enabling the timer. The script uses
 `mariadb-dump --single-transaction --quick` for the all-InnoDB schema, streams into a mode-0600 gzip
 file, refuses overwrite, and atomically publishes a SHA-256 sidecar. It deliberately performs no
-automatic deletion; configure reviewed retention/off-host replication in the existing backup
-system.
+automatic deletion; retain local artifacts according to the host's available disk policy.
 
 ```sh
 sudo systemctl start pet-companion-backup.service
@@ -39,9 +38,8 @@ sudo -u pet-backup /opt/pet-companion/ops/verify_pet_backup.sh \
 sudo systemctl enable --now pet-companion-backup.timer
 ```
 
-Copy backups and checksums to encrypted off-host storage with restricted access. Monitoring must
-alert on a failed/missed timer and backup age; a local file on the database host is not sufficient
-disaster recovery.
+The current deployment stops at the verified local artifact and restore drill. Off-host copies and
+monitoring can be added later if the operational scope changes.
 
 ## Restore drill
 
@@ -63,8 +61,8 @@ readiness, representative owner lookup, subscription access, held/placed state, 
 recall history, webhook ledger, memories, jobs, and idempotency replays without connecting any live
 Minecraft backend.
 
-Record backup timestamp, restore start/end, artifact hash, row-count comparison, discovered issues,
-and measured RPO/RTO. Drop only the explicitly identified disposable drill database afterward using
+Record backup timestamp, restore start/end, artifact hash, row-count comparison, and discovered
+issues. Drop only the explicitly identified disposable drill database afterward using
 the operator's normal database process. A production restore requires an approved outage, a fresh
 pre-restore snapshot, exact target confirmation, stopped writers, and a reviewed decision about
 data newer than the selected backup.

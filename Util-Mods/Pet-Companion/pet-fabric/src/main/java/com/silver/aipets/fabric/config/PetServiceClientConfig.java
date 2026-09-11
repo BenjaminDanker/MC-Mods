@@ -25,7 +25,8 @@ public record PetServiceClientConfig(
         Duration connectTimeout,
         Duration requestTimeout,
         String compassSigningSecret,
-        Map<BackendId, String> backendFriendlyNames) {
+        Map<BackendId, String> backendFriendlyNames,
+        String conversationMode) {
     public static final String FILE_NAME = "pet-companion.properties";
 
     private static final Set<String> KNOWN_PROPERTIES = Set.of(
@@ -36,7 +37,8 @@ public record PetServiceClientConfig(
             "authority.compass-signing-environment",
             "authority.backend-friendly-names",
             "authority.connect-timeout-ms",
-            "authority.request-timeout-ms");
+            "authority.request-timeout-ms",
+            "conversation.mode");
     private static final Pattern ENVIRONMENT_NAME = Pattern.compile("[A-Z][A-Z0-9_]{0,63}");
 
     public PetServiceClientConfig {
@@ -60,6 +62,13 @@ public record PetServiceClientConfig(
         });
         validateTimeout(connectTimeout, "connectTimeout");
         validateTimeout(requestTimeout, "requestTimeout");
+        conversationMode = Objects.requireNonNull(conversationMode, "conversationMode")
+                .trim().toLowerCase(java.util.Locale.ROOT);
+        if (!conversationMode.equals("disabled")
+                && !conversationMode.equals("staging")
+                && !conversationMode.equals("service")) {
+            throw new IllegalArgumentException("conversationMode must be disabled, staging, or service");
+        }
     }
 
     /** Compatibility constructor for isolated transport tests; production loading uses a separate key. */
@@ -76,7 +85,8 @@ public record PetServiceClientConfig(
                 connectTimeout,
                 requestTimeout,
                 bearerToken,
-                Map.of(backendId, backendId.value()));
+                Map.of(backendId, backendId.value()),
+                "disabled");
     }
 
     public static Optional<PetServiceClientConfig> load(
@@ -126,9 +136,10 @@ public record PetServiceClientConfig(
                 URI.create(required(properties, "authority.base-url")),
                 token,
                 Duration.ofMillis(integer(properties, "authority.connect-timeout-ms", 2_000, 100, 30_000)),
-                Duration.ofMillis(integer(properties, "authority.request-timeout-ms", 3_000, 100, 30_000)),
+                Duration.ofMillis(integer(properties, "authority.request-timeout-ms", 15_000, 100, 30_000)),
                 signingSecret,
-                friendlyNames(properties.getProperty("authority.backend-friendly-names", ""), backendId)));
+                friendlyNames(properties.getProperty("authority.backend-friendly-names", ""), backendId),
+                properties.getProperty("conversation.mode", "disabled")));
     }
 
     public String friendlyBackendName(BackendId backend) {

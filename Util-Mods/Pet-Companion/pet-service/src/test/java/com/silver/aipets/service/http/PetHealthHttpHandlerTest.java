@@ -11,6 +11,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -25,8 +26,10 @@ class PetHealthHttpHandlerTest {
                 new AtomicReference<>(PetReadinessSnapshot.fullyReady());
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         PetOperationalMetrics metrics = new PetOperationalMetrics();
+        AtomicInteger refreshes = new AtomicInteger();
         metrics.increment(PetOperationalMetrics.Counter.DIALOGUE_SUCCEEDED);
-        server.createContext("/health", new PetHealthHttpHandler(readiness::get, TOKEN, metrics));
+        server.createContext("/health", new PetHealthHttpHandler(
+                readiness::get, TOKEN, metrics, refreshes::incrementAndGet));
         server.start();
         try {
             URI base = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
@@ -48,10 +51,19 @@ class PetHealthHttpHandlerTest {
             assertTrue(ready.body().contains("DEGRADED_NOT_CONFIGURED"));
             assertEquals(401, unauthorized.statusCode());
 
+            readiness.set(PetReadinessSnapshot.fullyReady(false, true, true));
+            HttpResponse<String> configured = client.send(
+                    request(base.resolve("/health/ready"), TOKEN),
+                    HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, configured.statusCode());
+            assertTrue(configured.body().contains("\"vector\":\"CONFIGURED\""));
+            assertTrue(configured.body().contains("\"model\":\"CONFIGURED\""));
+
             HttpResponse<String> metricSnapshot = client.send(
                     request(base.resolve("/health/metrics"), TOKEN),
                     HttpResponse.BodyHandlers.ofString());
             assertEquals(200, metricSnapshot.statusCode());
+            assertEquals(1, refreshes.get());
             assertTrue(metricSnapshot.body().contains("aipets_dialogue_succeeded_total 1"));
             assertTrue(metricSnapshot.body().contains("aipets_embedding_queue_depth 0"));
 

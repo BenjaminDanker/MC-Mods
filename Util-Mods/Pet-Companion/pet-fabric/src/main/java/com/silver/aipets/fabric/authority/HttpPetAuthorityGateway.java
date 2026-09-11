@@ -14,6 +14,10 @@ import com.silver.aipets.common.transport.AccountLinkWireCodec;
 import com.silver.aipets.common.transport.AccountLinkWireResult;
 import com.silver.aipets.common.transport.CustomerPortalWireCodec;
 import com.silver.aipets.common.transport.CustomerPortalWireResult;
+import com.silver.aipets.common.transport.SubscriptionAccessWireCodec;
+import com.silver.aipets.common.transport.SubscriptionAccessWireResult;
+import com.silver.aipets.common.transport.DialogueHistoryWireCodec;
+import com.silver.aipets.common.transport.DialogueHistoryWireResult;
 import com.silver.aipets.common.transport.RecallResetWireCodec;
 import com.silver.aipets.common.transport.RecallResetWireResult;
 import com.silver.aipets.fabric.config.PetServiceClientConfig;
@@ -41,6 +45,8 @@ public final class HttpPetAuthorityGateway implements PetAuthorityGateway {
     private final PetRecallWireCodec recallCodec;
     private final AccountLinkWireCodec accountLinkCodec;
     private final CustomerPortalWireCodec customerPortalCodec;
+    private final SubscriptionAccessWireCodec subscriptionAccessCodec;
+    private final DialogueHistoryWireCodec dialogueHistoryCodec;
     private final RecallResetWireCodec recallResetCodec;
     private final HttpClient client;
 
@@ -65,6 +71,8 @@ public final class HttpPetAuthorityGateway implements PetAuthorityGateway {
         this.recallCodec = new PetRecallWireCodec(codec);
         this.accountLinkCodec = new AccountLinkWireCodec();
         this.customerPortalCodec = new CustomerPortalWireCodec();
+        this.subscriptionAccessCodec = new SubscriptionAccessWireCodec();
+        this.dialogueHistoryCodec = new DialogueHistoryWireCodec();
         this.recallResetCodec = new RecallResetWireCodec();
         this.client = Objects.requireNonNull(client, "client");
     }
@@ -129,6 +137,86 @@ public final class HttpPetAuthorityGateway implements PetAuthorityGateway {
                     .thenApply(this::decodeCustomerPortalResponse);
         } catch (RuntimeException failure) {
             return CompletableFuture.failedFuture(failure);
+        }
+    }
+
+    @Override
+    public CompletionStage<Boolean> findSubscriptionAccess(UUID ownerUuid) {
+        return findSubscriptionDetails(ownerUuid).thenApply(SubscriptionAccessWireResult::aiAccessEnabled);
+    }
+
+    @Override
+    public CompletionStage<SubscriptionAccessWireResult> findSubscriptionDetails(UUID ownerUuid) {
+        Objects.requireNonNull(ownerUuid, "ownerUuid");
+        URI uri = config.baseUri().resolve("v1/subscriptions/access/" + ownerUuid);
+        HttpRequest request = HttpRequest.newBuilder(uri)
+                .timeout(config.requestTimeout())
+                .header("Accept", "application/json")
+                .header("Authorization", "Bearer " + config.bearerToken())
+                .header("X-Request-ID", UUID.randomUUID().toString())
+                .GET()
+                .build();
+        try {
+            return client.sendAsync(
+                            request,
+                            HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
+                    .thenApply(this::decodeSubscriptionAccessResponse);
+        } catch (RuntimeException failure) {
+            return CompletableFuture.failedFuture(failure);
+        }
+    }
+
+    @Override
+    public CompletionStage<DialogueHistoryWireResult> findDialogueHistory(UUID ownerUuid) {
+        Objects.requireNonNull(ownerUuid, "ownerUuid");
+        URI uri = config.baseUri().resolve("v1/admin/dialogue/history/" + ownerUuid);
+        HttpRequest request = HttpRequest.newBuilder(uri)
+                .timeout(config.requestTimeout())
+                .header("Accept", "application/json")
+                .header("Authorization", "Bearer " + config.bearerToken())
+                .header("X-Request-ID", UUID.randomUUID().toString())
+                .GET()
+                .build();
+        try {
+            return client.sendAsync(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
+                    .thenApply(response -> {
+                        if (response.statusCode() != 200) {
+                            throw new PetAuthorityTransportException(
+                                    "Dialogue history authority returned HTTP " + response.statusCode());
+                        }
+                        String body = response.body();
+                        if (body == null || body.length() > 96_000) {
+                            throw new PetAuthorityTransportException(
+                                    "Dialogue history response is missing or too large");
+                        }
+                        return dialogueHistoryCodec.decode(body);
+                    });
+        } catch (RuntimeException failure) {
+            return CompletableFuture.failedFuture(failure);
+        }
+    }
+
+    private SubscriptionAccessWireResult decodeSubscriptionAccessResponse(HttpResponse<String> response) {
+        if (response.statusCode() != 200) {
+            throw new PetAuthorityTransportException(
+                    "Subscription access authority returned HTTP " + response.statusCode());
+        }
+        String contentType = response.headers().firstValue("Content-Type").orElse("")
+                .toLowerCase(Locale.ROOT);
+        if (!contentType.startsWith("application/json")) {
+            throw new PetAuthorityTransportException(
+                    "Subscription access authority returned non-JSON");
+        }
+        String body = response.body();
+        if (body == null || body.length() > MAX_RESPONSE_CHARS) {
+            throw new PetAuthorityTransportException(
+                    "Subscription access response is missing or too large");
+        }
+        try {
+            return subscriptionAccessCodec.decode(body);
+        } catch (RuntimeException malformed) {
+            throw new PetAuthorityTransportException(
+                    "Subscription access response is invalid", malformed);
         }
     }
 

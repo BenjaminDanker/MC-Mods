@@ -2,6 +2,7 @@ package com.silver.aipets.service.vector;
 
 import com.silver.aipets.service.memory.LongTermMemoryCard;
 import com.silver.aipets.service.memory.LongTermMemoryStore;
+import com.silver.aipets.service.billing.AiBudgetService;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -10,6 +11,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Supplier;
+import java.util.function.Function;
+import java.util.Optional;
+import java.math.BigDecimal;
 
 /** Idempotent compact-card embedding worker with bounded leases and exponential retry. */
 public final class MemoryEmbeddingWorker {
@@ -22,6 +26,9 @@ public final class MemoryEmbeddingWorker {
     private final int maximumAttempts;
     private final Duration leaseDuration;
     private final Duration initialRetryDelay;
+    private final EmbeddingUsageRecorder usageRecorder;
+    private final AiBudgetService budget;
+    private final Function<UUID, Optional<UUID>> ownerResolver;
 
     public MemoryEmbeddingWorker(
             LongTermMemoryStore memories,
@@ -33,6 +40,24 @@ public final class MemoryEmbeddingWorker {
             int maximumAttempts,
             Duration leaseDuration,
             Duration initialRetryDelay) {
+        this(memories, jobs, model, vectors, clock, jobIds, maximumAttempts,
+                leaseDuration, initialRetryDelay, EmbeddingUsageRecorder.NOOP,
+                AiBudgetService.UNLIMITED, ignored -> Optional.empty());
+    }
+
+    public MemoryEmbeddingWorker(
+            LongTermMemoryStore memories,
+            EmbeddingJobStore jobs,
+            EmbeddingModelClient model,
+            VectorMemoryRepository vectors,
+            Clock clock,
+            Supplier<UUID> jobIds,
+            int maximumAttempts,
+            Duration leaseDuration,
+            Duration initialRetryDelay,
+            EmbeddingUsageRecorder usageRecorder,
+            AiBudgetService budget,
+            Function<UUID, Optional<UUID>> ownerResolver) {
         this.memories = Objects.requireNonNull(memories, "memories");
         this.jobs = Objects.requireNonNull(jobs, "jobs");
         this.model = Objects.requireNonNull(model, "model");
@@ -45,6 +70,9 @@ public final class MemoryEmbeddingWorker {
         this.maximumAttempts = maximumAttempts;
         this.leaseDuration = positive(leaseDuration, "leaseDuration");
         this.initialRetryDelay = positive(initialRetryDelay, "initialRetryDelay");
+        this.usageRecorder = Objects.requireNonNull(usageRecorder, "usageRecorder");
+        this.budget = Objects.requireNonNull(budget, "budget");
+        this.ownerResolver = Objects.requireNonNull(ownerResolver, "ownerResolver");
     }
 
     public EmbeddingJobStore.EnqueueResult enqueue(LongTermMemoryCard card) {
@@ -79,12 +107,26 @@ public final class MemoryEmbeddingWorker {
             jobs.canceled(job.jobId(), workerId, now, "memory missing, inactive, changed, or model superseded");
             return;
         }
+        AiBudgetService.Reservation reservation = null;
+        EmbeddingModelResponse response = null;
         try {
+            Optional<UUID> owner = ownerResolver.apply(card.petId());
+            if (owner.isPresent()) {
+                reservation = budget.tryReserve(
+                        owner.orElseThrow(), new BigDecimal("0.00016384"), now).orElse(null);
+                if (reservation == null) {
+                    jobs.retry(job.jobId(), workerId, now, now.plus(Duration.ofHours(1)),
+                            "AI_BUDGET_EXHAUSTED");
+                    return;
+                }
+            }
             // The model sees only the compact relational card, never raw event/dialogue history.
-            EmbeddingVector embedding = model.embed(card.text());
+            response = model.embedWithUsage(card.text());
+            EmbeddingVector embedding = response.embedding();
             if (!embedding.model().equals(model.model())) {
                 throw new IllegalStateException("Embedding client returned an unexpected model");
             }
+            recordUsage(card.petId(), response, now, "SUCCEEDED", null);
             String reference = vectors.upsert(new VectorMemoryDocument(card, embedding));
             if (reference == null || reference.isBlank() || reference.length() > 512) {
                 throw new IllegalStateException("Vector repository returned an invalid reference");
@@ -93,6 +135,9 @@ public final class MemoryEmbeddingWorker {
                     card.petId(), card.memoryId(), card.version(), model.model(), reference, now);
             jobs.succeeded(job.jobId(), workerId, now);
         } catch (RuntimeException failure) {
+            if (response == null) {
+                // Provider failures normally have no billable usage to record.
+            }
             String sanitized = sanitize(failure);
             if (job.attemptCount() >= maximumAttempts) {
                 memories.markEmbeddingFailed(
@@ -103,6 +148,19 @@ public final class MemoryEmbeddingWorker {
                 Duration delay = initialRetryDelay.multipliedBy(multiplier);
                 jobs.retry(job.jobId(), workerId, now, now.plus(delay), sanitized);
             }
+        } finally {
+            if (reservation != null) {
+                budget.settle(reservation, response == null ? BigDecimal.ZERO : response.estimatedCost());
+            }
+        }
+    }
+
+    private void recordUsage(UUID petId, EmbeddingModelResponse response, Instant at,
+                             String status, String errorCategory) {
+        try {
+            usageRecorder.record(petId, response, at, status, errorCategory);
+        } catch (RuntimeException ignored) {
+            // Usage persistence must not strand an embedding job; the next report exposes the gap.
         }
     }
 

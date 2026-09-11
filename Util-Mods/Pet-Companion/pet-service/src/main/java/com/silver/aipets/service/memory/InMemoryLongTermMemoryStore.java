@@ -63,6 +63,22 @@ public final class InMemoryLongTermMemoryStore implements LongTermMemoryStore {
     }
 
     @Override
+    public MemoryPage listActiveForPet(UUID petId, int limit) {
+        Objects.requireNonNull(petId, "petId");
+        if (limit < 1 || limit > 1_000) {
+            throw new IllegalArgumentException("limit must be between 1 and 1000");
+        }
+        synchronized (monitor) {
+            List<LongTermMemoryCard> cardsForPet = cards.values().stream()
+                    .filter(card -> card.active() && card.petId().equals(petId))
+                    .sorted(Comparator.comparing(card -> card.memoryId().toString()))
+                    .limit(limit)
+                    .toList();
+            return new MemoryPage(cardsForPet, Optional.empty());
+        }
+    }
+
+    @Override
     public void markEmbeddingReady(
             UUID petId, UUID memoryId, long expectedVersion,
             String model, String reference, Instant at) {
