@@ -12,11 +12,7 @@ public final class ProtectionPaths {
     private ProtectionPaths() {
     }
 
-    public static Path protectionFile(Path runDir) {
-        return runDir.resolve("protection.atlprotect");
-    }
-
-    public static Path protectionFileForRun(String runId) {
-        return protectionFile(UndoPaths.runDir(runId));
+    public static Path activeProtectionFile() {
+        return UndoPaths.undoBaseDir().resolve("active.atlprotect");
     }
 }

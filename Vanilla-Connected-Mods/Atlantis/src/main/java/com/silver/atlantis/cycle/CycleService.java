@@ -3,6 +3,7 @@ package com.silver.atlantis.cycle;
 import com.silver.atlantis.AtlantisMod;
 import com.silver.atlantis.construct.ConstructConfig;
 import com.silver.atlantis.construct.ConstructService;
+import com.silver.atlantis.construct.PlayerEjectTarget;
 import com.silver.atlantis.find.FlatAreaSearchConfig;
 import com.silver.atlantis.find.FlatAreaSearchService;
 import com.silver.atlantis.spawn.bounds.ActiveConstructBounds;
@@ -55,6 +56,30 @@ public final class CycleService {
 
     public boolean isEnabled() {
         return state != null && state.enabled();
+    }
+
+    /**
+     * Returns whether the cycle needs the server thread to keep advancing.
+     * Waiting periods remain idle so vanilla pause-when-empty behavior can
+     * still take effect, but a due schedule wakes the server back up.
+     */
+    public boolean requiresServerTicking() {
+        if (searchService.isRunning() || constructService.isRunning() || spawnCommandManager.isStructureMobRunning()) {
+            return true;
+        }
+
+        CycleState current = state;
+        if (current == null || !current.enabled()) {
+            return false;
+        }
+
+        CycleState.Stage stage = parseStage(current.stage());
+        if (stage == CycleState.Stage.IDLE || stage == CycleState.Stage.WAIT_BEFORE_UNDO) {
+            return current.nextRunAtEpochMillis() <= 0L
+                || System.currentTimeMillis() >= current.nextRunAtEpochMillis();
+        }
+
+        return true;
     }
 
     public void sendStatus(ServerCommandSource source) {
@@ -593,12 +618,12 @@ public final class CycleService {
                 tz = maxZ + margin + offset;
             }
 
-            int safeY = Math.max(world.getBottomY() + 1, player.getBlockY());
+            BlockPos target = PlayerEjectTarget.aboveGround(world, tx, tz);
             player.teleport(
                 world,
-                tx + 0.5,
-                safeY,
-                tz + 0.5,
+                target.getX() + 0.5,
+                target.getY(),
+                target.getZ() + 0.5,
                 Set.of(PositionFlag.DELTA_X, PositionFlag.DELTA_Y, PositionFlag.DELTA_Z),
                 player.getYaw(),
                 player.getPitch(),

@@ -12,7 +12,7 @@ public final class ProtectionCollector {
     private final String dimensionId;
 
     private final LongSet placed = new LongOpenHashSet();
-    private final LongSet interior = new LongOpenHashSet();
+    private InteriorMask interiorMask;
 
     public ProtectionCollector(String id, String dimensionId) {
         this.id = id;
@@ -23,15 +23,15 @@ public final class ProtectionCollector {
         placed.add(posKey);
     }
 
-    public void addInterior(long posKey) {
-        interior.add(posKey);
+    public void setInteriorMask(InteriorMask interiorMask) {
+        this.interiorMask = interiorMask;
     }
 
     public boolean isEmpty() {
-        return placed.isEmpty() && interior.isEmpty();
+        return placed.isEmpty() && (interiorMask == null || interiorMask.isEmpty());
     }
 
     public ProtectionEntry buildEntry() {
-        return new ProtectionEntry(id, dimensionId, placed, interior);
+        return new ProtectionEntry(id, dimensionId, placed, interiorMask);
     }
 }

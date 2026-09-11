@@ -48,7 +48,7 @@ public abstract class ServerPlayerInteractionManagerMixin {
         }
 
         Item item = stack.getItem();
-        if (!isPotentialPlacementItem(item)) {
+        if (!atlantis$isPotentialPlacementItem(item)) {
             return;
         }
 
@@ -63,7 +63,7 @@ public abstract class ServerPlayerInteractionManagerMixin {
         }
     }
 
-    private static boolean isPotentialPlacementItem(Item item) {
+    private static boolean atlantis$isPotentialPlacementItem(Item item) {
         // Block items
         if (item instanceof BlockItem) {
             return true;

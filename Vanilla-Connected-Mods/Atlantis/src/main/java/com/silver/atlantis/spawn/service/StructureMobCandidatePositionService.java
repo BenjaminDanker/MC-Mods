@@ -20,7 +20,7 @@ final class StructureMobCandidatePositionService {
             return null;
         }
 
-        Path protectionFile = ProtectionPaths.protectionFileForRun(bounds.runId());
+        Path protectionFile = ProtectionPaths.activeProtectionFile();
         if (!Files.exists(protectionFile)) {
             return null;
         }

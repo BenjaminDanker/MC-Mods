@@ -10,6 +10,7 @@ import com.silver.atlantis.construct.state.ConstructRunState;
 import com.silver.atlantis.construct.state.ConstructRunStateIO;
 import com.silver.atlantis.construct.state.ConstructStatePaths;
 import com.silver.atlantis.protect.ProtectionManager;
+import com.silver.atlantis.protect.ProtectionPaths;
 import com.silver.atlantis.spawn.bounds.ActiveConstructBounds;
 import com.silver.atlantis.spawn.service.ProximityMobManager;
 import net.minecraft.network.packet.s2c.play.PositionFlag;
@@ -877,8 +878,7 @@ final class ConstructUndoTask implements ConstructJob {
                 tz = maxZ + margin + offset;
             }
 
-            int safeY = Math.max(world.getBottomY() + 1, player.getBlockY());
-            BlockPos target = new BlockPos(tx, safeY, tz);
+            BlockPos target = PlayerEjectTarget.aboveGround(world, tx, tz);
 
             player.teleport(
                 world,
@@ -909,8 +909,14 @@ final class ConstructUndoTask implements ConstructJob {
         if (protectionUnregistered || metadata == null) {
             return;
         }
-        ProtectionManager.INSTANCE.unregister(metadata.runId());
-        ProtectionManager.INSTANCE.flushPendingIndexJobs();
+        boolean removed = ProtectionManager.INSTANCE.unregister(metadata.runId());
+        if (removed) {
+            try {
+                Files.deleteIfExists(ProtectionPaths.activeProtectionFile());
+            } catch (Exception e) {
+                AtlantisMod.LOGGER.warn("Failed to delete active protection file: {}", e.getMessage());
+            }
+        }
         protectionUnregistered = true;
     }
 

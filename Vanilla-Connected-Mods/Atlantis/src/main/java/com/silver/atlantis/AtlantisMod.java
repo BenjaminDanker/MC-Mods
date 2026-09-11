@@ -21,6 +21,7 @@ import com.silver.atlantis.spawn.drop.SpecialItemConversionManager;
 import com.silver.atlantis.spawn.service.ProximityMobManager;
 import com.silver.atlantis.worldgen.AtlantisWorldgen;
 import net.fabricmc.api.ModInitializer;
+import net.minecraft.server.MinecraftServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -50,11 +51,14 @@ public final class AtlantisMod implements ModInitializer {
 		leviathanCommandManager
 	);
 
+	private static volatile AtlantisMod instance;
+
 	@Override
 	public void onInitialize() {
+		instance = this;
 		AtlantisWorldgen.register();
 		protectionService.register();
-		ProtectionBootstrap.loadAllPersisted();
+		ProtectionBootstrap.loadActivePersisted();
 		heightCapService.register();
 		SpecialDropManager.init();
 		proximityMobManager.register();
@@ -67,5 +71,21 @@ public final class AtlantisMod implements ModInitializer {
 		atlantisCommandManager.register();
 		LOGGER.info("Loaded Atlantis structure spawn manager");
 		LOGGER.info("Registered Atlantis root command: /atlantis");
+	}
+
+	/**
+	 * Keeps vanilla's dedicated-server empty pause disabled only while Atlantis
+	 * has work that must advance on the server thread.
+	 */
+	public static boolean shouldKeepServerTicking(MinecraftServer server) {
+		AtlantisMod mod = instance;
+		if (mod == null) {
+			return false;
+		}
+
+		return mod.flatAreaSearchService.isRunning()
+			|| mod.constructService.isRunning()
+			|| mod.spawnManager.isStructureMobRunning()
+			|| mod.cycleService.requiresServerTicking();
 	}
 }

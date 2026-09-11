@@ -15,11 +15,12 @@ import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
 /**
- * Persists per-run protection sets to disk so protection survives restarts.
+ * Persists the single active protection object so protection survives restarts.
  */
 public final class ProtectionFileIO {
 
-    private static final int VERSION = 1;
+    // Fixed active-protection file format. There is intentionally no legacy fallback.
+    private static final int FILE_MAGIC = 0x41544C50; // ATLP
 
     private ProtectionFileIO() {
     }
@@ -35,12 +36,12 @@ public final class ProtectionFileIO {
              var gzip = new GZIPOutputStream(new BufferedOutputStream(raw));
              var out = new DataOutputStream(gzip)) {
 
-            out.writeInt(VERSION);
+            out.writeInt(FILE_MAGIC);
             writeString(out, entry.id());
             writeString(out, entry.dimensionId());
 
             writeLongSet(out, entry.placedPositions());
-            writeLongSet(out, entry.interiorPositions());
+            (entry.interiorMask() != null ? entry.interiorMask() : InteriorMask.empty()).write(out);
         }
     }
 
@@ -49,18 +50,18 @@ public final class ProtectionFileIO {
              var gzip = new GZIPInputStream(new BufferedInputStream(raw));
              var in = new DataInputStream(gzip)) {
 
-            int version = in.readInt();
-            if (version != VERSION) {
-                throw new IOException("Unsupported protection file version: " + version);
+            int magic = in.readInt();
+            if (magic != FILE_MAGIC) {
+                throw new IOException("Invalid active protection file");
             }
 
             String id = readString(in);
             String dimensionId = readString(in);
 
             LongSet placed = readLongSet(in);
-            LongSet interior = readLongSet(in);
+            InteriorMask interiorMask = InteriorMask.read(in);
 
-            return new ProtectionEntry(id, dimensionId, placed, interior);
+            return new ProtectionEntry(id, dimensionId, placed, interiorMask);
         }
     }
 

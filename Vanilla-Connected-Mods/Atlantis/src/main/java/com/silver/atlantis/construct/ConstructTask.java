@@ -10,12 +10,15 @@ import com.silver.atlantis.construct.undo.UndoPaths;
 import com.silver.atlantis.construct.undo.UndoRunMetadata;
 import com.silver.atlantis.construct.undo.UndoFileFormat;
 import com.silver.atlantis.construct.mixin.ServerChunkManagerAccessor;
+import com.silver.atlantis.protect.InteriorMask;
 import com.silver.atlantis.protect.ProtectionCollector;
 import com.silver.atlantis.protect.ProtectionFileIO;
 import com.silver.atlantis.protect.ProtectionManager;
 import com.silver.atlantis.protect.ProtectionPaths;
 import com.silver.atlantis.spawn.bounds.ActiveConstructBounds;
 import com.silver.atlantis.spawn.service.ProximityMobManager;
+import it.unimi.dsi.fastutil.longs.LongIterator;
+import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.network.packet.s2c.play.PositionFlag;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.command.ServerCommandSource;
@@ -35,7 +38,6 @@ import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -109,11 +111,9 @@ final class ConstructTask implements ConstructJob {
     private final Set<Long> chunkPrepObservedLoadedKeys = new HashSet<>();
     private long[] unloadChunkKeysArray = new long[0];
     private int unloadChunkKeysCursor;
-    private Iterator<Long> pendingPlacedMergeIterator;
-    private Iterator<Long> pendingInteriorMergeIterator;
+    private LongIterator pendingPlacedMergeIterator;
     private PassApplyResult pendingProtectionMergeResult;
     private int pendingPlacedMergeRemaining;
-    private int pendingInteriorMergeRemaining;
 
     private CompletableFuture<List<ChunkPos>> pendingMissingAfterUnload;
 
@@ -562,7 +562,6 @@ final class ConstructTask implements ConstructJob {
                     PassApplyResult result = pendingProtectionMergeResult;
                     pendingProtectionMergeResult = null;
                     pendingPlacedMergeIterator = null;
-                    pendingInteriorMergeIterator = null;
                     protectionMergeStatusLogTicks = 0;
                     protectionMergeStartedAtNanos = 0L;
 
@@ -630,7 +629,7 @@ final class ConstructTask implements ConstructJob {
         return new PassApplyResult(
             undoFileName,
             streamResult.placedKeys(),
-            streamResult.interiorKeys(),
+            streamResult.interiorMask(),
             streamResult.chunkCount(),
             streamResult.writeCount(),
             streamResult.undoEntryCount()
@@ -639,22 +638,17 @@ final class ConstructTask implements ConstructJob {
 
     private void beginProtectionMerge(PassApplyResult result) {
         pendingProtectionMergeResult = result;
+        protectionCollector.setInteriorMask(result != null ? result.interiorMask : null);
         pendingPlacedMergeIterator = result != null && result.placedKeys != null
             ? result.placedKeys.iterator()
-            : null;
-        pendingInteriorMergeIterator = result != null && result.interiorKeys != null
-            ? result.interiorKeys.iterator()
             : null;
         pendingPlacedMergeRemaining = result != null && result.placedKeys != null
             ? result.placedKeys.size()
             : 0;
-        pendingInteriorMergeRemaining = result != null && result.interiorKeys != null
-            ? result.interiorKeys.size()
-            : 0;
         protectionMergeStatusLogTicks = 0;
         protectionMergeStartedAtNanos = System.nanoTime();
 
-        int total = pendingPlacedMergeRemaining + pendingInteriorMergeRemaining;
+        int total = pendingPlacedMergeRemaining;
         int estimatedTicks = total <= 0
             ? 0
             : (int) Math.ceil(total / (double) Math.max(1, PROTECTION_MERGE_ADD_BUDGET_PER_TICK));
@@ -662,7 +656,7 @@ final class ConstructTask implements ConstructJob {
             "[construct:{}] protection merge start: placed={} interior={} total={} budgetPerTick={} estimatedTicks≈{}",
             undoRunId,
             pendingPlacedMergeRemaining,
-            pendingInteriorMergeRemaining,
+            result != null && result.interiorMask != null ? result.interiorMask.markedCount() : 0,
             total,
             PROTECTION_MERGE_ADD_BUDGET_PER_TICK,
             estimatedTicks
@@ -677,28 +671,21 @@ final class ConstructTask implements ConstructJob {
         int budget = PROTECTION_MERGE_ADD_BUDGET_PER_TICK;
 
         while (budget > 0 && pendingPlacedMergeIterator != null && pendingPlacedMergeIterator.hasNext()) {
-            protectionCollector.addPlaced(pendingPlacedMergeIterator.next());
+            protectionCollector.addPlaced(pendingPlacedMergeIterator.nextLong());
             if (pendingPlacedMergeRemaining > 0) {
                 pendingPlacedMergeRemaining--;
             }
             budget--;
         }
 
-        while (budget > 0 && pendingInteriorMergeIterator != null && pendingInteriorMergeIterator.hasNext()) {
-            protectionCollector.addInterior(pendingInteriorMergeIterator.next());
-            if (pendingInteriorMergeRemaining > 0) {
-                pendingInteriorMergeRemaining--;
-            }
-            budget--;
-        }
-
         boolean placedDone = pendingPlacedMergeIterator == null || !pendingPlacedMergeIterator.hasNext();
-        boolean interiorDone = pendingInteriorMergeIterator == null || !pendingInteriorMergeIterator.hasNext();
-        if (placedDone && interiorDone) {
+        if (placedDone) {
             AtlantisMod.LOGGER.info("[construct:{}] protection merge complete: placed={} interior={}",
                 undoRunId,
                 pendingPlacedMergeRemaining,
-                pendingInteriorMergeRemaining
+                pendingProtectionMergeResult.interiorMask != null
+                    ? pendingProtectionMergeResult.interiorMask.markedCount()
+                    : 0
             );
             return true;
         }
@@ -708,9 +695,7 @@ final class ConstructTask implements ConstructJob {
             long elapsedMs = (System.nanoTime() - protectionMergeStartedAtNanos) / 1_000_000L;
             send(server,
                 "Protection merge running: elapsed=" + elapsedMs
-                    + "ms, stage=" + (placedDone ? "interior" : "placed")
-                    + ", remainingPlaced=" + pendingPlacedMergeRemaining
-                    + ", remainingInterior=" + pendingInteriorMergeRemaining);
+                    + "ms, remainingPlaced=" + pendingPlacedMergeRemaining);
         }
         return false;
     }
@@ -955,8 +940,7 @@ final class ConstructTask implements ConstructJob {
                 tz = maxZ + margin + offset;
             }
 
-            int safeY = Math.max(world.getBottomY() + 1, player.getBlockY());
-            BlockPos target = new BlockPos(tx, safeY, tz);
+            BlockPos target = PlayerEjectTarget.aboveGround(world, tx, tz);
 
             player.teleport(
                 world,
@@ -1065,7 +1049,7 @@ final class ConstructTask implements ConstructJob {
         // Write protection file asynchronously to avoid blocking server thread with large I/O
         CompletableFuture.runAsync(() -> {
             try {
-                Path file = ProtectionPaths.protectionFileForRun(undoRunId);
+                Path file = ProtectionPaths.activeProtectionFile();
                 ProtectionFileIO.write(file, entry);
             } catch (Exception e) {
                 AtlantisMod.LOGGER.warn("Failed to persist protection for run {}: {}", undoRunId, e.getMessage());
@@ -1217,16 +1201,16 @@ final class ConstructTask implements ConstructJob {
 
     private static final class PassApplyResult {
         private final String undoFileName;
-        private final Set<Long> placedKeys;
-        private final Set<Long> interiorKeys;
+        private final LongSet placedKeys;
+        private final InteriorMask interiorMask;
         private final int chunkCount;
         private final int writeCount;
         private final int undoEntryCount;
 
-        private PassApplyResult(String undoFileName, Set<Long> placedKeys, Set<Long> interiorKeys, int chunkCount, int writeCount, int undoEntryCount) {
+        private PassApplyResult(String undoFileName, LongSet placedKeys, InteriorMask interiorMask, int chunkCount, int writeCount, int undoEntryCount) {
             this.undoFileName = undoFileName;
             this.placedKeys = placedKeys;
-            this.interiorKeys = interiorKeys;
+            this.interiorMask = interiorMask;
             this.chunkCount = chunkCount;
             this.writeCount = writeCount;
             this.undoEntryCount = undoEntryCount;

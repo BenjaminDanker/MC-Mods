@@ -2,6 +2,7 @@ package com.silver.atlantis.construct;
 
 import com.silver.atlantis.AtlantisMod;
 import com.silver.atlantis.construct.undo.UndoEntry;
+import com.silver.atlantis.protect.InteriorMask;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtHelper;
@@ -29,7 +30,7 @@ final class SpongeV3Schematic {
     record PrepassResult(Set<Long> targetChunkKeys, PlacementBounds bounds) {
     }
 
-    record StreamApplyResult(Set<Long> placedKeys, Set<Long> interiorKeys, int chunkCount, int writeCount, int undoEntryCount) {
+    record StreamApplyResult(LongOpenHashSet placedKeys, InteriorMask interiorMask, int chunkCount, int writeCount, int undoEntryCount) {
     }
 
     interface UndoEntrySink {
@@ -133,7 +134,11 @@ final class SpongeV3Schematic {
             blockEntities.put(key, NbtHelper.toNbtProviderString(be));
         }
 
-        int expectedBlocks = width * height * length;
+        long expectedBlockCount = (long) width * height * length;
+        if (expectedBlockCount > Integer.MAX_VALUE) {
+            throw new IOException("Schematic is too large: " + expectedBlockCount + " cells");
+        }
+        int expectedBlocks = (int) expectedBlockCount;
         int decodedCount = countVarints(data, expectedBlocks);
         if (decodedCount != expectedBlocks) {
             throw new IOException("Invalid schematic data length: decoded=" + decodedCount + " expected=" + expectedBlocks);
@@ -201,7 +206,14 @@ final class SpongeV3Schematic {
     StreamApplyResult streamApply(ServerWorld world, BlockPos anchorTo, UndoEntrySink undoEntrySink) {
         LongOpenHashSet touchedChunks = new LongOpenHashSet();
         LongOpenHashSet placedPositions = new LongOpenHashSet();
-        LongOpenHashSet interiorPositions = new LongOpenHashSet();
+        InteriorMask.Builder interiorMask = InteriorMask.builder(
+            offsetX + anchorTo.getX(),
+            offsetY + anchorTo.getY(),
+            offsetZ + anchorTo.getZ(),
+            width,
+            height,
+            length
+        );
         int[] writeCount = new int[1];
         int[] undoEntryCount = new int[1];
         long applyStartedAt = System.nanoTime();
@@ -237,7 +249,7 @@ final class SpongeV3Schematic {
                 int worldZ = schematicZ + anchorTo.getZ();
 
                 if (isInteriorAirMarker(normalized)) {
-                    interiorPositions.add(BlockPos.asLong(worldX, worldY, worldZ));
+                    interiorMask.set(x, y, z);
                     long chunkKey = ChunkPos.toLong(worldX >> 4, worldZ >> 4);
                     appendPlacement(spoolDir, spoolFiles, spoolOutputs, chunkKey, worldX, worldY, worldZ, "minecraft:air", null);
                     continue;
@@ -329,26 +341,21 @@ final class SpongeV3Schematic {
             }
         }
 
+        InteriorMask builtInteriorMask = interiorMask.build();
+        AtlantisMod.LOGGER.info(
+            "[construct] position sets complete: placed={} interior={} touchedChunks={}",
+            placedPositions.size(),
+            builtInteriorMask.markedCount(),
+            touchedChunks.size()
+        );
+
         return new StreamApplyResult(
-            toJavaSet(placedPositions),
-            toJavaSet(interiorPositions),
+            placedPositions,
+            builtInteriorMask,
             touchedChunks.size(),
             writeCount[0],
             undoEntryCount[0]
         );
-    }
-
-    private static Set<Long> toJavaSet(LongOpenHashSet set) {
-        if (set == null || set.isEmpty()) {
-            return Set.of();
-        }
-
-        Set<Long> out = new HashSet<>(set.size());
-        var iterator = set.iterator();
-        while (iterator.hasNext()) {
-            out.add(iterator.nextLong());
-        }
-        return Collections.unmodifiableSet(out);
     }
 
     private static void appendPlacement(

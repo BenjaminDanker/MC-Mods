@@ -12,13 +12,10 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Ticks background protection indexing work so large protection sets
- * never freeze the server watchdog.
+ * Handles lightweight protection-related player notifications each tick.
  */
 public final class ProtectionService {
 
-    // Keep small; protection indexing is background work.
-    private static final long TICK_BUDGET_NANOS = 2_000_000L; // 2ms
     private static final Text INNER_AIR_ENTER_MESSAGE = Text.literal("Celantis build by Natac");
 
     private final Set<UUID> playersInsideInnerAir = new HashSet<>();
@@ -28,7 +25,6 @@ public final class ProtectionService {
     }
 
     private void onEndTick(MinecraftServer server) {
-        ProtectionManager.INSTANCE.tick(TICK_BUDGET_NANOS);
         checkInnerAirEntry(server);
     }
 
@@ -52,6 +48,9 @@ public final class ProtectionService {
                 playersInsideInnerAir.add(player.getUuid());
             } else if (!isInsideInnerAir && wasInsideInnerAir) {
                 playersInsideInnerAir.remove(player.getUuid());
+                // Clear the previous action-bar notification immediately when
+                // the player leaves the protected interior (including after undo).
+                player.sendMessage(Text.empty(), true);
             }
         }
 
