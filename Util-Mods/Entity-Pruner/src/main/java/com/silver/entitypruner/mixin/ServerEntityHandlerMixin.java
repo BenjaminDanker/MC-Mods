@@ -1,6 +1,7 @@
 package com.silver.entitypruner.mixin;
 
 import com.silver.entitypruner.EntityCountAccessor;
+import com.silver.entitypruner.EntityProtection;
 import com.silver.entitypruner.EntityPrunerConfig;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.ItemEntity;
@@ -29,6 +30,9 @@ public class ServerEntityHandlerMixin {
         EntityCountAccessor accessor = (EntityCountAccessor) this.field_26936;
         long chunkKey = new ChunkPos(entity.getBlockPos()).toLong();
         if (entity instanceof MobEntity) {
+            if (EntityProtection.isProtectedMob(entity)) {
+                return;
+            }
             accessor.incrementMobCount(chunkKey);
             if (accessor.isResyncInProgress()) {
                 accessor.incrementResyncMobDelta(chunkKey);
@@ -50,6 +54,9 @@ public class ServerEntityHandlerMixin {
         EntityCountAccessor accessor = (EntityCountAccessor) this.field_26936;
         long chunkKey = new ChunkPos(entity.getBlockPos()).toLong();
         if (entity instanceof MobEntity) {
+            if (EntityProtection.isProtectedMob(entity)) {
+                return;
+            }
             accessor.decrementMobCount(chunkKey);
             if (accessor.isResyncInProgress()) {
                 accessor.decrementResyncMobDelta(chunkKey);

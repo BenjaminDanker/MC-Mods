@@ -1,6 +1,7 @@
 package com.silver.entitypruner.mixin;
 
 import com.silver.entitypruner.EntityCountAccessor;
+import com.silver.entitypruner.EntityProtection;
 import com.silver.entitypruner.EntityPruner;
 import com.silver.entitypruner.EntityPrunerConfig;
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
@@ -186,7 +187,9 @@ public class ServerWorldMixin implements EntityCountAccessor {
             Entity entity = this.resyncIterator.next();
             long chunkKey = getChunkKey(entity);
             if (entity instanceof MobEntity) {
-                this.resyncMobCountsByChunk.addTo(chunkKey, 1);
+                if (!EntityProtection.isProtectedMob(entity)) {
+                    this.resyncMobCountsByChunk.addTo(chunkKey, 1);
+                }
             } else if (entity instanceof ItemEntity) {
                 this.resyncItemCountsByChunk.addTo(chunkKey, 1);
             }
@@ -350,7 +353,7 @@ public class ServerWorldMixin implements EntityCountAccessor {
         }
         
         if (entity instanceof MobEntity) {
-            if (entity.getCommandTags().contains("no_despawn") || entity.hasCustomName()) {
+            if (EntityProtection.isProtectedMob(entity)) {
                 return;
             }
             long chunkKey = getChunkKey(entity);
