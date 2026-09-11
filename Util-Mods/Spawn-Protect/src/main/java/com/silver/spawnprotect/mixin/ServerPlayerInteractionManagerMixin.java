@@ -48,7 +48,7 @@ public abstract class ServerPlayerInteractionManagerMixin {
         }
 
         Item item = stack.getItem();
-        if (!isPotentialPlacementItem(item)) {
+        if (!spawnprotect$isPotentialPlacementItem(item)) {
             return;
         }
 
@@ -65,7 +65,7 @@ public abstract class ServerPlayerInteractionManagerMixin {
         }
     }
 
-    private static boolean isPotentialPlacementItem(Item item) {
+    private static boolean spawnprotect$isPotentialPlacementItem(Item item) {
         if (item instanceof BlockItem) {
             return true;
         }
