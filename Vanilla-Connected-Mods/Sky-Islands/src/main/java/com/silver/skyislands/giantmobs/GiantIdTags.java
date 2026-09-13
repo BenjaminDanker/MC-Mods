@@ -1,6 +1,6 @@
 package com.silver.skyislands.giantmobs;
 
-import net.minecraft.entity.mob.GiantEntity;
+import net.minecraft.world.entity.monster.Giant;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,8 +19,8 @@ public final class GiantIdTags {
         return PREFIX + id;
     }
 
-    public static Optional<UUID> getId(GiantEntity giant) {
-        for (String tag : giant.getCommandTags()) {
+    public static Optional<UUID> getId(Giant giant) {
+        for (String tag : giant.entityTags()) {
             if (!tag.startsWith(PREFIX)) {
                 continue;
             }
@@ -28,7 +28,7 @@ public final class GiantIdTags {
                 return Optional.of(UUID.fromString(tag.substring(PREFIX.length())));
             } catch (Exception ignored) {
                 if (LOGGER.isDebugEnabled()) {
-                    LOGGER.debug("[Sky-Islands][giants][id] invalid id tag on giant uuid={} tag={}", giant.getUuidAsString(), tag);
+                    LOGGER.debug("[Sky-Islands][giants][id] invalid id tag on giant uuid={} tag={}", giant.getStringUUID(), tag);
                 }
                 return Optional.empty();
             }

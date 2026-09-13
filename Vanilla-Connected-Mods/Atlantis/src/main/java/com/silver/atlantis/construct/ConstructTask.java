@@ -19,17 +19,16 @@ import com.silver.atlantis.spawn.bounds.ActiveConstructBounds;
 import com.silver.atlantis.spawn.service.ProximityMobManager;
 import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.longs.LongSet;
-import net.minecraft.network.packet.s2c.play.PositionFlag;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ChunkTicketType;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.ChunkPos;
-
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.TicketType;
+import net.minecraft.world.entity.Relative;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.phys.AABB;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -62,7 +61,7 @@ final class ConstructTask implements ConstructJob {
 
     private final UUID requesterId;
     private final ConstructConfig config;
-    private final ServerWorld world;
+    private final ServerLevel world;
     private final BlockPos targetCenter;
     private final Executor ioExecutor;
 
@@ -97,7 +96,7 @@ final class ConstructTask implements ConstructJob {
     private static final int PROTECTION_MERGE_STATUS_LOG_INTERVAL_TICKS = 20;
     private static final int MIN_TICKET_LEVEL = 0;
     private static final int MAX_TICKET_LEVEL = 40;
-    private static final List<ChunkTicketType> DISCOVERED_TICKET_TYPES = discoverChunkTicketTypes();
+    private static final List<TicketType> DISCOVERED_TICKET_TYPES = discoverChunkTicketTypes();
 
     private long chunkPrepStartedAtNanos;
     private int chunkPrepExpectedMissingCount;
@@ -125,8 +124,8 @@ final class ConstructTask implements ConstructJob {
     private boolean protectionRegistered;
     private boolean spawnPauseAcquired;
 
-    ConstructTask(ServerCommandSource source, ConstructConfig config, ServerWorld world, BlockPos targetCenter, Executor ioExecutor) {
-        this.requesterId = source.getPlayer() != null ? source.getPlayer().getUuid() : null;
+    ConstructTask(CommandSourceStack source, ConstructConfig config, ServerLevel world, BlockPos targetCenter, Executor ioExecutor) {
+        this.requesterId = source.getPlayer() != null ? source.getPlayer().getUUID() : null;
         this.config = config;
         this.world = world;
         this.targetCenter = targetCenter;
@@ -139,7 +138,7 @@ final class ConstructTask implements ConstructJob {
 
         this.protectionCollector = new ProtectionCollector(
             undoRunId,
-            world.getRegistryKey().getValue().toString()
+            world.dimension().identifier().toString()
         );
 
         this.passIndex = 0;
@@ -158,8 +157,8 @@ final class ConstructTask implements ConstructJob {
         send(source.getServer(), "Construct started. Run ID: " + undoRunId);
     }
 
-    ConstructTask(ServerCommandSource source, ConstructConfig config, ServerWorld world, ConstructRunState resumeState, Executor ioExecutor) {
-        this.requesterId = source.getPlayer() != null ? source.getPlayer().getUuid() : null;
+    ConstructTask(CommandSourceStack source, ConstructConfig config, ServerLevel world, ConstructRunState resumeState, Executor ioExecutor) {
+        this.requesterId = source.getPlayer() != null ? source.getPlayer().getUUID() : null;
         this.config = config.withYOffsetBlocks(resumeState.yOffsetBlocks());
         this.world = world;
         this.targetCenter = new BlockPos(resumeState.rawCenterX(), resumeState.rawCenterY(), resumeState.rawCenterZ());
@@ -172,7 +171,7 @@ final class ConstructTask implements ConstructJob {
 
         this.protectionCollector = new ProtectionCollector(
             undoRunId,
-            world.getRegistryKey().getValue().toString()
+            world.dimension().identifier().toString()
         );
 
         this.passIndex = Math.max(0, resumeState.nextPassIndex());
@@ -196,13 +195,13 @@ final class ConstructTask implements ConstructJob {
         return undoRunId;
     }
 
-    static ConstructRunState tryLoadLatestResumableState(ServerWorld world) {
+    static ConstructRunState tryLoadLatestResumableState(ServerLevel world) {
         Path base = UndoPaths.undoBaseDir();
         if (!Files.exists(base) || !Files.isDirectory(base)) {
             return null;
         }
 
-        String dimension = world.getRegistryKey().getValue().toString();
+        String dimension = world.dimension().identifier().toString();
 
         ConstructRunState best = null;
         long bestCreatedAt = Long.MIN_VALUE;
@@ -618,7 +617,7 @@ final class ConstructTask implements ConstructJob {
         Path undoFile = UndoPaths.constructUndoFile(undoRunDir);
         SpongeV3Schematic.StreamApplyResult streamResult;
         String undoFileName;
-        try (UndoFileFormat.StreamWriter undoWriter = UndoFileFormat.openStreamWriter(undoFile, world.getRegistryKey().getValue().toString())) {
+        try (UndoFileFormat.StreamWriter undoWriter = UndoFileFormat.openStreamWriter(undoFile, world.dimension().identifier().toString())) {
             streamResult = schematic.streamApply(world, pasteAnchorTo, undoWriter::write);
             undoFileName = undoFile.getFileName().toString();
         } catch (Exception e) {
@@ -726,9 +725,9 @@ final class ConstructTask implements ConstructJob {
 
         int loaded = 0;
         for (long key : targetChunkKeys) {
-            int chunkX = ChunkPos.getPackedX(key);
-            int chunkZ = ChunkPos.getPackedZ(key);
-            if (world.getChunkManager().isChunkLoaded(chunkX, chunkZ)) {
+            int chunkX = ChunkPos.getX(key);
+            int chunkZ = ChunkPos.getZ(key);
+            if (world.getChunkSource().hasChunk(chunkX, chunkZ)) {
                 loaded++;
             }
         }
@@ -742,13 +741,13 @@ final class ConstructTask implements ConstructJob {
 
         int saved = 0;
         for (long key : targetChunkKeys) {
-            int chunkX = ChunkPos.getPackedX(key);
-            int chunkZ = ChunkPos.getPackedZ(key);
-            if (!world.getChunkManager().isChunkLoaded(chunkX, chunkZ)) {
+            int chunkX = ChunkPos.getX(key);
+            int chunkZ = ChunkPos.getZ(key);
+            if (!world.getChunkSource().hasChunk(chunkX, chunkZ)) {
                 continue;
             }
 
-            ((ServerChunkManagerAccessor) world.getChunkManager().chunkLoadingManager).atlantis$markChunkNeedsSaving(new ChunkPos(chunkX, chunkZ));
+            ((ServerChunkManagerAccessor) world.getChunkSource().chunkMap).atlantis$setChunkUnsaved(new ChunkPos(chunkX, chunkZ));
             saved++;
         }
 
@@ -777,7 +776,7 @@ final class ConstructTask implements ConstructJob {
         }
 
         for (long key : targetChunkKeys) {
-            ChunkPos chunkPos = new ChunkPos(ChunkPos.getPackedX(key), ChunkPos.getPackedZ(key));
+            ChunkPos chunkPos = new ChunkPos(ChunkPos.getX(key), ChunkPos.getZ(key));
             if (!UnloadedChunkNbtEditor.hasChunkNbt(world, chunkPos)) {
                 missingChunks.add(chunkPos);
             }
@@ -824,16 +823,16 @@ final class ConstructTask implements ConstructJob {
             }
 
             long key = unloadChunkKeysArray[idx % unloadChunkKeysArray.length];
-            int chunkX = ChunkPos.getPackedX(key);
-            int chunkZ = ChunkPos.getPackedZ(key);
+            int chunkX = ChunkPos.getX(key);
+            int chunkZ = ChunkPos.getZ(key);
 
             world.setChunkForced(chunkX, chunkZ, false);
 
             ChunkPos pos = new ChunkPos(chunkX, chunkZ);
-            for (ChunkTicketType ticketType : DISCOVERED_TICKET_TYPES) {
+            for (TicketType ticketType : DISCOVERED_TICKET_TYPES) {
                 for (int level = MIN_TICKET_LEVEL; level <= MAX_TICKET_LEVEL; level++) {
                     try {
-                        world.getChunkManager().removeTicket(ticketType, pos, level);
+                        world.getChunkSource().removeTicketWithRadius(ticketType, pos, level);
                     } catch (Exception ignored) {
                     }
                 }
@@ -847,16 +846,16 @@ final class ConstructTask implements ConstructJob {
         }
 
         for (long key : chunkKeys) {
-            int chunkX = ChunkPos.getPackedX(key);
-            int chunkZ = ChunkPos.getPackedZ(key);
+            int chunkX = ChunkPos.getX(key);
+            int chunkZ = ChunkPos.getZ(key);
 
             world.setChunkForced(chunkX, chunkZ, false);
 
             ChunkPos pos = new ChunkPos(chunkX, chunkZ);
-            for (ChunkTicketType ticketType : DISCOVERED_TICKET_TYPES) {
+            for (TicketType ticketType : DISCOVERED_TICKET_TYPES) {
                 for (int level = MIN_TICKET_LEVEL; level <= MAX_TICKET_LEVEL; level++) {
                     try {
-                        world.getChunkManager().removeTicket(ticketType, pos, level);
+                        world.getChunkSource().removeTicketWithRadius(ticketType, pos, level);
                     } catch (Exception ignored) {
                     }
                 }
@@ -864,19 +863,19 @@ final class ConstructTask implements ConstructJob {
         }
     }
 
-    private static List<ChunkTicketType> discoverChunkTicketTypes() {
-        List<ChunkTicketType> types = new ArrayList<>();
-        for (Field field : ChunkTicketType.class.getDeclaredFields()) {
+    private static List<TicketType> discoverChunkTicketTypes() {
+        List<TicketType> types = new ArrayList<>();
+        for (Field field : TicketType.class.getDeclaredFields()) {
             if (!Modifier.isStatic(field.getModifiers())) {
                 continue;
             }
-            if (!ChunkTicketType.class.isAssignableFrom(field.getType())) {
+            if (!TicketType.class.isAssignableFrom(field.getType())) {
                 continue;
             }
             try {
                 field.setAccessible(true);
                 Object value = field.get(null);
-                if (value instanceof ChunkTicketType ticketType) {
+                if (value instanceof TicketType ticketType) {
                     types.add(ticketType);
                 }
             } catch (Exception ignored) {
@@ -889,13 +888,13 @@ final class ConstructTask implements ConstructJob {
 
     private boolean ejectPlayersFromBuildArea(MinecraftServer server, int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
         int configuredMargin = Math.max(0, config.playerEjectMarginBlocks());
-        int viewDistanceChunks = server.getPlayerManager().getViewDistance();
-        int simulationDistanceChunks = server.getPlayerManager().getSimulationDistance();
+        int viewDistanceChunks = server.getPlayerList().getViewDistance();
+        int simulationDistanceChunks = server.getPlayerList().getSimulationDistance();
         int chunkLoadRadiusBlocks = Math.max(viewDistanceChunks, simulationDistanceChunks) * 16;
         int margin = Math.max(configuredMargin, chunkLoadRadiusBlocks + 32);
         int offset = Math.max(64, config.playerEjectTeleportOffsetBlocks() + chunkLoadRadiusBlocks);
 
-        Box box = new Box(
+        AABB box = new AABB(
             minX - margin,
             minY - margin,
             minZ - margin,
@@ -905,8 +904,8 @@ final class ConstructTask implements ConstructJob {
         );
 
         int ejectedCount = 0;
-        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
-            if (player.getEntityWorld() != world) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            if (player.level() != world) {
                 continue;
             }
 
@@ -942,14 +941,14 @@ final class ConstructTask implements ConstructJob {
 
             BlockPos target = PlayerEjectTarget.aboveGround(world, tx, tz);
 
-            player.teleport(
+            player.teleportTo(
                 world,
                 target.getX() + 0.5,
                 target.getY(),
                 target.getZ() + 0.5,
-                Set.of(PositionFlag.DELTA_X, PositionFlag.DELTA_Y, PositionFlag.DELTA_Z),
-                player.getYaw(),
-                player.getPitch(),
+                Set.of(Relative.DELTA_X, Relative.DELTA_Y, Relative.DELTA_Z),
+                player.getYRot(),
+                player.getXRot(),
                 true
             );
             ejectedCount++;
@@ -974,7 +973,7 @@ final class ConstructTask implements ConstructJob {
 
         ActiveConstructBounds bounds = new ActiveConstructBounds(
             undoRunId,
-            world.getRegistryKey().getValue().toString(),
+            world.dimension().identifier().toString(),
             overallMin.getX(),
             overallMin.getY(),
             overallMin.getZ(),
@@ -999,7 +998,7 @@ final class ConstructTask implements ConstructJob {
         for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
             for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
                 total++;
-                if (world.getChunkManager().isChunkLoaded(chunkX, chunkZ)) {
+                if (world.getChunkSource().hasChunk(chunkX, chunkZ)) {
                     loadedBefore++;
                 }
                 world.setChunkForced(chunkX, chunkZ, false);
@@ -1071,7 +1070,7 @@ final class ConstructTask implements ConstructJob {
         ConstructRunState snapshot = new ConstructRunState(
             ConstructRunState.CURRENT_VERSION,
             undoRunId,
-            world.getRegistryKey().getValue().toString(),
+            world.dimension().identifier().toString(),
             parseRunIdMillisSafe(undoRunId),
             targetCenter.getX(),
             targetCenter.getY(),
@@ -1119,7 +1118,7 @@ final class ConstructTask implements ConstructJob {
             UndoRunMetadata metadata = new UndoRunMetadata(
                 UndoRunMetadata.CURRENT_VERSION,
                 undoRunId,
-                world.getRegistryKey().getValue().toString(),
+                world.dimension().identifier().toString(),
                 parseRunIdMillisSafe(undoRunId),
                 config.yOffsetBlocks(),
                 targetCenter.getX(),
@@ -1137,9 +1136,9 @@ final class ConstructTask implements ConstructJob {
         AtlantisMod.LOGGER.info("[construct:{}] {}", undoRunId, message);
 
         if (requesterId != null && server != null) {
-            ServerPlayerEntity player = server.getPlayerManager().getPlayer(requesterId);
+            ServerPlayer player = server.getPlayerList().getPlayer(requesterId);
             if (player != null) {
-                player.sendMessage(Text.literal(message), false);
+                player.sendSystemMessage(Component.literal(message), false);
             }
         }
     }

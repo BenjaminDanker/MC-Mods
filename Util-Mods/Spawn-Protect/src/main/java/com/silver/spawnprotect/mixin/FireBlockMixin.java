@@ -1,11 +1,11 @@
 package com.silver.spawnprotect.mixin;
 
 import com.silver.spawnprotect.protect.SpawnProtectionManager;
-import net.minecraft.block.FireBlock;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.random.Random;
-import net.minecraft.world.World;
+import net.minecraft.world.level.block.FireBlock;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.core.BlockPos;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.block.state.BlockState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -14,20 +14,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(FireBlock.class)
 public abstract class FireBlockMixin {
 
-    @Inject(method = "trySpreadingFire", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "tick", at = @At("HEAD"), cancellable = true)
     private void spawnprotect$preventBurning(
-        World world,
+        BlockState state,
+        ServerLevel world,
         BlockPos pos,
-        int spreadFactor,
-        Random random,
-        int currentAge,
+        RandomSource random,
         CallbackInfo ci
     ) {
-        if (!(world instanceof ServerWorld serverWorld)) {
-            return;
-        }
-
-        if (SpawnProtectionManager.INSTANCE.isWithinProtectedBounds(serverWorld, pos)) {
+        if (SpawnProtectionManager.INSTANCE.isWithinProtectedBounds(world, pos)) {
             ci.cancel();
         }
     }

@@ -2,11 +2,10 @@
   "required": true,
   "minVersion": "0.8",
   "package": "com.silver.viewextend.mixin",
-  "compatibilityLevel": "JAVA_21",
+  "compatibilityLevel": "JAVA_25",
   "mixins": [
     "MinecraftServerMixin",
     "ServerCommonNetworkHandlerMixin",
-    "ServerChunkLoadingManagerAccessor",
     "ChunkDataS2CPacketAccessor",
     "LightUpdateS2CPacketAccessor",
     "EntityTrackerMixin"

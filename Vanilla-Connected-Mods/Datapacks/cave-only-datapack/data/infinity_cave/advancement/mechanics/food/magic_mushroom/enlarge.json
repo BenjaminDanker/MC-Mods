@@ -6,12 +6,12 @@
         "item": {
           "items": "minecraft:suspicious_stew",
           "predicates": {
-                "custom_data": {
-                  "infinity_cave": {
-                   "item": "magic_mushroom",
-                   "enlarge": true
-                  }
-                }
+            "custom_data": {
+              "infinity_cave": {
+                "item": "magic_mushroom",
+                "enlarge": true
+              }
+            }
           }
         }
       }

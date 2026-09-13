@@ -23,7 +23,7 @@
             "condition": "minecraft:entity_properties",
             "entity": "this",
             "predicate": {
-              "type": "minecraft:skeleton",
+              "minecraft:entity_type": "minecraft:skeleton",
               "team": "ic.mob_team",
               "equipment": {
                 "mainhand": {

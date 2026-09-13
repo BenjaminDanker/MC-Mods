@@ -2,16 +2,13 @@ package com.silver.borderlock;
 
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
-import net.minecraft.network.packet.s2c.play.PositionFlag;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.world.border.WorldBorder;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.Mth;
+import net.minecraft.world.level.border.WorldBorder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.EnumSet;
-import java.util.Set;
 
 public final class BorderLockMod implements ModInitializer {
     public static final String MOD_ID = "borderlock";
@@ -22,39 +19,37 @@ public final class BorderLockMod implements ModInitializer {
         LOGGER.info("Border Lock initialized");
 
         ServerTickEvents.END_SERVER_TICK.register(server -> {
-            for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                 enforceBorder(player);
             }
         });
     }
 
-    private static void enforceBorder(ServerPlayerEntity player) {
-        if (player.hasPermissionLevel(2)) {
+    private static void enforceBorder(ServerPlayer player) {
+        if (player.level().getServer().getPlayerList().isOp(player.nameAndId())) {
             return;
         }
 
-        ServerWorld world = player.getEntityWorld();
+        ServerLevel world = player.level();
         WorldBorder border = world.getWorldBorder();
 
         double x = player.getX();
         double z = player.getZ();
 
-        double west = border.getBoundWest();
-        double east = border.getBoundEast();
-        double north = border.getBoundNorth();
-        double south = border.getBoundSouth();
+        double west = border.getMinX();
+        double east = border.getMaxX();
+        double north = border.getMinZ();
+        double south = border.getMaxZ();
 
         boolean inside = x > west && x < east && z > north && z < south;
         if (inside) {
             return;
         }
 
-        double targetX = MathHelper.clamp(x, west + 0.5, east - 0.5);
-        double targetZ = MathHelper.clamp(z, north + 0.5, south - 0.5);
+        double targetX = Mth.clamp(x, west + 0.5, east - 0.5);
+        double targetZ = Mth.clamp(z, north + 0.5, south - 0.5);
 
-        double targetY = Math.max(player.getY(), world.getBottomY() + 1);
-
-        Set<PositionFlag> flags = EnumSet.noneOf(PositionFlag.class);
-        player.teleport(world, targetX, targetY, targetZ, flags, player.getYaw(), player.getPitch(), false);
+        double targetY = Math.max(player.getY(), world.getMinY() + 1);
+        player.teleportTo(targetX, targetY, targetZ);
     }
 }

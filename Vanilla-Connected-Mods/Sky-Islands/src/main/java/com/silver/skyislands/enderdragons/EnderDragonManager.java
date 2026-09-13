@@ -3,27 +3,28 @@ package com.silver.skyislands.enderdragons;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.ItemEntity;
-import net.minecraft.entity.boss.dragon.EnderDragonEntity;
-import net.minecraft.entity.boss.dragon.phase.PhaseType;
-import net.minecraft.entity.SpawnReason;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.item.ItemStack;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.ChunkPos;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.WorldProperties;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.storage.LevelData;
 
 import com.silver.skyislands.specialitems.SpecialFeatherItem;
 
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.text.Text;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.network.chat.Component;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,7 +33,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
+import net.minecraft.util.RandomSource;
 import java.util.Set;
 import java.util.UUID;
 import java.util.Optional;
@@ -62,7 +63,7 @@ public final class EnderDragonManager {
     private static boolean effectiveDistancesInitialized;
 
     private static final Map<UUID, Long> nextHeadingNudgeTick = new HashMap<>();
-    private static final Map<UUID, Vec3d> returnTargetHeading = new HashMap<>();
+    private static final Map<UUID, Vec3> returnTargetHeading = new HashMap<>();
     private static final Map<UUID, Long> returnTurnUntilTick = new HashMap<>();
     private static final Map<UUID, Long> nextReturnDecisionTick = new HashMap<>();
     private static final Map<UUID, Long> nextSpawnWaitLogTick = new HashMap<>();
@@ -72,13 +73,13 @@ public final class EnderDragonManager {
     // Prevent spamming chunk release calls/logs when a dragon stays inactive for a long time.
     private static final Set<UUID> inactiveChunkReleaseDone = new HashSet<>();
 
-    private static final Map<UUID, Vec3d> lastLoadedEntityPos = new HashMap<>();
+    private static final Map<UUID, Vec3> lastLoadedEntityPos = new HashMap<>();
     private static final Map<UUID, Integer> loadedStuckTicks = new HashMap<>();
     private static final Map<UUID, Long> loadedSpawnGraceUntilTick = new HashMap<>();
     private static final Map<UUID, Long> loadedPendingTakeoffKickTick = new HashMap<>();
 
     private static final Map<UUID, BlockPos> fearedHeadPos = new HashMap<>();
-    private static final Map<UUID, Vec3d> fearedHeadAvoidTarget = new HashMap<>();
+    private static final Map<UUID, Vec3> fearedHeadAvoidTarget = new HashMap<>();
     private static final Map<UUID, Long> fearedHeadLockUntilTick = new HashMap<>();
     private static final Map<UUID, Long> fearedHeadNextScanTick = new HashMap<>();
 
@@ -113,11 +114,11 @@ public final class EnderDragonManager {
         ServerTickEvents.END_SERVER_TICK.register(EnderDragonManager::tick);
 
         PlayerBlockBreakEvents.AFTER.register((world, player, pos, state, blockEntity) -> {
-            if (world == null || world.isClient()) {
+            if (world == null || world.isClientSide()) {
                 return;
             }
-            if (headTracker != null && world instanceof ServerWorld serverWorld) {
-                if (LOGGER.isDebugEnabled() && (state != null) && (state.isOf(Blocks.DRAGON_HEAD) || state.isOf(Blocks.DRAGON_WALL_HEAD))) {
+            if (headTracker != null && world instanceof ServerLevel serverWorld) {
+                if (LOGGER.isDebugEnabled() && (state != null) && (state.is(Blocks.DRAGON_HEAD) || state.is(Blocks.DRAGON_WALL_HEAD))) {
                     LOGGER.debug("[Sky-Islands][dragons][heads] break hook player={} pos={} block={} blockEntity={}",
                             player == null ? "<null>" : player.getName().getString(),
                             pos,
@@ -142,16 +143,16 @@ public final class EnderDragonManager {
         });
     }
 
-    public static void onPossibleDragonHeadPlaced(net.minecraft.world.World world, BlockPos pos) {
-        if (world == null || world.isClient()) {
+    public static void onPossibleDragonHeadPlaced(net.minecraft.world.level.Level world, BlockPos pos) {
+        if (world == null || world.isClientSide()) {
             return;
         }
-        if (headTracker != null && world instanceof ServerWorld serverWorld) {
+        if (headTracker != null && world instanceof ServerLevel serverWorld) {
             if (LOGGER.isDebugEnabled()) {
                 BlockState bs = serverWorld.getBlockState(pos);
-                if (bs.isOf(Blocks.DRAGON_HEAD) || bs.isOf(Blocks.DRAGON_WALL_HEAD)) {
+                if (bs.is(Blocks.DRAGON_HEAD) || bs.is(Blocks.DRAGON_WALL_HEAD)) {
                     LOGGER.debug("[Sky-Islands][dragons][heads] place hook dim={} pos={} block={}",
-                            serverWorld.getRegistryKey().getValue(),
+                            serverWorld.dimension().identifier(),
                             pos,
                             bs.getBlock());
                 }
@@ -160,8 +161,8 @@ public final class EnderDragonManager {
         }
     }
 
-    public static boolean isManaged(EnderDragonEntity dragon) {
-        return dragon.getCommandTags().contains(MANAGED_TAG);
+    public static boolean isManaged(EnderDragon dragon) {
+        return dragon.entityTags().contains(MANAGED_TAG);
     }
 
     public static EnderDragonsConfig getConfig() {
@@ -180,35 +181,35 @@ public final class EnderDragonManager {
         return fearedHeadAvoidTarget.containsKey(id);
     }
 
-    public static void onManagedDragonDeath(EnderDragonEntity dragon) {
+    public static void onManagedDragonDeath(EnderDragon dragon) {
         final boolean debug = LOGGER.isDebugEnabled();
         if (virtualStore == null) {
             if (debug) {
                 LOGGER.debug("[Sky-Islands][dragons][manager] onDeath ignore (no store) uuid={} managed={}",
-                        dragon.getUuidAsString(),
+                        dragon.getStringUUID(),
                         isManaged(dragon));
             }
             return;
         }
         if (!isManaged(dragon)) {
             if (debug) {
-                LOGGER.debug("[Sky-Islands][dragons][manager] onDeath ignore (not managed) uuid={}", dragon.getUuidAsString());
+                LOGGER.debug("[Sky-Islands][dragons][manager] onDeath ignore (not managed) uuid={}", dragon.getStringUUID());
             }
             return;
         }
 
         // Guaranteed special drop for managed dragons.
-        if (dragon.getEntityWorld() instanceof ServerWorld serverWorld) {
-            spawnFeatherPlatform(serverWorld, dragon.getBlockPos());
+        if (dragon.level() instanceof ServerLevel serverWorld) {
+            spawnFeatherPlatform(serverWorld, dragon.blockPosition());
             ItemStack feather = SpecialFeatherItem.createOne();
             ItemEntity entity = new ItemEntity(serverWorld, dragon.getX(), dragon.getY(), dragon.getZ(), feather);
-            entity.setToDefaultPickupDelay();
-            serverWorld.spawnEntity(entity);
+            entity.setDefaultPickUpDelay();
+            serverWorld.addFreshEntity(entity);
         }
 
         DragonIdTags.getId(dragon).ifPresent(id -> {
             if (debug) {
-                LOGGER.debug("[Sky-Islands][dragons][manager] onDeath cleanup id={} uuid={}", shortId(id), dragon.getUuidAsString());
+                LOGGER.debug("[Sky-Islands][dragons][manager] onDeath cleanup id={} uuid={}", shortId(id), dragon.getStringUUID());
             }
             virtualStore.remove(id);
             nextHeadingNudgeTick.remove(id);
@@ -228,13 +229,13 @@ public final class EnderDragonManager {
         });
     }
 
-    private static void spawnFeatherPlatform(ServerWorld world, BlockPos dragonPos) {
+    private static void spawnFeatherPlatform(ServerLevel world, BlockPos dragonPos) {
         if (world == null || dragonPos == null) {
             return;
         }
 
-        int platformY = Math.max(world.getBottomY(), dragonPos.getY() - FEATHER_PLATFORM_DROP_BELOW_BLOCKS);
-        BlockState grass = Blocks.GRASS_BLOCK.getDefaultState();
+        int platformY = Math.max(world.getMinY(), dragonPos.getY() - FEATHER_PLATFORM_DROP_BELOW_BLOCKS);
+        BlockState grass = Blocks.GRASS_BLOCK.defaultBlockState();
         BlockPos center = new BlockPos(dragonPos.getX(), platformY, dragonPos.getZ());
 
         for (int dx = -FEATHER_PLATFORM_RADIUS; dx <= FEATHER_PLATFORM_RADIUS; dx++) {
@@ -249,35 +250,35 @@ public final class EnderDragonManager {
                     continue;
                 }
 
-                world.setBlockState(pos, grass);
+                world.setBlockAndUpdate(pos, grass);
             }
         }
 
-        BlockPos headPos = center.up();
+        BlockPos headPos = center.above();
         if (world.getBlockState(headPos).isAir()) {
-            world.setBlockState(headPos, Blocks.DRAGON_HEAD.getDefaultState());
+            world.setBlockAndUpdate(headPos, Blocks.DRAGON_HEAD.defaultBlockState());
             onPossibleDragonHeadPlaced(world, headPos);
         }
     }
 
-    public static int dumpDragons(ServerCommandSource source, boolean includeVirtual, boolean includeLoaded) {
+    public static int dumpDragons(CommandSourceStack source, boolean includeVirtual, boolean includeLoaded) {
         if (virtualStore == null || config == null) {
-            source.sendFeedback(() -> Text.literal("Sky-Islands dragons system not initialised yet."), false);
+            source.sendSuccess(() -> Component.literal("Sky-Islands dragons system not initialised yet."), false);
             return 0;
         }
 
-        ServerWorld overworld = source.getServer().getOverworld();
+        ServerLevel overworld = source.getServer().overworld();
         if (overworld == null) {
-            source.sendFeedback(() -> Text.literal("Sky-Islands: no overworld available."), false);
+            source.sendSuccess(() -> Component.literal("Sky-Islands: no overworld available."), false);
             return 0;
         }
 
         List<VirtualDragonStore.VirtualDragonState> snapshot = virtualStore.snapshot();
 
-        Map<UUID, EnderDragonEntity> loaded = new HashMap<>();
+        Map<UUID, EnderDragon> loaded = new HashMap<>();
         if (includeLoaded) {
-            for (Entity entity : overworld.iterateEntities()) {
-                if (!(entity instanceof EnderDragonEntity dragon)) {
+            for (Entity entity : overworld.getAllEntities()) {
+                if (!(entity instanceof EnderDragon dragon)) {
                     continue;
                 }
                 if (!isManaged(dragon)) {
@@ -289,7 +290,7 @@ public final class EnderDragonManager {
 
         int virtualCount = includeVirtual ? snapshot.size() : 0;
         int loadedCount = loaded.size();
-        source.sendFeedback(() -> Text.literal("Sky-Islands dragons: virtual=" + virtualCount + " loaded=" + loadedCount +
+        source.sendSuccess(() -> Component.literal("Sky-Islands dragons: virtual=" + virtualCount + " loaded=" + loadedCount +
             " (activationRadius=" + getActivationRadiusBlocks() + " despawnRadius=" + getDespawnRadiusBlocks() + ")"), false);
 
         int shown = 0;
@@ -303,47 +304,47 @@ public final class EnderDragonManager {
                 String line = " - id=" + shortId(s.id()) +
                         " virtualPos=(" + round1(s.pos().x) + ", " + round1(s.pos().y) + ", " + round1(s.pos().z) + ")" +
                         " heading=(" + round2(s.headingX()) + ", " + round2(s.headingZ()) + ")";
-                source.sendFeedback(() -> Text.literal(line), false);
+                source.sendSuccess(() -> Component.literal(line), false);
 
                 if (includeLoaded) {
-                    EnderDragonEntity dragon = loaded.get(s.id());
+                    EnderDragon dragon = loaded.get(s.id());
                     if (dragon != null) {
                         boolean provoked = dragon instanceof DragonProvokedAccess access && access.skyIslands$isProvoked();
                         String extra = "   loaded entityPos=(" + round1(dragon.getX()) + ", " + round1(dragon.getY()) + ", " + round1(dragon.getZ()) + ")" +
-                                " phase=" + dragon.getPhaseManager().getCurrent().getType() +
+                                " phase=" + dragon.getPhaseManager().getCurrentPhase().getPhase() +
                                 " provoked=" + provoked;
-                        source.sendFeedback(() -> Text.literal(extra), false);
+                        source.sendSuccess(() -> Component.literal(extra), false);
                     }
                 }
                 shown++;
             }
         } else if (includeLoaded) {
-            for (Map.Entry<UUID, EnderDragonEntity> e : loaded.entrySet()) {
+            for (Map.Entry<UUID, EnderDragon> e : loaded.entrySet()) {
                 if (shown >= maxShow) {
                     break;
                 }
-                EnderDragonEntity dragon = e.getValue();
+                EnderDragon dragon = e.getValue();
                 boolean provoked = dragon instanceof DragonProvokedAccess access && access.skyIslands$isProvoked();
                 String line = " - id=" + shortId(e.getKey()) +
                         " entityPos=(" + round1(dragon.getX()) + ", " + round1(dragon.getY()) + ", " + round1(dragon.getZ()) + ")" +
-                        " phase=" + dragon.getPhaseManager().getCurrent().getType() +
+                        " phase=" + dragon.getPhaseManager().getCurrentPhase().getPhase() +
                         " provoked=" + provoked;
-                source.sendFeedback(() -> Text.literal(line), false);
+                source.sendSuccess(() -> Component.literal(line), false);
                 shown++;
             }
         }
 
         if ((includeVirtual && snapshot.size() > maxShow) || (includeLoaded && loaded.size() > maxShow)) {
-            source.sendFeedback(() -> Text.literal("(output truncated; showing first " + maxShow + ")"), false);
+            source.sendSuccess(() -> Component.literal("(output truncated; showing first " + maxShow + ")"), false);
         }
 
         return 1;
     }
 
-    public record DragonLocatorResult(Vec3d pos, double headingX, double headingZ, float headingYawDegrees, boolean isLoadedEntity) {
+    public record DragonLocatorResult(Vec3 pos, double headingX, double headingZ, float headingYawDegrees, boolean isLoadedEntity) {
     }
 
-    public static DragonLocatorResult findNearestDragonFor(ServerPlayerEntity player) {
+    public static DragonLocatorResult findNearestDragonFor(ServerPlayer player) {
         if (player == null) {
             return null;
         }
@@ -356,12 +357,12 @@ public final class EnderDragonManager {
             return null;
         }
 
-        ServerWorld overworld = server.getOverworld();
+        ServerLevel overworld = server.overworld();
         if (overworld == null) {
             return null;
         }
 
-        Vec3d playerPos = new Vec3d(player.getX(), player.getY(), player.getZ());
+        Vec3 playerPos = new Vec3(player.getX(), player.getY(), player.getZ());
         List<VirtualDragonStore.VirtualDragonState> snapshot = virtualStore.snapshot();
         if (snapshot.isEmpty()) {
             return null;
@@ -370,7 +371,7 @@ public final class EnderDragonManager {
         VirtualDragonStore.VirtualDragonState best = null;
         double bestSq = Double.POSITIVE_INFINITY;
         for (VirtualDragonStore.VirtualDragonState s : snapshot) {
-            double d2 = playerPos.squaredDistanceTo(s.pos());
+            double d2 = playerPos.distanceToSqr(s.pos());
             if (d2 < bestSq) {
                 bestSq = d2;
                 best = s;
@@ -381,14 +382,14 @@ public final class EnderDragonManager {
             return null;
         }
 
-        EnderDragonEntity loaded = findLoadedById(overworld, best.id()).orElse(null);
-        Vec3d pos = loaded != null ? new Vec3d(loaded.getX(), loaded.getY(), loaded.getZ()) : best.pos();
+        EnderDragon loaded = findLoadedById(overworld, best.id()).orElse(null);
+        Vec3 pos = loaded != null ? new Vec3(loaded.getX(), loaded.getY(), loaded.getZ()) : best.pos();
         double hx = best.headingX();
         double hz = best.headingZ();
 
         float yaw;
         if (loaded != null) {
-            yaw = loaded.getYaw();
+            yaw = loaded.getYRot();
         } else {
             // Simple yaw derived from heading vector.
             yaw = (float) Math.toDegrees(Math.atan2(hz, hx));
@@ -397,12 +398,12 @@ public final class EnderDragonManager {
         return new DragonLocatorResult(pos, hx, hz, yaw, loaded != null);
     }
 
-    private static Optional<EnderDragonEntity> findLoadedById(ServerWorld overworld, UUID id) {
+    private static Optional<EnderDragon> findLoadedById(ServerLevel overworld, UUID id) {
         if (overworld == null || id == null) {
             return Optional.empty();
         }
-        for (Entity entity : overworld.iterateEntities()) {
-            if (!(entity instanceof EnderDragonEntity dragon)) {
+        for (Entity entity : overworld.getAllEntities()) {
+            if (!(entity instanceof EnderDragon dragon)) {
                 continue;
             }
             if (!isManaged(dragon)) {
@@ -432,7 +433,7 @@ public final class EnderDragonManager {
 
         final boolean debug = LOGGER.isDebugEnabled();
         if (debug && (serverTicks % 200L) == 0L) {
-            LOGGER.debug("[Sky-Islands][dragons][manager] tick serverTicks={} players={}", serverTicks, server.getPlayerManager().getPlayerList().size());
+            LOGGER.debug("[Sky-Islands][dragons][manager] tick serverTicks={} players={}", serverTicks, server.getPlayerList().getPlayers().size());
         }
 
         if (virtualStore != null && config != null && config.virtualStateFlushIntervalMinutes > 0) {
@@ -445,7 +446,7 @@ public final class EnderDragonManager {
             }
         }
 
-        ServerWorld overworld = server.getOverworld();
+        ServerLevel overworld = server.overworld();
         if (overworld == null) {
             if (debug) {
                 LOGGER.debug("[Sky-Islands][dragons][manager] tick skip (no overworld)");
@@ -477,10 +478,10 @@ public final class EnderDragonManager {
         tickVirtualTravel(overworld);
     }
 
-    private static void debugLogUnmanagedDragons(ServerWorld world) {
+    private static void debugLogUnmanagedDragons(ServerLevel world) {
         int found = 0;
-        for (Entity entity : world.iterateEntities()) {
-            if (!(entity instanceof EnderDragonEntity dragon)) {
+        for (Entity entity : world.getAllEntities()) {
+            if (!(entity instanceof EnderDragon dragon)) {
                 continue;
             }
             if (isManaged(dragon)) {
@@ -488,18 +489,18 @@ public final class EnderDragonManager {
             }
 
             found++;
-            UUID id = dragon.getUuid();
+            UUID id = dragon.getUUID();
             if (!debugLoggedUnmanagedDragons.add(id)) {
                 continue;
             }
 
-            ChunkPos cp = new ChunkPos(dragon.getBlockPos());
-            LOGGER.warn("[Sky-Islands][debug] unmanaged EnderDragonEntity present uuid={} pos=({}, {}, {}) chunk=({}, {}) tags={} phase={} fightOrigin={}",
-                    dragon.getUuidAsString(),
+            ChunkPos cp = ChunkPos.containing(dragon.blockPosition());
+            LOGGER.warn("[Sky-Islands][debug] unmanaged EnderDragon present uuid={} pos=({}, {}, {}) chunk=({}, {}) tags={} phase={} fightOrigin={}",
+                    dragon.getStringUUID(),
                     round1(dragon.getX()), round1(dragon.getY()), round1(dragon.getZ()),
-                    cp.x, cp.z,
-                    dragon.getCommandTags().size(),
-                    dragon.getPhaseManager().getCurrent().getType(),
+                    cp.x(), cp.z(),
+                    dragon.entityTags().size(),
+                    dragon.getPhaseManager().getCurrentPhase().getPhase(),
                     dragon.getFightOrigin());
         }
 
@@ -509,7 +510,7 @@ public final class EnderDragonManager {
         }
     }
 
-    private static void recoverMissingLoadedDragons(ServerWorld world) {
+    private static void recoverMissingLoadedDragons(ServerLevel world) {
         if (virtualStore == null) {
             return;
         }
@@ -526,8 +527,8 @@ public final class EnderDragonManager {
             LOGGER.debug("[Sky-Islands][dragons][manager] recover scan begin knownVirtual={}", known.size());
         }
 
-        for (Entity entity : world.iterateEntities()) {
-            if (!(entity instanceof EnderDragonEntity dragon)) {
+        for (Entity entity : world.getAllEntities()) {
+            if (!(entity instanceof EnderDragon dragon)) {
                 continue;
             }
             if (!isManaged(dragon)) {
@@ -539,7 +540,7 @@ public final class EnderDragonManager {
             }
 
             // Don't recover dragons that are in the middle of their death animation.
-            if (dragon.getPhaseManager().getCurrent().getType() == PhaseType.DYING) {
+            if (dragon.getPhaseManager().getCurrentPhase().getPhase() == EnderDragonPhase.DYING) {
                 continue;
             }
 
@@ -555,17 +556,17 @@ public final class EnderDragonManager {
                     return;
                 }
 
-                Vec3d pos = new Vec3d(dragon.getX(), dragon.getY(), dragon.getZ());
+                Vec3 pos = new Vec3(dragon.getX(), dragon.getY(), dragon.getZ());
 
                 double hx;
                 double hz;
-                Vec3d v = dragon.getVelocity();
+                Vec3 v = dragon.getDeltaMovement();
                 double hlen = Math.sqrt(v.x * v.x + v.z * v.z);
                 if (hlen > 1.0e-3) {
                     hx = v.x / hlen;
                     hz = v.z / hlen;
                 } else {
-                    double yawRad = Math.toRadians(dragon.getYaw());
+                    double yawRad = Math.toRadians(dragon.getYRot());
                     hx = -Math.sin(yawRad);
                     hz = Math.cos(yawRad);
                 }
@@ -580,14 +581,14 @@ public final class EnderDragonManager {
                 if (debug) {
                     LOGGER.debug("[Sky-Islands][dragons][manager] recovered id={} uuid={} pos=({}, {}, {}) heading=({}, {})",
                             shortId(id),
-                            dragon.getUuidAsString(),
+                            dragon.getStringUUID(),
                             round1(pos.x), round1(pos.y), round1(pos.z),
                             round2(hx), round2(hz));
                 }
 
                 LOGGER.warn("[Sky-Islands] Recovered managed dragon missing from virtual store. id={} uuid={} entityPos=({}, {}, {})",
                         shortId(id),
-                        dragon.getUuidAsString(),
+                        dragon.getStringUUID(),
                         round1(pos.x), round1(pos.y), round1(pos.z));
             });
         }
@@ -597,7 +598,7 @@ public final class EnderDragonManager {
         }
     }
 
-    private static void ensureMinimumVirtualDragons(ServerWorld world) {
+    private static void ensureMinimumVirtualDragons(ServerLevel world) {
         if (virtualStore == null) {
             return;
         }
@@ -617,7 +618,7 @@ public final class EnderDragonManager {
 
             virtualStore.upsert(new VirtualDragonStore.VirtualDragonState(
                     id,
-                    new Vec3d(spawnPos.getX() + 0.5, spawnPos.getY() + 0.5, spawnPos.getZ() + 0.5),
+                    new Vec3(spawnPos.getX() + 0.5, spawnPos.getY() + 0.5, spawnPos.getZ() + 0.5),
                     hx,
                     hz,
                     serverTicks
@@ -634,7 +635,7 @@ public final class EnderDragonManager {
         }
     }
 
-    private static void tickVirtualTravel(ServerWorld world) {
+    private static void tickVirtualTravel(ServerLevel world) {
         if (virtualStore == null) {
             return;
         }
@@ -651,9 +652,9 @@ public final class EnderDragonManager {
         }
 
         // Build a quick index of currently-loaded managed dragons by our internal dragon id.
-        Map<UUID, EnderDragonEntity> loaded = new HashMap<>();
-        for (Entity entity : world.iterateEntities()) {
-            if (!(entity instanceof EnderDragonEntity dragon)) {
+        Map<UUID, EnderDragon> loaded = new HashMap<>();
+        for (Entity entity : world.getAllEntities()) {
+            if (!(entity instanceof EnderDragon dragon)) {
                 continue;
             }
             if (!isManaged(dragon)) {
@@ -680,7 +681,7 @@ public final class EnderDragonManager {
             VirtualDragonStore.VirtualDragonState updated = advanceVirtualState(world, state);
 
             boolean playerNearVirtual = isAnyPlayerNear(world, updated.pos(), getActivationRadiusBlocks());
-            EnderDragonEntity dragon = loaded.get(updated.id());
+            EnderDragon dragon = loaded.get(updated.id());
 
             if (config.virtualTravelEnabled) {
                 if (dragon == null) {
@@ -743,7 +744,7 @@ public final class EnderDragonManager {
                     inactiveChunkReleaseDone.remove(updated.id());
                     // When loaded, use the real entity position as the authoritative position.
                     // Keep the stored Y as the "roaming altitude" so despawn/respawn doesn't drift vertically.
-                    Vec3d entityPosForChecks = new Vec3d(dragon.getX(), updated.pos().y, dragon.getZ());
+                    Vec3 entityPosForChecks = new Vec3(dragon.getX(), updated.pos().y, dragon.getZ());
                     boolean playerNearLoaded = isAnyPlayerNear(world, entityPosForChecks, getActivationRadiusBlocks());
                     updated = updated.withPos(entityPosForChecks, serverTicks);
 
@@ -754,10 +755,10 @@ public final class EnderDragonManager {
                     if (debug && (serverTicks % 100L) == 0L) {
                         LOGGER.debug("[Sky-Islands][dragons][manager] id={} loaded uuid={} pos=({}, {}, {}) provoked={} phase={}",
                                 shortId(updated.id()),
-                                dragon.getUuidAsString(),
+                                dragon.getStringUUID(),
                                 round1(dragon.getX()), round1(dragon.getY()), round1(dragon.getZ()),
                                 provoked,
-                                dragon.getPhaseManager().getCurrent().getType());
+                                dragon.getPhaseManager().getCurrentPhase().getPhase());
                     }
 
                     // Sync heading from actual entity travel direction only while provoked.
@@ -765,7 +766,7 @@ public final class EnderDragonManager {
                     double hxFromEntity = updated.headingX();
                     double hzFromEntity = updated.headingZ();
                     if (provoked) {
-                        Vec3d v = dragon.getVelocity();
+                        Vec3 v = dragon.getDeltaMovement();
                         double hlen = Math.sqrt(v.x * v.x + v.z * v.z);
                         if (hlen > 1.0e-3) {
                             hxFromEntity = v.x / hlen;
@@ -781,16 +782,16 @@ public final class EnderDragonManager {
                     if (!provoked) {
                         long pendingKick = loadedPendingTakeoffKickTick.getOrDefault(updated.id(), 0L);
                         if (pendingKick > 0L && serverTicks >= pendingKick) {
-                            dragon.getPhaseManager().setPhase(PhaseType.TAKEOFF);
+                            dragon.getPhaseManager().setPhase(EnderDragonPhase.TAKEOFF);
                             loadedPendingTakeoffKickTick.remove(updated.id());
                         }
 
                         long graceUntil = loadedSpawnGraceUntilTick.getOrDefault(updated.id(), 0L);
                         if (serverTicks < graceUntil) {
                             loadedStuckTicks.put(updated.id(), 0);
-                            lastLoadedEntityPos.put(updated.id(), new Vec3d(dragon.getX(), 0.0, dragon.getZ()));
+                            lastLoadedEntityPos.put(updated.id(), new Vec3(dragon.getX(), 0.0, dragon.getZ()));
                         } else {
-                            Vec3d last = lastLoadedEntityPos.get(updated.id());
+                            Vec3 last = lastLoadedEntityPos.get(updated.id());
                             if (last != null) {
                                 double dx = dragon.getX() - last.x;
                                 double dz = dragon.getZ() - last.z;
@@ -803,28 +804,28 @@ public final class EnderDragonManager {
                                                 shortId(updated.id()), stuck, round2(movedSq));
                                     }
                                     if (stuck == 100) {
-                                        PhaseType<?> current = dragon.getPhaseManager().getCurrent().getType();
+                                        EnderDragonPhase<?> current = dragon.getPhaseManager().getCurrentPhase().getPhase();
                                         // Some overworld TAKEOFF states can stall; briefly toggle phases to
                                         // force vanilla to recompute movement, then return to TAKEOFF.
-                                        dragon.getPhaseManager().setPhase(PhaseType.HOLDING_PATTERN);
+                                        dragon.getPhaseManager().setPhase(EnderDragonPhase.HOLDING_PATTERN);
                                         loadedPendingTakeoffKickTick.put(updated.id(), serverTicks + 1);
 
                                         // Also apply a small initial push so we don't depend on the phase
                                         // immediately producing motion.
-                                        Vec3d pushDir = new Vec3d(updated.headingX(), 0.0, updated.headingZ());
+                                        Vec3 pushDir = new Vec3(updated.headingX(), 0.0, updated.headingZ());
                                         double plen = pushDir.length();
                                         if (plen > 1.0e-6) {
-                                            pushDir = pushDir.multiply(1.0 / plen);
+                                            pushDir = pushDir.scale(1.0 / plen);
                                         } else {
-                                            pushDir = new Vec3d(1, 0, 0);
+                                            pushDir = new Vec3(1, 0, 0);
                                         }
-                                        dragon.setVelocity(pushDir.x * 0.35, 0.05, pushDir.z * 0.35);
+                                        dragon.setDeltaMovement( pushDir.x * 0.35, 0.05, pushDir.z * 0.35);
 
                                         nextHeadingNudgeTick.put(updated.id(), serverTicks);
 
                                         LOGGER.info("[Sky-Islands] Dragon id={} stuck while loaded; forcing phase {} -> {} at entityPos=({}, {}, {})",
                                                 shortId(updated.id()),
-                                                current, PhaseType.TAKEOFF,
+                                                current, EnderDragonPhase.TAKEOFF,
                                                 round1(dragon.getX()), round1(updated.pos().y), round1(dragon.getZ()));
                                     }
                                 } else {
@@ -835,7 +836,7 @@ public final class EnderDragonManager {
                                     loadedStuckTicks.put(updated.id(), 0);
                                 }
                             }
-                            lastLoadedEntityPos.put(updated.id(), new Vec3d(dragon.getX(), 0.0, dragon.getZ()));
+                            lastLoadedEntityPos.put(updated.id(), new Vec3(dragon.getX(), 0.0, dragon.getZ()));
                         }
                     } else {
                         lastLoadedEntityPos.remove(updated.id());
@@ -844,7 +845,7 @@ public final class EnderDragonManager {
                     }
 
                     // Apply the same steer-to/away-from-spawn logic while the entity is loaded.
-                    Vec3d steered = steerHeading(world, updated.id(), updated.pos(), hxFromEntity, hzFromEntity, Math.min(20, serverTicks - updated.lastTick()));
+                    Vec3 steered = steerHeading(world, updated.id(), updated.pos(), hxFromEntity, hzFromEntity, Math.min(20, serverTicks - updated.lastTick()));
                     updated = updated.withHeading(steered.x, steered.z, serverTicks);
 
                     if (debug && (serverTicks % 100L) == 0L) {
@@ -924,8 +925,8 @@ public final class EnderDragonManager {
                         );
                         dragon.setFightOrigin(ahead);
                         // Avoid HOLDING_PATTERN's inherent orbit; keep passive roaming in TAKEOFF.
-                        if (dragon.getPhaseManager().getCurrent().getType() == PhaseType.HOLDING_PATTERN) {
-                            dragon.getPhaseManager().setPhase(PhaseType.TAKEOFF);
+                        if (dragon.getPhaseManager().getCurrentPhase().getPhase() == EnderDragonPhase.HOLDING_PATTERN) {
+                            dragon.getPhaseManager().setPhase(EnderDragonPhase.TAKEOFF);
                         }
                         nextHeadingNudgeTick.put(updated.id(), serverTicks + 20);
 
@@ -954,8 +955,8 @@ public final class EnderDragonManager {
                     break;
                 }
 
-                EnderDragonEntity loadedDragon = loaded.get(s.id());
-                String phase = loadedDragon != null ? String.valueOf(loadedDragon.getPhaseManager().getCurrent().getType()) : "<virtual>";
+                EnderDragon loadedDragon = loaded.get(s.id());
+                String phase = loadedDragon != null ? String.valueOf(loadedDragon.getPhaseManager().getCurrentPhase().getPhase()) : "<virtual>";
                 boolean provoked = loadedDragon instanceof DragonProvokedAccess access && access.skyIslands$isProvoked();
 
                 LOGGER.info("[Sky-Islands]  - id={} virtualPos=({}, {}, {}) heading=({}, {})",
@@ -977,7 +978,7 @@ public final class EnderDragonManager {
         }
     }
 
-    private static VirtualDragonStore.VirtualDragonState advanceVirtualState(ServerWorld world, VirtualDragonStore.VirtualDragonState state) {
+    private static VirtualDragonStore.VirtualDragonState advanceVirtualState(ServerLevel world, VirtualDragonStore.VirtualDragonState state) {
         if (!config.virtualTravelEnabled) {
             return state;
         }
@@ -988,25 +989,25 @@ public final class EnderDragonManager {
         long dtForTurn = Math.min(dt, 20);
 
         // First, update heading based on roam constraints.
-        Vec3d steered = steerHeading(world, state.id(), state.pos(), state.headingX(), state.headingZ(), dtForTurn);
+        Vec3 steered = steerHeading(world, state.id(), state.pos(), state.headingX(), state.headingZ(), dtForTurn);
         double hx = steered.x;
         double hz = steered.z;
 
-        Vec3d pos = state.pos();
-        Vec3d moved = new Vec3d(
+        Vec3 pos = state.pos();
+        Vec3 moved = new Vec3(
                 pos.x + state.headingX() * config.virtualSpeedBlocksPerTick * dt,
                 pos.y,
                 pos.z + state.headingZ() * config.virtualSpeedBlocksPerTick * dt
         );
 
         // Bounce off world border by flipping heading when out of bounds.
-        double minX = world.getWorldBorder().getBoundWest() + 64;
-        double maxX = world.getWorldBorder().getBoundEast() - 64;
-        double minZ = world.getWorldBorder().getBoundNorth() + 64;
-        double maxZ = world.getWorldBorder().getBoundSouth() - 64;
+        double minX = world.getWorldBorder().getMinX() + 64;
+        double maxX = world.getWorldBorder().getMaxX() - 64;
+        double minZ = world.getWorldBorder().getMinZ() + 64;
+        double maxZ = world.getWorldBorder().getMaxZ() - 64;
 
         // Use the steered heading for movement.
-        moved = new Vec3d(
+        moved = new Vec3(
             pos.x + hx * config.virtualSpeedBlocksPerTick * dt,
             pos.y,
             pos.z + hz * config.virtualSpeedBlocksPerTick * dt
@@ -1031,7 +1032,7 @@ public final class EnderDragonManager {
             int interval = config.directionChangeIntervalTicks;
             long offset = positiveMod(mix64(state.id()), interval);
             if ((serverTicks + offset) % interval == 0) {
-                Random r = new Random(mix64(state.id()) ^ serverTicks);
+                RandomSource r = RandomSource.create(mix64(state.id()) ^ serverTicks);
                 double delta = (r.nextDouble() - 0.5) * 0.35;
             double cos = Math.cos(delta);
             double sin = Math.sin(delta);
@@ -1047,7 +1048,7 @@ public final class EnderDragonManager {
             }
         }
 
-        VirtualDragonStore.VirtualDragonState updated = state.withPos(new Vec3d(
+        VirtualDragonStore.VirtualDragonState updated = state.withPos(new Vec3(
                 clamp(moved.x, minX, maxX),
                 moved.y,
                 clamp(moved.z, minZ, maxZ)
@@ -1056,11 +1057,11 @@ public final class EnderDragonManager {
         return updated.withHeading(hx, hz, serverTicks);
     }
 
-    private static Vec3d steerHeading(ServerWorld world, UUID id, Vec3d pos, double hx, double hz, long dtForTurn) {
+    private static Vec3 steerHeading(ServerLevel world, UUID id, Vec3 pos, double hx, double hz, long dtForTurn) {
         final boolean debug = LOGGER.isDebugEnabled();
-        BlockPos spawn = world.getLevelProperties().getSpawnPoint() != null
-                ? world.getLevelProperties().getSpawnPoint().getPos()
-                : BlockPos.ORIGIN;
+        BlockPos spawn = world.getRespawnData() != null
+                ? world.getRespawnData().pos()
+                : BlockPos.ZERO;
 
         double dxFromSpawn = pos.x - (spawn.getX() + 0.5);
         double dzFromSpawn = pos.z - (spawn.getZ() + 0.5);
@@ -1079,7 +1080,7 @@ public final class EnderDragonManager {
             }
             returnTargetHeading.remove(id);
             returnTurnUntilTick.remove(id);
-            return new Vec3d(hx, 0.0, hz);
+            return new Vec3(hx, 0.0, hz);
         }
 
         // Decide (occasionally) on a stable target heading to avoid "bouncing".
@@ -1108,7 +1109,7 @@ public final class EnderDragonManager {
             tx /= len;
             tz /= len;
 
-            // Random acute-ish offset: not a direct line, not a U-turn.
+            // RandomSource acute-ish offset: not a direct line, not a U-turn.
             double offset = 0.35 + world.getRandom().nextDouble() * 0.75; // ~20° to ~63°
             if (world.getRandom().nextBoolean()) {
                 offset = -offset;
@@ -1119,7 +1120,7 @@ public final class EnderDragonManager {
             double rtx = tx * cos - tz * sin;
             double rtz = tx * sin + tz * cos;
 
-            returnTargetHeading.put(id, new Vec3d(rtx, 0.0, rtz));
+            returnTargetHeading.put(id, new Vec3(rtx, 0.0, rtz));
             returnTurnUntilTick.put(id, serverTicks + 20 * 20);
             nextReturnDecisionTick.put(id, serverTicks + 20 * 15);
 
@@ -1134,9 +1135,9 @@ public final class EnderDragonManager {
             }
         }
 
-        Vec3d target = returnTargetHeading.get(id);
+        Vec3 target = returnTargetHeading.get(id);
         if (target == null) {
-            return new Vec3d(hx, 0.0, hz);
+            return new Vec3(hx, 0.0, hz);
         }
 
         // Keep virtual heading changes slow and smooth. Otherwise, an unload -> virtual -> reload cycle
@@ -1144,14 +1145,14 @@ public final class EnderDragonManager {
         return rotateHeadingToward(hx, hz, target.x, target.z, 0.005 * Math.max(1, dtForTurn));
     }
 
-    private static Vec3d rotateHeadingToward(double hx, double hz, double tx, double tz, double maxDeltaRadians) {
+    private static Vec3 rotateHeadingToward(double hx, double hz, double tx, double tz, double maxDeltaRadians) {
         double curA = Math.atan2(hz, hx);
         double tarA = Math.atan2(tz, tx);
         double diff = wrapToPi(tarA - curA);
 
         double step = clamp(diff, -maxDeltaRadians, maxDeltaRadians);
         double newA = curA + step;
-        return new Vec3d(Math.cos(newA), 0.0, Math.sin(newA));
+        return new Vec3(Math.cos(newA), 0.0, Math.sin(newA));
     }
 
     private static double wrapToPi(double a) {
@@ -1182,31 +1183,31 @@ public final class EnderDragonManager {
         return r < 0 ? (r + m) : r;
     }
 
-    private static boolean isAnyPlayerNear(ServerWorld world, Vec3d pos, int radiusBlocks) {
+    private static boolean isAnyPlayerNear(ServerLevel world, Vec3 pos, int radiusBlocks) {
         double radiusSq = (double) radiusBlocks * (double) radiusBlocks;
-        for (ServerPlayerEntity player : world.getPlayers()) {
-            if (player.squaredDistanceTo(pos) <= radiusSq) {
+        for (ServerPlayer player : world.players()) {
+            if (player.position().distanceToSqr(pos) <= radiusSq) {
                 return true;
             }
         }
         return false;
     }
 
-    private static boolean isSpawnChunkLoaded(ServerWorld world, Vec3d pos) {
-        BlockPos bp = BlockPos.ofFloored(pos);
-        return world.isChunkLoaded(bp);
+    private static boolean isSpawnChunkLoaded(ServerLevel world, Vec3 pos) {
+        BlockPos bp = BlockPos.containing(pos);
+        return world.isLoaded(bp);
     }
 
-    private static boolean isSpawnReady(ServerWorld world, VirtualDragonStore.VirtualDragonState state) {
+    private static boolean isSpawnReady(ServerLevel world, VirtualDragonStore.VirtualDragonState state) {
         if (!config.forceChunkLoadingEnabled || chunkPreloader == null) {
             return isSpawnChunkLoaded(world, state.pos());
         }
 
-        ChunkPos center = new ChunkPos(BlockPos.ofFloored(state.pos()));
+        ChunkPos center = ChunkPos.containing(BlockPos.containing(state.pos()));
         return chunkPreloader.isChunkLoaded(world, center);
     }
 
-    private static VirtualDragonStore.VirtualDragonState rewindIfTooCloseToPlayers(ServerWorld world, VirtualDragonStore.VirtualDragonState state) {
+    private static VirtualDragonStore.VirtualDragonState rewindIfTooCloseToPlayers(ServerLevel world, VirtualDragonStore.VirtualDragonState state) {
         int minAllowed = getMinSpawnDistanceBlocks();
         if (minAllowed <= 0) {
             return state;
@@ -1228,19 +1229,19 @@ public final class EnderDragonManager {
         // while keeping the same "incoming" direction.
         double shiftBack = (minAllowed - min) + 32.0;
 
-        Vec3d pos = state.pos();
-        Vec3d rewound = new Vec3d(
+        Vec3 pos = state.pos();
+        Vec3 rewound = new Vec3(
                 pos.x - state.headingX() * shiftBack,
                 pos.y,
                 pos.z - state.headingZ() * shiftBack
         );
 
-        double minX = world.getWorldBorder().getBoundWest() + 64;
-        double maxX = world.getWorldBorder().getBoundEast() - 64;
-        double minZ = world.getWorldBorder().getBoundNorth() + 64;
-        double maxZ = world.getWorldBorder().getBoundSouth() - 64;
+        double minX = world.getWorldBorder().getMinX() + 64;
+        double maxX = world.getWorldBorder().getMaxX() - 64;
+        double minZ = world.getWorldBorder().getMinZ() + 64;
+        double maxZ = world.getWorldBorder().getMaxZ() - 64;
 
-        rewound = new Vec3d(
+        rewound = new Vec3(
                 clamp(rewound.x, minX, maxX),
                 rewound.y,
                 clamp(rewound.z, minZ, maxZ)
@@ -1258,10 +1259,10 @@ public final class EnderDragonManager {
         return state.withPos(rewound, serverTicks);
     }
 
-    private static double minSquaredDistanceToAnyPlayer(ServerWorld world, Vec3d pos) {
+    private static double minSquaredDistanceToAnyPlayer(ServerLevel world, Vec3 pos) {
         double min = Double.POSITIVE_INFINITY;
-        for (ServerPlayerEntity player : world.getPlayers()) {
-            double d = player.squaredDistanceTo(pos);
+        for (ServerPlayer player : world.players()) {
+            double d = player.position().distanceToSqr(pos);
             if (d < min) {
                 min = d;
             }
@@ -1272,12 +1273,12 @@ public final class EnderDragonManager {
     private static Set<ChunkPos> computeDesiredChunks(VirtualDragonStore.VirtualDragonState state) {
         Set<ChunkPos> chunks = new HashSet<>();
 
-        ChunkPos center = new ChunkPos(BlockPos.ofFloored(state.pos()));
+        ChunkPos center = ChunkPos.containing(BlockPos.containing(state.pos()));
         int r = config.preloadRadiusChunks;
 
         for (int dx = -r; dx <= r; dx++) {
             for (int dz = -r; dz <= r; dz++) {
-                chunks.add(new ChunkPos(center.x + dx, center.z + dz));
+                chunks.add(new ChunkPos(center.x() + dx, center.z() + dz));
             }
         }
 
@@ -1285,7 +1286,7 @@ public final class EnderDragonManager {
             double aheadBlocks = i * 16.0;
             int ax = (int) Math.floor(state.pos().x + state.headingX() * aheadBlocks);
             int az = (int) Math.floor(state.pos().z + state.headingZ() * aheadBlocks);
-            chunks.add(new ChunkPos(BlockPos.ofFloored(ax, 0, az)));
+            chunks.add(ChunkPos.containing(BlockPos.containing(ax, 0, az)));
         }
 
         return chunks;
@@ -1318,8 +1319,8 @@ public final class EnderDragonManager {
         int minSpawnBlocks = config.minSpawnDistanceBlocks;
 
         if (config.autoDistancesFromServer) {
-            int viewChunks = server.getPlayerManager().getViewDistance();
-            int simChunks = server.getPlayerManager().getSimulationDistance();
+            int viewChunks = server.getPlayerList().getViewDistance();
+            int simChunks = server.getPlayerList().getSimulationDistance();
 
             int viewBlocks = Math.max(0, viewChunks) * 16;
             int simBlocks = Math.max(0, simChunks) * 16;
@@ -1373,18 +1374,18 @@ public final class EnderDragonManager {
                 effectiveMinSpawnDistanceBlocks);
     }
 
-    private static EnderDragonEntity spawnDragonFromVirtual(ServerWorld world, VirtualDragonStore.VirtualDragonState state) {
+    private static EnderDragon spawnDragonFromVirtual(ServerLevel world, VirtualDragonStore.VirtualDragonState state) {
         final boolean debug = LOGGER.isDebugEnabled();
         // Safety: avoid ever having 2 loaded entities for the same internal id.
-        for (Entity entity : world.iterateEntities()) {
-            if (entity instanceof EnderDragonEntity existing
+        for (Entity entity : world.getAllEntities()) {
+            if (entity instanceof EnderDragon existing
                     && isManaged(existing)
                     && DragonIdTags.getId(existing).isPresent()
                     && DragonIdTags.getId(existing).get().equals(state.id())) {
                 if (debug) {
                     LOGGER.debug("[Sky-Islands][dragons][manager] id={} spawn skip (already loaded) uuid={} pos=({}, {}, {})",
                             shortId(state.id()),
-                            existing.getUuidAsString(),
+                            existing.getStringUUID(),
                             round1(existing.getX()), round1(existing.getY()), round1(existing.getZ()));
                 }
                 return existing;
@@ -1395,13 +1396,15 @@ public final class EnderDragonManager {
         // like "an unmanaged dragon spawned" exactly when we materialize a managed virtual dragon.
         // Sky-Islands only intentionally spawns managed dragons, so proactively discard unmanaged dragons
         // near the intended spawn location.
-        Vec3d spawnPos = state.pos();
+        Vec3 spawnPos = state.pos();
         if (config.headFearEnabled) {
             spawnPos = pushPosOutOfHeadExclusion(world, spawnPos);
         }
         cleanupUnmanagedDragonsNear(world, spawnPos, Math.max(96.0, getActivationRadiusBlocks()));
 
-        EnderDragonEntity dragon = EntityType.ENDER_DRAGON.create(world, SpawnReason.EVENT);
+        EnderDragon dragon = (EnderDragon) BuiltInRegistries.ENTITY_TYPE
+                .getValue(net.minecraft.resources.Identifier.fromNamespaceAndPath("minecraft", "ender_dragon"))
+                .create(world, EntitySpawnReason.EVENT);
         if (dragon == null) {
             if (debug) {
                 LOGGER.debug("[Sky-Islands][dragons][manager] id={} spawn failed (create returned null)", shortId(state.id()));
@@ -1411,7 +1414,7 @@ public final class EnderDragonManager {
 
         // Never spawn inside a dragon-head orbit exclusion zone.
         if (config.headFearEnabled) {
-            Vec3d before = state.pos();
+            Vec3 before = state.pos();
             if (debug && (before.x != spawnPos.x || before.z != spawnPos.z)) {
                 LOGGER.debug("[Sky-Islands][dragons][manager] id={} spawn pushed out of headExclusion from=({}, {}, {}) to=({}, {}, {})",
                         shortId(state.id()),
@@ -1420,15 +1423,17 @@ public final class EnderDragonManager {
             }
         }
 
-        dragon.refreshPositionAndAngles(spawnPos.x, spawnPos.y, spawnPos.z, 0.0f, 0.0f);
-        dragon.addCommandTag(MANAGED_TAG);
-        dragon.addCommandTag(DragonIdTags.toTag(state.id()));
+        dragon.setPos(spawnPos.x, spawnPos.y, spawnPos.z);
+        dragon.setYRot(0.0f);
+        dragon.setXRot(0.0f);
+        dragon.addTag(MANAGED_TAG);
+        dragon.addTag(DragonIdTags.toTag(state.id()));
 
-        BlockPos origin = BlockPos.ofFloored(spawnPos);
+        BlockPos origin = BlockPos.containing(spawnPos);
         dragon.setFightOrigin(origin);
-        dragon.getPhaseManager().setPhase(PhaseType.HOLDING_PATTERN);
+        dragon.getPhaseManager().setPhase(EnderDragonPhase.HOLDING_PATTERN);
 
-        if (!world.spawnEntity(dragon)) {
+        if (!world.addFreshEntity(dragon)) {
             if (debug) {
                 LOGGER.debug("[Sky-Islands][dragons][manager] id={} spawn failed (spawnEntity=false) pos=({}, {}, {})",
                         shortId(state.id()),
@@ -1439,14 +1444,14 @@ public final class EnderDragonManager {
 
         LOGGER.info("[Sky-Islands] Spawned managed dragon id={} uuid={} at ({}, {}, {})",
             shortId(state.id()),
-            dragon.getUuidAsString(),
+            dragon.getStringUUID(),
             round1(spawnPos.x), round1(spawnPos.y), round1(spawnPos.z));
 
         if (debug) {
             LOGGER.debug("[Sky-Islands][dragons][manager] id={} spawn ok tags={} phase={} fightOrigin={}",
                     shortId(state.id()),
-                    dragon.getCommandTags().size(),
-                    dragon.getPhaseManager().getCurrent().getType(),
+                    dragon.entityTags().size(),
+                    dragon.getPhaseManager().getCurrentPhase().getPhase(),
                     dragon.getFightOrigin());
         }
 
@@ -1457,7 +1462,7 @@ public final class EnderDragonManager {
         return dragon;
     }
 
-    private static void cleanupUnmanagedDragonsNear(ServerWorld world, Vec3d center, double radiusBlocks) {
+    private static void cleanupUnmanagedDragonsNear(ServerLevel world, Vec3 center, double radiusBlocks) {
         if (world == null || center == null || radiusBlocks <= 0) {
             return;
         }
@@ -1465,8 +1470,8 @@ public final class EnderDragonManager {
         double r2 = radiusBlocks * radiusBlocks;
         int removed = 0;
 
-        for (Entity entity : world.iterateEntities()) {
-            if (!(entity instanceof EnderDragonEntity dragon)) {
+        for (Entity entity : world.getAllEntities()) {
+            if (!(entity instanceof EnderDragon dragon)) {
                 continue;
             }
             if (isManaged(dragon)) {
@@ -1484,7 +1489,7 @@ public final class EnderDragonManager {
             removed++;
             if (LOGGER.isDebugEnabled()) {
                 LOGGER.debug("[Sky-Islands][dragons][manager] discarded unmanaged dragon uuid={} nearSpawn=({}, {}, {}) d2={}",
-                        dragon.getUuidAsString(),
+                        dragon.getStringUUID(),
                         round1(center.x), round1(center.y), round1(center.z),
                         round1(d2));
             }
@@ -1498,22 +1503,21 @@ public final class EnderDragonManager {
         }
     }
 
-    private static BlockPos pickSpawnPos(ServerWorld world) {
+    private static BlockPos pickSpawnPos(ServerLevel world) {
         final boolean debug = LOGGER.isDebugEnabled();
-        WorldProperties.SpawnPoint spawnPoint = world.getLevelProperties().getSpawnPoint();
-        BlockPos spawn = spawnPoint != null ? spawnPoint.getPos() : BlockPos.ORIGIN;
+        BlockPos spawn = world.getRespawnData() != null ? world.getRespawnData().pos() : BlockPos.ZERO;
         int inner = Math.max(0, config.roamMinDistanceBlocks);
         int outer = Math.max(inner + 1, config.roamMaxDistanceBlocks);
 
         int y = config.spawnY;
         if (config.spawnYRandomRange > 0) {
-            y = config.spawnY + world.getRandom().nextBetween(-config.spawnYRandomRange, config.spawnYRandomRange);
+            y = config.spawnY + world.getRandom().nextIntBetweenInclusive(-config.spawnYRandomRange, config.spawnYRandomRange);
         }
 
-        double minX = world.getWorldBorder().getBoundWest() + 64;
-        double maxX = world.getWorldBorder().getBoundEast() - 64;
-        double minZ = world.getWorldBorder().getBoundNorth() + 64;
-        double maxZ = world.getWorldBorder().getBoundSouth() - 64;
+        double minX = world.getWorldBorder().getMinX() + 64;
+        double maxX = world.getWorldBorder().getMaxX() - 64;
+        double minZ = world.getWorldBorder().getMinZ() + 64;
+        double maxZ = world.getWorldBorder().getMaxZ() - 64;
 
         for (int attempt = 0; attempt < 16; attempt++) {
             double theta = world.getRandom().nextDouble() * (Math.PI * 2.0);
@@ -1531,7 +1535,7 @@ public final class EnderDragonManager {
                 return candidate;
             }
 
-            Vec3d pos = new Vec3d(candidate.getX() + 0.5, candidate.getY() + 0.5, candidate.getZ() + 0.5);
+            Vec3 pos = new Vec3(candidate.getX() + 0.5, candidate.getY() + 0.5, candidate.getZ() + 0.5);
             if (!isInHeadExclusionZone(world, pos)) {
                 if (debug) {
                     LOGGER.debug("[Sky-Islands][dragons][manager] pickSpawnPos ok candidate=({}, {}, {})", x, y, z);
@@ -1557,10 +1561,10 @@ public final class EnderDragonManager {
         return new BlockPos(x, y, z);
     }
 
-    private static boolean applyHeadFearOrbit(ServerWorld world, UUID id, EnderDragonEntity dragon, VirtualDragonStore.VirtualDragonState state) {
+    private static boolean applyHeadFearOrbit(ServerLevel world, UUID id, EnderDragon dragon, VirtualDragonStore.VirtualDragonState state) {
         final boolean debug = LOGGER.isDebugEnabled();
         BlockPos currentHead = fearedHeadPos.get(id);
-        Vec3d currentTarget = fearedHeadAvoidTarget.get(id);
+        Vec3 currentTarget = fearedHeadAvoidTarget.get(id);
 
         if (currentHead != null && (headTracker == null || !headTracker.isStillHead(world, currentHead))) {
             currentHead = null;
@@ -1573,7 +1577,7 @@ public final class EnderDragonManager {
         boolean canRescan = serverTicks >= nextScan;
 
         if (canRescan) {
-            BlockPos nearCenter = dragon.getBlockPos();
+            BlockPos nearCenter = dragon.blockPosition();
             BlockPos aheadCenter = nearCenter;
             if (config.headScanAheadBlocks > 0) {
                 int sx = (int) Math.floor(dragon.getX() + state.headingX() * (double) config.headScanAheadBlocks);
@@ -1599,8 +1603,8 @@ public final class EnderDragonManager {
                         merged.size());
             }
 
-            Vec3d dragonPos = new Vec3d(dragon.getX(), dragon.getY(), dragon.getZ());
-            Vec3d heading = new Vec3d(state.headingX(), 0.0, state.headingZ());
+            Vec3 dragonPos = new Vec3(dragon.getX(), dragon.getY(), dragon.getZ());
+            Vec3 heading = new Vec3(state.headingX(), 0.0, state.headingZ());
             BlockPos threat = chooseThreatHead(dragonPos, heading, merged);
 
             if (debug) {
@@ -1614,7 +1618,7 @@ public final class EnderDragonManager {
                 boolean same = threat.equals(currentHead);
                 long lockUntil = fearedHeadLockUntilTick.getOrDefault(id, 0L);
                 if (currentHead == null || (serverTicks >= lockUntil && !same)) {
-                    Vec3d target = computeBypassTarget(world, threat, heading, merged);
+                    Vec3 target = computeBypassTarget(world, threat, heading, merged);
                     if (target != null) {
                         fearedHeadPos.put(id, threat);
                         fearedHeadAvoidTarget.put(id, target);
@@ -1645,8 +1649,8 @@ public final class EnderDragonManager {
             return false;
         }
 
-        Vec3d heading = new Vec3d(state.headingX(), 0.0, state.headingZ());
-        Vec3d dragonPos = new Vec3d(dragon.getX(), dragon.getY(), dragon.getZ());
+        Vec3 heading = new Vec3(state.headingX(), 0.0, state.headingZ());
+        Vec3 dragonPos = new Vec3(dragon.getX(), dragon.getY(), dragon.getZ());
         double exclusion = (double) config.headOrbitRadiusBlocks + (double) config.headAvoidSpawnBufferBlocks;
 
         if (hasPassedHead(dragonPos, heading, currentHead, exclusion)) {
@@ -1660,7 +1664,7 @@ public final class EnderDragonManager {
         }
 
         double oy = Math.max(state.pos().y, (double) currentHead.getY() + (double) config.headOrbitYAboveHeadBlocks);
-        BlockPos origin = BlockPos.ofFloored(currentTarget.x, oy, currentTarget.z);
+        BlockPos origin = BlockPos.containing(currentTarget.x, oy, currentTarget.z);
         dragon.setFightOrigin(origin);
         nextHeadingNudgeTick.put(id, serverTicks + 10);
 
@@ -1674,14 +1678,14 @@ public final class EnderDragonManager {
         return true;
     }
 
-    private static boolean hasPassedHead(Vec3d dragonPos, Vec3d heading, BlockPos head, double exclusionRadius) {
+    private static boolean hasPassedHead(Vec3 dragonPos, Vec3 heading, BlockPos head, double exclusionRadius) {
         final boolean trace = LOGGER.isTraceEnabled();
-        Vec3d h = new Vec3d(heading.x, 0.0, heading.z);
+        Vec3 h = new Vec3(heading.x, 0.0, heading.z);
         double hLen = Math.sqrt(h.x * h.x + h.z * h.z);
         if (hLen < 1.0e-6) {
             return false;
         }
-        h = new Vec3d(h.x / hLen, 0.0, h.z / hLen);
+        h = new Vec3(h.x / hLen, 0.0, h.z / hLen);
 
         double cx = head.getX() + 0.5;
         double cz = head.getZ() + 0.5;
@@ -1705,18 +1709,18 @@ public final class EnderDragonManager {
         return passed;
     }
 
-    private static BlockPos chooseThreatHead(Vec3d dragonPos, Vec3d heading, List<BlockPos> heads) {
+    private static BlockPos chooseThreatHead(Vec3 dragonPos, Vec3 heading, List<BlockPos> heads) {
         final boolean debug = LOGGER.isDebugEnabled();
         if (heads.isEmpty()) {
             return null;
         }
 
-        Vec3d h = new Vec3d(heading.x, 0.0, heading.z);
+        Vec3 h = new Vec3(heading.x, 0.0, heading.z);
         double hLen = Math.sqrt(h.x * h.x + h.z * h.z);
         if (hLen < 1.0e-6) {
             return chooseNearestHead(dragonPos, heads);
         }
-        h = new Vec3d(h.x / hLen, 0.0, h.z / hLen);
+        h = new Vec3(h.x / hLen, 0.0, h.z / hLen);
 
         double exclusion = (double) config.headOrbitRadiusBlocks + (double) config.headAvoidSpawnBufferBlocks;
         double exclusionSq = exclusion * exclusion;
@@ -1760,15 +1764,15 @@ public final class EnderDragonManager {
         return best;
     }
 
-    private static Vec3d computeBypassTarget(ServerWorld world, BlockPos head, Vec3d heading, List<BlockPos> nearbyHeads) {
+    private static Vec3 computeBypassTarget(ServerLevel world, BlockPos head, Vec3 heading, List<BlockPos> nearbyHeads) {
         final boolean debug = LOGGER.isDebugEnabled();
-        Vec3d h = new Vec3d(heading.x, 0.0, heading.z);
+        Vec3 h = new Vec3(heading.x, 0.0, heading.z);
         double hLen = Math.sqrt(h.x * h.x + h.z * h.z);
         if (hLen < 1.0e-6) {
-            h = new Vec3d(1, 0, 0);
+            h = new Vec3(1, 0, 0);
             hLen = 1;
         }
-        h = new Vec3d(h.x / hLen, 0.0, h.z / hLen);
+        h = new Vec3(h.x / hLen, 0.0, h.z / hLen);
 
         double cx = head.getX() + 0.5;
         double cz = head.getZ() + 0.5;
@@ -1776,15 +1780,15 @@ public final class EnderDragonManager {
         double exclusion = (double) config.headOrbitRadiusBlocks + (double) config.headAvoidSpawnBufferBlocks;
         double avoidR = exclusion;
 
-        Vec3d left = new Vec3d(-h.z, 0.0, h.x);
-        Vec3d right = new Vec3d(h.z, 0.0, -h.x);
+        Vec3 left = new Vec3(-h.z, 0.0, h.x);
+        Vec3 right = new Vec3(h.z, 0.0, -h.x);
 
         // Try both sides and pick the first side that can find a point not inside another head zone.
-        Vec3d best = null;
+        Vec3 best = null;
         double bestPenalty = Double.POSITIVE_INFINITY;
-        Vec3d[] sides = new Vec3d[]{left, right};
+        Vec3[] sides = new Vec3[]{left, right};
 
-        for (Vec3d side : sides) {
+        for (Vec3 side : sides) {
             double baseAngle = Math.atan2(side.z, side.x);
             for (int attempt = 0; attempt < 8; attempt++) {
                 double tryAngle = baseAngle + (attempt * 0.35);
@@ -1803,14 +1807,14 @@ public final class EnderDragonManager {
                                 attempt,
                                 round1(ox), round1(oz));
                     }
-                    return new Vec3d(ox, 0.0, oz);
+                    return new Vec3(ox, 0.0, oz);
                 }
 
                 // Track the least-bad option as a fallback.
                 double penalty = nearestOtherHeadDistanceSq(nearbyHeads, head, ox, oz);
                 if (penalty < bestPenalty) {
                     bestPenalty = penalty;
-                    best = new Vec3d(ox, 0.0, oz);
+                    best = new Vec3(ox, 0.0, oz);
                 }
             }
         }
@@ -1860,9 +1864,9 @@ public final class EnderDragonManager {
         return false;
     }
 
-    private static boolean isInHeadExclusionZone(ServerWorld world, Vec3d pos) {
+    private static boolean isInHeadExclusionZone(ServerLevel world, Vec3 pos) {
         final boolean debug = LOGGER.isDebugEnabled();
-        HeadScan scan = scanDragonHeadsAround(world, BlockPos.ofFloored(pos), config.headSearchRadiusBlocks, config.headSearchRadiusBlocks, 64);
+        HeadScan scan = scanDragonHeadsAround(world, BlockPos.containing(pos), config.headSearchRadiusBlocks, config.headSearchRadiusBlocks, 64);
         if (scan.heads.isEmpty()) {
             return false;
         }
@@ -1887,9 +1891,9 @@ public final class EnderDragonManager {
         return false;
     }
 
-    private static Vec3d pushPosOutOfHeadExclusion(ServerWorld world, Vec3d pos) {
+    private static Vec3 pushPosOutOfHeadExclusion(ServerLevel world, Vec3 pos) {
         final boolean debug = LOGGER.isDebugEnabled();
-        HeadScan scan = scanDragonHeadsAround(world, BlockPos.ofFloored(pos), config.headSearchRadiusBlocks, config.headSearchRadiusBlocks, 128);
+        HeadScan scan = scanDragonHeadsAround(world, BlockPos.containing(pos), config.headSearchRadiusBlocks, config.headSearchRadiusBlocks, 128);
         if (scan.heads.isEmpty()) {
             return pos;
         }
@@ -1897,7 +1901,7 @@ public final class EnderDragonManager {
         double avoid = (double) config.headOrbitRadiusBlocks + (double) config.headAvoidSpawnBufferBlocks;
         double avoidSq = avoid * avoid;
 
-        Vec3d adjusted = pos;
+        Vec3 adjusted = pos;
         for (int iter = 0; iter < 6; iter++) {
             BlockPos nearest = null;
             double nearestSq = Double.POSITIVE_INFINITY;
@@ -1931,7 +1935,7 @@ public final class EnderDragonManager {
             dz /= len;
 
             double push = (avoid - len) + 8.0;
-            adjusted = new Vec3d(adjusted.x + dx * push, adjusted.y, adjusted.z + dz * push);
+            adjusted = new Vec3(adjusted.x + dx * push, adjusted.y, adjusted.z + dz * push);
 
             if (debug) {
                 LOGGER.debug("[Sky-Islands][dragons][manager] headExclusion push iter={} nearest={} len={} push={} adjusted=({}, {}, {})",
@@ -1991,7 +1995,7 @@ public final class EnderDragonManager {
         return java.util.List.copyOf(set);
     }
 
-    private static BlockPos chooseNearestHead(Vec3d dragonPos, List<BlockPos> heads) {
+    private static BlockPos chooseNearestHead(Vec3 dragonPos, List<BlockPos> heads) {
         final boolean trace = LOGGER.isTraceEnabled();
         BlockPos best = null;
         double bestSq = Double.POSITIVE_INFINITY;
@@ -2018,7 +2022,7 @@ public final class EnderDragonManager {
         return best;
     }
 
-    private static HeadScan scanDragonHeadsAround(ServerWorld world, BlockPos center, int radius, int vertical, int maxFound) {
+    private static HeadScan scanDragonHeadsAround(ServerLevel world, BlockPos center, int radius, int vertical, int maxFound) {
         if (headTracker == null) {
             return new HeadScan(null, List.of());
         }
@@ -2066,7 +2070,7 @@ public final class EnderDragonManager {
         return Math.round(v * 100.0) / 100.0;
     }
 
-    private static java.util.Optional<UUID> getOrAssignId(EnderDragonEntity dragon) {
+    private static java.util.Optional<UUID> getOrAssignId(EnderDragon dragon) {
         final boolean debug = LOGGER.isDebugEnabled();
         java.util.Optional<UUID> existing = DragonIdTags.getId(dragon);
         if (existing.isPresent()) {
@@ -2074,9 +2078,9 @@ public final class EnderDragonManager {
                 UUID id = existing.get();
                 LOGGER.debug("[Sky-Islands][dragons][manager] getOrAssignId existing id={} uuid={} managed={} tags={}",
                         shortId(id),
-                        dragon.getUuidAsString(),
+                        dragon.getStringUUID(),
                         isManaged(dragon),
-                        dragon.getCommandTags().size());
+                        dragon.entityTags().size());
             }
             return existing;
         }
@@ -2084,19 +2088,19 @@ public final class EnderDragonManager {
         // If a dragon is marked managed but lacks our internal id tag (e.g. old version spawned it),
         // assign one so it participates in loaded accounting and virtual travel.
         UUID id = UUID.randomUUID();
-        dragon.addCommandTag(DragonIdTags.toTag(id));
+        dragon.addTag(DragonIdTags.toTag(id));
 
         if (debug) {
             LOGGER.debug("[Sky-Islands][dragons][manager] getOrAssignId assigned id={} uuid={} managed={} tagsNow={}",
                 shortId(id),
-                dragon.getUuidAsString(),
+                dragon.getStringUUID(),
                 isManaged(dragon),
-                dragon.getCommandTags().size());
+                dragon.entityTags().size());
         }
 
         LOGGER.warn("[Sky-Islands] Managed dragon missing internal id; assigned new id={} uuid={} entityPos=({}, {}, {})",
                 shortId(id),
-                dragon.getUuidAsString(),
+                dragon.getStringUUID(),
                 round1(dragon.getX()), round1(dragon.getY()), round1(dragon.getZ()));
 
         return java.util.Optional.of(id);

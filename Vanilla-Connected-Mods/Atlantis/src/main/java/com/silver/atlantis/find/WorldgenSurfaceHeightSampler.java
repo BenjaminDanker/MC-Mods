@@ -1,11 +1,11 @@
 package com.silver.atlantis.find;
 
-import net.minecraft.block.BlockState;
-import net.minecraft.world.HeightLimitView;
-import net.minecraft.world.gen.chunk.ChunkGenerator;
-import net.minecraft.world.gen.chunk.VerticalBlockSample;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.world.gen.noise.NoiseConfig;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.LevelHeightAccessor;
+import net.minecraft.world.level.NoiseColumn;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.ChunkGenerator;
+import net.minecraft.world.level.levelgen.RandomState;
 
 /**
  * Samples height using the world generator (no chunk loading).
@@ -19,14 +19,14 @@ public final class WorldgenSurfaceHeightSampler implements SurfaceHeightSampler 
     private static final int START_SCAN_Y_INCLUSIVE = 317;
 
     private final ChunkGenerator generator;
-    private final HeightLimitView heightLimitView;
-    private final NoiseConfig noiseConfig;
+    private final LevelHeightAccessor heightLimitView;
+    private final RandomState noiseConfig;
     private final int scanStartYInclusive;
 
     private WorldgenSurfaceHeightSampler(
         ChunkGenerator generator,
-        HeightLimitView heightLimitView,
-        NoiseConfig noiseConfig,
+        LevelHeightAccessor heightLimitView,
+        RandomState noiseConfig,
         int scanStartYInclusive
     ) {
         this.generator = generator;
@@ -35,11 +35,11 @@ public final class WorldgenSurfaceHeightSampler implements SurfaceHeightSampler 
         this.scanStartYInclusive = scanStartYInclusive;
     }
 
-    public static WorldgenSurfaceHeightSampler forWorld(ServerWorld world) {
-        ChunkGenerator generator = world.getChunkManager().getChunkGenerator();
-        HeightLimitView heightLimitView = world;
-        NoiseConfig noiseConfig = world.getChunkManager().getNoiseConfig();
-        int scanStartYInclusive = Math.min(START_SCAN_Y_INCLUSIVE, heightLimitView.getTopYInclusive());
+    public static WorldgenSurfaceHeightSampler forWorld(ServerLevel world) {
+        ChunkGenerator generator = world.getChunkSource().getGenerator();
+        LevelHeightAccessor heightLimitView = world;
+        RandomState noiseConfig = world.getChunkSource().randomState();
+        int scanStartYInclusive = Math.min(START_SCAN_Y_INCLUSIVE, heightLimitView.getMaxY());
         return new WorldgenSurfaceHeightSampler(generator, heightLimitView, noiseConfig, scanStartYInclusive);
     }
 
@@ -47,18 +47,18 @@ public final class WorldgenSurfaceHeightSampler implements SurfaceHeightSampler 
     public int sampleSurfaceY(int x, int z) {
         // Prefer a deterministic scan so roof bedrock can never be treated as surface.
         // Scan downward from Y=317 (or world top if lower) to find the first solid, non-fluid block.
-        VerticalBlockSample column = generator.getColumnSample(x, z, heightLimitView, noiseConfig);
-        int bottomY = heightLimitView.getBottomY();
+        NoiseColumn column = generator.getBaseColumn(x, z, heightLimitView, noiseConfig);
+        int bottomY = heightLimitView.getMinY();
 
         for (int y = scanStartYInclusive; y >= bottomY; y--) {
-            BlockState state = column.getState(y);
+            BlockState state = column.getBlock(y);
             if (state.isAir()) {
                 continue;
             }
             if (!state.getFluidState().isEmpty()) {
                 continue;
             }
-            if (!state.blocksMovement()) {
+            if (!state.blocksMotion()) {
                 continue;
             }
             return y + 1;

@@ -1,9 +1,9 @@
 package com.silver.atlantis.heightcap;
 
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
-import net.minecraft.server.command.CommandManager;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.text.Text;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.Commands;
+import net.minecraft.network.chat.Component;
 
 public final class HeightCapCommandManager {
 
@@ -13,27 +13,27 @@ public final class HeightCapCommandManager {
         this.service = service;
     }
 
-    public LiteralArgumentBuilder<ServerCommandSource> buildSubcommand() {
-        return CommandManager.literal("heightcap")
+    public LiteralArgumentBuilder<CommandSourceStack> buildSubcommand() {
+        return Commands.literal("heightcap")
             .executes(ctx -> status(ctx.getSource()))
-            .then(CommandManager.literal("status")
+            .then(Commands.literal("status")
                 .executes(ctx -> status(ctx.getSource())))
-            .then(CommandManager.literal("enable")
+            .then(Commands.literal("enable")
                 .executes(ctx -> setEnabled(ctx.getSource(), true)))
-            .then(CommandManager.literal("disable")
+            .then(Commands.literal("disable")
                 .executes(ctx -> setEnabled(ctx.getSource(), false)));
     }
 
-    private int status(ServerCommandSource source) {
+    private int status(CommandSourceStack source) {
         boolean enabled = service.isEnabled();
-        source.sendFeedback(() -> Text.literal("Height cap is " + (enabled ? "ENABLED" : "DISABLED") + "."), false);
-        source.sendFeedback(() -> Text.literal("Rule: players at/above Y=318 are teleported to Y=317."), false);
+        source.sendSuccess(() -> Component.literal("Height cap is " + (enabled ? "ENABLED" : "DISABLED") + "."), false);
+        source.sendSuccess(() -> Component.literal("Rule: players at/above Y=318 are teleported to Y=317."), false);
         return 1;
     }
 
-    private int setEnabled(ServerCommandSource source, boolean enabled) {
+    private int setEnabled(CommandSourceStack source, boolean enabled) {
         service.setEnabled(enabled);
-        source.sendFeedback(() -> Text.literal("Height cap is now " + (enabled ? "ENABLED" : "DISABLED") + "."), true);
+        source.sendSuccess(() -> Component.literal("Height cap is now " + (enabled ? "ENABLED" : "DISABLED") + "."), true);
         return 1;
     }
 }

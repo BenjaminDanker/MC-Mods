@@ -3,8 +3,7 @@
     "requirement": {
       "trigger": "minecraft:consume_item",
       "conditions": {
-        "player": [
-        ],
+        "player": [],
         "item": {
           "predicates": {
             "minecraft:custom_data": {

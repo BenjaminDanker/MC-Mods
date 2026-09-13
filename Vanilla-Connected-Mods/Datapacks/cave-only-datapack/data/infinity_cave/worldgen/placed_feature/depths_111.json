@@ -1,12 +1,11 @@
 {
-    "feature": "infinity_cave:depths",
-    "placement": [
-      {
-        "type": "minecraft:height_range",
-        "height": {
-          "absolute": -112
-        }
+  "feature": "infinity_cave:depths",
+  "placement": [
+    {
+      "type": "minecraft:height_range",
+      "height": {
+        "absolute": -112
       }
-    ]
-  }
-  
+    }
+  ]
+}

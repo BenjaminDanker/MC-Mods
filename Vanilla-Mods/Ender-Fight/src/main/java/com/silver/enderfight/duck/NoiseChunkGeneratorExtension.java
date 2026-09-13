@@ -1,13 +1,13 @@
 package com.silver.enderfight.duck;
 
-import net.minecraft.world.gen.noise.NoiseConfig;
+import net.minecraft.world.level.levelgen.RandomState;
 
 /**
- * Duck interface injected into {@link net.minecraft.world.gen.chunk.NoiseChunkGenerator} to allow
- * Ender Fight to supply a custom {@link NoiseConfig} backed by the daily seed.
+ * Duck interface injected into {@link net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator} to allow
+ * Ender Fight to supply a custom {@link RandomState} backed by the daily seed.
  */
 public interface NoiseChunkGeneratorExtension {
-    void endfight$setCustomNoiseConfig(NoiseConfig config);
+    void endfight$setCustomNoiseConfig(RandomState config);
 
-    NoiseConfig endfight$getCustomNoiseConfig();
+    RandomState endfight$getCustomNoiseConfig();
 }

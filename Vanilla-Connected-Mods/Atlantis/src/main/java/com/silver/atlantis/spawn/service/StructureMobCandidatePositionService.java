@@ -8,10 +8,9 @@ import com.silver.atlantis.spawn.bounds.ActiveConstructBounds;
 import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
-import net.minecraft.util.math.BlockPos;
-
 import java.nio.file.Files;
 import java.nio.file.Path;
+import net.minecraft.core.BlockPos;
 
 final class StructureMobCandidatePositionService {
 
@@ -34,7 +33,7 @@ final class StructureMobCandidatePositionService {
             LongOpenHashSet candidates = new LongOpenHashSet(entry.placedPositions().size());
             LongIterator iterator = entry.placedPositions().iterator();
             while (iterator.hasNext()) {
-                BlockPos pos = BlockPos.fromLong(iterator.nextLong());
+                BlockPos pos = BlockPos.of(iterator.nextLong());
                 if (!bounds.contains(pos)) {
                     continue;
                 }

@@ -2,19 +2,19 @@ package com.silver.atlantis.spawn.drop;
 
 import com.silver.atlantis.AtlantisMod;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.NbtComponent;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.ItemEntity;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.nbt.NbtHelper;
-import net.minecraft.registry.Registries;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtUtils;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.CustomData;
 
 public final class SpecialDropManager {
 
@@ -41,7 +41,7 @@ public final class SpecialDropManager {
         }
 
         String longTag = SpawnSpecialConfig.SPECIAL_DROP_AMOUNT_TAG_PREFIX + amount;
-        boolean added = entity.addCommandTag(longTag);
+        boolean added = entity.addTag(longTag);
         if (added) {
             if (SpawnSpecialConfig.SPECIAL_DROP_DEBUG_LOGS && shouldLogTagSample()) {
                 AtlantisMod.LOGGER.info("[SpecialDropTag] entity={} amount={} tag={}", entity.getType(), amount, longTag);
@@ -50,7 +50,7 @@ public final class SpecialDropManager {
         }
 
         String compactTag = SpawnSpecialConfig.SPECIAL_DROP_AMOUNT_TAG_PREFIX_COMPACT + amount;
-        if (entity.addCommandTag(compactTag)) {
+        if (entity.addTag(compactTag)) {
             if (SpawnSpecialConfig.SPECIAL_DROP_DEBUG_LOGS && shouldLogTagSample()) {
                 AtlantisMod.LOGGER.info("[SpecialDropTag] entity={} amount={} tag={} (fallback)", entity.getType(), amount, compactTag);
             }
@@ -66,12 +66,12 @@ public final class SpecialDropManager {
     }
 
     public static void tryDropIfSpecial(LivingEntity entity) {
-        if (!(entity.getEntityWorld() instanceof ServerWorld world)) {
+        if (!(entity.level() instanceof ServerLevel world)) {
             return;
         }
 
         int specialAmount = readSpecialDropAmount(entity);
-        boolean atlantisSpawned = entity.getCommandTags().contains(SpawnSpecialConfig.ATLANTIS_SPAWNED_MOB_TAG);
+        boolean atlantisSpawned = entity.entityTags().contains(SpawnSpecialConfig.ATLANTIS_SPAWNED_MOB_TAG);
 
         if (specialAmount <= 0) {
             return;
@@ -82,8 +82,8 @@ public final class SpecialDropManager {
             return;
         }
 
-        ItemEntity item = new ItemEntity(world, entity.getX(), entity.getBodyY(0.6), entity.getZ(), stack);
-        world.spawnEntity(item);
+        ItemEntity item = new ItemEntity(world, entity.getX(), entity.getY(0.6), entity.getZ(), stack);
+        world.addFreshEntity(item);
         if (SpawnSpecialConfig.SPECIAL_DROP_DEBUG_LOGS) {
             AtlantisMod.LOGGER.info(
                 "[SpecialDropDeath] entity={} atlantisSpawned={} hasAmountTag={} dropped={} ",
@@ -99,7 +99,7 @@ public final class SpecialDropManager {
         int amount = 0;
         String longPrefix = SpawnSpecialConfig.SPECIAL_DROP_AMOUNT_TAG_PREFIX;
         String compactPrefix = SpawnSpecialConfig.SPECIAL_DROP_AMOUNT_TAG_PREFIX_COMPACT;
-        for (String tag : entity.getCommandTags()) {
+        for (String tag : entity.entityTags()) {
             amount = Math.max(amount, parseAmountTag(tag, longPrefix));
             amount = Math.max(amount, parseAmountTag(tag, compactPrefix));
         }
@@ -127,7 +127,7 @@ public final class SpecialDropManager {
             return ItemStack.EMPTY;
         }
 
-        Item item = Registries.ITEM.get(id);
+        Item item = BuiltInRegistries.ITEM.getValue(id);
         if (item == null) {
             AtlantisMod.LOGGER.warn("Unknown special drop item: {}", SpawnSpecialConfig.SPECIAL_DROP_ITEM_ID);
             return ItemStack.EMPTY;
@@ -138,22 +138,22 @@ public final class SpecialDropManager {
 
         String displayName = SpawnSpecialConfig.SPECIAL_DROP_DISPLAY_NAME;
         if (displayName != null && !displayName.isBlank()) {
-            stack.set(DataComponentTypes.CUSTOM_NAME, Text.literal(displayName));
+            stack.set(DataComponents.CUSTOM_NAME, Component.literal(displayName));
         }
 
         String snbt = SpawnSpecialConfig.SPECIAL_DROP_CUSTOM_DATA_SNBT;
         if (snbt != null && !snbt.isBlank()) {
             try {
-                NbtCompound tag = NbtHelper.fromNbtProviderString(snbt);
+                CompoundTag tag = NbtUtils.snbtToStructure(snbt);
                 if (tag != null && !tag.isEmpty()) {
-                    stack.set(DataComponentTypes.CUSTOM_DATA, NbtComponent.of(tag));
+                    stack.set(DataComponents.CUSTOM_DATA, CustomData.of(tag));
                 }
             } catch (Exception e) {
                 AtlantisMod.LOGGER.warn("Invalid special drop SNBT: {} ({})", snbt, e.getMessage());
             }
         }
 
-        NbtComponent.set(DataComponentTypes.CUSTOM_DATA, stack, tag -> {
+        CustomData.update(DataComponents.CUSTOM_DATA, stack, tag -> {
             tag.putString("id", "special_drop");
             tag.putBoolean("no_despawn", true);
         });

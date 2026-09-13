@@ -4,14 +4,13 @@ import com.silver.atlantis.AtlantisMod;
 import com.silver.atlantis.construct.undo.UndoEntry;
 import com.silver.atlantis.protect.InteriorMask;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.nbt.NbtHelper;
+import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtIo;
-import net.minecraft.nbt.NbtList;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.ChunkPos;
-
+import net.minecraft.nbt.NbtUtils;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.ChunkPos;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -74,17 +73,17 @@ final class SpongeV3Schematic {
             throw new IOException("Schematic not found: " + path);
         }
 
-        NbtCompound root = NbtIo.readCompressed(path, net.minecraft.nbt.NbtSizeTracker.ofUnlimitedBytes());
-        NbtCompound schematic = root.contains("Schematic") ? root.getCompoundOrEmpty("Schematic") : root;
+        CompoundTag root = NbtIo.readCompressed(path, net.minecraft.nbt.NbtAccounter.unlimitedHeap());
+        CompoundTag schematic = root.contains("Schematic") ? root.getCompoundOrEmpty("Schematic") : root;
 
-        int version = schematic.getInt("Version", -1);
+        int version = schematic.getIntOr("Version", -1);
         if (version != 3) {
             throw new IOException("Unsupported schematic version: " + version + " (expected Sponge v3)");
         }
 
-        int width = schematic.getShort("Width", (short) 0);
-        int height = schematic.getShort("Height", (short) 0);
-        int length = schematic.getShort("Length", (short) 0);
+        int width = schematic.getShortOr("Width", (short) 0);
+        int height = schematic.getShortOr("Height", (short) 0);
+        int length = schematic.getShortOr("Length", (short) 0);
         if (width <= 0 || height <= 0 || length <= 0) {
             throw new IOException("Invalid schematic dimensions: " + width + "x" + height + "x" + length);
         }
@@ -99,29 +98,29 @@ final class SpongeV3Schematic {
             offsetZ = offset[2];
         }
 
-        NbtCompound blocks = schematic.getCompoundOrEmpty("Blocks");
-        NbtCompound palette = blocks.getCompoundOrEmpty("Palette");
+        CompoundTag blocks = schematic.getCompoundOrEmpty("Blocks");
+        CompoundTag palette = blocks.getCompoundOrEmpty("Palette");
         byte[] data = blocks.getByteArray("Data").orElse(new byte[0]);
         if (palette.isEmpty() || data.length == 0) {
             throw new IOException("Invalid schematic: missing Blocks.Palette or Blocks.Data");
         }
 
         int maxPaletteId = 0;
-        for (String key : palette.getKeys()) {
-            maxPaletteId = Math.max(maxPaletteId, palette.getInt(key, 0));
+        for (String key : palette.keySet()) {
+            maxPaletteId = Math.max(maxPaletteId, palette.getIntOr(key, 0));
         }
         String[] paletteById = new String[maxPaletteId + 1];
-        for (String blockState : palette.getKeys()) {
-            int id = palette.getInt(blockState, -1);
+        for (String blockState : palette.keySet()) {
+            int id = palette.getIntOr(blockState, -1);
             if (id >= 0 && id < paletteById.length) {
                 paletteById[id] = blockState;
             }
         }
 
         Map<Long, String> blockEntities = new HashMap<>();
-        NbtList blockEntityList = blocks.getListOrEmpty("BlockEntities");
+        ListTag blockEntityList = blocks.getListOrEmpty("BlockEntities");
         for (int i = 0; i < blockEntityList.size(); i++) {
-            NbtCompound be = blockEntityList.getCompoundOrEmpty(i);
+            CompoundTag be = blockEntityList.getCompoundOrEmpty(i);
             int[] pos = be.getIntArray("Pos").orElse(new int[0]);
             if (pos.length < 3) {
                 continue;
@@ -131,7 +130,7 @@ final class SpongeV3Schematic {
             int schematicY = offsetY + pos[1];
             int schematicZ = offsetZ + pos[2];
             long key = BlockPos.asLong(schematicX, schematicY, schematicZ);
-            blockEntities.put(key, NbtHelper.toNbtProviderString(be));
+            blockEntities.put(key, NbtUtils.structureToSnbt(be));
         }
 
         long expectedBlockCount = (long) width * height * length;
@@ -197,13 +196,13 @@ final class SpongeV3Schematic {
 
             int worldX = offsetX + x + anchorTo.getX();
             int worldZ = offsetZ + z + anchorTo.getZ();
-            targetChunks.add(ChunkPos.toLong(worldX >> 4, worldZ >> 4));
+            targetChunks.add(ChunkPos.pack(worldX >> 4, worldZ >> 4));
         }
 
         return new PrepassResult(Collections.unmodifiableSet(new HashSet<>(targetChunks)), bounds);
     }
 
-    StreamApplyResult streamApply(ServerWorld world, BlockPos anchorTo, UndoEntrySink undoEntrySink) {
+    StreamApplyResult streamApply(ServerLevel world, BlockPos anchorTo, UndoEntrySink undoEntrySink) {
         LongOpenHashSet touchedChunks = new LongOpenHashSet();
         LongOpenHashSet placedPositions = new LongOpenHashSet();
         InteriorMask.Builder interiorMask = InteriorMask.builder(
@@ -250,7 +249,7 @@ final class SpongeV3Schematic {
 
                 if (isInteriorAirMarker(normalized)) {
                     interiorMask.set(x, y, z);
-                    long chunkKey = ChunkPos.toLong(worldX >> 4, worldZ >> 4);
+                    long chunkKey = ChunkPos.pack(worldX >> 4, worldZ >> 4);
                     appendPlacement(spoolDir, spoolFiles, spoolOutputs, chunkKey, worldX, worldY, worldZ, "minecraft:air", null);
                     continue;
                 }
@@ -261,7 +260,7 @@ final class SpongeV3Schematic {
 
                 long schematicPosKey = BlockPos.asLong(schematicX, schematicY, schematicZ);
                 String blockEntitySnbt = blockEntitySnbtBySchematicPos.get(schematicPosKey);
-                long chunkKey = ChunkPos.toLong(worldX >> 4, worldZ >> 4);
+                long chunkKey = ChunkPos.pack(worldX >> 4, worldZ >> 4);
                 appendPlacement(spoolDir, spoolFiles, spoolOutputs, chunkKey, worldX, worldY, worldZ, normalized, blockEntitySnbt);
             }
 
@@ -271,8 +270,8 @@ final class SpongeV3Schematic {
             int totalChunks = spoolFiles.size();
             for (Map.Entry<Long, Path> entry : spoolFiles.entrySet()) {
                 long chunkKey = entry.getKey();
-                int chunkX = ChunkPos.getPackedX(chunkKey);
-                int chunkZ = ChunkPos.getPackedZ(chunkKey);
+                int chunkX = ChunkPos.getX(chunkKey);
+                int chunkZ = ChunkPos.getZ(chunkKey);
                 ChunkPos chunkPos = new ChunkPos(chunkX, chunkZ);
 
                 boolean mutated = UnloadedChunkNbtEditor.mutateChunk(world, chunkPos, context -> {
@@ -316,7 +315,7 @@ final class SpongeV3Schematic {
                 });
 
                 if (!mutated) {
-                    throw new IllegalStateException("Target chunk unavailable for unloaded mutate (loaded or missing NBT): " + chunkPos.x + "," + chunkPos.z);
+                    throw new IllegalStateException("Target chunk unavailable for unloaded mutate (loaded or missing NBT): " + chunkPos.x() + "," + chunkPos.z());
                 }
 
                 touchedChunks.add(chunkKey);
@@ -371,7 +370,7 @@ final class SpongeV3Schematic {
     ) throws IOException {
         java.io.DataOutputStream out = spoolOutputs.get(chunkKey);
         if (out == null) {
-            Path file = spoolFiles.computeIfAbsent(chunkKey, key -> spoolDir.resolve("chunk_" + ChunkPos.getPackedX(key) + "_" + ChunkPos.getPackedZ(key) + ".bin"));
+            Path file = spoolFiles.computeIfAbsent(chunkKey, key -> spoolDir.resolve("chunk_" + ChunkPos.getX(key) + "_" + ChunkPos.getZ(key) + ".bin"));
             out = new java.io.DataOutputStream(new java.io.BufferedOutputStream(Files.newOutputStream(file, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND)));
             spoolOutputs.put(chunkKey, out);
         }

@@ -11,13 +11,12 @@ import com.silver.aipets.fabric.authority.PetAuthoritySnapshot;
 import com.silver.aipets.fabric.entity.PetEntityData;
 import com.silver.aipets.fabric.interaction.PetInteractionHandler;
 import com.silver.aipets.fabric.speech.PetSpeechDisplayManager;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.passive.TameableEntity;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.TamableAnimal;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -40,13 +39,13 @@ import java.util.function.Supplier;
  * asynchronous; every entity/UI/display mutation is marshalled back to the server thread.
  */
 public final class PetConversationCoordinator implements PetInteractionHandler {
-    private static final Text SLEEPING = Text.literal("Your pet is sleeping and cannot chat yet.");
-    private static final Text INACTIVE = Text.literal(
+    private static final Component SLEEPING = Component.literal("Your pet is sleeping and cannot chat yet.");
+    private static final Component INACTIVE = Component.literal(
             "Your pet is quiet right now. Check /pet billing for your membership status.");
     private static final DateTimeFormatter RENEWAL_TIME = DateTimeFormatter
             .ofPattern("MMM d, yyyy 'at' HH:mm 'UTC'")
             .withZone(ZoneOffset.UTC);
-    private static final Text UNAVAILABLE = Text.literal("Your pet cannot chat right now. Please try again.");
+    private static final Component UNAVAILABLE = Component.literal("Your pet cannot chat right now. Please try again.");
 
     private final BackendId backendId;
     private final PetAuthorityGateway authority;
@@ -106,7 +105,7 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
 
     /** Verifies current central authority before opening; this method never calls the model. */
     @Override
-    public void open(ServerPlayerEntity owner, TameableEntity pet) {
+    public void open(ServerPlayer owner, TamableAnimal pet) {
         Objects.requireNonNull(owner, "owner");
         Objects.requireNonNull(pet, "pet");
         if (VillagerPrivateChatCompat.isConversationActive(owner)) {
@@ -114,24 +113,24 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
             return;
         }
         if (!(pet instanceof PetEntityData data) || !data.aipets$isPet()
-                || !data.aipets$getOwnerUuid().equals(owner.getUuid())
-                || !isLocalInteractionValid(owner, pet, data.aipets$getPetId(), pet.getUuid(), false)) {
+                || !data.aipets$getOwnerUuid().equals(owner.getUUID())
+                || !isLocalInteractionValid(owner, pet, data.aipets$getPetId(), pet.getUUID(), false)) {
             feedback(owner, "Move closer to your placed pet to talk.");
             return;
         }
         if (data.aipets$isSleeping()) {
-            owner.sendMessage(SLEEPING, false);
+            owner.sendSystemMessage(SLEEPING, false);
             return;
         }
 
-        MinecraftServer server = ((ServerWorld) owner.getEntityWorld()).getServer();
+        MinecraftServer server = ((ServerLevel) owner.level()).getServer();
         UUID openToken = Objects.requireNonNull(requestIds.get(), "requestIds returned null");
-        pendingOpenByOwner.put(owner.getUuid(), openToken);
+        pendingOpenByOwner.put(owner.getUUID(), openToken);
         UUID petId = data.aipets$getPetId();
-        UUID entityId = pet.getUuid();
+        UUID entityId = pet.getUUID();
         timed(authority.findByPetId(petId), authorityTimeout).whenComplete((snapshot, failure) ->
                 server.execute(() -> finishOpen(
-                        server, owner.getUuid(), petId, entityId, openToken, snapshot, failure)));
+                        server, owner.getUUID(), petId, entityId, openToken, snapshot, failure)));
     }
 
     public void tick() {
@@ -147,8 +146,8 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
     public void onPetUnloaded(Entity entity) {
         if (entity instanceof PetEntityData data && data.aipets$isPet()) {
             sessions.cancelPet(data.aipets$getPetId());
-            if (entity.getEntityWorld() instanceof ServerWorld world) {
-                ServerPlayerEntity owner = world.getServer().getPlayerManager()
+            if (entity.level() instanceof ServerLevel world) {
+                ServerPlayer owner = world.getServer().getPlayerList()
                         .getPlayer(data.aipets$getOwnerUuid());
                 if (owner != null) {
                     textUi.close(owner, "Your pet moved away, so the conversation has ended.");
@@ -175,21 +174,21 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
             Optional<PetAuthoritySnapshot> optionalSnapshot,
             Throwable failure) {
         if (!pendingOpenByOwner.remove(ownerUuid, openToken)) return;
-        ServerPlayerEntity owner = server.getPlayerManager().getPlayer(ownerUuid);
+        ServerPlayer owner = server.getPlayerList().getPlayer(ownerUuid);
         if (owner == null) return;
-        TameableEntity pet = resolveLocalPet(owner, petId, entityId, false).orElse(null);
+        TamableAnimal pet = resolveLocalPet(owner, petId, entityId, false).orElse(null);
         if (pet == null) {
             feedback(owner, "Move closer to your placed pet to talk.");
             return;
         }
         if (failure != null || optionalSnapshot == null || optionalSnapshot.isEmpty()) {
-            owner.sendMessage(UNAVAILABLE, false);
+            owner.sendSystemMessage(UNAVAILABLE, false);
             logFailure("authority-open", ownerUuid, petId, null, failure);
             return;
         }
         PetAuthoritySnapshot snapshot = optionalSnapshot.orElseThrow();
         if (snapshot.sleeping()) {
-            owner.sendMessage(SLEEPING, false);
+            owner.sendSystemMessage(SLEEPING, false);
             return;
         }
         if (!snapshot.aiAccessEnabled()) {
@@ -197,11 +196,11 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
             return;
         }
         if (!matchesAuthority(snapshot, ownerUuid, petId, entityId, owner)) {
-            owner.sendMessage(UNAVAILABLE, false);
+            owner.sendSystemMessage(UNAVAILABLE, false);
             return;
         }
 
-        String dimension = owner.getEntityWorld().getRegistryKey().getValue().toString();
+        String dimension = owner.level().dimension().identifier().toString();
         PetConversationSession session = sessions.open(
                 ownerUuid, petId, entityId, backendId, dimension, clock.instant());
         try {
@@ -215,13 +214,13 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
                         // Chat packets normally arrive on the server thread. Execute directly
                         // there so an input cannot be stranded in an executor queue; retain the
                         // marshal for compatibility with alternate network implementations.
-                        if (server.isOnThread()) submission.run();
+                        if (server.isSameThread()) submission.run();
                         else server.execute(submission);
                     },
                     () -> sessions.cancelSession(session.sessionId()));
         } catch (RuntimeException uiFailure) {
             sessions.cancelOwner(ownerUuid);
-            owner.sendMessage(UNAVAILABLE, false);
+            owner.sendSystemMessage(UNAVAILABLE, false);
             logFailure("ui-open", ownerUuid, petId, null, uiFailure);
         }
     }
@@ -232,12 +231,12 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
         PetConversationSessionRegistry.BeginResult begun = sessions.beginSubmission(
                 sessionId, ownerUuid, requestId, input, clock.instant());
         if (begun.status() != PetConversationSessionRegistry.BeginStatus.ACCEPTED) {
-            feedbackRejectedSubmission(server.getPlayerManager().getPlayer(ownerUuid), begun.status());
+            feedbackRejectedSubmission(server.getPlayerList().getPlayer(ownerUuid), begun.status());
             return;
         }
         PetConversationSession session = begun.session().orElseThrow();
-        ServerPlayerEntity owner = server.getPlayerManager().getPlayer(ownerUuid);
-        TameableEntity pet = owner == null ? null
+        ServerPlayer owner = server.getPlayerList().getPlayer(ownerUuid);
+        TamableAnimal pet = owner == null ? null
                 : resolveSessionPet(owner, session).orElse(null);
         if (owner == null || pet == null) {
             endConversation(server, session, requestId,
@@ -264,8 +263,8 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
             Optional<PetAuthoritySnapshot> optionalSnapshot,
             Throwable failure) {
         if (sessions.current(session.sessionId(), requestId, clock.instant()).isEmpty()) return;
-        ServerPlayerEntity owner = server.getPlayerManager().getPlayer(session.ownerUuid());
-        TameableEntity pet = owner == null ? null
+        ServerPlayer owner = server.getPlayerList().getPlayer(session.ownerUuid());
+        TamableAnimal pet = owner == null ? null
                 : resolveSessionPet(owner, session).orElse(null);
         if (owner == null || pet == null) {
             endConversation(server, session, requestId,
@@ -315,8 +314,8 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
             PetDialogueResponse response,
             Throwable failure) {
         if (sessions.current(session.sessionId(), requestId, clock.instant()).isEmpty()) return;
-        ServerPlayerEntity owner = server.getPlayerManager().getPlayer(session.ownerUuid());
-        TameableEntity pet = owner == null ? null
+        ServerPlayer owner = server.getPlayerList().getPlayer(session.ownerUuid());
+        TamableAnimal pet = owner == null ? null
                 : resolveSessionPet(owner, session).orElse(null);
         if (owner == null || pet == null) {
             endConversation(server, session, requestId,
@@ -353,11 +352,11 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
         }
     }
 
-    private Optional<TameableEntity> resolveLocalPet(
-            ServerPlayerEntity owner, UUID petId, UUID entityId, boolean requireAwake) {
-        if (!(owner.getEntityWorld() instanceof ServerWorld world)) return Optional.empty();
+    private Optional<TamableAnimal> resolveLocalPet(
+            ServerPlayer owner, UUID petId, UUID entityId, boolean requireAwake) {
+        if (!(owner.level() instanceof ServerLevel world)) return Optional.empty();
         Entity found = world.getEntity(entityId);
-        if (!(found instanceof TameableEntity pet)
+        if (!(found instanceof TamableAnimal pet)
                 || !(found instanceof PetEntityData data)
                 || !isLocalInteractionValid(owner, pet, petId, entityId, requireAwake)) {
             return Optional.empty();
@@ -365,9 +364,9 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
         return Optional.of(pet);
     }
 
-    private Optional<TameableEntity> resolveSessionPet(
-            ServerPlayerEntity owner, PetConversationSession session) {
-        String currentDimension = owner.getEntityWorld().getRegistryKey().getValue().toString();
+    private Optional<TamableAnimal> resolveSessionPet(
+            ServerPlayer owner, PetConversationSession session) {
+        String currentDimension = owner.level().dimension().identifier().toString();
         if (!session.backendId().equals(backendId)
                 || !session.dimensionId().equals(currentDimension)) {
             return Optional.empty();
@@ -376,19 +375,19 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
     }
 
     private boolean isLocalInteractionValid(
-            ServerPlayerEntity owner,
-            TameableEntity pet,
+            ServerPlayer owner,
+            TamableAnimal pet,
             UUID petId,
             UUID entityId,
             boolean requireAwake) {
         if (!(pet instanceof PetEntityData data) || !data.aipets$isPet()) return false;
         return !owner.isRemoved()
                 && !pet.isRemoved()
-                && owner.getEntityWorld() == pet.getEntityWorld()
-                && owner.squaredDistanceTo(pet) <= maximumDistanceSquared
-                && owner.getUuid().equals(data.aipets$getOwnerUuid())
+                && owner.level() == pet.level()
+                && owner.distanceToSqr(pet) <= maximumDistanceSquared
+                && owner.getUUID().equals(data.aipets$getOwnerUuid())
                 && petId.equals(data.aipets$getPetId())
-                && entityId.equals(pet.getUuid())
+                && entityId.equals(pet.getUUID())
                 && (!requireAwake || !data.aipets$isSleeping());
     }
 
@@ -397,7 +396,7 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
             UUID ownerUuid,
             UUID petId,
             UUID entityId,
-            ServerPlayerEntity owner) {
+            ServerPlayer owner) {
         Pet pet = snapshot.pet();
         if (!pet.petId().equals(petId) || !pet.ownerUuid().equals(ownerUuid)
                 || !(pet.placement() instanceof PlacedPlacement placed)) {
@@ -405,7 +404,7 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
         }
         return placed.backendId().equals(backendId)
                 && placed.dimensionId().toString().equals(
-                        owner.getEntityWorld().getRegistryKey().getValue().toString())
+                        owner.level().dimension().identifier().toString())
                 && placed.entityUuid().filter(entityId::equals).isPresent();
     }
 
@@ -416,7 +415,7 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
             String playerMessage,
             Throwable failure) {
         if (!sessions.complete(session.sessionId(), requestId, clock.instant())) return;
-        ServerPlayerEntity player = server.getPlayerManager().getPlayer(session.ownerUuid());
+        ServerPlayer player = server.getPlayerList().getPlayer(session.ownerUuid());
         if (player != null && playerMessage != null) feedback(player, playerMessage);
         if (failure != null) {
             logFailure("dialogue-request", session.ownerUuid(), session.petId(), requestId, failure);
@@ -425,21 +424,21 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
 
     private void showHibernating(
             MinecraftServer server,
-            ServerPlayerEntity owner,
-            TameableEntity pet,
+            ServerPlayer owner,
+            TamableAnimal pet,
             UUID ownerUuid) {
         timed(authority.findSubscriptionDetails(ownerUuid), authorityTimeout).whenComplete((details, failure) ->
                 server.execute(() -> {
-                    ServerPlayerEntity current = server.getPlayerManager().getPlayer(ownerUuid);
+                    ServerPlayer current = server.getPlayerList().getPlayer(ownerUuid);
                     if (current == null || failure != null || details == null) {
-                        if (current != null) current.sendMessage(INACTIVE, false);
+                        if (current != null) current.sendSystemMessage(INACTIVE, false);
                         return;
                     }
                     if (!isBudgetExhausted(details)) {
-                        current.sendMessage(INACTIVE, false);
+                        current.sendSystemMessage(INACTIVE, false);
                         return;
                     }
-                    current.sendMessage(Text.literal(hibernationMessage(details)), false);
+                    current.sendSystemMessage(Component.literal(hibernationMessage(details)), false);
                     try {
                         displays.show(pet, "Zzzz...");
                     } catch (RuntimeException displayFailure) {
@@ -453,8 +452,8 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
             MinecraftServer server,
             PetConversationSession session,
             UUID requestId,
-            ServerPlayerEntity owner,
-            TameableEntity pet) {
+            ServerPlayer owner,
+            TamableAnimal pet) {
         timed(authority.findSubscriptionDetails(session.ownerUuid()), authorityTimeout).whenComplete((details, failure) ->
                 server.execute(() -> {
                     boolean exhausted = failure == null && details != null && isBudgetExhausted(details);
@@ -497,7 +496,7 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
             String playerMessage,
             Throwable failure) {
         if (!sessions.end(session.sessionId(), requestId, clock.instant())) return;
-        ServerPlayerEntity player = server.getPlayerManager().getPlayer(session.ownerUuid());
+        ServerPlayer player = server.getPlayerList().getPlayer(session.ownerUuid());
         if (player != null) textUi.close(player, playerMessage);
         if (failure != null) {
             logFailure("dialogue-request", session.ownerUuid(), session.petId(), requestId, failure);
@@ -505,7 +504,7 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
     }
 
     private void feedbackRejectedSubmission(
-            ServerPlayerEntity player, PetConversationSessionRegistry.BeginStatus status) {
+            ServerPlayer player, PetConversationSessionRegistry.BeginStatus status) {
         if (player == null) return;
         if (status == PetConversationSessionRegistry.BeginStatus.EXPIRED
                 || status == PetConversationSessionRegistry.BeginStatus.SESSION_NOT_FOUND) {
@@ -523,8 +522,8 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
         feedback(player, message);
     }
 
-    private static void feedback(ServerPlayerEntity player, String message) {
-        player.sendMessage(Text.literal(message), false);
+    private static void feedback(ServerPlayer player, String message) {
+        player.sendSystemMessage(Component.literal(message), false);
     }
 
     private static void logFailure(

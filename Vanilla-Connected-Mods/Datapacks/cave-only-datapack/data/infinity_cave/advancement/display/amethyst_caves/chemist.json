@@ -26,7 +26,7 @@
             "condition": "minecraft:entity_properties",
             "entity": "this",
             "predicate": {
-              "type": "minecraft:witch",
+              "minecraft:entity_type": "minecraft:witch",
               "team": "ic.mob_team",
               "equipment": {
                 "chest": {

@@ -10,16 +10,15 @@ import com.silver.atlantis.spawn.bounds.ActiveConstructBounds;
 import com.silver.atlantis.spawn.bounds.ActiveConstructBoundsResolver;
 import com.silver.atlantis.spawn.command.ProximitySpawnCommandManager;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
-import net.minecraft.network.packet.s2c.play.PositionFlag;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.world.World;
-
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Relative;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.AABB;
 import java.nio.file.Path;
 import java.util.Set;
 
@@ -82,7 +81,7 @@ public final class CycleService {
         return true;
     }
 
-    public void sendStatus(ServerCommandSource source) {
+    public void sendStatus(CommandSourceStack source) {
         if (state == null) {
             state = CycleJsonIO.readOrCreateState(stateFile);
         }
@@ -109,7 +108,7 @@ public final class CycleService {
             ? state.lastConstructRunId()
             : "(none)";
 
-        source.sendFeedback(() -> Text.literal(
+        source.sendSuccess(() -> Component.literal(
             "Cycle status: enabled=" + state.enabled()
                 + " stage=" + stage.name()
                 + " next=" + nextText
@@ -122,13 +121,13 @@ public final class CycleService {
      * Forces the cycle to evaluate immediately once (admin helper).
      * This does NOT directly run /construct or /structuremob; it runs the cycle state machine.
      */
-    public void stepOnceNow(ServerCommandSource source) {
+    public void stepOnceNow(CommandSourceStack source) {
         if (state == null) {
             state = CycleJsonIO.readOrCreateState(stateFile);
         }
 
         if (!state.enabled()) {
-            source.sendFeedback(() -> Text.literal("Atlantis cycle is disabled. Use /atlantis cycle to enable it."), false);
+            source.sendSuccess(() -> Component.literal("Atlantis cycle is disabled. Use /atlantis cycle to enable it."), false);
             return;
         }
 
@@ -139,7 +138,7 @@ public final class CycleService {
         // Safety: never "skip" a running undo; leaving the world half-restored (and protections in limbo)
         // is worse than being forced to wait.
         if (before == CycleState.Stage.WAIT_UNDO && constructService.isUndoRunning()) {
-            source.sendFeedback(() -> Text.literal("Cycle step: undo is currently running; refusing to force-skip it."), false);
+            source.sendSuccess(() -> Component.literal("Cycle step: undo is currently running; refusing to force-skip it."), false);
             return;
         }
 
@@ -209,13 +208,13 @@ public final class CycleService {
 
         CycleState.Stage after = parseStage(state.stage());
         if (!changed || after == before) {
-            source.sendFeedback(() -> Text.literal("Cycle step: no state change."), false);
+            source.sendSuccess(() -> Component.literal("Cycle step: no state change."), false);
         } else {
-            source.sendFeedback(() -> Text.literal("Cycle step: " + before.name() + " -> " + after.name()), false);
+            source.sendSuccess(() -> Component.literal("Cycle step: " + before.name() + " -> " + after.name()), false);
         }
     }
 
-    public void toggle(ServerCommandSource source) {
+    public void toggle(CommandSourceStack source) {
         if (state == null) {
             state = CycleJsonIO.readOrCreateState(stateFile);
         }
@@ -236,30 +235,30 @@ public final class CycleService {
         persistState();
 
         if (newEnabled) {
-            source.sendFeedback(() -> Text.literal("Atlantis cycle enabled. Will run now; undo will happen 48h after /structuremob."), false);
+            source.sendSuccess(() -> Component.literal("Atlantis cycle enabled. Will run now; undo will happen 48h after /structuremob."), false);
         } else {
-            source.sendFeedback(() -> Text.literal("Atlantis cycle disabled."), false);
+            source.sendSuccess(() -> Component.literal("Atlantis cycle disabled."), false);
         }
     }
 
-    public void setStage(ServerCommandSource source, String stageNameRaw) {
+    public void setStage(CommandSourceStack source, String stageNameRaw) {
         if (state == null) {
             state = CycleJsonIO.readOrCreateState(stateFile);
         }
 
         if (!state.enabled()) {
-            source.sendFeedback(() -> Text.literal("Atlantis cycle is disabled. Use /atlantis cycle to enable it."), false);
+            source.sendSuccess(() -> Component.literal("Atlantis cycle is disabled. Use /atlantis cycle to enable it."), false);
             return;
         }
 
         if (searchService.isRunning() || constructService.isRunning() || spawnCommandManager.isStructureMobRunning()) {
-            source.sendFeedback(() -> Text.literal("Cycle set: refused because a cycle job is currently running. Use /atlantis cycle step (which can cancel construct) or wait for it to finish."), false);
+            source.sendSuccess(() -> Component.literal("Cycle set: refused because a cycle job is currently running. Use /atlantis cycle step (which can cancel construct) or wait for it to finish."), false);
             return;
         }
 
         String raw = stageNameRaw != null ? stageNameRaw.trim() : "";
         if (raw.isEmpty()) {
-            source.sendFeedback(() -> Text.literal("Cycle set: missing stage."), false);
+            source.sendSuccess(() -> Component.literal("Cycle set: missing stage."), false);
             return;
         }
 
@@ -279,7 +278,7 @@ public final class CycleService {
         try {
             target = CycleState.Stage.valueOf(upper);
         } catch (Exception e) {
-            source.sendFeedback(() -> Text.literal("Cycle set: unknown stage '" + raw + "'. Use a Stage enum value (e.g. RUN_STRUCTUREMOB, WAIT_BEFORE_UNDO, START_UNDO)."), false);
+            source.sendSuccess(() -> Component.literal("Cycle set: unknown stage '" + raw + "'. Use a Stage enum value (e.g. RUN_STRUCTUREMOB, WAIT_BEFORE_UNDO, START_UNDO)."), false);
             return;
         }
 
@@ -307,10 +306,10 @@ public final class CycleService {
         );
         persistState();
 
-        source.sendFeedback(() -> Text.literal("Cycle set: " + before.name() + " -> " + target.name()), false);
+        source.sendSuccess(() -> Component.literal("Cycle set: " + before.name() + " -> " + target.name()), false);
     }
 
-    public void runStageNow(ServerCommandSource source, String stageNameRaw) {
+    public void runStageNow(CommandSourceStack source, String stageNameRaw) {
         setStage(source, stageNameRaw);
         // If setStage refused (e.g. job running), it will have messaged the user.
         // Only step if we're still enabled and not running jobs.
@@ -321,11 +320,11 @@ public final class CycleService {
     }
 
     private void onEndTick(MinecraftServer server) {
-        tickInternal(server, server.getCommandSource(), false);
+        tickInternal(server, server.createCommandSourceStack(), false);
     }
 
     /** Returns true if the state machine advanced (state persisted). */
-    private boolean tickInternal(MinecraftServer server, ServerCommandSource actor, boolean ignoreSchedule) {
+    private boolean tickInternal(MinecraftServer server, CommandSourceStack actor, boolean ignoreSchedule) {
         if (state == null) {
             return false;
         }
@@ -391,7 +390,7 @@ public final class CycleService {
                 return true;
             }
 
-            ServerWorld overworld = server.getWorld(World.OVERWORLD);
+            ServerLevel overworld = server.getLevel(Level.OVERWORLD);
             if (overworld == null) {
                 return false;
             }
@@ -429,7 +428,7 @@ public final class CycleService {
             }
 
             // If the server restarted mid-construct, resume it.
-            ServerWorld overworld = server.getWorld(World.OVERWORLD);
+            ServerLevel overworld = server.getLevel(Level.OVERWORLD);
             if (overworld != null) {
                 boolean resumed = constructService.resumeLatest(actor, ConstructConfig.defaults(), overworld);
                 if (resumed) {
@@ -547,10 +546,10 @@ public final class CycleService {
             return;
         }
 
-        ServerWorld world = null;
+        ServerLevel world = null;
         String dimensionId = bounds.dimensionId();
-        for (ServerWorld candidate : server.getWorlds()) {
-            if (candidate.getRegistryKey().getValue().toString().equals(dimensionId)) {
+        for (ServerLevel candidate : server.getAllLevels()) {
+            if (candidate.dimension().identifier().toString().equals(dimensionId)) {
                 world = candidate;
                 break;
             }
@@ -561,8 +560,8 @@ public final class CycleService {
 
         ConstructConfig config = ConstructConfig.defaults();
         int configuredMargin = Math.max(0, config.playerEjectMarginBlocks());
-        int viewDistanceChunks = server.getPlayerManager().getViewDistance();
-        int simulationDistanceChunks = server.getPlayerManager().getSimulationDistance();
+        int viewDistanceChunks = server.getPlayerList().getViewDistance();
+        int simulationDistanceChunks = server.getPlayerList().getSimulationDistance();
         int chunkLoadRadiusBlocks = Math.max(viewDistanceChunks, simulationDistanceChunks) * 16;
         int margin = Math.max(configuredMargin, chunkLoadRadiusBlocks + 32);
         int offset = Math.max(64, config.playerEjectTeleportOffsetBlocks() + chunkLoadRadiusBlocks);
@@ -574,7 +573,7 @@ public final class CycleService {
         int maxY = bounds.maxY();
         int maxZ = bounds.maxZ();
 
-        Box box = new Box(
+        AABB box = new AABB(
             minX - margin,
             minY - margin,
             minZ - margin,
@@ -583,8 +582,8 @@ public final class CycleService {
             maxZ + margin + 1
         );
 
-        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
-            if (player.getEntityWorld() != world) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            if (player.level() != world) {
                 continue;
             }
 
@@ -619,14 +618,14 @@ public final class CycleService {
             }
 
             BlockPos target = PlayerEjectTarget.aboveGround(world, tx, tz);
-            player.teleport(
+            player.teleportTo(
                 world,
                 target.getX() + 0.5,
                 target.getY(),
                 target.getZ() + 0.5,
-                Set.of(PositionFlag.DELTA_X, PositionFlag.DELTA_Y, PositionFlag.DELTA_Z),
-                player.getYaw(),
-                player.getPitch(),
+                Set.of(Relative.DELTA_X, Relative.DELTA_Y, Relative.DELTA_Z),
+                player.getYRot(),
+                player.getXRot(),
                 true
             );
         }
@@ -726,7 +725,7 @@ public final class CycleService {
         if (server == null || message == null || message.isBlank()) {
             return;
         }
-        Text text = Text.literal(message);
-        server.getPlayerManager().getPlayerList().forEach(player -> player.sendMessage(text, false));
+        Component text = Component.literal(message);
+        server.getPlayerList().getPlayers().forEach(player -> player.sendSystemMessage(text, false));
     }
 }

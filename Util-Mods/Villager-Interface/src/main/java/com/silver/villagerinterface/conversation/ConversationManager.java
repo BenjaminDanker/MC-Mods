@@ -10,17 +10,17 @@ import com.silver.villagerinterface.config.VillagerConfigEntry;
 import com.silver.villagerinterface.config.VillagerInterfaceConfig;
 import com.silver.villagerinterface.config.VillagerPosition;
 import com.silver.villagerinterface.villager.CustomVillagerManager;
-import net.minecraft.entity.passive.VillagerEntity;
-import net.minecraft.registry.RegistryKey;
-import net.minecraft.registry.RegistryKeys;
+import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayNetworkHandler;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.World;
+import net.minecraft.server.network.ServerGamePacketListenerImpl;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.network.chat.Component;
+import net.minecraft.ChatFormatting;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.Level;
 
 import java.io.StringReader;
 import java.net.URI;
@@ -49,7 +49,7 @@ public final class ConversationManager {
 
     private final CustomVillagerManager villagerManager;
     private final Map<UUID, ConversationSession> sessions = new ConcurrentHashMap<>();
-    private final Map<UUID, Integer> lastHandledTick = new ConcurrentHashMap<>();
+    private final Map<UUID, Integer> lastInteractionHandledTick = new ConcurrentHashMap<>();
     private final Map<UUID, Integer> interactCooldownUntilTick = new ConcurrentHashMap<>();
     private final Map<UUID, Integer> lastCooldownMessageTick = new ConcurrentHashMap<>();
     private final HttpClient httpClient = HttpClient.newHttpClient();
@@ -66,8 +66,8 @@ public final class ConversationManager {
         this.villagerManager = villagerManager;
     }
 
-    public boolean startConversation(ServerPlayerEntity player, VillagerEntity villager) {
-        ConversationSession existing = sessions.get(player.getUuid());
+    public boolean startConversation(ServerPlayer player, Villager villager) {
+        ConversationSession existing = sessions.get(player.getUUID());
         VillagerConfigEntry entry = villagerManager.getEntryForVillager(villager);
         if (entry == null) {
             return false;
@@ -89,21 +89,21 @@ public final class ConversationManager {
         if (BlacksmithInteraction.isBlacksmith(entry)) {
             BlacksmithInteraction.addBlacksmithSystemRules(session);
         }
-        sessions.put(player.getUuid(), session);
+        sessions.put(player.getUUID(), session);
 
-        player.sendMessage(Text.literal("Please be patient with the dumb villagers. Type '!exit' to end the conversation.").formatted(Formatting.GRAY), false);
-        player.sendMessage(Text.empty(), false);
+        player.sendSystemMessage(Component.literal("Please be patient with the dumb villagers. Type '!exit' to end the conversation.").withStyle(ChatFormatting.GRAY), false);
+        player.sendSystemMessage(Component.empty(), false);
         sendDeterministicReply(player, session, "Hmph. What do you need?");
         return true;
     }
 
-    public boolean handleChatMessage(ServerPlayerEntity player, String message) {
-        ConversationSession session = sessions.get(player.getUuid());
+    public boolean handleChatMessage(ServerPlayer player, String message) {
+        ConversationSession session = sessions.get(player.getUUID());
         if (session == null) {
             return false;
         }
 
-        markHandled(player);
+        markInteractionHandled(player);
 
         String trimmed = message != null ? message.trim() : "";
         if (trimmed.isEmpty()) {
@@ -118,7 +118,7 @@ public final class ConversationManager {
         }
 
         if (session.isAwaitingResponse()) {
-            player.sendMessage(Text.literal("The villager is thinking...").formatted(Formatting.DARK_GRAY), false);
+            player.sendSystemMessage(Component.literal("The villager is thinking...").withStyle(ChatFormatting.DARK_GRAY), false);
             return true;
         }
 
@@ -135,13 +135,13 @@ public final class ConversationManager {
         return true;
     }
 
-    public void onPlayerDisconnect(ServerPlayNetworkHandler handler, MinecraftServer server) {
-        UUID playerId = handler.getPlayer().getUuid();
+    public void onPlayerDisconnect(ServerGamePacketListenerImpl handler, MinecraftServer server) {
+        UUID playerId = handler.getPlayer().getUUID();
         ConversationSession session = sessions.remove(playerId);
         if (session != null) {
             session.cancelActiveRequest();
         }
-        lastHandledTick.remove(playerId);
+        lastInteractionHandledTick.remove(playerId);
         interactCooldownUntilTick.remove(playerId);
         lastCooldownMessageTick.remove(playerId);
     }
@@ -153,13 +153,13 @@ public final class ConversationManager {
 
         for (Map.Entry<UUID, ConversationSession> entry : sessions.entrySet()) {
             UUID playerId = entry.getKey();
-            ServerPlayerEntity player = server.getPlayerManager().getPlayer(playerId);
+            ServerPlayer player = server.getPlayerList().getPlayer(playerId);
             if (player == null) {
                 ConversationSession session = sessions.remove(playerId);
                 if (session != null) {
                     session.cancelActiveRequest();
                 }
-                lastHandledTick.remove(playerId);
+                lastInteractionHandledTick.remove(playerId);
                 continue;
             }
 
@@ -171,8 +171,8 @@ public final class ConversationManager {
             ConversationSession session = entry.getValue();
             VillagerConfigEntry villagerEntry = session.entry();
 
-            RegistryKey<World> expectedWorld = toWorldKey(villagerEntry.dimension());
-            if (!player.getEntityWorld().getRegistryKey().equals(expectedWorld)) {
+            ResourceKey<Level> expectedWorld = toWorldKey(villagerEntry.dimension());
+            if (!player.level().dimension().equals(expectedWorld)) {
                 endConversation(player, "Conversation ended because you changed dimensions.");
                 continue;
             }
@@ -182,36 +182,36 @@ public final class ConversationManager {
                 continue;
             }
 
-            Vec3d target = position.toVec3d();
+            Vec3 target = position.toVec3();
             double maxDistance = villagerEntry.maxDistance() > 0.0 ? villagerEntry.maxDistance() : 5.0;
-            double distanceSq = target.squaredDistanceTo(player.getX(), player.getY(), player.getZ());
+            double distanceSq = target.distanceToSqr(player.getX(), player.getY(), player.getZ());
             if (distanceSq > maxDistance * maxDistance) {
                 endConversation(player, "Conversation ended because you walked away.");
             }
         }
     }
 
-    public boolean isInConversation(ServerPlayerEntity player) {
-        return sessions.containsKey(player.getUuid());
+    public boolean isInConversation(ServerPlayer player) {
+        return sessions.containsKey(player.getUUID());
     }
 
-    public boolean shouldSuppressBroadcast(ServerPlayerEntity player) {
+    public boolean shouldSuppressBroadcast(ServerPlayer player) {
         if (isInConversation(player)) {
             return true;
         }
-        Integer handledTick = lastHandledTick.get(player.getUuid());
-        return handledTick != null && handledTick == player.getEntityWorld().getServer().getTicks();
+        Integer handledTick = lastInteractionHandledTick.get(player.getUUID());
+        return handledTick != null && handledTick == player.level().getServer().getTickCount();
     }
 
-    public int runDevProviderTest(ServerPlayerEntity player, int count) {
+    public int runDevProviderTest(ServerPlayer player, int count) {
         VillagerInterfaceConfig config = getConfig();
         if (config.villagers().isEmpty()) {
-            player.sendMessage(Text.literal("No villagers configured; unable to run test.").formatted(Formatting.DARK_GRAY), false);
+            player.sendSystemMessage(Component.literal("No villagers configured; unable to run test.").withStyle(ChatFormatting.DARK_GRAY), false);
             return 0;
         }
 
         int total = Math.max(1, count);
-        player.sendMessage(Text.literal("Starting " + total + " " + providerDisplayName(config) + " test request(s)...").formatted(Formatting.GRAY), false);
+        player.sendSystemMessage(Component.literal("Starting " + total + " " + providerDisplayName(config) + " test request(s)...").withStyle(ChatFormatting.GRAY), false);
 
         for (int i = 0; i < total; i++) {
             VillagerConfigEntry entry = config.villagers().get(i % config.villagers().size());
@@ -229,60 +229,60 @@ public final class ConversationManager {
         return EXIT_KEYWORDS.contains(normalized);
     }
 
-    private void endConversation(ServerPlayerEntity player, String systemMessage) {
-        ConversationSession session = sessions.remove(player.getUuid());
+    private void endConversation(ServerPlayer player, String systemMessage) {
+        ConversationSession session = sessions.remove(player.getUUID());
         if (session != null) {
             session.cancelActiveRequest();
         }
-        player.sendMessage(Text.literal(systemMessage), false);
+        player.sendSystemMessage(Component.literal(systemMessage), false);
     }
 
-    private void markHandled(ServerPlayerEntity player) {
-        lastHandledTick.put(player.getUuid(), player.getEntityWorld().getServer().getTicks());
+    private void markInteractionHandled(ServerPlayer player) {
+        lastInteractionHandledTick.put(player.getUUID(), player.level().getServer().getTickCount());
     }
 
-    private RegistryKey<World> toWorldKey(String dimensionId) {
+    private ResourceKey<Level> toWorldKey(String dimensionId) {
         Identifier id = Identifier.tryParse(dimensionId);
         if (id == null) {
-            id = Identifier.of("minecraft", "overworld");
+            id = Identifier.fromNamespaceAndPath("minecraft", "overworld");
         }
-        return RegistryKey.of(RegistryKeys.WORLD, id);
+        return ResourceKey.create(Registries.DIMENSION, id);
     }
 
-    private boolean isInteractionCoolingDown(ServerPlayerEntity player) {
-        int currentTick = player.getEntityWorld().getServer().getTicks();
-        Integer cooldownUntil = interactCooldownUntilTick.get(player.getUuid());
+    private boolean isInteractionCoolingDown(ServerPlayer player) {
+        int currentTick = player.level().getServer().getTickCount();
+        Integer cooldownUntil = interactCooldownUntilTick.get(player.getUUID());
         if (cooldownUntil == null || currentTick >= cooldownUntil) {
             return false;
         }
 
-        Integer lastMessageTick = lastCooldownMessageTick.get(player.getUuid());
+        Integer lastMessageTick = lastCooldownMessageTick.get(player.getUUID());
         if (lastMessageTick == null || currentTick - lastMessageTick >= COOLDOWN_MESSAGE_INTERVAL_TICKS) {
-            player.sendMessage(Text.literal("Please wait a moment before talking again.").formatted(Formatting.DARK_GRAY), true);
-            lastCooldownMessageTick.put(player.getUuid(), currentTick);
+            player.sendSystemMessage(Component.literal("Please wait a moment before talking again.").withStyle(ChatFormatting.DARK_GRAY), true);
+            lastCooldownMessageTick.put(player.getUUID(), currentTick);
         }
 
         return true;
     }
 
-    private void applyInteractionCooldown(ServerPlayerEntity player) {
-        int currentTick = player.getEntityWorld().getServer().getTicks();
-        interactCooldownUntilTick.put(player.getUuid(), currentTick + INTERACT_COOLDOWN_TICKS);
+    private void applyInteractionCooldown(ServerPlayer player) {
+        int currentTick = player.level().getServer().getTickCount();
+        interactCooldownUntilTick.put(player.getUUID(), currentTick + INTERACT_COOLDOWN_TICKS);
     }
 
-    private void sendVillagerLine(ServerPlayerEntity player, VillagerConfigEntry entry, String line) {
+    private void sendVillagerLine(ServerPlayer player, VillagerConfigEntry entry, String line) {
         String name = entry.displayName() != null && !entry.displayName().isBlank() ? entry.displayName() : entry.id();
-        player.sendMessage(Text.literal(name + ":"), false);
-        player.sendMessage(Text.literal(line), false);
+        player.sendSystemMessage(Component.literal(name + ":"), false);
+        player.sendSystemMessage(Component.literal(line), false);
     }
 
-    private void sendPlayerLine(ServerPlayerEntity player, String line) {
-        String name = player.getNameForScoreboard();
-        player.sendMessage(Text.literal(name + ":").formatted(Formatting.GRAY), false);
-        player.sendMessage(Text.literal(line).formatted(Formatting.GRAY), false);
+    private void sendPlayerLine(ServerPlayer player, String line) {
+        String name = player.getScoreboardName();
+        player.sendSystemMessage(Component.literal(name + ":").withStyle(ChatFormatting.GRAY), false);
+        player.sendSystemMessage(Component.literal(line).withStyle(ChatFormatting.GRAY), false);
     }
 
-    void requestReply(ServerPlayerEntity player, ConversationSession session, String userMessage, boolean includeUserInHistory) {
+    void requestReply(ServerPlayer player, ConversationSession session, String userMessage, boolean includeUserInHistory) {
         if (includeUserInHistory) {
             session.addUserMessage(userMessage);
         }
@@ -290,7 +290,7 @@ public final class ConversationManager {
         sendProviderRequest(player, session, session.history());
     }
 
-    void sendDeterministicReply(ServerPlayerEntity player, ConversationSession session, String reply) {
+    void sendDeterministicReply(ServerPlayer player, ConversationSession session, String reply) {
         if (reply == null || reply.isBlank()) {
             return;
         }
@@ -298,7 +298,7 @@ public final class ConversationManager {
         session.addAssistantMessage(reply);
     }
 
-    void requestTransientReply(ServerPlayerEntity player, ConversationSession session, String transientUserMessage, String transientSystemMessage) {
+    void requestTransientReply(ServerPlayer player, ConversationSession session, String transientUserMessage, String transientSystemMessage) {
         List<ChatMessage> messages = new ArrayList<>(session.history());
         if (transientSystemMessage != null && !transientSystemMessage.isBlank()) {
             messages.add(ChatMessage.system(transientSystemMessage));
@@ -310,14 +310,14 @@ public final class ConversationManager {
         sendProviderRequest(player, session, messages);
     }
 
-    private void sendProviderRequest(ServerPlayerEntity player, ConversationSession session, List<ChatMessage> messages) {
+    private void sendProviderRequest(ServerPlayer player, ConversationSession session, List<ChatMessage> messages) {
         VillagerInterfaceConfig config = getConfig();
         HttpRequest request;
         try {
             request = buildProviderRequest(config, messages, session.entry().id());
         } catch (IllegalStateException ex) {
             VillagerInterfaceMod.LOGGER.warn("{} request was not sent: {}", providerDisplayName(config), ex.getMessage());
-            player.sendMessage(Text.literal("The villager cannot reach its configured AI provider.").formatted(Formatting.DARK_GRAY), false);
+            player.sendSystemMessage(Component.literal("The villager cannot reach its configured AI provider.").withStyle(ChatFormatting.DARK_GRAY), false);
             return;
         }
 
@@ -326,9 +326,9 @@ public final class ConversationManager {
 
         responseFuture
             .whenComplete((response, error) -> {
-                MinecraftServer server = player.getEntityWorld().getServer();
+                MinecraftServer server = player.level().getServer();
                 server.execute(() -> {
-                    if (!sessions.containsKey(player.getUuid())) {
+                    if (!sessions.containsKey(player.getUUID())) {
                         session.clearActiveRequest();
                         return;
                     }
@@ -347,7 +347,7 @@ public final class ConversationManager {
                     if (response == null) {
                         session.clearActiveRequest();
                         VillagerInterfaceMod.LOGGER.warn("{} response was null", providerDisplayName(config));
-                        player.sendMessage(Text.literal("The villager seems distracted.").formatted(Formatting.DARK_GRAY), false);
+                        player.sendSystemMessage(Component.literal("The villager seems distracted.").withStyle(ChatFormatting.DARK_GRAY), false);
                         return;
                     }
 
@@ -355,7 +355,7 @@ public final class ConversationManager {
                     if (status < 200 || status >= 300) {
                         session.clearActiveRequest();
                         VillagerInterfaceMod.LOGGER.warn("{} HTTP {}", providerDisplayName(config), status);
-                        player.sendMessage(Text.literal("The villager seems distracted.").formatted(Formatting.DARK_GRAY), false);
+                        player.sendSystemMessage(Component.literal("The villager seems distracted.").withStyle(ChatFormatting.DARK_GRAY), false);
                         return;
                     }
 
@@ -365,56 +365,56 @@ public final class ConversationManager {
                         return;
                     }
 
-                    CompletableFuture.runAsync(() -> consumeConversationStream(server, player.getUuid(), session, lines, config.conversation().activeProvider()));
+                    CompletableFuture.runAsync(() -> consumeConversationStream(server, player.getUUID(), session, lines, config.conversation().activeProvider()));
                 });
             });
     }
 
-    private void requestTestReply(ServerPlayerEntity player, ConversationSession session, VillagerConfigEntry entry, int index, Instant startedAt) {
+    private void requestTestReply(ServerPlayer player, ConversationSession session, VillagerConfigEntry entry, int index, Instant startedAt) {
         VillagerInterfaceConfig config = getConfig();
         HttpRequest request;
         try {
             request = buildProviderRequest(config, session.history(), entry.id());
         } catch (IllegalStateException ex) {
-            player.sendMessage(Text.literal("Test " + index + " cannot start: " + ex.getMessage()).formatted(Formatting.DARK_GRAY), false);
+            player.sendSystemMessage(Component.literal("Test " + index + " cannot start: " + ex.getMessage()).withStyle(ChatFormatting.DARK_GRAY), false);
             return;
         }
 
-        player.sendMessage(Text.literal(formatDevtestPrefix(index, entry.id(), "started") + " at " + startedAt).formatted(Formatting.DARK_GRAY), false);
+        player.sendSystemMessage(Component.literal(formatDevtestPrefix(index, entry.id(), "started") + " at " + startedAt).withStyle(ChatFormatting.DARK_GRAY), false);
 
         httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofLines())
             .whenComplete((response, error) -> {
-                MinecraftServer server = player.getEntityWorld().getServer();
+                MinecraftServer server = player.level().getServer();
                 server.execute(() -> {
-                    ServerPlayerEntity current = server.getPlayerManager().getPlayer(player.getUuid());
+                    ServerPlayer current = server.getPlayerList().getPlayer(player.getUUID());
                     if (current == null) {
                         return;
                     }
 
                     if (error != null) {
                         handleProviderError(providerDisplayName(config) + " test " + index + " failed", error, current, "Test " + index + " timed out.");
-                        current.sendMessage(Text.literal(formatDevtestPrefix(index, entry.id(), "failed") + durationSince(startedAt)).formatted(Formatting.DARK_GRAY), false);
-                        current.sendMessage(Text.literal("Test " + index + " (" + entry.id() + ") failed.").formatted(Formatting.DARK_GRAY), false);
+                        current.sendSystemMessage(Component.literal(formatDevtestPrefix(index, entry.id(), "failed") + durationSince(startedAt)).withStyle(ChatFormatting.DARK_GRAY), false);
+                        current.sendSystemMessage(Component.literal("Test " + index + " (" + entry.id() + ") failed.").withStyle(ChatFormatting.DARK_GRAY), false);
                         return;
                     }
 
                     if (response == null) {
                         VillagerInterfaceMod.LOGGER.warn("{} test {} response was null", providerDisplayName(config), index);
-                        current.sendMessage(Text.literal(formatDevtestPrefix(index, entry.id(), "failed") + durationSince(startedAt)).formatted(Formatting.DARK_GRAY), false);
-                        current.sendMessage(Text.literal("Test " + index + " (" + entry.id() + ") failed.").formatted(Formatting.DARK_GRAY), false);
+                        current.sendSystemMessage(Component.literal(formatDevtestPrefix(index, entry.id(), "failed") + durationSince(startedAt)).withStyle(ChatFormatting.DARK_GRAY), false);
+                        current.sendSystemMessage(Component.literal("Test " + index + " (" + entry.id() + ") failed.").withStyle(ChatFormatting.DARK_GRAY), false);
                         return;
                     }
 
                     int status = response.statusCode();
                     if (status < 200 || status >= 300) {
                         VillagerInterfaceMod.LOGGER.warn("{} test {} HTTP {}", providerDisplayName(config), index, status);
-                        current.sendMessage(Text.literal(formatDevtestPrefix(index, entry.id(), "failed") + durationSince(startedAt)).formatted(Formatting.DARK_GRAY), false);
-                        current.sendMessage(Text.literal("Test " + index + " (" + entry.id() + ") failed.").formatted(Formatting.DARK_GRAY), false);
+                        current.sendSystemMessage(Component.literal(formatDevtestPrefix(index, entry.id(), "failed") + durationSince(startedAt)).withStyle(ChatFormatting.DARK_GRAY), false);
+                        current.sendSystemMessage(Component.literal("Test " + index + " (" + entry.id() + ") failed.").withStyle(ChatFormatting.DARK_GRAY), false);
                         return;
                     }
 
                     Stream<String> lines = response.body();
-                    CompletableFuture.runAsync(() -> consumeTestStream(server, player.getUuid(), entry.id(), index, lines, startedAt, config.conversation().activeProvider()));
+                    CompletableFuture.runAsync(() -> consumeTestStream(server, player.getUUID(), entry.id(), index, lines, startedAt, config.conversation().activeProvider()));
                 });
             });
     }
@@ -512,16 +512,16 @@ public final class ConversationManager {
         return value;
     }
 
-    private void handleProviderError(String prefix, Throwable error, ServerPlayerEntity player, String timeoutMessage) {
+    private void handleProviderError(String prefix, Throwable error, ServerPlayer player, String timeoutMessage) {
         Throwable root = unwrap(error);
         if (root instanceof HttpTimeoutException) {
             VillagerInterfaceMod.LOGGER.warn("{}: request timed out", prefix);
-            player.sendMessage(Text.literal(timeoutMessage).formatted(Formatting.DARK_GRAY), false);
+            player.sendSystemMessage(Component.literal(timeoutMessage).withStyle(ChatFormatting.DARK_GRAY), false);
             return;
         }
 
         VillagerInterfaceMod.LOGGER.warn(prefix + ": " + root.getMessage());
-        player.sendMessage(Text.literal("The villager seems distracted.").formatted(Formatting.DARK_GRAY), false);
+        player.sendSystemMessage(Component.literal("The villager seems distracted.").withStyle(ChatFormatting.DARK_GRAY), false);
     }
 
     private Throwable unwrap(Throwable error) {
@@ -576,8 +576,8 @@ public final class ConversationManager {
             });
         }
 
-        String finalText = full.toString().trim();
-        server.execute(() -> sendDevtestFinal(server, playerId, villagerId, index, finalText, startedAt));
+        String finalComponent = full.toString().trim();
+        server.execute(() -> sendDevtestFinal(server, playerId, villagerId, index, finalComponent, startedAt));
     }
 
     private void consumeConversationStream(MinecraftServer server, UUID playerId, ConversationSession session, Stream<String> lines, String provider) {
@@ -638,12 +638,12 @@ public final class ConversationManager {
             }
         }
 
-        String finalText = full.toString().trim();
+        String finalComponent = full.toString().trim();
         server.execute(() -> finishConversationStream(server, playerId, session, full.toString(), lastSentIndex[0], entry, prefixSent));
     }
 
-    private void finishConversationStream(MinecraftServer server, UUID playerId, ConversationSession session, String fullText, int lastSentIndex, VillagerConfigEntry entry, boolean[] prefixSent) {
-        ServerPlayerEntity player = server.getPlayerManager().getPlayer(playerId);
+    private void finishConversationStream(MinecraftServer server, UUID playerId, ConversationSession session, String fullComponent, int lastSentIndex, VillagerConfigEntry entry, boolean[] prefixSent) {
+        ServerPlayer player = server.getPlayerList().getPlayer(playerId);
         if (player == null) {
             session.clearActiveRequest();
             return;
@@ -657,17 +657,17 @@ public final class ConversationManager {
         session.clearActiveRequest();
 
         String remaining = "";
-        if (fullText != null && lastSentIndex < fullText.length()) {
-            remaining = fullText.substring(lastSentIndex);
+        if (fullComponent != null && lastSentIndex < fullComponent.length()) {
+            remaining = fullComponent.substring(lastSentIndex);
         }
 
         if (!remaining.isBlank()) {
             sendVillagerChunk(server, playerId, session, entry, remaining, prefixSent);
         }
 
-        String reply = fullText != null ? sanitizeAssistantText(fullText).trim() : "";
+        String reply = fullComponent != null ? sanitizeAssistantComponent(fullComponent).trim() : "";
         if (reply.isBlank()) {
-            player.sendMessage(Text.literal("The villager seems distracted.").formatted(Formatting.DARK_GRAY), false);
+            player.sendSystemMessage(Component.literal("The villager seems distracted.").withStyle(ChatFormatting.DARK_GRAY), false);
             return;
         }
 
@@ -675,7 +675,7 @@ public final class ConversationManager {
     }
 
     private void sendVillagerChunk(MinecraftServer server, UUID playerId, ConversationSession session, VillagerConfigEntry entry, String chunk, boolean[] prefixSent) {
-        ServerPlayerEntity player = server.getPlayerManager().getPlayer(playerId);
+        ServerPlayer player = server.getPlayerList().getPlayer(playerId);
         if (player == null) {
             return;
         }
@@ -684,7 +684,7 @@ public final class ConversationManager {
             return;
         }
 
-        String cleaned = sanitizeAssistantText(chunk).trim();
+        String cleaned = sanitizeAssistantComponent(chunk).trim();
         if (cleaned.isBlank()) {
             return;
         }
@@ -693,7 +693,7 @@ public final class ConversationManager {
             sendVillagerLine(player, entry, cleaned);
             prefixSent[0] = true;
         } else {
-            player.sendMessage(Text.literal(cleaned), false);
+            player.sendSystemMessage(Component.literal(cleaned), false);
         }
     }
 
@@ -800,7 +800,7 @@ public final class ConversationManager {
             || text.regionMatches(true, j, CMD_MODIFY, 0, CMD_MODIFY.length());
     }
 
-    private String sanitizeAssistantText(String text) {
+    private String sanitizeAssistantComponent(String text) {
         if (text == null || text.isBlank()) {
             return text;
         }
@@ -935,13 +935,13 @@ public final class ConversationManager {
             return;
         }
 
-        ServerPlayerEntity player = server.getPlayerManager().getPlayer(playerId);
+        ServerPlayer player = server.getPlayerList().getPlayer(playerId);
         if (player == null) {
             return;
         }
 
-        player.sendMessage(Text.literal(formatDevtestPrefix(index, villagerId, "complete") + durationSince(startedAt)).formatted(Formatting.DARK_GRAY), false);
-        player.sendMessage(Text.literal("Test " + index + " (" + villagerId + "): " + reply).formatted(Formatting.GRAY), false);
+        player.sendSystemMessage(Component.literal(formatDevtestPrefix(index, villagerId, "complete") + durationSince(startedAt)).withStyle(ChatFormatting.DARK_GRAY), false);
+        player.sendSystemMessage(Component.literal("Test " + index + " (" + villagerId + "): " + reply).withStyle(ChatFormatting.GRAY), false);
     }
 
     private String buildPreview(String value, int maxLength) {

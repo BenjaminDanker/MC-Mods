@@ -7,18 +7,17 @@ import com.silver.aipets.fabric.permission.PetPermission;
 import com.silver.aipets.fabric.permission.PetPermissions;
 import com.silver.aipets.fabric.placement.PetPickupOutcome;
 import com.silver.aipets.fabric.placement.PetPickupStatus;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.passive.TameableEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.Text;
-import net.minecraft.util.ActionResult;
-import net.minecraft.util.Hand;
-
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.TamableAnimal;
+import net.minecraft.world.entity.player.Player;
 
 /** Marker- and owner-scoped routing boundary for the later text-entry UI. */
 public final class PetInteractionRouter {
@@ -33,41 +32,41 @@ public final class PetInteractionRouter {
     private PetInteractionRouter() {
     }
 
-    public static ActionResult interact(PlayerEntity player, Entity entity) {
-        return interact(player, entity, Hand.MAIN_HAND);
+    public static InteractionResult interact(Player player, Entity entity) {
+        return interact(player, entity, InteractionHand.MAIN_HAND);
     }
 
-    public static ActionResult interact(PlayerEntity player, Entity entity, Hand hand) {
+    public static InteractionResult interact(Player player, Entity entity, InteractionHand hand) {
         Objects.requireNonNull(player, "player");
         Objects.requireNonNull(entity, "entity");
         Objects.requireNonNull(hand, "hand");
-        if (!(entity instanceof TameableEntity tameable)
+        if (!(entity instanceof TamableAnimal tameable)
                 || !(entity instanceof PetEntityData data)
                 || !data.aipets$isPet()) {
-            return ActionResult.PASS;
+            return InteractionResult.PASS;
         }
-        if (player.isSpectator() || !data.aipets$getOwnerUuid().equals(player.getUuid())) {
-            return ActionResult.FAIL;
+        if (player.isSpectator() || !data.aipets$getOwnerUuid().equals(player.getUUID())) {
+            return InteractionResult.FAIL;
         }
-        if (player.getEntityWorld().isClient()) {
-            return ActionResult.SUCCESS;
+        if (player.level().isClientSide()) {
+            return InteractionResult.SUCCESS;
         }
-        if (!(player instanceof ServerPlayerEntity serverPlayer)) {
-            return ActionResult.FAIL;
+        if (!(player instanceof ServerPlayer serverPlayer)) {
+            return InteractionResult.FAIL;
         }
-        long serverTick = serverPlayer.getEntityWorld().getServer().getTicks();
+        if (!PetPermissions.check(serverPlayer.createCommandSourceStack(), PetPermission.CHAT)) {
+            return InteractionResult.FAIL;
+        }
+        long serverTick = serverPlayer.level().getServer().getTickCount();
         InteractionKey interactionKey = new InteractionKey(
-                serverPlayer.getUuid(), entity.getUuid());
+                serverPlayer.getUUID(), entity.getUUID());
         Long previousTick = SERVER_INTERACTIONS.put(interactionKey, serverTick);
         SERVER_INTERACTIONS.entrySet().removeIf(entry -> entry.getValue() < serverTick - 2);
         if (previousTick != null && serverTick - previousTick <= 1) {
-            return ActionResult.SUCCESS_SERVER;
+            return InteractionResult.SUCCESS_SERVER;
         }
-        if (serverPlayer.isSneaking()) {
+        if (serverPlayer.isShiftKeyDown()) {
             return pickup(serverPlayer);
-        }
-        if (!PetPermissions.check(serverPlayer.getCommandSource(), PetPermission.CHAT)) {
-            return ActionResult.FAIL;
         }
         if (data.aipets$isSleeping()) {
             try {
@@ -81,7 +80,7 @@ public final class PetInteractionRouter {
                         .outcome("failed")
                         .toJson());
             }
-            return ActionResult.SUCCESS_SERVER;
+            return InteractionResult.SUCCESS_SERVER;
         }
 
         PetInteractionHandler handler = HANDLER.get();
@@ -96,43 +95,43 @@ public final class PetInteractionRouter {
                         .failure(failure)
                         .outcome("failed")
                         .toJson());
-                return ActionResult.FAIL;
+                return InteractionResult.FAIL;
             }
         }
-        return ActionResult.SUCCESS_SERVER;
+        return InteractionResult.SUCCESS_SERVER;
     }
 
-    private static ActionResult pickup(ServerPlayerEntity player) {
-        if (!PetPermissions.check(player.getCommandSource(), PetPermission.USE)) {
-            return ActionResult.FAIL;
+    private static InteractionResult pickup(ServerPlayer player) {
+        if (!PetPermissions.check(player.createCommandSourceStack(), PetPermission.USE)) {
+            return InteractionResult.FAIL;
         }
         var configured = PetCompanionMod.pickupCoordinator();
         if (configured.isEmpty()) {
-            player.sendMessage(Text.literal("Pet pickup is temporarily unavailable."), false);
-            return ActionResult.SUCCESS_SERVER;
+            player.sendSystemMessage(Component.literal("Pet pickup is temporarily unavailable."), false);
+            return InteractionResult.SUCCESS_SERVER;
         }
-        player.sendMessage(Text.literal("Picking up your pet…"), false);
+        player.sendSystemMessage(Component.literal("Picking up your pet…"), false);
         try {
             configured.orElseThrow().pickup(player).whenComplete((outcome, failure) -> {
-                player.getEntityWorld().getServer().execute(() ->
+                player.level().getServer().execute(() ->
                         completePickup(player, outcome, failure));
             });
         } catch (RuntimeException failure) {
-            player.sendMessage(Text.literal("Pet pickup is temporarily unavailable."), false);
+            player.sendSystemMessage(Component.literal("Pet pickup is temporarily unavailable."), false);
         }
-        return ActionResult.SUCCESS_SERVER;
+        return InteractionResult.SUCCESS_SERVER;
     }
 
     private static void completePickup(
-            ServerPlayerEntity player,
+            ServerPlayer player,
             PetPickupOutcome outcome,
             Throwable failure) {
         if (failure != null || outcome == null) {
-            player.sendMessage(Text.literal("Pet pickup is temporarily unavailable."), false);
+            player.sendSystemMessage(Component.literal("Pet pickup is temporarily unavailable."), false);
             return;
         }
         if (outcome.status() == PetPickupStatus.PICKED_UP) {
-            player.sendMessage(Text.literal("Your pet is now held."), false);
+            player.sendSystemMessage(Component.literal("Your pet is now held."), false);
             return;
         }
         String message = switch (outcome.status()) {
@@ -144,7 +143,7 @@ public final class PetInteractionRouter {
             case SERVICE_FAILURE -> "Pet pickup is temporarily unavailable.";
             case PICKED_UP -> throw new IllegalStateException("Handled above");
         };
-        player.sendMessage(Text.literal(message), false);
+        player.sendSystemMessage(Component.literal(message), false);
     }
 
     public static Runnable installHandler(PetInteractionHandler handler) {

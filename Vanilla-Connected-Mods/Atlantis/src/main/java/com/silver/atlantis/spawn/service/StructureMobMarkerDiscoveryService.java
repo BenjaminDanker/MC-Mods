@@ -3,14 +3,13 @@ package com.silver.atlantis.spawn.service;
 import com.silver.atlantis.construct.OfflineChunkBlockReader;
 import com.silver.atlantis.spawn.bounds.ActiveConstructBounds;
 import com.silver.atlantis.spawn.config.SpawnMobConfig;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.ChunkPos;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.ChunkPos;
 
 final class StructureMobMarkerDiscoveryService {
 
@@ -36,10 +35,10 @@ final class StructureMobMarkerDiscoveryService {
     DiscoveryResult discoverMarker(long candidatePosKey,
                                    ActiveConstructBounds bounds,
                                    int easyY,
-                                   ServerWorld world,
+                                   ServerLevel world,
                                    Map<Long, Optional<OfflineChunkBlockReader.ChunkSnapshot>> offlineChunkCache,
                                    AirSpawnStats airStats) {
-        BlockPos floorPos = BlockPos.fromLong(candidatePosKey);
+        BlockPos floorPos = BlockPos.of(candidatePosKey);
         if (!bounds.contains(floorPos)) {
             return new DiscoveryResult(List.of(), RejectReason.OUT_OF_BOUNDS);
         }
@@ -52,7 +51,7 @@ final class StructureMobMarkerDiscoveryService {
 
         int x = floorPos.getX();
         int z = floorPos.getZ();
-        long chunkKey = ChunkPos.toLong(x >> 4, z >> 4);
+        long chunkKey = ChunkPos.pack(x >> 4, z >> 4);
 
         Optional<OfflineChunkBlockReader.ChunkSnapshot> snapshotOpt = getOfflineSnapshot(offlineChunkCache, world, chunkKey, x >> 4, z >> 4);
         if (snapshotOpt.isEmpty()) {
@@ -95,7 +94,7 @@ final class StructureMobMarkerDiscoveryService {
 
     private Optional<OfflineChunkBlockReader.ChunkSnapshot> getOfflineSnapshot(
         Map<Long, Optional<OfflineChunkBlockReader.ChunkSnapshot>> offlineChunkCache,
-        ServerWorld world,
+        ServerLevel world,
         long chunkKey,
         int chunkX,
         int chunkZ

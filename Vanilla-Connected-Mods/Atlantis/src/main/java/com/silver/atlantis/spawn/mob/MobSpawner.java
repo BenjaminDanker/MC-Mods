@@ -3,30 +3,29 @@ package com.silver.atlantis.spawn.mob;
 import com.silver.atlantis.AtlantisMod;
 import com.silver.atlantis.spawn.drop.SpawnSpecialConfig;
 import com.silver.atlantis.spawn.drop.SpecialDropManager;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.SpawnReason;
-import net.minecraft.entity.attribute.EntityAttribute;
-import net.minecraft.entity.attribute.EntityAttributeInstance;
-import net.minecraft.entity.attribute.EntityAttributes;
-import net.minecraft.entity.effect.StatusEffect;
-import net.minecraft.entity.effect.StatusEffectInstance;
-import net.minecraft.entity.mob.MobEntity;
-import net.minecraft.entity.mob.CreeperEntity;
-import net.minecraft.entity.mob.ZombieEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.registry.Registries;
-import net.minecraft.registry.RegistryKeys;
-import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
-
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Optional;
+import net.minecraft.core.Holder;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.effect.MobEffect;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.ai.attributes.Attribute;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.monster.Creeper;
+import net.minecraft.world.entity.monster.zombie.Zombie;
+import net.minecraft.world.item.ItemStack;
 
 /**
  * Handles spawning and customizing mobs using direct entity manipulation
@@ -36,7 +35,7 @@ public final class MobSpawner {
 
     private MobSpawner() {}
 
-    public static Optional<Entity> createConfiguredEntity(ServerWorld world, MobCustomization customization) {
+    public static Optional<Entity> createConfiguredEntity(ServerLevel world, MobCustomization customization) {
         // Parse entity type
         Identifier entityId = parseIdentifier(customization.entityId());
         if (entityId == null) {
@@ -44,23 +43,22 @@ public final class MobSpawner {
             return Optional.empty();
         }
 
-        EntityType<?> entityType = Registries.ENTITY_TYPE.get(entityId);
-        if (entityType == null || (entityType == EntityType.PIG && !entityId.getPath().equals("pig"))) {
-            // EntityType.PIG is returned as fallback for unknown IDs
+        EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getValue(entityId);
+        if (entityType == null) {
             AtlantisMod.LOGGER.error("Unknown entity type: {}", entityId);
             return Optional.empty();
         }
 
         try {
             // Create entity using the proper spawn method
-            Entity entity = entityType.create(world, SpawnReason.COMMAND);
+            Entity entity = entityType.create(world, EntitySpawnReason.COMMAND);
             if (entity == null) {
                 AtlantisMod.LOGGER.error("Failed to create entity of type: {}", entityId);
                 return Optional.empty();
             }
 
             // Position and rotation
-            entity.refreshPositionAndAngles(
+            entity.snapTo(
                 customization.x(), 
                 customization.y(), 
                 customization.z(),
@@ -74,14 +72,14 @@ public final class MobSpawner {
             }
 
             // Apply mob-specific customizations
-            if (entity instanceof MobEntity mob) {
+            if (entity instanceof Mob mob) {
                 applyMobCustomizations(world, mob, customization);
 
                 // Ensure structure-spawned mobs never despawn naturally.
-                mob.setPersistent();
+                mob.setPersistenceRequired();
             }
 
-            entity.addCommandTag(SpawnSpecialConfig.ATLANTIS_SPAWNED_MOB_TAG);
+            entity.addTag(SpawnSpecialConfig.ATLANTIS_SPAWNED_MOB_TAG);
 
             if (customization.specialDropAmount() > 0) {
                 SpecialDropManager.markSpecialDropAmount(entity, customization.specialDropAmount());
@@ -89,13 +87,13 @@ public final class MobSpawner {
 
             // Custom name
             if (customization.customName() != null && !customization.customName().isEmpty()) {
-                entity.setCustomName(Text.literal(customization.customName()));
+                entity.setCustomName(Component.literal(customization.customName()));
                 entity.setCustomNameVisible(true);
             }
 
             // Glowing
             if (customization.glowing()) {
-                entity.setGlowing(true);
+                entity.setGlowingTag(true);
             }
             return Optional.of(entity);
 
@@ -105,10 +103,10 @@ public final class MobSpawner {
         }
     }
 
-    private static void applyLivingCustomizations(ServerWorld world, LivingEntity entity, MobCustomization customization) {
+    private static void applyLivingCustomizations(ServerLevel world, LivingEntity entity, MobCustomization customization) {
         // Apply max health first (before setting health)
         if (customization.maxHealth() > 0) {
-            EntityAttributeInstance maxHealthAttr = entity.getAttributeInstance(EntityAttributes.MAX_HEALTH);
+            AttributeInstance maxHealthAttr = entity.getAttribute(Attributes.MAX_HEALTH);
             if (maxHealthAttr != null) {
                 maxHealthAttr.setBaseValue(customization.maxHealth());
             }
@@ -133,7 +131,7 @@ public final class MobSpawner {
         }
     }
 
-    private static void applyMobCustomizations(ServerWorld world, MobEntity mob, MobCustomization customization) {
+    private static void applyMobCustomizations(ServerLevel world, Mob mob, MobCustomization customization) {
         // Apply equipment
         for (var entry : customization.equipment().entrySet()) {
             EquipmentSlot slot = parseEquipmentSlot(entry.getKey());
@@ -146,23 +144,23 @@ public final class MobSpawner {
                     applyEnchantment(world, stack, enchEntry.enchantmentId(), enchEntry.level());
                 }
                 
-                mob.equipStack(slot, stack);
+                mob.setItemSlot(slot, stack);
                 // Prevent the mob from dropping this equipment naturally
-                mob.setEquipmentDropChance(slot, 0.0f);
+                mob.setDropChance(slot, 0.0f);
             }
         }
 
         // Baby status for zombies and similar
-        if (customization.isBaby() && mob instanceof ZombieEntity zombie) {
+        if (customization.isBaby() && mob instanceof Zombie zombie) {
             zombie.setBaby(true);
         }
 
-        if (mob instanceof CreeperEntity creeper) {
+        if (mob instanceof Creeper creeper) {
             applyCreeperCustomizations(creeper, customization);
         }
     }
 
-    private static void applyCreeperCustomizations(CreeperEntity creeper, MobCustomization customization) {
+    private static void applyCreeperCustomizations(Creeper creeper, MobCustomization customization) {
         if (creeper == null || customization == null) {
             return;
         }
@@ -177,7 +175,7 @@ public final class MobSpawner {
         }
     }
 
-    private static void setCreeperExplosionRadiusReflective(CreeperEntity creeper, int radius) {
+    private static void setCreeperExplosionRadiusReflective(Creeper creeper, int radius) {
         if (creeper == null) {
             return;
         }
@@ -186,7 +184,7 @@ public final class MobSpawner {
         String[] fieldNames = new String[] {"explosionRadius", "field_7225"};
         for (String fieldName : fieldNames) {
             try {
-                Field field = CreeperEntity.class.getDeclaredField(fieldName);
+                Field field = Creeper.class.getDeclaredField(fieldName);
                 field.setAccessible(true);
                 field.setInt(creeper, clamped);
                 return;
@@ -197,7 +195,7 @@ public final class MobSpawner {
         AtlantisMod.LOGGER.warn("Unable to set creeper explosion radius via reflection (radius={})", clamped);
     }
 
-    private static void setCreeperChargedReflective(CreeperEntity creeper, boolean charged) {
+    private static void setCreeperChargedReflective(Creeper creeper, boolean charged) {
         if (creeper == null) {
             return;
         }
@@ -205,7 +203,7 @@ public final class MobSpawner {
         String[] methodNames = new String[] {"setCharged", "method_7502"};
         for (String methodName : methodNames) {
             try {
-                Method method = CreeperEntity.class.getDeclaredMethod(methodName, boolean.class);
+                Method method = Creeper.class.getDeclaredMethod(methodName, boolean.class);
                 method.setAccessible(true);
                 method.invoke(creeper, charged);
                 return;
@@ -217,7 +215,7 @@ public final class MobSpawner {
         String[] fieldNames = new String[] {"CHARGED", "field_7224"};
         for (String fieldName : fieldNames) {
             try {
-                Field field = CreeperEntity.class.getDeclaredField(fieldName);
+                Field field = Creeper.class.getDeclaredField(fieldName);
                 field.setAccessible(true);
                 Object trackedData = field.get(null);
                 if (trackedData != null && trySetTrackedBoolean(creeper, trackedData, charged)) {
@@ -230,23 +228,23 @@ public final class MobSpawner {
         AtlantisMod.LOGGER.warn("Unable to set creeper charged state via reflection (charged={})", charged);
     }
 
-    private static boolean trySetTrackedBoolean(CreeperEntity creeper, Object trackedData, boolean value) {
+    private static boolean trySetTrackedBoolean(Creeper creeper, Object trackedData, boolean value) {
         try {
-            Method getMethod = creeper.getDataTracker().getClass().getMethod(
+            Method getMethod = creeper.getEntityData().getClass().getMethod(
                 "get",
-                net.minecraft.entity.data.TrackedData.class
+                net.minecraft.network.syncher.EntityDataAccessor.class
             );
-            Object current = getMethod.invoke(creeper.getDataTracker(), trackedData);
+            Object current = getMethod.invoke(creeper.getEntityData(), trackedData);
             if (current != null && !(current instanceof Boolean)) {
                 return false;
             }
 
-            Method setMethod = creeper.getDataTracker().getClass().getMethod(
+            Method setMethod = creeper.getEntityData().getClass().getMethod(
                 "set",
-                net.minecraft.entity.data.TrackedData.class,
+                net.minecraft.network.syncher.EntityDataAccessor.class,
                 Object.class
             );
-            setMethod.invoke(creeper.getDataTracker(), trackedData, Boolean.valueOf(value));
+            setMethod.invoke(creeper.getEntityData(), trackedData, Boolean.valueOf(value));
             return true;
         } catch (Exception ignored) {
             return false;
@@ -261,13 +259,13 @@ public final class MobSpawner {
         }
 
         // Find the attribute in registry
-        RegistryEntry<EntityAttribute> attributeEntry = Registries.ATTRIBUTE.getEntry(id).orElse(null);
+        Holder<Attribute> attributeEntry = BuiltInRegistries.ATTRIBUTE.get(id).orElse(null);
         if (attributeEntry == null) {
             AtlantisMod.LOGGER.warn("Unknown attribute: {}", attributeId);
             return;
         }
 
-        EntityAttributeInstance instance = entity.getAttributeInstance(attributeEntry);
+        AttributeInstance instance = entity.getAttribute(attributeEntry);
         if (instance != null) {
             instance.setBaseValue(value);
             AtlantisMod.LOGGER.debug("Set attribute {} to {} on entity", attributeId, value);
@@ -276,46 +274,46 @@ public final class MobSpawner {
         }
     }
 
-    private static void applyStatusEffect(ServerWorld world, LivingEntity entity, MobCustomization.EffectData effectData) {
+    private static void applyStatusEffect(ServerLevel world, LivingEntity entity, MobCustomization.EffectData effectData) {
         Identifier id = parseIdentifier(effectData.effectId());
         if (id == null) {
             AtlantisMod.LOGGER.warn("Invalid effect id: {}", effectData.effectId());
             return;
         }
 
-        RegistryEntry<StatusEffect> effectEntry = Registries.STATUS_EFFECT.getEntry(id).orElse(null);
+        Holder<MobEffect> effectEntry = BuiltInRegistries.MOB_EFFECT.get(id).orElse(null);
         if (effectEntry == null) {
             AtlantisMod.LOGGER.warn("Unknown status effect: {}", effectData.effectId());
             return;
         }
 
-        StatusEffectInstance instance = new StatusEffectInstance(
+        MobEffectInstance instance = new MobEffectInstance(
             effectEntry,
             effectData.duration(),
             effectData.amplifier(),
             effectData.ambient(),
             effectData.showParticles()
         );
-        entity.addStatusEffect(instance);
+        entity.addEffect(instance);
         AtlantisMod.LOGGER.debug("Applied effect {} to entity", effectData.effectId());
     }
     
-    private static void applyEnchantment(ServerWorld world, ItemStack stack, String enchantmentId, int level) {
+    private static void applyEnchantment(ServerLevel world, ItemStack stack, String enchantmentId, int level) {
         Identifier id = parseIdentifier(enchantmentId);
         if (id == null) {
             AtlantisMod.LOGGER.warn("Invalid enchantment id: {}", enchantmentId);
             return;
         }
         
-        var enchantmentRegistry = world.getRegistryManager().getOrThrow(RegistryKeys.ENCHANTMENT);
-        var enchantmentEntry = enchantmentRegistry.getEntry(id);
+        var enchantmentRegistry = world.registryAccess().lookupOrThrow(Registries.ENCHANTMENT);
+        var enchantmentEntry = enchantmentRegistry.get(id);
         
         if (enchantmentEntry.isEmpty()) {
             AtlantisMod.LOGGER.warn("Unknown enchantment: {}", enchantmentId);
             return;
         }
         
-        stack.addEnchantment(enchantmentEntry.get(), level);
+        stack.enchant(enchantmentEntry.get(), level);
         AtlantisMod.LOGGER.debug("Applied enchantment {} level {} to item", enchantmentId, level);
     }
 

@@ -1,8 +1,8 @@
 package com.silver.atlantis.find;
 
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.command.ServerCommandSource;
 
 /**
  * Runs a flat-area search over multiple ticks so it can't trip the server watchdog.
@@ -10,9 +10,9 @@ import net.minecraft.server.command.ServerCommandSource;
 public final class FlatAreaSearchService {
 
     private FlatAreaSearchTask activeTask;
-    private net.minecraft.util.math.BlockPos lastResultCenter;
+    private net.minecraft.core.BlockPos lastResultCenter;
 
-    public net.minecraft.util.math.BlockPos getLastResultCenterOrNull() {
+    public net.minecraft.core.BlockPos getLastResultCenterOrNull() {
         return lastResultCenter;
     }
 
@@ -24,7 +24,7 @@ public final class FlatAreaSearchService {
         ServerTickEvents.END_SERVER_TICK.register(this::onEndTick);
     }
 
-    public boolean start(ServerCommandSource source, FlatAreaSearchConfig config) {
+    public boolean start(CommandSourceStack source, FlatAreaSearchConfig config) {
         if (activeTask != null) {
             return false;
         }

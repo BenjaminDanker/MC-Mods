@@ -1,49 +1,49 @@
 package com.silver.atlantis.protect.mixin;
 
 import com.silver.atlantis.protect.ProtectionManager;
-import net.minecraft.item.BlockItem;
-import net.minecraft.item.BucketItem;
-import net.minecraft.item.FireChargeItem;
-import net.minecraft.item.FlintAndSteelItem;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.network.ServerPlayerInteractionManager;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.ActionResult;
-import net.minecraft.util.Hand;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.world.World;
+import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerPlayerGameMode;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.BucketItem;
+import net.minecraft.world.item.FireChargeItem;
+import net.minecraft.world.item.FlintAndSteelItem;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.BlockHitResult;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-@Mixin(ServerPlayerInteractionManager.class)
+@Mixin(ServerPlayerGameMode.class)
 public abstract class ServerPlayerInteractionManagerMixin {
 
     @Shadow
-    public ServerPlayerEntity player;
+    public ServerPlayer player;
 
-    @Inject(method = "tryBreakBlock", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "destroyBlock", at = @At("HEAD"), cancellable = true)
     private void atlantis$protectBreak(BlockPos pos, CallbackInfoReturnable<Boolean> cir) {
         if (ProtectionManager.INSTANCE.shouldBlockBreak(player, pos)) {
             cir.setReturnValue(false);
         }
     }
 
-    @Inject(method = "interactBlock", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "useItemOn", at = @At("HEAD"), cancellable = true)
     private void atlantis$protectPlace(
-        ServerPlayerEntity player,
-        World world,
+        ServerPlayer player,
+        Level world,
         ItemStack stack,
-        Hand hand,
+        InteractionHand hand,
         BlockHitResult hitResult,
-        CallbackInfoReturnable<ActionResult> cir
+        CallbackInfoReturnable<InteractionResult> cir
     ) {
-        if (!(world instanceof ServerWorld serverWorld)) {
+        if (!(world instanceof ServerLevel serverWorld)) {
             return;
         }
 
@@ -53,13 +53,13 @@ public abstract class ServerPlayerInteractionManagerMixin {
         }
 
         BlockPos hitPos = hitResult.getBlockPos();
-        BlockPos offsetPos = hitPos.offset(hitResult.getSide());
+        BlockPos offsetPos = hitPos.relative(hitResult.getDirection());
 
         // Block placement if the final placement target would be inside protected interior.
         // We conservatively check both hitPos (replaceable blocks) and offsetPos (normal placement).
         if (ProtectionManager.INSTANCE.shouldBlockPlace(player, hitPos)
             || ProtectionManager.INSTANCE.shouldBlockPlace(player, offsetPos)) {
-            cir.setReturnValue(ActionResult.FAIL);
+            cir.setReturnValue(InteractionResult.FAIL);
         }
     }
 

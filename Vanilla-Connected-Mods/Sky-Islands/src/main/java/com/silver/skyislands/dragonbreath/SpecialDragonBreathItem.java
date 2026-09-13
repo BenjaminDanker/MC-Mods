@@ -1,14 +1,14 @@
 package com.silver.skyislands.dragonbreath;
 
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.NbtComponent;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.Text;
-import net.minecraft.world.World;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.item.component.CustomData;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.level.Level;
 
 public final class SpecialDragonBreathItem {
     public static final String KEY_SPECIAL_ID = "id";
@@ -23,34 +23,34 @@ public final class SpecialDragonBreathItem {
     private SpecialDragonBreathItem() {
     }
 
-    public static boolean markAsSpecialDragonBreath(ItemStack stack, World world) {
-        if (stack == null || stack.isEmpty() || !stack.isOf(Items.DRAGON_BREATH)) {
+    public static boolean markAsSpecialDragonBreath(ItemStack stack, Level world) {
+        if (stack == null || stack.isEmpty() || !stack.is(Items.DRAGON_BREATH.builtInRegistryHolder())) {
             return false;
         }
         if (isSpecialDragonBreath(stack)) {
             return false;
         }
 
-        NbtComponent.set(DataComponentTypes.CUSTOM_DATA, stack, tag -> {
+        CustomData.update(DataComponents.CUSTOM_DATA, stack, tag -> {
             tag.putString(KEY_SPECIAL_ID, DEFAULT_SPECIAL_ID);
             tag.putString(KEY_ID_TYPE, "Soulbound");
             tag.putInt(KEY_USES_LEFT, DEFAULT_TRACKING_USES);
             tag.putInt(KEY_USES_MAX, DEFAULT_TRACKING_USES);
             if (world != null) {
-                tag.putLong("CapturedTick", world.getTime());
+                tag.putLong("CapturedTick", world.getGameTime());
             }
         });
-        stack.set(DataComponentTypes.CUSTOM_NAME,
-            Text.literal(buildDisplayName(DEFAULT_TRACKING_USES, DEFAULT_TRACKING_USES)));
+        stack.set(DataComponents.CUSTOM_NAME,
+            Component.literal(buildDisplayName(DEFAULT_TRACKING_USES, DEFAULT_TRACKING_USES)));
         return true;
     }
 
     public static boolean isSpecialDragonBreath(ItemStack stack) {
-        if (stack == null || stack.isEmpty() || !stack.isOf(Items.DRAGON_BREATH)) {
+        if (stack == null || stack.isEmpty() || !stack.is(Items.DRAGON_BREATH.builtInRegistryHolder())) {
             return false;
         }
 
-        NbtCompound nbt = readCustomData(stack);
+        CompoundTag nbt = readCustomData(stack);
         if (nbt == null) {
             return false;
         }
@@ -74,7 +74,7 @@ public final class SpecialDragonBreathItem {
         if (stack == null || stack.isEmpty()) {
             return 0;
         }
-        NbtCompound nbt = readCustomData(stack);
+        CompoundTag nbt = readCustomData(stack);
         if (nbt == null) {
             return 0;
         }
@@ -87,7 +87,7 @@ public final class SpecialDragonBreathItem {
         if (stack == null || stack.isEmpty()) {
             return 0;
         }
-        NbtCompound nbt = readCustomData(stack);
+        CompoundTag nbt = readCustomData(stack);
         if (nbt == null) {
             return 0;
         }
@@ -99,14 +99,14 @@ public final class SpecialDragonBreathItem {
         if (stack == null || stack.isEmpty()) {
             return;
         }
-        NbtComponent.set(DataComponentTypes.CUSTOM_DATA, stack, tag -> tag.putInt(KEY_USES_LEFT, Math.max(0, usesLeft)));
+        CustomData.update(DataComponents.CUSTOM_DATA, stack, tag -> tag.putInt(KEY_USES_LEFT, Math.max(0, usesLeft)));
     }
 
     public static void setDisplayName(ItemStack stack, int usesLeft, int usesMax) {
         if (stack == null || stack.isEmpty()) {
             return;
         }
-        stack.set(DataComponentTypes.CUSTOM_NAME, net.minecraft.text.Text.literal(buildDisplayName(usesLeft, usesMax)));
+        stack.set(DataComponents.CUSTOM_NAME, net.minecraft.network.chat.Component.literal(buildDisplayName(usesLeft, usesMax)));
     }
 
     public static ItemStack copySingleWithUses(ItemStack template, int usesLeft) {
@@ -114,7 +114,7 @@ public final class SpecialDragonBreathItem {
         single.setCount(1);
 
         int usesMax = getUsesMax(template);
-        NbtComponent.set(DataComponentTypes.CUSTOM_DATA, single, tag -> {
+        CustomData.update(DataComponents.CUSTOM_DATA, single, tag -> {
             tag.putString(KEY_SPECIAL_ID, DEFAULT_SPECIAL_ID);
             tag.putString(KEY_ID_TYPE, "Soulbound");
             tag.putInt(KEY_USES_LEFT, Math.max(0, usesLeft));
@@ -125,14 +125,14 @@ public final class SpecialDragonBreathItem {
         return single;
     }
 
-    public static int countSpecialDragonBreath(PlayerInventory inventory) {
+    public static int countSpecialDragonBreath(Inventory inventory) {
         if (inventory == null) {
             return 0;
         }
 
         int total = 0;
-        for (int slot = 0; slot < inventory.size(); slot++) {
-            ItemStack stack = inventory.getStack(slot);
+        for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
+            ItemStack stack = inventory.getItem(slot);
             if (isSpecialDragonBreath(stack)) {
                 total += stack.getCount();
             }
@@ -140,20 +140,20 @@ public final class SpecialDragonBreathItem {
         return total;
     }
 
-    public static int purgeExtraSpecialDragonBreath(ServerPlayerEntity player, String context) {
+    public static int purgeExtraSpecialDragonBreath(ServerPlayer player, String context) {
         if (player == null) {
             return 0;
         }
 
-        PlayerInventory inventory = player.getInventory();
+        Inventory inventory = player.getInventory();
         if (inventory == null) {
             return 0;
         }
 
         int keptCount = 0;
         int removed = 0;
-        for (int slot = 0; slot < inventory.size(); slot++) {
-            ItemStack stack = inventory.getStack(slot);
+        for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
+            ItemStack stack = inventory.getItem(slot);
             if (!isSpecialDragonBreath(stack)) {
                 continue;
             }
@@ -172,7 +172,7 @@ public final class SpecialDragonBreathItem {
             if (keepFromThisStack > 0) {
                 stack.setCount(keepFromThisStack);
             } else {
-                inventory.setStack(slot, ItemStack.EMPTY);
+                inventory.setItem(slot, ItemStack.EMPTY);
             }
         }
 
@@ -183,11 +183,11 @@ public final class SpecialDragonBreathItem {
         return "Special Dragon Breath (" + usesLeft + "/" + usesMax + ")";
     }
 
-    private static NbtCompound readCustomData(ItemStack stack) {
-        NbtComponent custom = stack.get(DataComponentTypes.CUSTOM_DATA);
+    private static CompoundTag readCustomData(ItemStack stack) {
+        CustomData custom = stack.get(DataComponents.CUSTOM_DATA);
         if (custom == null) {
             return null;
         }
-        return custom.copyNbt();
+        return custom.copyTag();
     }
 }

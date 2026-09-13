@@ -5,11 +5,13 @@
 	"respawn_anchor_works": false,
 	"bed_works": true,
 	"has_raids": true,
+	"has_ender_dragon_fight": false,
 	"has_skylight": true,
 	"has_ceiling": true,
 	"coordinate_scale": 1,
 	"ambient_light": 0,
 	"logical_height": 448,
+	"default_clock": "minecraft:overworld",
 	"effects": "minecraft:overworld",
 	"infiniburn": "#minecraft:infiniburn_overworld",
 	"min_y": -128,
@@ -20,5 +22,4 @@
 		"max_inclusive": 7
 	},
 	"monster_spawn_block_light_limit": 0
-  }
-  
+}

@@ -1,32 +1,31 @@
 package com.silver.atlantis.leviathan;
 
-import net.minecraft.util.math.Vec3d;
-
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import net.minecraft.world.phys.Vec3;
 
 final class LeviathanCombatRuntime {
     LeviathanCombatSubstate substate = LeviathanCombatSubstate.ACQUIRE;
     UUID targetUuid;
-    Vec3d anchorPos;
-    Vec3d previousPos;
-    Vec3d chargeDirection = new Vec3d(1.0, 0.0, 0.0);
+    Vec3 anchorPos;
+    Vec3 previousPos;
+    Vec3 chargeDirection = new Vec3(1.0, 0.0, 0.0);
     long phaseStartTick;
     long cooldownUntilTick;
     long invalidLineTicks;
     long passId;
     long stalledTicks;
     long missingTargetUntilTick = -1L;
-    Vec3d passStartPos;
-    Vec3d retreatCenter;
-    Vec3d retreatTarget;
+    Vec3 passStartPos;
+    Vec3 retreatCenter;
+    Vec3 retreatTarget;
     long retreatHoldUntilTick;
     long nextLineOfEngagementCheckTick;
     boolean lastLineOfEngagementValid = true;
-    Vec3d lastLineCheckEntityPos;
-    Vec3d lastLineCheckTargetPos;
-    Vec3d lastAggressiveSteerDirection;
+    Vec3 lastLineCheckEntityPos;
+    Vec3 lastLineCheckTargetPos;
+    Vec3 lastAggressiveSteerDirection;
     long lastAggressiveSteerTick = Long.MIN_VALUE;
     final Map<UUID, Long> lastHitTickByPlayer = new HashMap<>();
     final Map<UUID, Long> lastHitPassByPlayer = new HashMap<>();

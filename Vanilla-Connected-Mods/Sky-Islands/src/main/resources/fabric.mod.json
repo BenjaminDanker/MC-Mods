@@ -21,10 +21,10 @@
     "sky_islands_specialitems.mixins.json"
   ],
   "depends": {
-    "fabricloader": ">=0.17.3",
-    "fabric": "*",
+    "fabricloader": ">=0.19.3",
+    "fabric-api": "*",
     "mc-portal-protocol": ">=1.0.0",
-    "minecraft": "1.21.10",
-    "java": ">=21"
+    "minecraft": "26.2",
+    "java": ">=25"
   }
 }

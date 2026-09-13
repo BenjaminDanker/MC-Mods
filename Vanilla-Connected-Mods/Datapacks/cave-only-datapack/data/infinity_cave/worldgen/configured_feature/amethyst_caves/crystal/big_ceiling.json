@@ -29,173 +29,204 @@
     },
     "vegetation_feature": {
       "feature": {
-        "type": "minecraft:random_patch",
         "config": {
-          "tries": 30,
-          "xz_spread": 1,
-          "y_spread": 1,
-          "feature": {
-            "feature": {
-              "config": {
-                "features": [
-                  {
-                    "feature": {
-                      "config": {
-                        "tries": 30,
-                        "xz_spread": 0,
-                        "y_spread": 7,
-                        "feature": {
-                          "feature": {
-                            "config": {
-                              "to_place": {
-                                "type": "minecraft:weighted_state_provider",
-                                "entries": [
-                                  {
-                                    "weight": 1,
-                                    "data": {
-                                      "Name": "minecraft:budding_amethyst"
-                                    }
-                                  },
-                                  {
-                                    "weight": 10,
-                                    "data": {
-                                      "Name": "minecraft:amethyst_block"
-                                    }
-                                  }
-                                ]
-                              }
-                            },
-                            "type": "minecraft:simple_block"
-                          },
-                          "placement": [
-                            {
-                              "type": "block_predicate_filter",
-                              "predicate": {
-                                "type": "any_of",
-                                "predicates": [
-                                  {
-                                    "type": "matching_blocks",
-                                    "blocks": ["calcite"],
-                                    "offset": [0, 1, 0]
-                                  },
-                                  {
-                                    "type": "matching_blocks",
-                                    "blocks": ["calcite"],
-                                    "offset": [0, 2, 0]
-                                  },
-                                  {
-                                    "type": "matching_blocks",
-                                    "blocks": ["calcite"],
-                                    "offset": [0, 3, 0]
-                                  }
-                                ]
-                              }
-                            }
-                          ]
+          "features": [
+            {
+              "feature": {
+                "config": {
+                  "to_place": {
+                    "type": "minecraft:weighted_state_provider",
+                    "entries": [
+                      {
+                        "weight": 1,
+                        "data": {
+                          "Name": "minecraft:budding_amethyst"
                         }
                       },
-                      "type": "minecraft:random_patch"
-                    },
-                    "placement": [
                       {
-                        "type": "minecraft:random_offset",
-                        "xz_spread": 0,
-                        "y_spread": -1
-                      }
-                    ]
-                  },
-                  {
-                    "feature": {
-                      "config": {
-                        "state_provider": {
-                          "fallback": {
-                            "type": "minecraft:weighted_state_provider",
-                            "entries": [
-                              {
-                                "weight": 1,
-                                "data": {
-                                  "Name": "minecraft:calcite"
-                                }
-                              }
-                            ]
-                          },
-                          "rules": []
-                        },
-                        "radius": {
-                          "type": "minecraft:uniform",
-                          "min_inclusive": 1,
-                          "max_inclusive": 1
-                        },
-                        "half_height": 2,
-                        "target": {
-                          "type": "minecraft:matching_blocks",
-                          "blocks": [
-                            "smooth_basalt"
-                          ],
-                          "offset": [
-                            0,
-                            1,
-                            0
-                          ]
+                        "weight": 10,
+                        "data": {
+                          "Name": "minecraft:amethyst_block"
                         }
-                      },
-                      "type": "minecraft:disk"
-                    },
-                    "placement": [
-                      {
-                        "type": "minecraft:random_offset",
-                        "xz_spread": 1,
-                        "y_spread": -1
-                      }
-                    ]
-                  },
-                  {
-                    "feature": {
-                      "config": {
-                        "state_provider": {
-                          "fallback": {
-                            "type": "minecraft:weighted_state_provider",
-                            "entries": [
-                              {
-                                "weight": 1,
-                                "data": {
-                                  "Name": "minecraft:smooth_basalt"
-                                }
-                              }
-                            ]
-                          },
-                          "rules": []
-                        },
-                        "radius": {
-                          "type": "minecraft:uniform",
-                          "min_inclusive": 2,
-                          "max_inclusive": 2
-                        },
-                        "half_height": 3,
-                        "target": {
-                          "type": "minecraft:matching_block_tag",
-                          "tag": "infinity_cave:all_but_unbreakable"
-                        }
-                      },
-                      "type": "minecraft:disk"
-                    },
-                    "placement": [
-                      {
-                        "type": "minecraft:random_offset",
-                        "xz_spread": 2,
-                        "y_spread": 2
                       }
                     ]
                   }
-                ]
+                },
+                "type": "minecraft:simple_block"
               },
-              "type": "minecraft:simple_random_selector"
+              "placement": [
+                {
+                  "type": "minecraft:random_offset",
+                  "xz_spread": 0,
+                  "y_spread": -1
+                },
+                {
+                  "type": "minecraft:count",
+                  "count": 30
+                },
+                {
+                  "type": "minecraft:random_offset",
+                  "xz_spread": 0,
+                  "y_spread": {
+                    "type": "minecraft:trapezoid",
+                    "max": 7,
+                    "min": -7,
+                    "plateau": 0
+                  }
+                },
+                {
+                  "type": "block_predicate_filter",
+                  "predicate": {
+                    "type": "any_of",
+                    "predicates": [
+                      {
+                        "type": "matching_blocks",
+                        "blocks": [
+                          "calcite"
+                        ],
+                        "offset": [
+                          0,
+                          1,
+                          0
+                        ]
+                      },
+                      {
+                        "type": "matching_blocks",
+                        "blocks": [
+                          "calcite"
+                        ],
+                        "offset": [
+                          0,
+                          2,
+                          0
+                        ]
+                      },
+                      {
+                        "type": "matching_blocks",
+                        "blocks": [
+                          "calcite"
+                        ],
+                        "offset": [
+                          0,
+                          3,
+                          0
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
             },
-            "placement": []
+            {
+              "feature": {
+                "config": {
+                  "state_provider": {
+                    "type": "minecraft:rule_based_state_provider",
+                    "fallback": {
+                      "type": "minecraft:weighted_state_provider",
+                      "entries": [
+                        {
+                          "weight": 1,
+                          "data": {
+                            "Name": "minecraft:calcite"
+                          }
+                        }
+                      ]
+                    },
+                    "rules": []
+                  },
+                  "radius": {
+                    "type": "minecraft:uniform",
+                    "min_inclusive": 1,
+                    "max_inclusive": 1
+                  },
+                  "half_height": 2,
+                  "target": {
+                    "type": "minecraft:matching_blocks",
+                    "blocks": [
+                      "smooth_basalt"
+                    ],
+                    "offset": [
+                      0,
+                      1,
+                      0
+                    ]
+                  }
+                },
+                "type": "minecraft:disk"
+              },
+              "placement": [
+                {
+                  "type": "minecraft:random_offset",
+                  "xz_spread": 1,
+                  "y_spread": -1
+                }
+              ]
+            },
+            {
+              "feature": {
+                "config": {
+                  "state_provider": {
+                    "type": "minecraft:rule_based_state_provider",
+                    "fallback": {
+                      "type": "minecraft:weighted_state_provider",
+                      "entries": [
+                        {
+                          "weight": 1,
+                          "data": {
+                            "Name": "minecraft:smooth_basalt"
+                          }
+                        }
+                      ]
+                    },
+                    "rules": []
+                  },
+                  "radius": {
+                    "type": "minecraft:uniform",
+                    "min_inclusive": 2,
+                    "max_inclusive": 2
+                  },
+                  "half_height": 3,
+                  "target": {
+                    "type": "minecraft:matching_block_tag",
+                    "tag": "infinity_cave:all_but_unbreakable"
+                  }
+                },
+                "type": "minecraft:disk"
+              },
+              "placement": [
+                {
+                  "type": "minecraft:random_offset",
+                  "xz_spread": 2,
+                  "y_spread": 2
+                }
+              ]
+            }
+          ]
+        },
+        "type": "minecraft:simple_random_selector"
+      },
+      "placement": [
+        {
+          "type": "minecraft:count",
+          "count": 30
+        },
+        {
+          "type": "minecraft:random_offset",
+          "xz_spread": {
+            "type": "minecraft:trapezoid",
+            "max": 1,
+            "min": -1,
+            "plateau": 0
+          },
+          "y_spread": {
+            "type": "minecraft:trapezoid",
+            "max": 1,
+            "min": -1,
+            "plateau": 0
           }
         }
-      },
-      "placement": []
+      ]
     }
   }
 }

@@ -1,11 +1,10 @@
 package com.silver.atlantis.spawn.mob;
 
-import net.minecraft.item.ItemStack;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import net.minecraft.world.item.ItemStack;
 
 /**
  * Data class holding customization options for spawning a mob.

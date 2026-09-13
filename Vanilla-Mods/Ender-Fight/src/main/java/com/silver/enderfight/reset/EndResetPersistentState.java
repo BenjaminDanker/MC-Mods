@@ -4,13 +4,12 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonParseException;
 import com.silver.enderfight.EnderFightMod;
-import net.minecraft.registry.RegistryKey;
-import net.minecraft.registry.RegistryKeys;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.WorldSavePath;
-import net.minecraft.world.World;
-
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.storage.LevelResource;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -40,12 +39,12 @@ public final class EndResetPersistentState {
     private EndResetPersistentState(long lastResetEpochMillis, long currentEndSeed, String activeDimensionId, Map<String, String> offlineEndPlayers) {
         this.lastResetEpochMillis = lastResetEpochMillis;
         this.currentEndSeed = currentEndSeed;
-        this.activeDimensionId = activeDimensionId == null ? World.END.getValue().toString() : activeDimensionId;
+        this.activeDimensionId = activeDimensionId == null ? Level.END.identifier().toString() : activeDimensionId;
         this.offlineEndPlayers = offlineEndPlayers == null ? new HashMap<>() : new HashMap<>(offlineEndPlayers);
     }
 
     public EndResetPersistentState() {
-        this(0L, ThreadLocalRandom.current().nextLong(), World.END.getValue().toString(), new HashMap<>());
+        this(0L, ThreadLocalRandom.current().nextLong(), Level.END.identifier().toString(), new HashMap<>());
     }
 
     public long getLastResetEpochMillis() {
@@ -56,32 +55,32 @@ public final class EndResetPersistentState {
         return currentEndSeed;
     }
 
-    public RegistryKey<World> getActiveDimensionKey() {
+    public ResourceKey<Level> getActiveDimensionKey() {
         Identifier id = Identifier.tryParse(activeDimensionId);
-        return id == null ? World.END : RegistryKey.of(RegistryKeys.WORLD, id);
+        return id == null ? Level.END : ResourceKey.create(Registries.DIMENSION, id);
     }
 
-    public void setActiveDimensionKey(RegistryKey<World> dimensionKey) {
+    public void setActiveDimensionKey(ResourceKey<Level> dimensionKey) {
         if (dimensionKey == null) {
             return;
         }
-        this.activeDimensionId = dimensionKey.getValue().toString();
+        this.activeDimensionId = dimensionKey.identifier().toString();
     }
 
-    public void updateOnReset(long epochMillis, long newSeed, RegistryKey<World> dimensionKey) {
+    public void updateOnReset(long epochMillis, long newSeed, ResourceKey<Level> dimensionKey) {
         this.lastResetEpochMillis = epochMillis;
         this.currentEndSeed = newSeed;
-        this.activeDimensionId = dimensionKey.getValue().toString();
+        this.activeDimensionId = dimensionKey.identifier().toString();
     }
 
-    public void recordPlayerLoggedOutInEnd(UUID playerId, RegistryKey<World> dimensionKey) {
+    public void recordPlayerLoggedOutInEnd(UUID playerId, ResourceKey<Level> dimensionKey) {
         if (playerId == null || dimensionKey == null) {
             return;
         }
-        offlineEndPlayers.put(playerId.toString(), dimensionKey.getValue().toString());
+        offlineEndPlayers.put(playerId.toString(), dimensionKey.identifier().toString());
     }
 
-    public RegistryKey<World> getRecordedEndDimension(UUID playerId) {
+    public ResourceKey<Level> getRecordedEndDimension(UUID playerId) {
         if (playerId == null) {
             return null;
         }
@@ -90,7 +89,7 @@ public final class EndResetPersistentState {
             return null;
         }
         Identifier id = Identifier.tryParse(value);
-        return id == null ? null : RegistryKey.of(RegistryKeys.WORLD, id);
+        return id == null ? null : ResourceKey.create(Registries.DIMENSION, id);
     }
 
     public boolean clearRecordedPlayer(UUID playerId) {
@@ -145,7 +144,7 @@ public final class EndResetPersistentState {
     }
 
     private static Path resolveStatePath(MinecraftServer server) {
-        Path worldRoot = server.getSavePath(WorldSavePath.ROOT);
+        Path worldRoot = server.getWorldPath(LevelResource.ROOT);
         return worldRoot.resolve(STORAGE_FILE);
     }
 

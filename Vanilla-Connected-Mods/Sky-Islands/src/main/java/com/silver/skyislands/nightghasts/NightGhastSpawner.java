@@ -1,15 +1,16 @@
 package com.silver.skyislands.nightghasts;
 
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.SpawnReason;
-import net.minecraft.entity.mob.GhastEntity;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.monster.Ghast;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,6 +24,8 @@ final class NightGhastSpawner {
     private static final Logger LOGGER = LoggerFactory.getLogger(NightGhastSpawner.class);
 
     static final String TAG = "sky_islands_night_ghast";
+    private static final EntityType<?> GHAST_TYPE = BuiltInRegistries.ENTITY_TYPE
+            .getValue(net.minecraft.resources.Identifier.fromNamespaceAndPath("minecraft", "ghast"));
 
     private static final Map<UUID, Long> nextSpawnTickByPlayer = new HashMap<>();
     private static final long CREATIVE_SKIP_LOG_INTERVAL_TICKS = 20L * 60L;
@@ -35,7 +38,7 @@ final class NightGhastSpawner {
     }
 
     static void tick(MinecraftServer server, long ticks, NightGhastsConfig config) {
-        ServerWorld overworld = server.getOverworld();
+        ServerLevel overworld = server.overworld();
         if (overworld == null) {
             if (LOGGER.isDebugEnabled()) {
                 LOGGER.debug("[Sky-Islands][nightghasts] tick(): no overworld");
@@ -49,7 +52,7 @@ final class NightGhastSpawner {
             initialized = true;
             lastNight = night;
             if (LOGGER.isDebugEnabled()) {
-                LOGGER.debug("[Sky-Islands][nightghasts] startup: night={} timeOfDay={}", night, (overworld.getTimeOfDay() % 24000L));
+                LOGGER.debug("[Sky-Islands][nightghasts] startup: night={} timeOfDay={}", night, (overworld.getGameTime() % 24000L));
             }
             if (!night) {
                 int removed = cleanupDaytimeGhasts(overworld);
@@ -66,7 +69,7 @@ final class NightGhastSpawner {
             int removed = cleanupDaytimeGhasts(overworld);
             LOGGER.info("[Sky-Islands] Daybreak cleanup: removed {} tagged ghasts", removed);
             if (LOGGER.isDebugEnabled()) {
-                LOGGER.debug("[Sky-Islands][nightghasts] daybreak: cleared schedules (players={})", overworld.getPlayers().size());
+                LOGGER.debug("[Sky-Islands][nightghasts] daybreak: cleared schedules (players={})", overworld.players().size());
             }
             nextSpawnTickByPlayer.clear();
             nextCreativeSkipLogTickByPlayer.clear();
@@ -80,7 +83,7 @@ final class NightGhastSpawner {
             nextCreativeSkipLogTickByPlayer.clear();
             LOGGER.info("[Sky-Islands] Night started: cleared ghast spawn cooldowns");
             if (LOGGER.isDebugEnabled()) {
-                LOGGER.debug("[Sky-Islands][nightghasts] night-start: players={} scanRadius={}", overworld.getPlayers().size(), config.playerScanRadiusBlocks);
+                LOGGER.debug("[Sky-Islands][nightghasts] night-start: players={} scanRadius={}", overworld.players().size(), config.playerScanRadiusBlocks);
             }
         }
 
@@ -90,19 +93,19 @@ final class NightGhastSpawner {
             return;
         }
 
-        for (ServerPlayerEntity player : overworld.getPlayers()) {
-            UUID playerId = player.getUuid();
+        for (ServerPlayer player : overworld.players()) {
+            UUID playerId = player.getUUID();
 
             long next = nextSpawnTickByPlayer.getOrDefault(playerId, 0L);
             if (ticks < next) {
                 if (LOGGER.isDebugEnabled() && (ticks % 200L) == 0) {
                     LOGGER.debug("[Sky-Islands][nightghasts] cooldown player={} now={} next={}",
-                            player.getNameForScoreboard(), ticks, next);
+                            player.getScoreboardName(), ticks, next);
                 }
                 continue;
             }
 
-            if (player.isSpectator() || player.getAbilities().creativeMode) {
+            if (player.isSpectator() || player.getAbilities().instabuild) {
                 // Still set a schedule so we don't reevaluate this player every tick.
                 long scheduled = ticks + config.spawnIntervalTicks;
                 nextSpawnTickByPlayer.put(playerId, scheduled);
@@ -111,27 +114,27 @@ final class NightGhastSpawner {
                     if (ticks >= nextLog) {
                         nextCreativeSkipLogTickByPlayer.put(playerId, ticks + CREATIVE_SKIP_LOG_INTERVAL_TICKS);
                         LOGGER.debug("[Sky-Islands][nightghasts] skip player={} creativeOrSpec=true nextTick={} (throttled)",
-                                player.getNameForScoreboard(), scheduled);
+                                player.getScoreboardName(), scheduled);
                     }
                 }
                 continue;
             }
 
-            Vec3d playerPos = new Vec3d(player.getX(), player.getY(), player.getZ());
+            Vec3 playerPos = new Vec3(player.getX(), player.getY(), player.getZ());
             int nearby = countTaggedGhastsNear(overworld, playerPos, config.playerScanRadiusBlocks);
             int missing = Math.max(0, config.targetGhastsPerPlayer - nearby);
             int toSpawn = Math.min(missing, config.maxSpawnPerPlayerPerInterval);
 
             if (LOGGER.isDebugEnabled()) {
                 LOGGER.debug("[Sky-Islands][nightghasts] plan player={} nearby={} missing={} toSpawn={}",
-                        player.getNameForScoreboard(), nearby, missing, toSpawn);
+                        player.getScoreboardName(), nearby, missing, toSpawn);
             }
 
             if (toSpawn <= 0) {
                 nextSpawnTickByPlayer.put(playerId, ticks + config.spawnIntervalTicks);
                 if (LOGGER.isDebugEnabled()) {
                     LOGGER.debug("[Sky-Islands][nightghasts] scheduled player={} nextTick={} (no spawn needed)",
-                            player.getNameForScoreboard(), (ticks + config.spawnIntervalTicks));
+                            player.getScoreboardName(), (ticks + config.spawnIntervalTicks));
                 }
                 continue;
             }
@@ -142,14 +145,14 @@ final class NightGhastSpawner {
                 if (trySpawnOne(overworld, player, config, stats)) {
                     spawned++;
                     LOGGER.info("[Sky-Islands] Spawned night ghast near {} at ({}, {}, {}) (nearby now ~{})",
-                            player.getNameForScoreboard(),
+                            player.getScoreboardName(),
                             round1(stats.spawnX), round1(stats.spawnY), round1(stats.spawnZ),
                             (nearby + spawned));
                 } else {
                     // Only log a miss once per interval per player, to avoid spam.
                     if (spawned == 0 && i == 0) {
                         LOGGER.info("[Sky-Islands] No ghast spawned near {} (need {}): unloadedChunks={} noSpace={} spawnFailed={}",
-                                player.getNameForScoreboard(),
+                                player.getScoreboardName(),
                                 toSpawn,
                                 stats.unloadedChunk, stats.noSpace, stats.spawnFailed);
                     }
@@ -159,17 +162,17 @@ final class NightGhastSpawner {
             nextSpawnTickByPlayer.put(playerId, ticks + config.spawnIntervalTicks);
             if (LOGGER.isDebugEnabled()) {
                 LOGGER.debug("[Sky-Islands][nightghasts] scheduled player={} nextTick={} spawned={}",
-                        player.getNameForScoreboard(), (ticks + config.spawnIntervalTicks), spawned);
+                        player.getScoreboardName(), (ticks + config.spawnIntervalTicks), spawned);
             }
         }
     }
 
-    private static boolean trySpawnOne(ServerWorld world, ServerPlayerEntity player, NightGhastsConfig config, SpawnAttemptStats stats) {
-        Vec3d p = new Vec3d(player.getX(), player.getY(), player.getZ());
+    private static boolean trySpawnOne(ServerLevel world, ServerPlayer player, NightGhastsConfig config, SpawnAttemptStats stats) {
+        Vec3 p = new Vec3(player.getX(), player.getY(), player.getZ());
 
         if (LOGGER.isDebugEnabled()) {
             LOGGER.debug("[Sky-Islands][nightghasts] trySpawnOne player={} attempts={}",
-                    player.getNameForScoreboard(), config.spawnAttemptsPerInterval);
+                    player.getScoreboardName(), config.spawnAttemptsPerInterval);
         }
 
         for (int attempt = 0; attempt < config.spawnAttemptsPerInterval; attempt++) {
@@ -179,35 +182,36 @@ final class NightGhastSpawner {
             double x = p.x + Math.cos(angle) * dist;
             double z = p.z + Math.sin(angle) * dist;
 
-            int yOffset = world.getRandom().nextBetween(config.spawnYOffsetMin, config.spawnYOffsetMax);
+            int yOffset = world.getRandom().nextIntBetweenInclusive(config.spawnYOffsetMin, config.spawnYOffsetMax);
             double y = p.y + yOffset;
 
-            BlockPos pos = BlockPos.ofFloored(x, y, z);
-            if (!world.isChunkLoaded(pos)) {
+            BlockPos pos = BlockPos.containing(x, y, z);
+            if (!world.isLoaded(pos)) {
                 stats.unloadedChunk++;
                 continue;
             }
 
-            GhastEntity ghast = EntityType.GHAST.create(world, SpawnReason.EVENT);
+            Ghast ghast = (Ghast) GHAST_TYPE.create(world, EntitySpawnReason.EVENT);
             if (ghast == null) {
                 stats.spawnFailed++;
                 if (LOGGER.isDebugEnabled()) {
-                    LOGGER.debug("[Sky-Islands][nightghasts] create GHAST failed (player={})", player.getNameForScoreboard());
+                    LOGGER.debug("[Sky-Islands][nightghasts] create GHAST failed (player={})", player.getScoreboardName());
                 }
                 return false;
             }
 
-            ghast.refreshPositionAndAngles(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5,
-                    world.getRandom().nextFloat() * 360.0f, 0.0f);
-            ghast.addCommandTag(TAG);
+            ghast.setPos(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
+            ghast.setYRot(world.getRandom().nextFloat() * 360.0f);
+            ghast.setXRot(0.0f);
+            ghast.addTag(TAG);
 
-            if (!world.isSpaceEmpty(ghast)) {
+            if (!world.noCollision(ghast)) {
                 stats.noSpace++;
                 ghast.discard();
                 continue;
             }
 
-            if (world.spawnEntity(ghast)) {
+            if (world.addFreshEntity(ghast)) {
                 stats.spawnX = ghast.getX();
                 stats.spawnY = ghast.getY();
                 stats.spawnZ = ghast.getZ();
@@ -225,23 +229,23 @@ final class NightGhastSpawner {
         return false;
     }
 
-    private static int countTaggedGhastsNear(ServerWorld world, Vec3d center, int radiusBlocks) {
-        Box box = new Box(
+    private static int countTaggedGhastsNear(ServerLevel world, Vec3 center, int radiusBlocks) {
+        AABB box = new AABB(
                 center.x - radiusBlocks, center.y - radiusBlocks, center.z - radiusBlocks,
                 center.x + radiusBlocks, center.y + radiusBlocks, center.z + radiusBlocks
         );
 
         int count = 0;
-        for (Entity e : world.getEntitiesByType(EntityType.GHAST, box, entity -> entity.getCommandTags().contains(TAG))) {
+        for (Entity e : world.getEntities(GHAST_TYPE, box, entity -> entity.entityTags().contains(TAG))) {
             count++;
         }
         return count;
     }
 
-    private static int cleanupDaytimeGhasts(ServerWorld world) {
+    private static int cleanupDaytimeGhasts(ServerLevel world) {
         int removed = 0;
-        for (Entity e : world.iterateEntities()) {
-            if (e.getType() == EntityType.GHAST && e.getCommandTags().contains(TAG)) {
+        for (Entity e : world.getAllEntities()) {
+            if (e.getType() == GHAST_TYPE && e.entityTags().contains(TAG)) {
                 e.discard();
                 removed++;
             }
@@ -254,8 +258,8 @@ final class NightGhastSpawner {
         return removed;
     }
 
-    private static boolean isNight(ServerWorld world) {
-        long t = world.getTimeOfDay() % 24000L;
+    private static boolean isNight(ServerLevel world) {
+        long t = world.getGameTime() % 24000L;
         return t >= 13000L && t <= 23000L;
     }
 

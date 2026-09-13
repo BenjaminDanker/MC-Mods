@@ -10,17 +10,16 @@ import com.silver.atlantis.spawn.marker.AtlantisMobMarker;
 import com.silver.atlantis.spawn.marker.AtlantisMobMarkerState;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.mob.MobEntity;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.ChunkPos;
-import net.minecraft.world.World;
-import net.minecraft.registry.RegistryKey;
-
+import net.minecraft.core.BlockPos;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.AABB;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -49,12 +48,12 @@ public final class ProximityMobManager {
 
     private static final ProximityMobManager INSTANCE = new ProximityMobManager();
 
-    private final Map<RegistryKey<World>, Map<BlockPos, UUID>> activeMobs = new HashMap<>();
-    private final Map<RegistryKey<World>, Map<UUID, BlockPos>> activeMobPositions = new HashMap<>();
-    private final Map<RegistryKey<World>, Map<BlockPos, Long>> nextRebindAttemptTickByMarker = new HashMap<>();
-    private final Map<RegistryKey<World>, Integer> worldTickCounter = new HashMap<>();
-    private final Map<RegistryKey<World>, Long> lastNoSpawnReasonLogMs = new HashMap<>();
-    private final Map<RegistryKey<World>, String> lastNoSpawnReasonByWorld = new HashMap<>();
+    private final Map<ResourceKey<Level>, Map<BlockPos, UUID>> activeMobs = new HashMap<>();
+    private final Map<ResourceKey<Level>, Map<UUID, BlockPos>> activeMobPositions = new HashMap<>();
+    private final Map<ResourceKey<Level>, Map<BlockPos, Long>> nextRebindAttemptTickByMarker = new HashMap<>();
+    private final Map<ResourceKey<Level>, Integer> worldTickCounter = new HashMap<>();
+    private final Map<ResourceKey<Level>, Long> lastNoSpawnReasonLogMs = new HashMap<>();
+    private final Map<ResourceKey<Level>, String> lastNoSpawnReasonByWorld = new HashMap<>();
     private final Set<String> externalPauseTokens = new HashSet<>();
     private final Path cycleStatePath = CyclePaths.stateFile();
     private long lastSpawnPhaseRefreshMs;
@@ -86,7 +85,7 @@ public final class ProximityMobManager {
             if (server == null) {
                 return;
             }
-            for (ServerWorld world : server.getWorlds()) {
+            for (ServerLevel world : server.getAllLevels()) {
                 onWorldTick(world);
             }
         });
@@ -100,16 +99,16 @@ public final class ProximityMobManager {
         );
     }
 
-    public void onWorldTick(ServerWorld world) {
+    public void onWorldTick(ServerLevel world) {
         if (world == null) {
             return;
         }
 
-        if (world.getRegistryKey() != World.OVERWORLD) {
+        if (world.dimension() != Level.OVERWORLD) {
             return;
         }
 
-        RegistryKey<World> worldKey = world.getRegistryKey();
+        ResourceKey<Level> worldKey = world.dimension();
         int tick = worldTickCounter.getOrDefault(worldKey, 0) + 1;
         worldTickCounter.put(worldKey, tick);
         if ((tick % 5) != 0) {
@@ -118,28 +117,28 @@ public final class ProximityMobManager {
 
         AtlantisMobMarkerState state = AtlantisMobMarkerState.get(world);
         Map<BlockPos, UUID> active = getActiveMap(world);
-        long worldTime = world.getTime();
+        long worldTime = world.getGameTime();
         boolean allowActivation = isActivationPhaseEnabled(world.getServer());
 
-        List<ServerPlayerEntity> players = world.getPlayers(player -> player != null && !player.isSpectator() && player.isAlive());
+        List<ServerPlayer> players = world.getPlayers(player -> player != null && !player.isSpectator() && player.isAlive());
         if (players.isEmpty()) {
             despawnAllActive(world, state, active);
             maybeLogNoSpawnReason(world, "no_alive_players", 0, active.size(), state.getTotalMarkers());
             return;
         }
         List<BlockPos> livePlayerPositions = new ArrayList<>(players.size());
-        for (ServerPlayerEntity player : players) {
-            livePlayerPositions.add(player.getBlockPos());
+        for (ServerPlayer player : players) {
+            livePlayerPositions.add(player.blockPosition());
         }
 
         int chunkRadius = Math.max(1, (DESPAWN_RADIUS_XZ >> 4) + 1);
         Set<BlockPos> shouldBeSpawned = new HashSet<>();
 
-        for (ServerPlayerEntity player : players) {
-            BlockPos playerPos = player.getBlockPos();
+        for (ServerPlayer player : players) {
+            BlockPos playerPos = player.blockPosition();
             state.forEachMarkerNear(playerPos, chunkRadius, (markerPos, marker) -> {
                 if (isWithinEllipsoid(markerPos, playerPos, SPAWN_RADIUS_XZ, SPAWN_RADIUS_Y)) {
-                    shouldBeSpawned.add(markerPos.toImmutable());
+                    shouldBeSpawned.add(markerPos.immutable());
                 }
             });
         }
@@ -164,7 +163,7 @@ public final class ProximityMobManager {
             UUID existingId = active.get(pos);
             if (existingId != null || active.containsKey(pos)) {
                 Entity existing = existingId == null ? null : world.getEntity(existingId);
-                if (existing instanceof MobEntity mob && mob.isAlive()) {
+                if (existing instanceof Mob mob && mob.isAlive()) {
                     continue;
                 }
                 active.remove(pos);
@@ -183,7 +182,7 @@ public final class ProximityMobManager {
                     recordFailedRebindAttempt(world, pos, worldTime + REBIND_RETRY_DELAY_TICKS);
                 }
 
-                MobEntity spawned = spawnFromMarker(world, pos, marker);
+                Mob spawned = spawnFromMarker(world, pos, marker);
                 if (spawned != null) {
                     clearRebindAttempt(world, pos);
                 }
@@ -197,7 +196,7 @@ public final class ProximityMobManager {
             UUID uuid = entry.getValue();
 
             Entity entity = uuid == null ? null : world.getEntity(uuid);
-            if (!(entity instanceof MobEntity mob) || !mob.isAlive()) {
+            if (!(entity instanceof Mob mob) || !mob.isAlive()) {
                 activeIterator.remove();
                 if (uuid != null) {
                     getActivePositionMap(world).remove(uuid);
@@ -211,44 +210,44 @@ public final class ProximityMobManager {
 
             AtlantisMobMarker marker = AtlantisMobMarker.fromEntity(mob);
             if (marker != null) {
-                state.putMarker(pos.toImmutable(), marker);
+                state.putMarker(pos.immutable(), marker);
             }
             mob.discard();
             if (uuid != null) {
                 getActivePositionMap(world).remove(uuid);
             }
-            state.markDirty();
+            state.setDirty();
             activeIterator.remove();
         }
     }
 
-    public MobEntity spawnFromMarker(ServerWorld world, BlockPos pos, AtlantisMobMarker marker) {
+    public Mob spawnFromMarker(ServerLevel world, BlockPos pos, AtlantisMobMarker marker) {
         if (world == null || pos == null || marker == null) {
             return null;
         }
 
-        if (!world.isChunkLoaded(ChunkPos.toLong(pos.getX() >> 4, pos.getZ() >> 4))) {
+        if (!world.areEntitiesLoaded(ChunkPos.pack(pos.getX() >> 4, pos.getZ() >> 4))) {
             return null;
         }
 
-        MobEntity mob = marker.createMob(world);
+        Mob mob = marker.createMob(world);
         if (mob == null) {
             return null;
         }
 
         float spawnYaw = marker.yaw();
         float spawnPitch = marker.pitch();
-        mob.refreshPositionAndAngles(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, spawnYaw, spawnPitch);
-        mob.setYaw(spawnYaw);
-        mob.setPitch(spawnPitch);
-        mob.setBodyYaw(spawnYaw);
-        mob.setHeadYaw(spawnYaw);
-        mob.addCommandTag(SpawnSpecialConfig.ATLANTIS_SPAWNED_MOB_TAG);
-        mob.setPersistent();
+        mob.snapTo(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, spawnYaw, spawnPitch);
+        mob.setYRot(spawnYaw);
+        mob.setXRot(spawnPitch);
+        mob.setYBodyRot(spawnYaw);
+        mob.setYHeadRot(spawnYaw);
+        mob.addTag(SpawnSpecialConfig.ATLANTIS_SPAWNED_MOB_TAG);
+        mob.setPersistenceRequired();
 
-        if (world.spawnEntity(mob)) {
-            BlockPos markerPos = pos.toImmutable();
-            UUID mobId = mob.getUuid();
+        if (world.addFreshEntity(mob)) {
+            BlockPos markerPos = pos.immutable();
+            UUID mobId = mob.getUUID();
             getActiveMap(world).put(markerPos, mobId);
             getActivePositionMap(world).put(mobId, markerPos);
             return mob;
@@ -257,7 +256,7 @@ public final class ProximityMobManager {
         return null;
     }
 
-    public void despawnToMarker(ServerWorld world, BlockPos pos, MobEntity mob) {
+    public void despawnToMarker(ServerLevel world, BlockPos pos, Mob mob) {
         if (world == null || pos == null || mob == null) {
             return;
         }
@@ -265,7 +264,7 @@ public final class ProximityMobManager {
         AtlantisMobMarkerState state = AtlantisMobMarkerState.get(world);
         AtlantisMobMarker marker = AtlantisMobMarker.fromEntity(mob);
         if (marker != null) {
-            state.putMarker(pos.toImmutable(), marker);
+            state.putMarker(pos.immutable(), marker);
         }
 
         Map<BlockPos, UUID> active = getActiveMap(world);
@@ -275,10 +274,10 @@ public final class ProximityMobManager {
         }
         clearRebindAttempt(world, pos);
         mob.discard();
-        state.markDirty();
+        state.setDirty();
     }
 
-    public void clearWithinBounds(ServerWorld world, ActiveConstructBounds bounds) {
+    public void clearWithinBounds(ServerLevel world, ActiveConstructBounds bounds) {
         if (world == null || bounds == null) {
             return;
         }
@@ -308,7 +307,7 @@ public final class ProximityMobManager {
         state.removeInsideBounds(bounds);
     }
 
-    public int countActive(ServerWorld world) {
+    public int countActive(ServerLevel world) {
         if (world == null) {
             return 0;
         }
@@ -350,22 +349,22 @@ public final class ProximityMobManager {
     }
 
     private void onMobDeath(LivingEntity entity) {
-        if (!(entity instanceof MobEntity mob) || !(entity.getEntityWorld() instanceof ServerWorld world)) {
+        if (!(entity instanceof Mob mob) || !(entity.level() instanceof ServerLevel world)) {
             return;
         }
 
-        if (!mob.getCommandTags().contains(SpawnSpecialConfig.ATLANTIS_SPAWNED_MOB_TAG)) {
+        if (!mob.entityTags().contains(SpawnSpecialConfig.ATLANTIS_SPAWNED_MOB_TAG)) {
             return;
         }
 
         Map<BlockPos, UUID> active = getActiveMap(world);
-        UUID deadId = mob.getUuid();
+        UUID deadId = mob.getUUID();
         AtlantisMobMarkerState state = AtlantisMobMarkerState.get(world);
 
         BlockPos trackedPos = getActivePositionMap(world).remove(deadId);
 
         if (trackedPos == null) {
-            trackedPos = findNearestMarkerPosition(state, mob.getBlockPos(), 2);
+            trackedPos = findNearestMarkerPosition(state, mob.blockPosition(), 2);
         }
 
         if (trackedPos == null) {
@@ -379,7 +378,7 @@ public final class ProximityMobManager {
         state.removeMarker(trackedPos);
     }
 
-    private void despawnAllActive(ServerWorld world, AtlantisMobMarkerState state, Map<BlockPos, UUID> active) {
+    private void despawnAllActive(ServerLevel world, AtlantisMobMarkerState state, Map<BlockPos, UUID> active) {
         if (active.isEmpty()) {
             return;
         }
@@ -391,10 +390,10 @@ public final class ProximityMobManager {
             UUID uuid = entry.getValue();
             Entity entity = uuid == null ? null : world.getEntity(uuid);
 
-            if (entity instanceof MobEntity mob && mob.isAlive()) {
+            if (entity instanceof Mob mob && mob.isAlive()) {
                 AtlantisMobMarker marker = AtlantisMobMarker.fromEntity(mob);
                 if (marker != null) {
-                    state.putMarker(pos.toImmutable(), marker);
+                    state.putMarker(pos.immutable(), marker);
                 }
                 mob.discard();
             }
@@ -406,43 +405,43 @@ public final class ProximityMobManager {
         }
     }
 
-    private Map<BlockPos, UUID> getActiveMap(ServerWorld world) {
-        return activeMobs.computeIfAbsent(world.getRegistryKey(), ignored -> new HashMap<>());
+    private Map<BlockPos, UUID> getActiveMap(ServerLevel world) {
+        return activeMobs.computeIfAbsent(world.dimension(), ignored -> new HashMap<>());
     }
 
-    private Map<UUID, BlockPos> getActivePositionMap(ServerWorld world) {
-        return activeMobPositions.computeIfAbsent(world.getRegistryKey(), ignored -> new HashMap<>());
+    private Map<UUID, BlockPos> getActivePositionMap(ServerLevel world) {
+        return activeMobPositions.computeIfAbsent(world.dimension(), ignored -> new HashMap<>());
     }
 
-    private Map<BlockPos, Long> getRebindAttemptMap(ServerWorld world) {
-        return nextRebindAttemptTickByMarker.computeIfAbsent(world.getRegistryKey(), ignored -> new HashMap<>());
+    private Map<BlockPos, Long> getRebindAttemptMap(ServerLevel world) {
+        return nextRebindAttemptTickByMarker.computeIfAbsent(world.dimension(), ignored -> new HashMap<>());
     }
 
-    private boolean shouldAttemptRebind(ServerWorld world, BlockPos markerPos, long nowTick) {
+    private boolean shouldAttemptRebind(ServerLevel world, BlockPos markerPos, long nowTick) {
         long dueTick = getRebindAttemptMap(world).getOrDefault(markerPos, Long.MIN_VALUE);
         return nowTick >= dueTick;
     }
 
-    private void recordFailedRebindAttempt(ServerWorld world, BlockPos markerPos, long nextAttemptTick) {
-        getRebindAttemptMap(world).put(markerPos.toImmutable(), nextAttemptTick);
+    private void recordFailedRebindAttempt(ServerLevel world, BlockPos markerPos, long nextAttemptTick) {
+        getRebindAttemptMap(world).put(markerPos.immutable(), nextAttemptTick);
     }
 
-    private void clearRebindAttempt(ServerWorld world, BlockPos markerPos) {
+    private void clearRebindAttempt(ServerLevel world, BlockPos markerPos) {
         getRebindAttemptMap(world).remove(markerPos);
     }
 
-    private MobEntity bindExistingMobAtMarker(ServerWorld world, BlockPos pos) {
+    private Mob bindExistingMobAtMarker(ServerLevel world, BlockPos pos) {
         if (world == null || pos == null) {
             return null;
         }
 
-        Box box = new Box(pos).expand(0.9, 1.5, 0.9);
-        List<MobEntity> candidates = world.getEntitiesByClass(
-            MobEntity.class,
+        AABB box = new AABB(pos).inflate(0.9, 1.5, 0.9);
+        List<Mob> candidates = world.getEntitiesOfClass(
+            Mob.class,
             box,
             mob -> mob != null
                 && mob.isAlive()
-                && mob.getCommandTags().contains(SpawnSpecialConfig.ATLANTIS_SPAWNED_MOB_TAG)
+                && mob.entityTags().contains(SpawnSpecialConfig.ATLANTIS_SPAWNED_MOB_TAG)
         );
         if (candidates.isEmpty()) {
             return null;
@@ -452,10 +451,10 @@ public final class ProximityMobManager {
         double centerY = pos.getY();
         double centerZ = pos.getZ() + 0.5;
 
-        MobEntity selected = null;
+        Mob selected = null;
         double bestDistanceSq = Double.MAX_VALUE;
-        for (MobEntity candidate : candidates) {
-            double distanceSq = candidate.squaredDistanceTo(centerX, centerY, centerZ);
+        for (Mob candidate : candidates) {
+            double distanceSq = candidate.distanceToSqr(centerX, centerY, centerZ);
             if (distanceSq < bestDistanceSq) {
                 bestDistanceSq = distanceSq;
                 selected = candidate;
@@ -466,8 +465,8 @@ public final class ProximityMobManager {
             return null;
         }
 
-        BlockPos markerPos = pos.toImmutable();
-        UUID selectedId = selected.getUuid();
+        BlockPos markerPos = pos.immutable();
+        UUID selectedId = selected.getUUID();
 
         Map<BlockPos, UUID> active = getActiveMap(world);
         Map<UUID, BlockPos> positions = getActivePositionMap(world);
@@ -490,7 +489,7 @@ public final class ProximityMobManager {
         int[] bestDistanceSq = new int[] {Integer.MAX_VALUE};
 
         state.forEachMarkerNear(center, 1, (pos, marker) -> {
-            int distanceSq = (int) pos.getSquaredDistance(center);
+            int distanceSq = (int) pos.distSqr(center);
             if (distanceSq > maxDistanceSq || distanceSq >= bestDistanceSq[0]) {
                 return;
             }
@@ -597,12 +596,12 @@ public final class ProximityMobManager {
         }
     }
 
-    private void maybeLogNoSpawnReason(ServerWorld world, String reason, int nearbyMarkers, int activeCount, int totalMarkers) {
+    private void maybeLogNoSpawnReason(ServerLevel world, String reason, int nearbyMarkers, int activeCount, int totalMarkers) {
         if (world == null || reason == null || reason.isBlank()) {
             return;
         }
 
-        RegistryKey<World> worldKey = world.getRegistryKey();
+        ResourceKey<Level> worldKey = world.dimension();
         long now = System.currentTimeMillis();
         long last = lastNoSpawnReasonLogMs.getOrDefault(worldKey, 0L);
         String previousReason = lastNoSpawnReasonByWorld.get(worldKey);
@@ -620,7 +619,7 @@ public final class ProximityMobManager {
         AtlantisMod.LOGGER.info(
             "[spawn] idle reason={} dim={} markersNearPlayers={} active={} totalMarkers={}",
             reason,
-            world.getRegistryKey().getValue(),
+            world.dimension().identifier(),
             nearbyMarkers,
             activeCount,
             totalMarkers

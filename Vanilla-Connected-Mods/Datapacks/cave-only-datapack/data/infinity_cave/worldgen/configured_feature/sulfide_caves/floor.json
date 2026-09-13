@@ -4,8 +4,8 @@
     "surface": "floor",
     "depth": {
       "type": "minecraft:uniform",
-        "min_inclusive": 1,
-        "max_inclusive": 1
+      "min_inclusive": 1,
+      "max_inclusive": 1
     },
     "vertical_range": 1,
     "extra_bottom_block_chance": 0,
@@ -13,8 +13,8 @@
     "vegetation_chance": 0.033,
     "xz_radius": {
       "type": "minecraft:uniform",
-        "min_inclusive": 15,
-        "max_inclusive": 15
+      "min_inclusive": 15,
+      "max_inclusive": 15
     },
     "replaceable": "#infinity_cave:base_stone_overworld",
     "ground_state": {

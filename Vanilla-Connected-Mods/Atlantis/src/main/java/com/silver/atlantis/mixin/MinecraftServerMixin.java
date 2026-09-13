@@ -14,15 +14,15 @@ import java.util.function.BooleanSupplier;
 public abstract class MinecraftServerMixin {
 
     @Shadow
-    private int idleTickCount;
+    private int emptyTicks;
 
-    @Inject(method = "tick(Ljava/util/function/BooleanSupplier;)V", at = @At("HEAD"))
+    @Inject(method = "tickServer(Ljava/util/function/BooleanSupplier;)V", at = @At("HEAD"))
     private void atlantis$preventEmptyPause(BooleanSupplier shouldKeepTicking, CallbackInfo ci) {
         if (AtlantisMod.shouldKeepServerTicking((MinecraftServer) (Object) this)) {
             // Vanilla increments this counter before deciding to skip the
             // world tick. Reset it while Atlantis has work to perform so the
             // normal pause-when-empty countdown cannot reach its threshold.
-            idleTickCount = 0;
+            emptyTicks = 0;
         }
     }
 }

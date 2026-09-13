@@ -9,11 +9,10 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.SpawnGroup;
-import net.minecraft.registry.Registries;
-import net.minecraft.util.Identifier;
-
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.MobCategory;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -671,17 +670,17 @@ public final class LeviathansConfig {
             return;
         }
 
-        if (!Registries.ENTITY_TYPE.containsId(id)) {
+        if (!BuiltInRegistries.ENTITY_TYPE.containsKey(id)) {
             errors.add("entityTypeId does not exist in registry (was " + entityTypeId + ")");
             return;
         }
 
-        EntityType<?> type = Registries.ENTITY_TYPE.get(id);
-        SpawnGroup spawnGroup = type.getSpawnGroup();
-        boolean aquatic = spawnGroup == SpawnGroup.WATER_CREATURE
-            || spawnGroup == SpawnGroup.WATER_AMBIENT
-            || spawnGroup == SpawnGroup.UNDERGROUND_WATER_CREATURE
-            || spawnGroup == SpawnGroup.AXOLOTLS;
+        EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getValue(id);
+        MobCategory spawnGroup = type.getCategory();
+        boolean aquatic = spawnGroup == MobCategory.WATER_CREATURE
+            || spawnGroup == MobCategory.WATER_AMBIENT
+            || spawnGroup == MobCategory.UNDERGROUND_WATER_CREATURE
+            || spawnGroup == MobCategory.AXOLOTLS;
         if (!aquatic) {
             errors.add("entityTypeId must be aquatic spawn group (was " + entityTypeId + ", group=" + spawnGroup + ")");
         }

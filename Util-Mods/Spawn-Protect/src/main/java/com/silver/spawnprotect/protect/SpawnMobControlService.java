@@ -2,7 +2,7 @@ package com.silver.spawnprotect.protect;
 
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
-import net.minecraft.entity.mob.MobEntity;
+import net.minecraft.world.entity.Mob;
 
 /**
  * Keeps spawn area clear of mobs:
@@ -15,7 +15,7 @@ public final class SpawnMobControlService {
 
     public void register() {
         ServerEntityEvents.ENTITY_LOAD.register((entity, world) -> {
-            if (!(entity instanceof MobEntity mob)) {
+            if (!(entity instanceof Mob mob)) {
                 return;
             }
 
@@ -23,21 +23,21 @@ public final class SpawnMobControlService {
                 return;
             }
 
-            if (SpawnProtectionManager.INSTANCE.isWithinProtectedBounds(world, mob.getBlockPos())) {
+            if (SpawnProtectionManager.INSTANCE.isWithinProtectedBounds(world, mob.blockPosition())) {
                 mob.discard();
             }
         });
 
-        ServerTickEvents.END_WORLD_TICK.register(world -> {
+        ServerTickEvents.END_LEVEL_TICK.register(world -> {
             if (!SpawnProtectionManager.INSTANCE.hasProtectedBoundsInWorld(world)) {
                 return;
             }
 
-            if ((world.getTime() % MOB_SCAN_INTERVAL_TICKS) != 0L) {
+            if ((world.getGameTime() % MOB_SCAN_INTERVAL_TICKS) != 0L) {
                 return;
             }
 
-            for (MobEntity mob : SpawnProtectionManager.INSTANCE.getMobsWithinProtectedBounds(world)) {
+            for (Mob mob : SpawnProtectionManager.INSTANCE.getMobsWithinProtectedBounds(world)) {
                 if (SpawnProtectionManager.INSTANCE.isAllowedEntityInProtectedBounds(mob)) {
                     continue;
                 }

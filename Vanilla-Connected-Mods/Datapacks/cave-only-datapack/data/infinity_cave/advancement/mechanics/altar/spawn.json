@@ -21,7 +21,7 @@
             "condition": "minecraft:entity_properties",
             "entity": "this",
             "predicate": {
-              "type": "minecraft:interaction",
+              "minecraft:entity_type": "minecraft:interaction",
               "nbt": "{Tags:[\"ic.amethyst_altar\"]}"
             }
           }

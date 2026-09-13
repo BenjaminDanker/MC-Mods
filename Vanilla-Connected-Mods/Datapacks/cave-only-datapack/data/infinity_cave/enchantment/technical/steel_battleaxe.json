@@ -35,7 +35,7 @@
           "condition": "minecraft:entity_properties",
           "entity": "this",
           "predicate": {
-            "type": "#infinity_cave:all_living",
+            "minecraft:entity_type": "#infinity_cave:all_living",
             "slots": {
               "weapon.offhand": {
                 "items": "minecraft:shield"
@@ -116,7 +116,7 @@
           "condition": "minecraft:entity_properties",
           "entity": "this",
           "predicate": {
-            "type": "#infinity_cave:all_living",
+            "minecraft:entity_type": "#infinity_cave:all_living",
             "slots": {
               "weapon.offhand": {
                 "items": "minecraft:shield"

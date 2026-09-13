@@ -13,18 +13,17 @@ import com.silver.atlantis.protect.ProtectionManager;
 import com.silver.atlantis.protect.ProtectionPaths;
 import com.silver.atlantis.spawn.bounds.ActiveConstructBounds;
 import com.silver.atlantis.spawn.service.ProximityMobManager;
-import net.minecraft.network.packet.s2c.play.PositionFlag;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ChunkTicketType;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.ChunkPos;
-
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.TicketType;
+import net.minecraft.world.entity.Relative;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.phys.AABB;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.nio.file.Files;
@@ -60,7 +59,7 @@ final class ConstructUndoTask implements ConstructJob {
     private Stage stage = Stage.LOAD_METADATA;
 
     private UndoRunMetadata metadata;
-    private ServerWorld world;
+    private ServerLevel world;
     private Path runDir;
     private Path undoFile;
 
@@ -81,7 +80,7 @@ final class ConstructUndoTask implements ConstructJob {
     private static final int UNLOAD_FORCE_CHUNK_BUDGET = 8;
     private static final int MIN_TICKET_LEVEL = 0;
     private static final int MAX_TICKET_LEVEL = 40;
-    private static final List<ChunkTicketType> DISCOVERED_TICKET_TYPES = discoverChunkTicketTypes();
+    private static final List<TicketType> DISCOVERED_TICKET_TYPES = discoverChunkTicketTypes();
 
     private long chunkPrepStartedAtNanos;
     private int chunkPrepExpectedMissingCount;
@@ -104,8 +103,8 @@ final class ConstructUndoTask implements ConstructJob {
     private Integer undoMaxY;
     private Integer undoMaxZ;
 
-    ConstructUndoTask(ServerCommandSource source, ConstructConfig config, MinecraftServer server, String runIdOrNull, Executor ioExecutor) {
-        this.requesterId = source.getPlayer() != null ? source.getPlayer().getUuid() : null;
+    ConstructUndoTask(CommandSourceStack source, ConstructConfig config, MinecraftServer server, String runIdOrNull, Executor ioExecutor) {
+        this.requesterId = source.getPlayer() != null ? source.getPlayer().getUUID() : null;
         this.config = config;
         this.server = server;
         this.requestedRunId = runIdOrNull;
@@ -170,9 +169,9 @@ final class ConstructUndoTask implements ConstructJob {
             return;
         }
 
-        world = server.getWorld(net.minecraft.registry.RegistryKey.of(
-            net.minecraft.registry.RegistryKeys.WORLD,
-            Identifier.of(metadata.dimension())
+        world = server.getLevel(net.minecraft.resources.ResourceKey.create(
+            net.minecraft.core.registries.Registries.DIMENSION,
+            Identifier.parse(metadata.dimension())
         ));
         if (world == null) {
             send("World not loaded for dimension: " + metadata.dimension());
@@ -574,7 +573,7 @@ final class ConstructUndoTask implements ConstructJob {
                 nbtSnbt = null;
             }
 
-            long key = ChunkPos.toLong(x >> 4, z >> 4);
+            long key = ChunkPos.pack(x >> 4, z >> 4);
             byChunk.computeIfAbsent(key, ignored -> new ArrayList<>())
                 .add(new UndoPlacement(x, y, z, blockString, nbtSnbt));
         }
@@ -591,8 +590,8 @@ final class ConstructUndoTask implements ConstructJob {
 
         final int[] writeCount = new int[1];
         for (Map.Entry<Long, List<UndoPlacement>> entry : byChunk.entrySet()) {
-            int chunkX = ChunkPos.getPackedX(entry.getKey());
-            int chunkZ = ChunkPos.getPackedZ(entry.getKey());
+            int chunkX = ChunkPos.getX(entry.getKey());
+            int chunkZ = ChunkPos.getZ(entry.getKey());
             ChunkPos chunkPos = new ChunkPos(chunkX, chunkZ);
 
             boolean mutated = UnloadedChunkNbtEditor.mutateChunk(world, chunkPos, context -> {
@@ -609,7 +608,7 @@ final class ConstructUndoTask implements ConstructJob {
             });
 
             if (!mutated) {
-                throw new IllegalStateException("Target chunk unavailable for unloaded mutate (loaded or missing NBT): " + chunkPos.x + "," + chunkPos.z);
+                throw new IllegalStateException("Target chunk unavailable for unloaded mutate (loaded or missing NBT): " + chunkPos.x() + "," + chunkPos.z());
             }
         }
 
@@ -623,9 +622,9 @@ final class ConstructUndoTask implements ConstructJob {
 
         int loaded = 0;
         for (long key : targetChunkKeys) {
-            int chunkX = ChunkPos.getPackedX(key);
-            int chunkZ = ChunkPos.getPackedZ(key);
-            if (world.getChunkManager().isChunkLoaded(chunkX, chunkZ)) {
+            int chunkX = ChunkPos.getX(key);
+            int chunkZ = ChunkPos.getZ(key);
+            if (world.getChunkSource().hasChunk(chunkX, chunkZ)) {
                 loaded++;
             }
         }
@@ -639,13 +638,13 @@ final class ConstructUndoTask implements ConstructJob {
 
         int saved = 0;
         for (long key : targetChunkKeys) {
-            int chunkX = ChunkPos.getPackedX(key);
-            int chunkZ = ChunkPos.getPackedZ(key);
-            if (!world.getChunkManager().isChunkLoaded(chunkX, chunkZ)) {
+            int chunkX = ChunkPos.getX(key);
+            int chunkZ = ChunkPos.getZ(key);
+            if (!world.getChunkSource().hasChunk(chunkX, chunkZ)) {
                 continue;
             }
 
-            ((ServerChunkManagerAccessor) world.getChunkManager().chunkLoadingManager).atlantis$markChunkNeedsSaving(new ChunkPos(chunkX, chunkZ));
+            ((ServerChunkManagerAccessor) world.getChunkSource().chunkMap).atlantis$setChunkUnsaved(new ChunkPos(chunkX, chunkZ));
             saved++;
         }
 
@@ -666,7 +665,7 @@ final class ConstructUndoTask implements ConstructJob {
             int y = ys[i];
             int z = zs[i];
 
-            targetChunkKeys.add(ChunkPos.toLong(x >> 4, z >> 4));
+            targetChunkKeys.add(ChunkPos.pack(x >> 4, z >> 4));
         }
 
         List<ChunkPos> missingChunks = new ArrayList<>();
@@ -682,7 +681,7 @@ final class ConstructUndoTask implements ConstructJob {
         }
 
         for (long key : targetChunkKeys) {
-            ChunkPos chunkPos = new ChunkPos(ChunkPos.getPackedX(key), ChunkPos.getPackedZ(key));
+            ChunkPos chunkPos = new ChunkPos(ChunkPos.getX(key), ChunkPos.getZ(key));
             if (!UnloadedChunkNbtEditor.hasChunkNbt(world, chunkPos)) {
                 missingChunks.add(chunkPos);
             }
@@ -732,16 +731,16 @@ final class ConstructUndoTask implements ConstructJob {
             }
 
             long key = unloadChunkKeysArray[idx % unloadChunkKeysArray.length];
-            int chunkX = ChunkPos.getPackedX(key);
-            int chunkZ = ChunkPos.getPackedZ(key);
+            int chunkX = ChunkPos.getX(key);
+            int chunkZ = ChunkPos.getZ(key);
 
             world.setChunkForced(chunkX, chunkZ, false);
 
             ChunkPos pos = new ChunkPos(chunkX, chunkZ);
-            for (ChunkTicketType ticketType : DISCOVERED_TICKET_TYPES) {
+            for (TicketType ticketType : DISCOVERED_TICKET_TYPES) {
                 for (int level = MIN_TICKET_LEVEL; level <= MAX_TICKET_LEVEL; level++) {
                     try {
-                        world.getChunkManager().removeTicket(ticketType, pos, level);
+                        world.getChunkSource().removeTicketWithRadius(ticketType, pos, level);
                     } catch (Exception ignored) {
                     }
                 }
@@ -755,16 +754,16 @@ final class ConstructUndoTask implements ConstructJob {
         }
 
         for (long key : chunkKeys) {
-            int chunkX = ChunkPos.getPackedX(key);
-            int chunkZ = ChunkPos.getPackedZ(key);
+            int chunkX = ChunkPos.getX(key);
+            int chunkZ = ChunkPos.getZ(key);
 
             world.setChunkForced(chunkX, chunkZ, false);
 
             ChunkPos pos = new ChunkPos(chunkX, chunkZ);
-            for (ChunkTicketType ticketType : DISCOVERED_TICKET_TYPES) {
+            for (TicketType ticketType : DISCOVERED_TICKET_TYPES) {
                 for (int level = MIN_TICKET_LEVEL; level <= MAX_TICKET_LEVEL; level++) {
                     try {
-                        world.getChunkManager().removeTicket(ticketType, pos, level);
+                        world.getChunkSource().removeTicketWithRadius(ticketType, pos, level);
                     } catch (Exception ignored) {
                     }
                 }
@@ -772,19 +771,19 @@ final class ConstructUndoTask implements ConstructJob {
         }
     }
 
-    private static List<ChunkTicketType> discoverChunkTicketTypes() {
-        List<ChunkTicketType> types = new ArrayList<>();
-        for (Field field : ChunkTicketType.class.getDeclaredFields()) {
+    private static List<TicketType> discoverChunkTicketTypes() {
+        List<TicketType> types = new ArrayList<>();
+        for (Field field : TicketType.class.getDeclaredFields()) {
             if (!Modifier.isStatic(field.getModifiers())) {
                 continue;
             }
-            if (!ChunkTicketType.class.isAssignableFrom(field.getType())) {
+            if (!TicketType.class.isAssignableFrom(field.getType())) {
                 continue;
             }
             try {
                 field.setAccessible(true);
                 Object value = field.get(null);
-                if (value instanceof ChunkTicketType ticketType) {
+                if (value instanceof TicketType ticketType) {
                     types.add(ticketType);
                 }
             } catch (Exception ignored) {
@@ -828,13 +827,13 @@ final class ConstructUndoTask implements ConstructJob {
         }
 
         int configuredMargin = Math.max(0, config.playerEjectMarginBlocks());
-        int viewDistanceChunks = server.getPlayerManager().getViewDistance();
-        int simulationDistanceChunks = server.getPlayerManager().getSimulationDistance();
+        int viewDistanceChunks = server.getPlayerList().getViewDistance();
+        int simulationDistanceChunks = server.getPlayerList().getSimulationDistance();
         int chunkLoadRadiusBlocks = Math.max(viewDistanceChunks, simulationDistanceChunks) * 16;
         int margin = Math.max(configuredMargin, chunkLoadRadiusBlocks + 32);
         int offset = Math.max(64, config.playerEjectTeleportOffsetBlocks() + chunkLoadRadiusBlocks);
 
-        Box box = new Box(
+        AABB box = new AABB(
             minX - margin,
             minY - margin,
             minZ - margin,
@@ -844,8 +843,8 @@ final class ConstructUndoTask implements ConstructJob {
         );
 
         int ejectedCount = 0;
-        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
-            if (player.getEntityWorld() != world) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            if (player.level() != world) {
                 continue;
             }
             if (!box.contains(player.getX(), player.getY(), player.getZ())) {
@@ -880,14 +879,14 @@ final class ConstructUndoTask implements ConstructJob {
 
             BlockPos target = PlayerEjectTarget.aboveGround(world, tx, tz);
 
-            player.teleport(
+            player.teleportTo(
                 world,
                 target.getX() + 0.5,
                 target.getY(),
                 target.getZ() + 0.5,
-                Set.of(PositionFlag.DELTA_X, PositionFlag.DELTA_Y, PositionFlag.DELTA_Z),
-                player.getYaw(),
-                player.getPitch(),
+                Set.of(Relative.DELTA_X, Relative.DELTA_Y, Relative.DELTA_Z),
+                player.getYRot(),
+                player.getXRot(),
                 true
             );
             ejectedCount++;
@@ -960,7 +959,7 @@ final class ConstructUndoTask implements ConstructJob {
 
         ActiveConstructBounds bounds = new ActiveConstructBounds(
             getRunId() == null ? "undo" : getRunId(),
-            world.getRegistryKey().getValue().toString(),
+            world.dimension().identifier().toString(),
             minX,
             minY,
             minZ,
@@ -990,7 +989,7 @@ final class ConstructUndoTask implements ConstructJob {
         for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
             for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
                 total++;
-                if (world.getChunkManager().isChunkLoaded(chunkX, chunkZ)) {
+                if (world.getChunkSource().hasChunk(chunkX, chunkZ)) {
                     loadedBefore++;
                 }
                 world.setChunkForced(chunkX, chunkZ, false);
@@ -1028,9 +1027,9 @@ final class ConstructUndoTask implements ConstructJob {
         AtlantisMod.LOGGER.info("[undo:{}] {}", getRunId(), message);
 
         if (requesterId != null && server != null) {
-            ServerPlayerEntity player = server.getPlayerManager().getPlayer(requesterId);
+            ServerPlayer player = server.getPlayerList().getPlayer(requesterId);
             if (player != null) {
-                player.sendMessage(Text.literal(message), false);
+                player.sendSystemMessage(Component.literal(message), false);
             }
         }
     }

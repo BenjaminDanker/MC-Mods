@@ -1,6 +1,6 @@
 package com.silver.skyislands.enderdragons;
 
-import net.minecraft.entity.boss.dragon.EnderDragonEntity;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,8 +19,8 @@ public final class DragonIdTags {
         return PREFIX + id;
     }
 
-    public static Optional<UUID> getId(EnderDragonEntity dragon) {
-        for (String tag : dragon.getCommandTags()) {
+    public static Optional<UUID> getId(EnderDragon dragon) {
+        for (String tag : dragon.entityTags()) {
             if (!tag.startsWith(PREFIX)) {
                 continue;
             }
@@ -28,14 +28,14 @@ public final class DragonIdTags {
                 return Optional.of(UUID.fromString(tag.substring(PREFIX.length())));
             } catch (Exception ignored) {
                 if (LOGGER.isDebugEnabled()) {
-                    LOGGER.debug("[Sky-Islands][dragons][id] invalid id tag on dragon uuid={} tag={}", dragon.getUuidAsString(), tag);
+                    LOGGER.debug("[Sky-Islands][dragons][id] invalid id tag on dragon uuid={} tag={}", dragon.getStringUUID(), tag);
                 }
                 return Optional.empty();
             }
         }
 
         if (LOGGER.isDebugEnabled()) {
-            LOGGER.debug("[Sky-Islands][dragons][id] no id tag on dragon uuid={} tags={}", dragon.getUuidAsString(), dragon.getCommandTags().size());
+            LOGGER.debug("[Sky-Islands][dragons][id] no id tag on dragon uuid={} tags={}", dragon.getStringUUID(), dragon.entityTags().size());
         }
         return Optional.empty();
     }

@@ -2,14 +2,14 @@ package com.silver.enderfight.mixin;
 
 import com.silver.enderfight.EnderFightMod;
 import com.silver.enderfight.portal.PortalInterceptor;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.EndPortalBlock;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityCollisionHandler;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.World;
+import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.InsideBlockEffectApplier;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.EndPortalBlock;
+import net.minecraft.world.level.block.state.BlockState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -23,18 +23,18 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(EndPortalBlock.class)
 public abstract class EndPortalBlockCollisionMixin {
 
-    @Inject(method = "onEntityCollision", at = @At("HEAD"), cancellable = true)
-    private void enderfight$blockVanillaEndPortalTeleport(BlockState state, World world, BlockPos pos, Entity entity, EntityCollisionHandler collisionHandler, boolean moved, CallbackInfo ci) {
-        if (!(world instanceof ServerWorld serverWorld)) {
+    @Inject(method = "entityInside", at = @At("HEAD"), cancellable = true)
+    private void enderfight$blockVanillaEndPortalTeleport(BlockState state, Level world, BlockPos pos, Entity entity, InsideBlockEffectApplier collisionHandler, boolean moved, CallbackInfo ci) {
+        if (!(world instanceof ServerLevel serverWorld)) {
             return;
         }
-        if (!(entity instanceof ServerPlayerEntity player)) {
+        if (!(entity instanceof ServerPlayer player)) {
             return;
         }
-        if (!entity.canUsePortals(false)) {
+        if (!entity.canUsePortal(false)) {
             return;
         }
-        if (!PortalInterceptor.isManagedEndDimension(serverWorld.getRegistryKey())) {
+        if (!PortalInterceptor.isManagedEndDimension(serverWorld.dimension())) {
             return;
         }
         if (!PortalInterceptor.isPortalRedirectEnabled()) {

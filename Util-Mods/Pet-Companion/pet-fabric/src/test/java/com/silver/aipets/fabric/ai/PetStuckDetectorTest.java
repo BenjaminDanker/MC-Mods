@@ -1,6 +1,6 @@
 package com.silver.aipets.fabric.ai;
 
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -10,7 +10,7 @@ class PetStuckDetectorTest {
     @Test
     void triggersAtTimeoutAndRealProgressResetsTheWindow() {
         PetStuckDetector detector = new PetStuckDetector(60, 0.10);
-        Vec3d origin = new Vec3d(1.0, 64.0, 1.0);
+        Vec3 origin = new Vec3(1.0, 64.0, 1.0);
         detector.reset(origin);
 
         for (int sample = 0; sample < 5; sample++) {

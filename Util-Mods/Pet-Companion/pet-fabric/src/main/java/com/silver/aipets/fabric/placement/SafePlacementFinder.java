@@ -1,21 +1,20 @@
 package com.silver.aipets.fabric.placement;
 
 import com.silver.aipets.common.domain.WorldPosition;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.registry.tag.FluidTags;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-
 import java.util.Optional;
 import java.util.Set;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.tags.FluidTags;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 /** Conservative loaded-chunk-only search for a non-lava, supported, collision-free spawn position. */
 public final class SafePlacementFinder {
@@ -44,7 +43,7 @@ public final class SafePlacementFinder {
     }
 
     public Optional<WorldPosition> find(
-            ServerWorld world,
+            ServerLevel world,
             LivingEntity prototype,
             BlockPos origin) {
         java.util.Objects.requireNonNull(world, "world");
@@ -58,9 +57,9 @@ public final class SafePlacementFinder {
                         continue;
                     }
                     for (int verticalOffset : verticalOffsets()) {
-                        BlockPos candidate = origin.add(dx, verticalOffset, dz);
+                        BlockPos candidate = origin.offset(dx, verticalOffset, dz);
                         if (isSafe(world, prototype, candidate)) {
-                            Vec3d center = Vec3d.ofBottomCenter(candidate);
+                            Vec3 center = Vec3.atBottomCenterOf(candidate);
                             return Optional.of(new WorldPosition(center.x, center.y, center.z));
                         }
                     }
@@ -70,20 +69,20 @@ public final class SafePlacementFinder {
         return Optional.empty();
     }
 
-    private boolean isSafe(ServerWorld world, LivingEntity prototype, BlockPos feet) {
-        BlockPos support = feet.down();
-        if (world.isOutOfHeightLimit(feet)
-                || world.isOutOfHeightLimit(support)
-                || !world.getChunkManager().isChunkLoaded(
+    private boolean isSafe(ServerLevel world, LivingEntity prototype, BlockPos feet) {
+        BlockPos support = feet.below();
+        if (world.isOutsideBuildHeight(feet)
+                || world.isOutsideBuildHeight(support)
+                || !world.getChunkSource().hasChunk(
                         Math.floorDiv(feet.getX(), 16),
                         Math.floorDiv(feet.getZ(), 16))
-                || !world.getWorldBorder().contains(feet)) {
+                || !world.getWorldBorder().isWithinBounds(feet)) {
             return false;
         }
 
-        Vec3d center = Vec3d.ofBottomCenter(feet);
-        Box body = prototype.getDimensions(prototype.getPose()).getBoxAt(center);
-        if (!world.getWorldBorder().contains(body) || !allIntersectingChunksLoaded(world, body)) {
+        Vec3 center = Vec3.atBottomCenterOf(feet);
+        AABB body = prototype.getDimensions(prototype.getPose()).makeBoundingBox(center);
+        if (!world.getWorldBorder().isWithinBounds(body) || !allIntersectingChunksLoaded(world, body)) {
             return false;
         }
 
@@ -91,18 +90,18 @@ public final class SafePlacementFinder {
         BlockState supportState = world.getBlockState(support);
         if (isHazard(feetState)
                 || isHazard(supportState)
-                || world.getFluidState(feet).isIn(FluidTags.LAVA)
-                || world.getFluidState(support).isIn(FluidTags.LAVA)
-                || !supportState.isSideSolidFullSquare(world, support, Direction.UP)) {
+                || world.getFluidState(feet).is(FluidTags.LAVA)
+                || world.getFluidState(support).is(FluidTags.LAVA)
+                || !supportState.isFaceSturdy(world, support, Direction.UP)) {
             return false;
         }
 
-        if (!world.isSpaceEmpty(prototype, body)) {
+        if (!world.noCollision(prototype, body)) {
             return false;
         }
-        return world.getOtherEntities(
+        return world.getEntities(
                         prototype,
-                        body.expand(0.05),
+                        body.inflate(0.05),
                         SafePlacementFinder::blocksPlacement)
                 .isEmpty();
     }
@@ -117,14 +116,14 @@ public final class SafePlacementFinder {
         return offsets;
     }
 
-    private static boolean allIntersectingChunksLoaded(ServerWorld world, Box box) {
-        int minimumChunkX = Math.floorDiv(MathHelper.floor(box.minX), 16);
-        int maximumChunkX = Math.floorDiv(MathHelper.floor(Math.nextDown(box.maxX)), 16);
-        int minimumChunkZ = Math.floorDiv(MathHelper.floor(box.minZ), 16);
-        int maximumChunkZ = Math.floorDiv(MathHelper.floor(Math.nextDown(box.maxZ)), 16);
+    private static boolean allIntersectingChunksLoaded(ServerLevel world, AABB box) {
+        int minimumChunkX = Math.floorDiv(Mth.floor(box.minX), 16);
+        int maximumChunkX = Math.floorDiv(Mth.floor(Math.nextDown(box.maxX)), 16);
+        int minimumChunkZ = Math.floorDiv(Mth.floor(box.minZ), 16);
+        int maximumChunkZ = Math.floorDiv(Mth.floor(Math.nextDown(box.maxZ)), 16);
         for (int chunkX = minimumChunkX; chunkX <= maximumChunkX; chunkX++) {
             for (int chunkZ = minimumChunkZ; chunkZ <= maximumChunkZ; chunkZ++) {
-                if (!world.getChunkManager().isChunkLoaded(chunkX, chunkZ)) {
+                if (!world.getChunkSource().hasChunk(chunkX, chunkZ)) {
                     return false;
                 }
             }

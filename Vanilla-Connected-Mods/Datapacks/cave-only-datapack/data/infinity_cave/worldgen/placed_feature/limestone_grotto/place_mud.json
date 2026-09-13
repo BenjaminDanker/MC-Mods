@@ -1,15 +1,14 @@
 {
-    "feature": "infinity_cave:limestone_grotto/mud",
-    "placement": [
-      {
-        "type": "minecraft:height_range",
-        "height": {
-          "absolute": -131
-        }
-      },
-      {
-        "type": "minecraft:biome"
+  "feature": "infinity_cave:limestone_grotto/mud",
+  "placement": [
+    {
+      "type": "minecraft:height_range",
+      "height": {
+        "absolute": -131
       }
-    ]
-  }
-  
+    },
+    {
+      "type": "minecraft:biome"
+    }
+  ]
+}

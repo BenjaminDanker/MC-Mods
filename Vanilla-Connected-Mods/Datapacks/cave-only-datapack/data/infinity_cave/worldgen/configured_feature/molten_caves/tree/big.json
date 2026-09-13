@@ -2,7 +2,6 @@
   "type": "minecraft:tree",
   "config": {
     "ignore_vines": true,
-    "force_dirt": true,
     "minimum_size": {
       "type": "minecraft:three_layers_feature_size",
       "min_clipped_height": 10,
@@ -11,12 +10,6 @@
       "lower_size": 8,
       "middle_size": 10,
       "upper_size": 13
-    },
-    "dirt_provider": {
-      "type": "minecraft:simple_state_provider",
-      "state": {
-        "Name": "minecraft:crimson_hyphae"
-      }
     },
     "trunk_provider": {
       "type": "minecraft:simple_state_provider",
@@ -121,6 +114,12 @@
           "down"
         ]
       }
-    ]
+    ],
+    "below_trunk_provider": {
+      "type": "minecraft:simple_state_provider",
+      "state": {
+        "Name": "minecraft:crimson_hyphae"
+      }
+    }
   }
 }

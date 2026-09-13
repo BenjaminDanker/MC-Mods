@@ -1,12 +1,12 @@
 {
   "required": true,
   "package": "com.silver.villagerinterface.mixin",
-  "compatibilityLevel": "JAVA_21",
+  "compatibilityLevel": "JAVA_25",
   "mixins": [
     "EntityMixin",
-    "PlayerManagerMixin",
-    "ServerPlayNetworkHandlerMixin",
-    "VillagerEntityMixin"
+    "PlayerListMixin",
+    "ServerGamePacketListenerImplMixin",
+    "VillagerMixin"
   ],
   "client": [],
   "server": [],

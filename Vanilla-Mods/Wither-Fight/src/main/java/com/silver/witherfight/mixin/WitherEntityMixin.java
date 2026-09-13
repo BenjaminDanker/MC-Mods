@@ -7,15 +7,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import com.silver.witherfight.WitherFightMod;
 
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.ItemEntity;
-import net.minecraft.entity.boss.WitherEntity;
-import net.minecraft.item.ItemConvertible;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.boss.wither.WitherBoss;
+import net.minecraft.world.level.ItemLike;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.network.chat.Component;
 
 /**
  * Renames the nether star produced when the Wither dies. Mirrors the dragon breath decoration
@@ -25,16 +25,16 @@ import net.minecraft.text.Text;
 @Mixin(Entity.class)
 abstract class WitherEntityMixin {
 
-    @Inject(method = "dropItem(Lnet/minecraft/server/world/ServerWorld;Lnet/minecraft/item/ItemConvertible;)Lnet/minecraft/entity/ItemEntity;", at = @At("HEAD"), cancellable = true)
-    private void witherfight$customizeNetherStar(ServerWorld world, ItemConvertible convertible, CallbackInfoReturnable<ItemEntity> cir) {
-        if (!(convertible == Items.NETHER_STAR && (Object) this instanceof WitherEntity) || world == null) {
+    @Inject(method = "spawnAtLocation(Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/world/level/ItemLike;)Lnet/minecraft/world/entity/item/ItemEntity;", at = @At("HEAD"), cancellable = true)
+    private void witherfight$customizeNetherStar(ServerLevel world, ItemLike convertible, CallbackInfoReturnable<ItemEntity> cir) {
+        if (!(convertible == Items.NETHER_STAR && (Object) this instanceof WitherBoss) || world == null) {
             return;
         }
 
         ItemStack stack = new ItemStack(convertible);
-        stack.set(DataComponentTypes.CUSTOM_NAME, Text.literal("Special Nether Star"));
+        stack.set(DataComponents.CUSTOM_NAME, Component.literal("Special Nether Star"));
 
-        ItemEntity dropped = ((Entity) (Object) this).dropStack(world, stack);
+        ItemEntity dropped = ((Entity) (Object) this).spawnAtLocation(world, stack);
         WitherFightMod.LOGGER.info("Wither dropped Special Nether Star at ({}, {}, {}), entity id {}", dropped.getX(), dropped.getY(), dropped.getZ(), dropped.getId());
         cir.setReturnValue(dropped);
     }

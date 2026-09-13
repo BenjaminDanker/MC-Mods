@@ -1,11 +1,10 @@
 {
-    "criteria": {
-      "requirement": {
-        "trigger": "minecraft:tick"
-      }
-    },
-    "rewards": {
-      "function": "infinity_cave:mechanics/weapons/sonic_bow/tick"
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:tick"
     }
+  },
+  "rewards": {
+    "function": "infinity_cave:mechanics/weapons/sonic_bow/tick"
   }
-  
+}

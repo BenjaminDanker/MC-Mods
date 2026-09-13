@@ -3,14 +3,14 @@ package com.silver.villagerinterface.mixin;
 import com.silver.villagerinterface.VillagerInterfaceMod;
 import com.silver.villagerinterface.villager.CustomVillagerData;
 import com.silver.villagerinterface.villager.CustomVillagerManager;
-import net.minecraft.entity.passive.VillagerEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.storage.ReadView;
-import net.minecraft.storage.WriteView;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.util.ActionResult;
-import net.minecraft.util.Hand;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -18,26 +18,26 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-@Mixin(VillagerEntity.class)
-public abstract class VillagerEntityMixin implements CustomVillagerData {
+@Mixin(Villager.class)
+public abstract class VillagerMixin implements CustomVillagerData {
     @Unique
     private String villagerinterface$customId;
 
-    @Inject(method = "interactMob", at = @At("HEAD"), cancellable = true)
-    private void villagerinterface$onInteract(PlayerEntity player, Hand hand, CallbackInfoReturnable<ActionResult> cir) {
+    @Inject(method = "mobInteract", at = @At("HEAD"), cancellable = true)
+    private void villagerinterface$onInteract(Player player, InteractionHand hand, CallbackInfoReturnable<InteractionResult> cir) {
         CustomVillagerManager manager = VillagerInterfaceMod.getVillagerManager();
-        if (!(player instanceof ServerPlayerEntity serverPlayer) || manager == null) {
+        if (!(player instanceof ServerPlayer serverPlayer) || manager == null) {
             return;
         }
 
-        VillagerEntity villager = (VillagerEntity) (Object) this;
+        Villager villager = (Villager) (Object) this;
         if (!manager.isCustomVillager(villager)) {
             return;
         }
 
         boolean started = VillagerInterfaceMod.getConversationManager().startConversation(serverPlayer, villager);
         if (started) {
-            cir.setReturnValue(ActionResult.SUCCESS);
+            cir.setReturnValue(InteractionResult.SUCCESS);
             cir.cancel();
         }
     }
@@ -48,29 +48,29 @@ public abstract class VillagerEntityMixin implements CustomVillagerData {
             return;
         }
 
-        VillagerEntity villager = (VillagerEntity) (Object) this;
-        if (villager.getEntityWorld().isClient()) {
+        Villager villager = (Villager) (Object) this;
+        if (villager.level().isClientSide()) {
             return;
         }
 
-        villager.setAiDisabled(true);
-        villager.setVelocity(Vec3d.ZERO);
+        villager.setNoAi(true);
+        villager.setDeltaMovement(Vec3.ZERO);
 
-        if (villager.hasVehicle()) {
+        if (villager.isPassenger()) {
             villager.stopRiding();
         }
     }
 
-    @Inject(method = "writeCustomData(Lnet/minecraft/storage/WriteView;)V", at = @At("HEAD"))
-    private void villagerinterface$writeCustomData(WriteView view, CallbackInfo ci) {
+    @Inject(method = "addAdditionalSaveData", at = @At("HEAD"))
+    private void villagerinterface$writeCustomData(ValueOutput view, CallbackInfo ci) {
         if (villagerinterface$customId != null) {
             view.putString(VillagerInterfaceMod.CUSTOM_VILLAGER_ID_KEY, villagerinterface$customId);
         }
     }
 
-    @Inject(method = "readCustomData(Lnet/minecraft/storage/ReadView;)V", at = @At("HEAD"))
-    private void villagerinterface$readCustomData(ReadView view, CallbackInfo ci) {
-        villagerinterface$customId = view.getOptionalString(VillagerInterfaceMod.CUSTOM_VILLAGER_ID_KEY).orElse(null);
+    @Inject(method = "readAdditionalSaveData", at = @At("HEAD"))
+    private void villagerinterface$readCustomData(ValueInput view, CallbackInfo ci) {
+        villagerinterface$customId = view.getString(VillagerInterfaceMod.CUSTOM_VILLAGER_ID_KEY).orElse(null);
     }
 
     @Override

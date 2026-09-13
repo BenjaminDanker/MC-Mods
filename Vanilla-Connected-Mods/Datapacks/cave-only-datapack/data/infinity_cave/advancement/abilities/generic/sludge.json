@@ -1,18 +1,18 @@
 {
-    "criteria": {
-      "requirement": {
-        "trigger": "minecraft:effects_changed",
-        "conditions": {
-          "effects": {
-            "minecraft:infested": {}
-          },
-          "source": {
-            "type": "minecraft:area_effect_cloud"
-          }
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:effects_changed",
+      "conditions": {
+        "effects": {
+          "minecraft:infested": {}
+        },
+        "source": {
+          "minecraft:entity_type": "minecraft:area_effect_cloud"
         }
       }
-    },
-    "rewards": {
-      "function": "infinity_cave:ai/sludge/get_sludge"
     }
+  },
+  "rewards": {
+    "function": "infinity_cave:ai/sludge/get_sludge"
   }
+}

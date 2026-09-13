@@ -31,7 +31,7 @@ public final class EnderFightMod implements ModInitializer {
         LOGGER.info("Initializing Ender Fight mod");
 
         try {
-            PayloadTypeRegistry.playC2S().register(ReturnOverworldHandler.PACKET_ID, ReturnOverworldHandler.codec);
+            PayloadTypeRegistry.serverboundPlay().register(ReturnOverworldHandler.PACKET_ID, ReturnOverworldHandler.codec);
         } catch (IllegalArgumentException ex) {
             LOGGER.debug("Return-overworld payload type already registered; skipping duplicate registration");
         }

@@ -2,25 +2,24 @@ package com.silver.aipets.fabric.ai;
 
 import com.silver.aipets.fabric.config.PetPhysicalConfig;
 import com.silver.aipets.fabric.entity.PetEntityData;
-import net.minecraft.entity.ai.goal.Goal;
-import net.minecraft.entity.passive.TameableEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-
 import java.util.EnumSet;
 import java.util.Objects;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.TamableAnimal;
+import net.minecraft.world.entity.ai.goal.Goal;
+import net.minecraft.world.entity.player.Player;
 
 /** Owner-only pathing with no teleport and no chunk-loading calls. */
 public final class PetFollowOwnerGoal extends Goal {
-    private final TameableEntity pet;
+    private final TamableAnimal pet;
     private final PetEntityData data;
     private final PetPhysicalConfig config;
     private final PetStuckDetector stuckDetector;
 
-    private PlayerEntity owner;
+    private Player owner;
     private int refreshCountdown;
 
-    public PetFollowOwnerGoal(TameableEntity pet, PetPhysicalConfig config) {
+    public PetFollowOwnerGoal(TamableAnimal pet, PetPhysicalConfig config) {
         this.pet = Objects.requireNonNull(pet, "pet");
         if (!(pet instanceof PetEntityData petData)) {
             throw new IllegalArgumentException("Pet entity is missing identity data");
@@ -30,40 +29,40 @@ public final class PetFollowOwnerGoal extends Goal {
         this.stuckDetector = new PetStuckDetector(
                 config.stuckTimeoutTicks(),
                 config.progressThreshold());
-        setControls(EnumSet.of(Control.MOVE));
+        setFlags(EnumSet.of(Flag.MOVE));
     }
 
     @Override
-    public boolean canStart() {
+    public boolean canUse() {
         owner = findLocalOwner();
         return owner != null
                 && !data.aipets$isSleeping()
-                && pet.squaredDistanceTo(owner)
+                && pet.distanceToSqr(owner)
                 > config.followStartDistance() * config.followStartDistance();
     }
 
     @Override
-    public boolean shouldContinue() {
+    public boolean canContinueToUse() {
         return owner != null
                 && owner.isAlive()
                 && !owner.isSpectator()
-                && owner.getEntityWorld() == pet.getEntityWorld()
+                && owner.level() == pet.level()
                 && !data.aipets$isSleeping()
-                && pet.squaredDistanceTo(owner)
+                && pet.distanceToSqr(owner)
                 > config.followStopDistance() * config.followStopDistance();
     }
 
     @Override
     public void start() {
         refreshCountdown = 0;
-        stuckDetector.reset(pet.getEntityPos());
+        stuckDetector.reset(pet.position());
     }
 
     @Override
     public void stop() {
         owner = null;
         pet.getNavigation().stop();
-        stuckDetector.reset(pet.getEntityPos());
+        stuckDetector.reset(pet.position());
     }
 
     @Override
@@ -76,33 +75,33 @@ public final class PetFollowOwnerGoal extends Goal {
         }
         refreshCountdown = config.pathRefreshTicks();
 
-        if (stuckDetector.sample(pet.getEntityPos(), config.pathRefreshTicks())) {
+        if (stuckDetector.sample(pet.position(), config.pathRefreshTicks())) {
             pet.getNavigation().stop();
         }
 
-        double squaredDistance = pet.squaredDistanceTo(owner);
+        double squaredDistance = pet.distanceToSqr(owner);
         // Use the owner's precise position rather than the entity-target overload.  The
         // latter resolves the target to a navigation node/entity anchor, which makes an
         // otherwise clear diagonal run look like a sequence of block-to-block corrections.
         // The coordinate overload still uses the mob navigation/pathfinder, so collision
         // handling and the existing stuck recovery remain unchanged.
-        pet.getNavigation().startMovingTo(
+        pet.getNavigation().moveTo(
                 owner.getX(),
                 owner.getY(),
                 owner.getZ(),
                 config.speedForSquaredDistance(squaredDistance));
     }
 
-    private PlayerEntity findLocalOwner() {
+    private Player findLocalOwner() {
         if (!data.aipets$isPet() || data.aipets$getOwnerUuid() == null) {
             return null;
         }
-        if (!(pet.getEntityWorld() instanceof ServerWorld world)) {
+        if (!(pet.level() instanceof ServerLevel world)) {
             return null;
         }
-        PlayerEntity candidate = world.getPlayerAnyDimension(data.aipets$getOwnerUuid());
+        Player candidate = world.getPlayerInAnyDimension(data.aipets$getOwnerUuid());
         if (candidate == null
-                || candidate.getEntityWorld() != pet.getEntityWorld()
+                || candidate.level() != pet.level()
                 || !candidate.isAlive()
                 || candidate.isSpectator()) {
             return null;

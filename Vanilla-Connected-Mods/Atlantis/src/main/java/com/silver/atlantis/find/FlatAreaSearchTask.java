@@ -1,15 +1,14 @@
 package com.silver.atlantis.find;
 
 import com.silver.atlantis.AtlantisMod;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.World;
-import net.minecraft.world.WorldProperties;
-
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.storage.LevelData;
 import java.util.Locale;
 import java.util.HashSet;
 import java.util.Random;
@@ -52,21 +51,21 @@ final class FlatAreaSearchTask {
     private FlatAreaSearchResult bestNearMiss;
     private FlatAreaSearchResult bestSuccess;
 
-    FlatAreaSearchTask(ServerCommandSource source, FlatAreaSearchConfig config, BlockPos avoidCenter) {
-        this.requesterId = source.getPlayer() != null ? source.getPlayer().getUuid() : null;
+    FlatAreaSearchTask(CommandSourceStack source, FlatAreaSearchConfig config, BlockPos avoidCenter) {
+        this.requesterId = source.getPlayer() != null ? source.getPlayer().getUUID() : null;
         this.config = config;
         this.avoidCenter = avoidCenter;
         this.startedAtMillis = System.currentTimeMillis();
 
         MinecraftServer server = source.getServer();
-        long seed = server.getOverworld() != null ? server.getOverworld().getRandom().nextLong() : System.nanoTime();
+        long seed = server.overworld() != null ? server.overworld().getRandom().nextLong() : System.nanoTime();
         this.random = new Random(seed);
 
         send(source.getServer(), "Flat-area search started (runs over multiple ticks)...");
     }
 
     boolean tick(MinecraftServer server) {
-        ServerWorld world = server.getWorld(World.OVERWORLD);
+        ServerLevel world = server.getLevel(Level.OVERWORLD);
         if (world == null) {
             send(server, "Flat-area search failed: overworld missing");
             return true;
@@ -77,11 +76,11 @@ final class FlatAreaSearchTask {
         }
 
         if (spawn == null) {
-            WorldProperties.SpawnPoint spawnPoint = server.getSpawnPoint();
+            LevelData.RespawnData spawnPoint = server.getRespawnData();
             if (spawnPoint == null) {
-                spawnPoint = world.getLevelProperties().getSpawnPoint();
+                spawnPoint = world.getLevelData().getRespawnData();
             }
-            spawn = spawnPoint != null ? spawnPoint.getPos() : BlockPos.ORIGIN;
+            spawn = spawnPoint != null ? spawnPoint.pos() : BlockPos.ZERO;
         }
 
         long deadline = System.nanoTime() + config.tickTimeBudgetNanos();
@@ -301,9 +300,9 @@ final class FlatAreaSearchTask {
 
     private void send(MinecraftServer server, String message) {
         if (requesterId != null) {
-            ServerPlayerEntity player = server.getPlayerManager().getPlayer(requesterId);
+            ServerPlayer player = server.getPlayerList().getPlayer(requesterId);
             if (player != null) {
-                player.sendMessage(Text.literal(message), false);
+                player.sendSystemMessage(Component.literal(message), false);
                 return;
             }
         }

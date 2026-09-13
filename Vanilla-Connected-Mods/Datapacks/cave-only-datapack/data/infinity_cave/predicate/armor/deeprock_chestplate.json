@@ -2,16 +2,15 @@
     "condition": "minecraft:entity_properties",
     "entity": "this",
     "predicate": {
-      "type": "minecraft:player",
-      "equipment": {
-        "chest": {
-          "components": {
-          "minecraft:custom_data": {
-            "ic": "deeprock_chestplate"
-          }
+        "minecraft:entity_type": "minecraft:player",
+        "equipment": {
+            "chest": {
+                "components": {
+                    "minecraft:custom_data": {
+                        "ic": "deeprock_chestplate"
+                    }
+                }
+            }
         }
-        }
-      }
     }
-  }
-  
+}

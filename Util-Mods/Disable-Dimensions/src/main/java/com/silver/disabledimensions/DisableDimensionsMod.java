@@ -1,9 +1,9 @@
 package com.silver.disabledimensions;
 
 import net.fabricmc.api.ModInitializer;
-import net.minecraft.registry.RegistryKey;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.world.World;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.Level;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,11 +25,11 @@ public final class DisableDimensionsMod implements ModInitializer {
         return MANAGER;
     }
 
-    public static boolean shouldBlockTeleportInto(ServerPlayerEntity player, RegistryKey<World> targetDimension) {
+    public static boolean shouldBlockTeleportInto(ServerPlayer player, ResourceKey<Level> targetDimension) {
         return MANAGER.shouldBlockTeleportInto(player, targetDimension);
     }
 
-    public static void notifyBlockedTeleport(ServerPlayerEntity player) {
+    public static void notifyBlockedTeleport(ServerPlayer player) {
         MANAGER.notifyBlockedTeleport(player);
     }
 }

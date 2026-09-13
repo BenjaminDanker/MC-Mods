@@ -23,7 +23,7 @@
             "condition": "minecraft:entity_properties",
             "entity": "this",
             "predicate": {
-              "type": "minecraft:stray",
+              "minecraft:entity_type": "minecraft:stray",
               "team": "ic.mob_team",
               "equipment": {
                 "mainhand": {

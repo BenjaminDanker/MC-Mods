@@ -1,25 +1,24 @@
 package com.silver.atlantis.find;
 
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.WorldProperties;
-
 import java.util.Random;
+import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.storage.LevelData;
 
 public final class FlatAreaFinder {
 
     private FlatAreaFinder() {}
 
-    public static FlatAreaSearchResult find(ServerWorld world, Random random, FlatAreaSearchConfig config) {
+    public static FlatAreaSearchResult find(ServerLevel world, Random random, FlatAreaSearchConfig config) {
         SurfaceHeightSampler heightSampler = WorldgenSurfaceHeightSampler.forWorld(world);
-        WorldProperties.SpawnPoint spawnPoint = null;
+        LevelData.RespawnData spawnPoint = null;
         if (world.getServer() != null) {
-            spawnPoint = world.getServer().getSpawnPoint();
+            spawnPoint = world.getServer().getRespawnData();
         }
         if (spawnPoint == null) {
-            spawnPoint = world.getLevelProperties().getSpawnPoint();
+            spawnPoint = world.getLevelData().getRespawnData();
         }
-        BlockPos spawn = spawnPoint != null ? spawnPoint.getPos() : BlockPos.ORIGIN;
+        BlockPos spawn = spawnPoint != null ? spawnPoint.pos() : BlockPos.ZERO;
 
         FlatAreaSearchResult bestNearMiss = null;
 
@@ -45,7 +44,7 @@ public final class FlatAreaFinder {
     }
 
     private static FlatAreaSearchResult evaluateWindow(
-        ServerWorld world,
+        ServerLevel world,
         SurfaceHeightSampler sampler,
         BlockPos center,
         int windowSize,

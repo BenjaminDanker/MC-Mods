@@ -11,7 +11,7 @@
       "type": "uniform",
       "max_inclusive": 8,
       "min_inclusive": 2
-      },
+    },
     "replaceable": "#infinity_cave:all_but_lava",
     "ground_state": {
       "type": "minecraft:weighted_state_provider",
@@ -54,8 +54,8 @@
             {
               "height": {
                 "type": "minecraft:uniform",
-                  "min_inclusive": 1,
-                  "max_inclusive": 3
+                "min_inclusive": 1,
+                "max_inclusive": 3
               },
               "provider": {
                 "type": "minecraft:simple_state_provider",

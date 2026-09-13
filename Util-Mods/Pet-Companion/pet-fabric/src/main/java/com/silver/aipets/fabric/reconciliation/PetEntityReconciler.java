@@ -14,11 +14,10 @@ import com.silver.aipets.fabric.entity.PetEntityController;
 import com.silver.aipets.fabric.entity.PetEntityData;
 import com.silver.aipets.fabric.metrics.PetMetricsReporter;
 import com.silver.aipets.fabric.metrics.PetMetricsClassifier;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.passive.TameableEntity;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.world.ServerWorld;
-
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.TamableAnimal;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -44,10 +43,10 @@ public final class PetEntityReconciler {
 
     public CompletableFuture<PetEntityReconciliationResult> reconcileLoaded(
             Entity entity,
-            ServerWorld world) {
+            ServerLevel world) {
         Objects.requireNonNull(entity, "entity");
         Objects.requireNonNull(world, "world");
-        if (!(entity instanceof TameableEntity tameable)
+        if (!(entity instanceof TamableAnimal tameable)
                 || !(entity instanceof PetEntityData data)
                 || !data.aipets$isPet()) {
             return CompletableFuture.completedFuture(PetEntityReconciliationResult.of(
@@ -92,8 +91,8 @@ public final class PetEntityReconciler {
     }
 
     private void apply(
-            TameableEntity entity,
-            ServerWorld world,
+            TamableAnimal entity,
+            ServerLevel world,
             PetEntityIdentity identity,
             long entityRecordVersion,
             Optional<PetAuthoritySnapshot> snapshot,
@@ -136,7 +135,7 @@ public final class PetEntityReconciler {
     }
 
     private void discard(
-            TameableEntity entity,
+            TamableAnimal entity,
             PetEntityIdentity identity,
             long entityRecordVersion,
             Pet pet,
@@ -150,22 +149,22 @@ public final class PetEntityReconciler {
                 .toJson());
     }
 
-    private PetEntityIdentity identity(ServerWorld world, Entity entity, PetEntityData data) {
+    private PetEntityIdentity identity(ServerLevel world, Entity entity, PetEntityData data) {
         return new PetEntityIdentity(
                 data.aipets$getPetId(),
                 data.aipets$getOwnerUuid(),
                 backendId,
-                DimensionId.parse(world.getRegistryKey().getValue().toString()),
-                entity.getUuid());
+                DimensionId.parse(world.dimension().identifier().toString()),
+                entity.getUUID());
     }
 
     private boolean sameLoadedEntity(
-            TameableEntity entity,
-            ServerWorld world,
+            TamableAnimal entity,
+            ServerLevel world,
             PetEntityIdentity expected) {
         if (entity.isRemoved()
-                || entity.getEntityWorld() != world
-                || world.getEntityAnyDimension(expected.entityUuid()) != entity
+                || entity.level() != world
+                || world.getEntityInAnyDimension(expected.entityUuid()) != entity
                 || !(entity instanceof PetEntityData data)
                 || !data.aipets$isPet()) {
             return false;
@@ -174,7 +173,7 @@ public final class PetEntityReconciler {
     }
 
     private static void onServer(MinecraftServer server, Runnable action) {
-        if (server.isOnThread()) {
+        if (server.isSameThread()) {
             action.run();
         } else {
             server.execute(action);

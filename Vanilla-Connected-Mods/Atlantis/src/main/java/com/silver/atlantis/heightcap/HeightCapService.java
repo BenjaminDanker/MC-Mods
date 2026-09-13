@@ -2,10 +2,9 @@ package com.silver.atlantis.heightcap;
 
 import com.silver.atlantis.AtlantisMod;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.Text;
-
+import net.minecraft.server.level.ServerPlayer;
 import java.util.Locale;
 
 public final class HeightCapService {
@@ -44,12 +43,12 @@ public final class HeightCapService {
         }
     }
 
-    public void sendStatus(ServerPlayerEntity player) {
+    public void sendStatus(ServerPlayer player) {
         String msg = String.format(Locale.ROOT,
             "Height cap is %s. Players at/above Y=318 are teleported to Y=317.",
             enabled ? "ENABLED" : "DISABLED"
         );
-        player.sendMessage(Text.literal(msg), false);
+        player.sendSystemMessage(Component.literal(msg), false);
     }
 
     private void onEndServerTick(MinecraftServer server) {
@@ -57,13 +56,14 @@ public final class HeightCapService {
             return;
         }
 
-        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             if (player == null) {
                 continue;
             }
 
             // Allow admins/operators to bypass the cap.
-            if (player.hasPermissionLevel(2)) {
+            if (player.createCommandSourceStack().permissions() instanceof net.minecraft.server.permissions.LevelBasedPermissionSet levels
+                && levels.level().isEqualOrHigherThan(net.minecraft.server.permissions.PermissionLevel.byId(2))) {
                 continue;
             }
 
@@ -71,8 +71,8 @@ public final class HeightCapService {
                 // Keep X/Z and rotation; clamp to 317.
                 double x = player.getX();
                 double z = player.getZ();
-                player.setPosition(x, TELEPORT_TO_Y, z);
-                player.networkHandler.requestTeleport(x, TELEPORT_TO_Y, z, player.getYaw(), player.getPitch());
+                player.setPos(x, TELEPORT_TO_Y, z);
+                player.connection.teleport(x, TELEPORT_TO_Y, z, player.getYRot(), player.getXRot());
             }
         }
     }

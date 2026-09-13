@@ -1,14 +1,13 @@
 package com.silver.atlantis.construct;
 
 import com.silver.atlantis.AtlantisMod;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.ChunkPos;
-
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.ChunkPos;
 
 final class ConstructChunkGenerationScheduler {
 
@@ -37,7 +36,7 @@ final class ConstructChunkGenerationScheduler {
         forceLatencyEwmaNanos = 0L;
 
         for (ChunkPos pos : chunks) {
-            long key = ChunkPos.toLong(pos.x, pos.z);
+            long key = ChunkPos.pack(pos.x(), pos.z());
             if (pendingKeys.contains(key)) {
                 continue;
             }
@@ -48,7 +47,7 @@ final class ConstructChunkGenerationScheduler {
         AtlantisMod.LOGGER.info("[construct-chunk-prep] queued {} chunk(s).", pending.size());
     }
 
-    boolean tickGenerate(ServerWorld world, int budgetPerTick) {
+    boolean tickGenerate(ServerLevel world, int budgetPerTick) {
         if (pending.isEmpty()) {
             return true;
         }
@@ -66,7 +65,7 @@ final class ConstructChunkGenerationScheduler {
                 break;
             }
 
-            long key = ChunkPos.toLong(pos.x, pos.z);
+            long key = ChunkPos.pack(pos.x(), pos.z());
             pendingKeys.remove(key);
 
             long startedAt = System.nanoTime();
@@ -75,12 +74,12 @@ final class ConstructChunkGenerationScheduler {
 
             updateAdaptiveCooldown(elapsedNanos);
 
-            boolean loadedNow = world.getChunkManager().isChunkLoaded(pos.x, pos.z);
+            boolean loadedNow = world.getChunkSource().hasChunk(pos.x(), pos.z());
             if (loadedNow) {
                 recentlyGeneratedChunkKeys.add(key);
                 observeLoadedNeighborhood(world, pos);
             }
-            AtlantisMod.LOGGER.debug("[construct-chunk-prep] chunk prep chunk=({}, {}), pending={}, loadedNow={}", pos.x, pos.z, pending.size(), loadedNow);
+            AtlantisMod.LOGGER.debug("[construct-chunk-prep] chunk prep chunk=({}, {}), pending={}, loadedNow={}", pos.x(), pos.z(), pending.size(), loadedNow);
             started++;
 
             if (elapsedNanos >= HEAVY_FORCE_NANOS) {
@@ -95,7 +94,7 @@ final class ConstructChunkGenerationScheduler {
         return pending.isEmpty();
     }
 
-    void releaseTickets(ServerWorld world) {
+    void releaseTickets(ServerLevel world) {
         pending.clear();
         pendingKeys.clear();
         AtlantisMod.LOGGER.info("[construct-chunk-prep] released prep scheduler state (observedLoadedChunks={}).", observedLoadedChunkKeys.size());
@@ -145,21 +144,21 @@ final class ConstructChunkGenerationScheduler {
         cooldownTicksTarget = Math.max(0, cooldownTicksTarget - 1);
     }
 
-    private void forceChunkGeneration(ServerWorld world, ChunkPos pos) {
+    private void forceChunkGeneration(ServerLevel world, ChunkPos pos) {
         try {
-            world.getChunk(pos.x, pos.z);
+            world.getChunk(pos.x(), pos.z());
         } catch (Exception e) {
-            AtlantisMod.LOGGER.warn("[construct-chunk-prep] failed forcing full chunk generation for ({}, {}): {}", pos.x, pos.z, e.toString());
+            AtlantisMod.LOGGER.warn("[construct-chunk-prep] failed forcing full chunk generation for ({}, {}): {}", pos.x(), pos.z(), e.toString());
         }
     }
 
-    private void observeLoadedNeighborhood(ServerWorld world, ChunkPos center) {
+    private void observeLoadedNeighborhood(ServerLevel world, ChunkPos center) {
         for (int dx = -1; dx <= 1; dx++) {
             for (int dz = -1; dz <= 1; dz++) {
-                int chunkX = center.x + dx;
-                int chunkZ = center.z + dz;
-                if (world.getChunkManager().isChunkLoaded(chunkX, chunkZ)) {
-                    observedLoadedChunkKeys.add(ChunkPos.toLong(chunkX, chunkZ));
+                int chunkX = center.x() + dx;
+                int chunkZ = center.z() + dz;
+                if (world.getChunkSource().hasChunk(chunkX, chunkZ)) {
+                    observedLoadedChunkKeys.add(ChunkPos.pack(chunkX, chunkZ));
                 }
             }
         }

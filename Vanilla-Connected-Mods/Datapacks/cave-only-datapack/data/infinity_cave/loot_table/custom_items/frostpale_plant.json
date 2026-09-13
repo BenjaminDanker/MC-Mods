@@ -10,6 +10,16 @@
             {
               "type": "minecraft:item",
               "name": "minecraft:armor_stand",
+              "conditions": [
+                {
+                  "block": "minecraft:pitcher_crop",
+                  "condition": "minecraft:block_state_property",
+                  "properties": {
+                    "age": "0",
+                    "half": "lower"
+                  }
+                }
+              ],
               "functions": [
                 {
                   "function": "minecraft:set_components",

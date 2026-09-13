@@ -1,11 +1,11 @@
 package com.silver.skyislands.giantmobs;
 
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.math.random.Random;
-import net.minecraft.world.Heightmap;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.levelgen.Heightmap;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -15,15 +15,15 @@ public final class GiantGroundFinder {
     private final Map<Long, CachedGround> cache = new HashMap<>();
     private final Map<Long, Long> nextAllowedScanTick = new HashMap<>();
 
-    public Optional<BlockPos> findSpawnPosAtColumn(ServerWorld world,
+    public Optional<BlockPos> findSpawnPosAtColumn(ServerLevel world,
                                                    int centerX,
                                                    int centerZ,
                                                    GiantMobsConfig config,
-                                                   Random random,
+                                                   RandomSource random,
                                                    long serverTick) {
         Optional<BlockPos> ground = findGroundColumn(world, centerX, centerZ, config, serverTick);
         if (ground.isPresent()) {
-            return ground.map(pos -> pos.up(config.spawnHeightAboveGround));
+            return ground.map(pos -> pos.above(config.spawnHeightAboveGround));
         }
 
         int radius = config.groundSearchHorizontalRadiusBlocks;
@@ -36,17 +36,17 @@ public final class GiantGroundFinder {
             int offsetZ = random.nextInt(radius * 2 + 1) - radius;
             ground = findGroundColumn(world, centerX + offsetX, centerZ + offsetZ, config, serverTick);
             if (ground.isPresent()) {
-                return ground.map(pos -> pos.up(config.spawnHeightAboveGround));
+                return ground.map(pos -> pos.above(config.spawnHeightAboveGround));
             }
         }
 
         return Optional.empty();
     }
 
-    public Optional<BlockPos> findSpawnPosNear(ServerWorld world,
-                                               Vec3d center,
+    public Optional<BlockPos> findSpawnPosNear(ServerLevel world,
+                                               Vec3 center,
                                                GiantMobsConfig config,
-                                               Random random,
+                                               RandomSource random,
                                                long serverTick) {
         int centerX = (int) Math.floor(center.x);
         int centerZ = (int) Math.floor(center.z);
@@ -63,7 +63,7 @@ public final class GiantGroundFinder {
 
             Optional<BlockPos> ground = findGroundColumn(world, sampleX, sampleZ, config, serverTick);
             if (ground.isPresent()) {
-                return ground.map(pos -> pos.up(config.spawnHeightAboveGround));
+                return ground.map(pos -> pos.above(config.spawnHeightAboveGround));
             }
 
             int radius = config.groundSearchHorizontalRadiusBlocks;
@@ -75,14 +75,14 @@ public final class GiantGroundFinder {
             int offsetZ = random.nextInt(radius * 2 + 1) - radius;
             ground = findGroundColumn(world, sampleX + offsetX, sampleZ + offsetZ, config, serverTick);
             if (ground.isPresent()) {
-                return ground.map(pos -> pos.up(config.spawnHeightAboveGround));
+                return ground.map(pos -> pos.above(config.spawnHeightAboveGround));
             }
         }
 
         return Optional.empty();
     }
 
-    private Optional<BlockPos> findGroundColumn(ServerWorld world,
+    private Optional<BlockPos> findGroundColumn(ServerLevel world,
                                                 int x,
                                                 int z,
                                                 GiantMobsConfig config,
@@ -100,14 +100,14 @@ public final class GiantGroundFinder {
 
         nextAllowedScanTick.put(key, serverTick + config.groundSearchCooldownTicks);
 
-        int topY = world.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, x, z);
-        int minY = Math.max(world.getBottomY(), topY - config.groundSearchVerticalRangeBlocks);
+        int topY = world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+        int minY = Math.max(world.getMinY(), topY - config.groundSearchVerticalRangeBlocks);
         for (int y = topY; y >= minY; y--) {
             BlockPos pos = new BlockPos(x, y, z);
             if (world.getBlockState(pos).isAir()) {
                 continue;
             }
-            if (!world.getBlockState(pos).isSideSolidFullSquare(world, pos, Direction.UP)) {
+            if (!world.getBlockState(pos).isFaceSturdy(world, pos, Direction.UP)) {
                 continue;
             }
 

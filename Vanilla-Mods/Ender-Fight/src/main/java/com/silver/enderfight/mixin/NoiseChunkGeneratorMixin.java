@@ -1,60 +1,60 @@
 package com.silver.enderfight.mixin;
 
 import com.silver.enderfight.duck.NoiseChunkGeneratorExtension;
-import net.minecraft.world.gen.chunk.NoiseChunkGenerator;
-import net.minecraft.world.gen.noise.NoiseConfig;
+import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
+import net.minecraft.world.level.levelgen.RandomState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 
-@Mixin(NoiseChunkGenerator.class)
+@Mixin(NoiseBasedChunkGenerator.class)
 public abstract class NoiseChunkGeneratorMixin implements NoiseChunkGeneratorExtension {
     @Unique
-    private NoiseConfig endfight$customNoiseConfig;
+    private RandomState endfight$customNoiseConfig;
 
     @Override
-    public void endfight$setCustomNoiseConfig(NoiseConfig config) {
+    public void endfight$setCustomNoiseConfig(RandomState config) {
         this.endfight$customNoiseConfig = config;
     }
 
     @Override
-    public NoiseConfig endfight$getCustomNoiseConfig() {
+    public RandomState endfight$getCustomNoiseConfig() {
         return this.endfight$customNoiseConfig;
     }
 
-    @ModifyVariable(method = "populateBiomes", at = @At("HEAD"), argsOnly = true)
-    private NoiseConfig endfight$swapPopulateBiomesConfig(NoiseConfig original) {
+    @ModifyVariable(method = "createBiomes", at = @At("HEAD"), argsOnly = true)
+    private RandomState endfight$swapPopulateBiomesConfig(RandomState original) {
         return this.endfight$customNoiseConfig != null ? this.endfight$customNoiseConfig : original;
     }
 
-    @ModifyVariable(method = "populateNoise", at = @At("HEAD"), argsOnly = true)
-    private NoiseConfig endfight$swapPopulateNoiseConfig(NoiseConfig original) {
+    @ModifyVariable(method = "fillFromNoise", at = @At("HEAD"), argsOnly = true)
+    private RandomState endfight$swapPopulateNoiseConfig(RandomState original) {
         return this.endfight$customNoiseConfig != null ? this.endfight$customNoiseConfig : original;
     }
 
-    @ModifyVariable(method = "buildSurface(Lnet/minecraft/world/ChunkRegion;Lnet/minecraft/world/gen/StructureAccessor;Lnet/minecraft/world/gen/noise/NoiseConfig;Lnet/minecraft/world/chunk/Chunk;)V", at = @At("HEAD"), argsOnly = true)
-    private NoiseConfig endfight$swapBuildSurfaceConfig1(NoiseConfig original) {
+    @ModifyVariable(method = "buildSurface(Lnet/minecraft/server/level/WorldGenRegion;Lnet/minecraft/world/level/StructureManager;Lnet/minecraft/world/level/levelgen/RandomState;Lnet/minecraft/world/level/chunk/ChunkAccess;)V", at = @At("HEAD"), argsOnly = true)
+    private RandomState endfight$swapBuildSurfaceConfig1(RandomState original) {
         return this.endfight$customNoiseConfig != null ? this.endfight$customNoiseConfig : original;
     }
 
-    @ModifyVariable(method = "buildSurface(Lnet/minecraft/world/chunk/Chunk;Lnet/minecraft/world/gen/HeightContext;Lnet/minecraft/world/gen/noise/NoiseConfig;Lnet/minecraft/world/gen/StructureAccessor;Lnet/minecraft/world/biome/source/BiomeAccess;Lnet/minecraft/registry/Registry;Lnet/minecraft/world/gen/chunk/Blender;)V", at = @At("HEAD"), argsOnly = true)
-    private NoiseConfig endfight$swapBuildSurfaceConfig2(NoiseConfig original) {
+    @ModifyVariable(method = "buildSurface(Lnet/minecraft/world/level/chunk/ChunkAccess;Lnet/minecraft/world/level/levelgen/WorldGenerationContext;Lnet/minecraft/world/level/levelgen/RandomState;Lnet/minecraft/world/level/StructureManager;Lnet/minecraft/world/level/biome/BiomeManager;Lnet/minecraft/world/level/levelgen/blending/Blender;Ljava/util/Set;)V", at = @At("HEAD"), argsOnly = true)
+    private RandomState endfight$swapBuildSurfaceConfig2(RandomState original) {
         return this.endfight$customNoiseConfig != null ? this.endfight$customNoiseConfig : original;
     }
 
-    @ModifyVariable(method = "carve", at = @At("HEAD"), argsOnly = true, ordinal = 0)
-    private NoiseConfig endfight$swapCarveConfig(NoiseConfig original) {
+    @ModifyVariable(method = "applyCarvers", at = @At("HEAD"), argsOnly = true)
+    private RandomState endfight$swapCarveConfig(RandomState original) {
         return this.endfight$customNoiseConfig != null ? this.endfight$customNoiseConfig : original;
     }
 
-    @ModifyVariable(method = "getHeight", at = @At("HEAD"), argsOnly = true)
-    private NoiseConfig endfight$swapGetHeightConfig(NoiseConfig original) {
+    @ModifyVariable(method = "getBaseHeight", at = @At("HEAD"), argsOnly = true)
+    private RandomState endfight$swapGetHeightConfig(RandomState original) {
         return this.endfight$customNoiseConfig != null ? this.endfight$customNoiseConfig : original;
     }
 
-    @ModifyVariable(method = "getColumnSample", at = @At("HEAD"), argsOnly = true)
-    private NoiseConfig endfight$swapGetColumnSampleConfig(NoiseConfig original) {
+    @ModifyVariable(method = "getBaseColumn", at = @At("HEAD"), argsOnly = true)
+    private RandomState endfight$swapGetColumnSampleConfig(RandomState original) {
         return this.endfight$customNoiseConfig != null ? this.endfight$customNoiseConfig : original;
     }
 

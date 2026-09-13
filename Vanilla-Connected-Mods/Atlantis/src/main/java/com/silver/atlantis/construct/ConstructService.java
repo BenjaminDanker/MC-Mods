@@ -2,12 +2,11 @@ package com.silver.atlantis.construct;
 
 import com.silver.atlantis.AtlantisMod;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.BlockPos;
-
+import net.minecraft.server.level.ServerLevel;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -96,7 +95,7 @@ public final class ConstructService {
         }
     }
 
-    public boolean start(ServerCommandSource source, ConstructConfig config, ServerWorld world, BlockPos center) {
+    public boolean start(CommandSourceStack source, ConstructConfig config, ServerLevel world, BlockPos center) {
         if (activeJob != null) {
             return false;
         }
@@ -108,8 +107,8 @@ public final class ConstructService {
             activeJob = new ConstructTask(source, config, world, center, ioExecutor);
         } catch (NoClassDefFoundError err) {
             AtlantisMod.LOGGER.error("Failed to start construct due to missing classes.", err);
-            source.sendFeedback(
-                () -> Text.literal("Cannot start /construct: missing runtime class: " + err.getMessage() + "."),
+            source.sendSuccess(
+                () -> Component.literal("Cannot start /construct: missing runtime class: " + err.getMessage() + "."),
                 false
             );
             activeJob = null;
@@ -119,7 +118,7 @@ public final class ConstructService {
         return true;
     }
 
-    public boolean resumeLatest(ServerCommandSource source, ConstructConfig config, ServerWorld world) {
+    public boolean resumeLatest(CommandSourceStack source, ConstructConfig config, ServerLevel world) {
         if (activeJob != null) {
             return false;
         }
@@ -136,8 +135,8 @@ public final class ConstructService {
             activeJob = new ConstructTask(source, config, world, resumeState, ioExecutor);
         } catch (NoClassDefFoundError err) {
             AtlantisMod.LOGGER.error("Failed to resume construct due to missing classes.", err);
-            source.sendFeedback(
-                () -> Text.literal("Cannot resume /construct: missing runtime class: " + err.getMessage() + "."),
+            source.sendSuccess(
+                () -> Component.literal("Cannot resume /construct: missing runtime class: " + err.getMessage() + "."),
                 false
             );
             activeJob = null;
@@ -147,7 +146,7 @@ public final class ConstructService {
         return true;
     }
 
-    public boolean startUndo(ServerCommandSource source, ConstructConfig config, MinecraftServer server, String runIdOrNull) {
+    public boolean startUndo(CommandSourceStack source, ConstructConfig config, MinecraftServer server, String runIdOrNull) {
         if (activeJob != null) {
             return false;
         }
@@ -159,8 +158,8 @@ public final class ConstructService {
             activeJob = new ConstructUndoTask(source, config, server, runIdOrNull, ioExecutor);
         } catch (NoClassDefFoundError err) {
             AtlantisMod.LOGGER.error("Failed to start construct undo due to missing classes.", err);
-            source.sendFeedback(
-                () -> Text.literal("Cannot start /construct undo: missing runtime class: " + err.getMessage() + "."),
+            source.sendSuccess(
+                () -> Component.literal("Cannot start /construct undo: missing runtime class: " + err.getMessage() + "."),
                 false
             );
             activeJob = null;

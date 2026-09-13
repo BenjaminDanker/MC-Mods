@@ -1,13 +1,13 @@
 package com.silver.skyislands.enderdragons.mixins;
 
 import com.silver.skyislands.enderdragons.EnderDragonManager;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.boss.dragon.EnderDragonEntity;
-import net.minecraft.server.network.EntityTrackerEntry;
-import net.minecraft.server.network.PlayerAssociatedNetworkHandler;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+import net.minecraft.server.level.ChunkMap.TrackedEntity;
+import net.minecraft.server.network.ServerGamePacketListenerImpl;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -20,31 +20,31 @@ import java.util.UUID;
 import java.util.HashSet;
 import org.spongepowered.asm.mixin.Unique;
 
-@Mixin(targets = "net.minecraft.server.world.ServerChunkLoadingManager$EntityTracker")
+@Mixin(targets = "net.minecraft.server.level.ServerChunkCache$EntityTracker")
 public abstract class EntityTrackerMixin {
 
     @Shadow @Final private Entity entity;
     @Shadow @Final private Set<PlayerAssociatedNetworkHandler> listeners;
     @Shadow @Final private EntityTrackerEntry entry;
 
-    @Shadow public abstract void stopTracking(ServerPlayerEntity player);
+    @Shadow public abstract void stopTracking(ServerPlayer player);
 
     @Unique
     private final Set<UUID> skyislands$resyncedPlayers = new HashSet<>();
 
-    @Inject(method = "updateTrackedStatus(Lnet/minecraft/server/network/ServerPlayerEntity;)V", at = @At("HEAD"), cancellable = true)
-    private void skyislands$forceDragonTracking(ServerPlayerEntity player, CallbackInfo ci) {
-        if (this.entity instanceof EnderDragonEntity dragon && EnderDragonManager.isManaged(dragon)) {
-            if (player.getEntityWorld() != this.entity.getEntityWorld()) {
+    @Inject(method = "updateTrackedStatus(Lnet/minecraft/server/network/ServerPlayer;)V", at = @At("HEAD"), cancellable = true)
+    private void skyislands$forceDragonTracking(ServerPlayer player, CallbackInfo ci) {
+        if (this.entity instanceof EnderDragon dragon && EnderDragonManager.isManaged(dragon)) {
+            if (player.level() != this.entity.level()) {
                 this.stopTracking(player);
                 ci.cancel();
                 return;
             }
 
             // We want to force track the dragon if it's within a large distance, bypassing vanilla chunk tracking checks.
-            Vec3d playerPos = player.getEntityPos();
-            Vec3d dragonPos = dragon.getEntityPos();
-            double distanceSq = playerPos.squaredDistanceTo(dragonPos);
+            Vec3 playerPos = player.position();
+            Vec3 dragonPos = dragon.position();
+            double distanceSq = playerPos.distanceToSqr(dragonPos);
 
             // We use a distance that covers the absolute max unsimulated view distance of View-Extend (127 chunks).
             // 127 chunks = 2032 blocks. 2032^2 = 4129024
@@ -58,26 +58,26 @@ public abstract class EntityTrackerMixin {
                 // until they fully traverse a chunk or the buffer settles.
                 // We fix this by force re-sending the spawn packet once they enter normal rendering bounds.
                 boolean isClose = distanceSq <= 160.0 * 160.0;
-                if (isClose && this.skyislands$resyncedPlayers.add(player.getUuid())) {
+                if (isClose && this.skyislands$resyncedPlayers.add(player.getUUID())) {
                     this.stopTracking(player);
                 } else if (!isClose) {
-                    this.skyislands$resyncedPlayers.remove(player.getUuid());
+                    this.skyislands$resyncedPlayers.remove(player.getUUID());
                 }
 
                 // Force track
-                if (this.listeners.add(player.networkHandler)) {
+                if (this.listeners.add(player.connection)) {
                     this.entry.startTracking(player);
 
                     // Handle SubscriptionTracker (debug rendering)
                     if (this.listeners.size() == 1) {
-                        ((ServerWorld) this.entity.getEntityWorld()).getSubscriptionTracker().trackEntity(this.entity);
+                        ((ServerLevel) this.entity.level()).getSubscriptionTracker().trackEntity(this.entity);
                     }
-                    ((ServerWorld) this.entity.getEntityWorld()).getSubscriptionTracker().sendInitialIfSubscribed(player, this.entity);
+                    ((ServerLevel) this.entity.level()).getSubscriptionTracker().sendInitialIfSubscribed(player, this.entity);
                 }
             } else {
                 // Force untrack
                 this.stopTracking(player);
-                this.skyislands$resyncedPlayers.remove(player.getUuid());
+                this.skyislands$resyncedPlayers.remove(player.getUUID());
             }
 
             // Cancel vanilla logic so it doesn't immediately untrack the dragon due to chunk not being tracked

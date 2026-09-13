@@ -6,7 +6,7 @@
         "damage": {
           "blocked": false,
           "source_entity": {
-            "type": "minecraft:drowned",
+            "minecraft:entity_type": "minecraft:drowned",
             "team": "ic.mob_team",
             "equipment": {
               "mainhand": {
@@ -20,7 +20,7 @@
           },
           "type": {
             "direct_entity": {
-              "type": "minecraft:trident"
+              "minecraft:entity_type": "minecraft:trident"
             }
           }
         }

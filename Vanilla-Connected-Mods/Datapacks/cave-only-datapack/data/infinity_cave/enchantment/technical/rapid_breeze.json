@@ -60,9 +60,9 @@
             "condition": "minecraft:entity_properties",
             "entity": "this",
             "predicate": {
-              "type": "#infinity_cave:aggro",
+              "minecraft:entity_type": "#infinity_cave:aggro",
               "targeted_entity": {
-                "type": "minecraft:player"
+                "minecraft:entity_type": "minecraft:player"
               }
             }
           }

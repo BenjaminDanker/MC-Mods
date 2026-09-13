@@ -34,9 +34,9 @@
             "entity": "this",
             "predicate": {
               "periodic_tick": 10,
-              "type": "#infinity_cave:aggro",
+              "minecraft:entity_type": "#infinity_cave:aggro",
               "targeted_entity": {
-                "type": "minecraft:player"
+                "minecraft:entity_type": "minecraft:player"
               }
             }
           }
@@ -60,9 +60,9 @@
                   }
                 }
               },
-              "type": "#infinity_cave:aggro",
+              "minecraft:entity_type": "#infinity_cave:aggro",
               "targeted_entity": {
-                "type": "minecraft:player"
+                "minecraft:entity_type": "minecraft:player"
               }
             }
           }
@@ -79,9 +79,9 @@
             "entity": "this",
             "predicate": {
               "periodic_tick": 10,
-              "type": "#infinity_cave:aggro",
+              "minecraft:entity_type": "#infinity_cave:aggro",
               "targeted_entity": {
-                "type": "minecraft:player",
+                "minecraft:entity_type": "minecraft:player",
                 "distance": {
                   "absolute": {
                     "min": 3

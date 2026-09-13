@@ -1,10 +1,11 @@
 package com.silver.disabledimensions;
 
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.registry.RegistryKey;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.Text;
-import net.minecraft.world.World;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.level.Level;
+import net.minecraft.server.permissions.Permissions;
 
 import java.nio.file.Path;
 import java.util.Map;
@@ -12,7 +13,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 final class DisableDimensionsManager {
-    private static final Text BLOCKED_DIMENSION_MESSAGE = Text.literal("That dimension is currently disabled.");
+    private static final Component BLOCKED_DIMENSION_MESSAGE = Component.literal("That dimension is currently disabled.");
     private static final long MESSAGE_THROTTLE_MS = 1000L;
 
     private final Path configPath = FabricLoader.getInstance().getConfigDir().resolve("disable-dimensions.properties");
@@ -29,31 +30,31 @@ final class DisableDimensionsManager {
         );
     }
 
-    boolean shouldBlockTeleportInto(ServerPlayerEntity player, RegistryKey<World> targetDimension) {
+    boolean shouldBlockTeleportInto(ServerPlayer player, ResourceKey<Level> targetDimension) {
         if (player == null || player.isRemoved() || targetDimension == null) {
             return false;
         }
 
         DisableDimensionsConfig snapshot = config;
-        if (snapshot.allowOpBypass() && player.hasPermissionLevel(2)) {
+        if (snapshot.allowOpBypass() && player.permissions().hasPermission(Permissions.COMMANDS_ADMIN)) {
             return false;
         }
 
-        return (snapshot.disableNether() && targetDimension == World.NETHER)
-            || (snapshot.disableEnd() && targetDimension == World.END);
+        return (snapshot.disableNether() && targetDimension == Level.NETHER)
+            || (snapshot.disableEnd() && targetDimension == Level.END);
     }
 
-    void notifyBlockedTeleport(ServerPlayerEntity player) {
+    void notifyBlockedTeleport(ServerPlayer player) {
         if (player != null) {
             long now = System.currentTimeMillis();
-            UUID playerId = player.getUuid();
+            UUID playerId = player.getUUID();
             Long lastSent = lastBlockedMessageByPlayer.get(playerId);
             if (lastSent != null && (now - lastSent) < MESSAGE_THROTTLE_MS) {
                 return;
             }
 
             lastBlockedMessageByPlayer.put(playerId, now);
-            player.sendMessage(BLOCKED_DIMENSION_MESSAGE, false);
+            player.sendSystemMessage(BLOCKED_DIMENSION_MESSAGE);
         }
     }
 

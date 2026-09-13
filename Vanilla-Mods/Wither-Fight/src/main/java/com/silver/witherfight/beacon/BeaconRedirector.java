@@ -7,17 +7,17 @@ import com.silver.portalprotocol.PortalRequestPayload;
 import com.silver.portalprotocol.PortalRequestPayloadCodec;
 import com.silver.portalprotocol.PortalRequestSigner;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
-import net.minecraft.block.BeaconBlock;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.block.entity.BlockEntity;
-import net.minecraft.block.entity.BeaconBlockEntity;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.event.GameEvent;
+import net.minecraft.world.level.block.BeaconBlock;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.BeaconBlockEntity;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.network.chat.Component;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.gameevent.GameEvent;
 
 import java.util.Map;
 import java.util.UUID;
@@ -35,7 +35,7 @@ public final class BeaconRedirector {
     private BeaconRedirector() {
     }
 
-    public static void handlePlayer(ServerPlayerEntity player, ServerWorld world) {
+    public static void handlePlayer(ServerPlayer player, ServerLevel world) {
         if (player.isSpectator() || player.isRemoved()) {
             return;
         }
@@ -56,7 +56,7 @@ public final class BeaconRedirector {
         }
 
         long now = System.currentTimeMillis();
-        Long lastRedirect = lastRedirects.get(player.getUuid());
+        Long lastRedirect = lastRedirects.get(player.getUUID());
         if (lastRedirect != null && now - lastRedirect < REDIRECT_COOLDOWN_MS) {
             return;
         }
@@ -65,12 +65,12 @@ public final class BeaconRedirector {
             return;
         }
 
-        lastRedirects.put(player.getUuid(), now);
+        lastRedirects.put(player.getUUID(), now);
         removeBeacon(world, beaconPos, player);
     }
 
-    private static BlockPos findActivatedBeacon(ServerWorld world, ServerPlayerEntity player) {
-        BlockPos beaconPos = player.getBlockPos().down();
+    private static BlockPos findActivatedBeacon(ServerLevel world, ServerPlayer player) {
+        BlockPos beaconPos = player.blockPosition().below();
         BlockState state = world.getBlockState(beaconPos);
         if (!(state.getBlock() instanceof BeaconBlock)) {
             return null;
@@ -81,7 +81,7 @@ public final class BeaconRedirector {
             return null;
         }
 
-        if (beaconEntity.getBeamSegments().isEmpty()) {
+        if (beaconEntity.getBeamSections().isEmpty()) {
             return null;
         }
 
@@ -89,7 +89,7 @@ public final class BeaconRedirector {
         return beaconPos;
     }
 
-    private static boolean executeRedirect(ServerPlayerEntity player, WitherControlConfig config, ServerWorld world) {
+    private static boolean executeRedirect(ServerPlayer player, WitherControlConfig config, ServerLevel world) {
         String targetServer = config.portalRedirectTargetServer();
         if (targetServer == null || targetServer.isBlank()) {
             WitherFightMod.LOGGER.warn("Beacon redirect target server missing; skipping redirect for {}", player.getName().getString());
@@ -102,7 +102,7 @@ public final class BeaconRedirector {
             return false;
         }
 
-        player.sendMessage(Text.literal("Redirecting you to " + targetServer + "..."), false);
+        player.sendSystemMessage(Component.literal("Redirecting you to " + targetServer + "..."));
 
         String destinationPortal = config.portalRedirectTargetPortal();
         if (destinationPortal == null) {
@@ -111,22 +111,22 @@ public final class BeaconRedirector {
 
         long issuedAtMs = System.currentTimeMillis();
         String nonce = PortalRequestPayloadCodec.generateNonce();
-        byte[] unsigned = PortalRequestPayloadCodec.encodeUnsigned(player.getUuid(), targetServer, destinationPortal, issuedAtMs, nonce);
+        byte[] unsigned = PortalRequestPayloadCodec.encodeUnsigned(player.getUUID(), targetServer, destinationPortal, issuedAtMs, nonce);
         byte[] signature = PortalRequestSigner.hmacSha256(secret, unsigned);
-        byte[] signed = PortalRequestPayloadCodec.encodeSigned(player.getUuid(), targetServer, destinationPortal, issuedAtMs, nonce, signature);
+        byte[] signed = PortalRequestPayloadCodec.encodeSigned(player.getUUID(), targetServer, destinationPortal, issuedAtMs, nonce, signature);
         ServerPlayNetworking.send(player, new PortalRequestPayload(signed));
         WitherFightMod.LOGGER.info("Sent beacon redirect portal request for {} -> {}", player.getName().getString(), targetServer);
         return true;
     }
 
-    private static void removeBeacon(ServerWorld world, BlockPos beaconPos, ServerPlayerEntity player) {
+    private static void removeBeacon(ServerLevel world, BlockPos beaconPos, ServerPlayer player) {
         BlockState state = world.getBlockState(beaconPos);
         if (!(state.getBlock() instanceof BeaconBlock)) {
             return;
         }
 
-        world.setBlockState(beaconPos, Blocks.AIR.getDefaultState(), Block.NOTIFY_ALL | Block.FORCE_STATE);
-        world.emitGameEvent(GameEvent.BLOCK_DESTROY, beaconPos, GameEvent.Emitter.of(player, state));
+        world.setBlock(beaconPos, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL);
+        world.gameEvent(GameEvent.BLOCK_DESTROY, beaconPos, GameEvent.Context.of(player, state));
         WitherFightMod.LOGGER.info("Removed beacon at {} after redirecting {}", beaconPos, player.getName().getString());
     }
 

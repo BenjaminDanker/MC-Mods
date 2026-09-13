@@ -2,14 +2,14 @@ package com.silver.skyislands.dragonbreath;
 
 import com.silver.skyislands.enderdragons.EnderDragonManager;
 import net.fabricmc.fabric.api.event.player.UseItemCallback;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.item.ItemStack;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.Text;
-import net.minecraft.util.ActionResult;
-import net.minecraft.util.Hand;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.util.Mth;
+import net.minecraft.world.phys.Vec3;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,16 +21,16 @@ public final class DragonBreathTracking {
 
     public static void init() {
         UseItemCallback.EVENT.register((player, world, hand) -> {
-            if (world == null || world.isClient()) {
-                return ActionResult.PASS;
+            if (world == null || world.isClientSide()) {
+                return InteractionResult.PASS;
             }
-            if (!(player instanceof ServerPlayerEntity serverPlayer)) {
-                return ActionResult.PASS;
+            if (!(player instanceof ServerPlayer serverPlayer)) {
+                return InteractionResult.PASS;
             }
 
-            ItemStack inHand = serverPlayer.getStackInHand(hand);
+            ItemStack inHand = serverPlayer.getItemInHand(hand);
             if (!SpecialDragonBreathItem.isSpecialDragonBreath(inHand)) {
-                return ActionResult.PASS;
+                return InteractionResult.PASS;
             }
 
             return handleSpecialUse(serverPlayer, hand, inHand);
@@ -41,81 +41,81 @@ public final class DragonBreathTracking {
         }
     }
 
-    private static ActionResult handleSpecialUse(ServerPlayerEntity player, Hand hand, ItemStack inHand) {
+    private static InteractionResult handleSpecialUse(ServerPlayer player, InteractionHand hand, ItemStack inHand) {
         int usesLeft = SpecialDragonBreathItem.getUsesLeft(inHand);
         int usesMax = SpecialDragonBreathItem.getUsesMax(inHand);
 
         if (usesLeft <= 0) {
             // Invalid/exhausted; delete one bottle.
             deleteOneFromHand(player, hand, inHand);
-            player.sendMessage(Text.literal("Your Special Dragon Breath is exhausted."), false);
-            return ActionResult.SUCCESS;
+            player.sendSystemMessage(Component.literal("Your Special Dragon Breath is exhausted."), false);
+            return InteractionResult.SUCCESS;
         }
 
         // Find nearest dragon (virtual or loaded) and print once.
         EnderDragonManager.DragonLocatorResult nearest = EnderDragonManager.findNearestDragonFor(player);
         if (nearest == null) {
-            player.sendMessage(Text.literal("No dragons found."), false);
+            player.sendSystemMessage(Component.literal("No dragons found."), false);
         } else {
-            Vec3d p = nearest.pos();
+            Vec3 p = nearest.pos();
             float yaw = nearest.headingYawDegrees();
-            player.sendMessage(Text.literal("Nearest dragon: x=" + MathHelper.floor(p.x) + " y=" + MathHelper.floor(p.y) + " z=" + MathHelper.floor(p.z) + " headingYaw=" + MathHelper.floor(yaw)), false);
+            player.sendSystemMessage(Component.literal("Nearest dragon: x=" + Mth.floor(p.x) + " y=" + Mth.floor(p.y) + " z=" + Mth.floor(p.z) + " headingYaw=" + Mth.floor(yaw)), false);
         }
 
         int newUses = usesLeft - 1;
         if (newUses <= 0) {
             deleteOneFromHand(player, hand, inHand);
-            return ActionResult.SUCCESS;
+            return InteractionResult.SUCCESS;
         }
 
         if (inHand.getCount() > 1) {
             // Split one bottle off the stack with reduced uses.
             ItemStack reduced = SpecialDragonBreathItem.copySingleWithUses(inHand, newUses);
             if (!tryInsertOne(player.getInventory(), reduced)) {
-                player.sendMessage(Text.literal("You don't have room in your inventory."), false);
-                return ActionResult.SUCCESS;
+                player.sendSystemMessage(Component.literal("You don't have room in your inventory."), false);
+                return InteractionResult.SUCCESS;
             }
 
-            inHand.decrement(1);
-            return ActionResult.SUCCESS;
+            inHand.shrink(1);
+            return InteractionResult.SUCCESS;
         }
 
         // Single bottle in hand; mutate in place.
         SpecialDragonBreathItem.setUsesLeft(inHand, newUses);
         SpecialDragonBreathItem.setDisplayName(inHand, newUses, usesMax);
-        return ActionResult.SUCCESS;
+        return InteractionResult.SUCCESS;
     }
 
-    private static void deleteOneFromHand(ServerPlayerEntity player, Hand hand, ItemStack inHand) {
+    private static void deleteOneFromHand(ServerPlayer player, InteractionHand hand, ItemStack inHand) {
         if (inHand.getCount() > 1) {
-            inHand.decrement(1);
+            inHand.shrink(1);
             return;
         }
-        player.setStackInHand(hand, ItemStack.EMPTY);
+        player.setItemInHand(hand, ItemStack.EMPTY);
     }
 
-    private static boolean tryInsertOne(PlayerInventory inv, ItemStack single) {
+    private static boolean tryInsertOne(Inventory inv, ItemStack single) {
         if (inv == null || single == null || single.isEmpty() || single.getCount() != 1) {
             return false;
         }
 
         // First try to merge with an existing compatible stack.
-        for (int slot = 0; slot < inv.size(); slot++) {
-            ItemStack existing = inv.getStack(slot);
+        for (int slot = 0; slot < inv.getContainerSize(); slot++) {
+            ItemStack existing = inv.getItem(slot);
             if (existing.isEmpty()) {
                 continue;
             }
-            if (ItemStack.areItemsAndComponentsEqual(existing, single) && existing.getCount() < existing.getMaxCount()) {
-                existing.increment(1);
+            if (ItemStack.isSameItemSameComponents(existing, single) && existing.getCount() < existing.getMaxStackSize()) {
+                existing.grow(1);
                 return true;
             }
         }
 
         // Then look for an empty slot.
-        for (int slot = 0; slot < inv.size(); slot++) {
-            ItemStack existing = inv.getStack(slot);
+        for (int slot = 0; slot < inv.getContainerSize(); slot++) {
+            ItemStack existing = inv.getItem(slot);
             if (existing.isEmpty()) {
-                inv.setStack(slot, single);
+                inv.setItem(slot, single);
                 return true;
             }
         }

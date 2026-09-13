@@ -1,11 +1,10 @@
 package com.silver.atlantis.find;
 
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
-import net.minecraft.server.command.CommandManager;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.text.Text;
-
 import java.util.Locale;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.Commands;
+import net.minecraft.network.chat.Component;
 
 /**
  * Debug command: runs the flat-area finder and prints the chosen center.
@@ -18,17 +17,17 @@ public final class FindCommandManager {
         this.searchService = searchService;
     }
 
-    public LiteralArgumentBuilder<ServerCommandSource> buildSubcommand() {
-        return CommandManager.literal("findflat")
+    public LiteralArgumentBuilder<CommandSourceStack> buildSubcommand() {
+        return Commands.literal("findflat")
             .executes(context -> execute(context.getSource()));
     }
 
-    private int execute(ServerCommandSource source) {
+    private int execute(CommandSourceStack source) {
         FlatAreaSearchConfig config = FlatAreaSearchConfig.defaults();
 
         boolean started = searchService.start(source, config);
         if (!started) {
-            source.sendFeedback(() -> Text.literal("A flat-area search is already running."), false);
+            source.sendSuccess(() -> Component.literal("A flat-area search is already running."), false);
             return 0;
         }
 
@@ -49,7 +48,7 @@ public final class FindCommandManager {
             config.minRadiusIncreaseBlocks(),
             config.minRadiusIncreaseEveryAttempts()
         );
-        source.sendFeedback(() -> Text.literal(details), false);
+        source.sendSuccess(() -> Component.literal(details), false);
         return 1;
     }
 }

@@ -1,31 +1,31 @@
 {
-    "display": {
-      "icon": {
-        "id": "minecraft:netherite_hoe",
-        "components": {
-          "item_model": "infinity_cave:bastion_piercer"
-        }
-      },
-      "title": "Pokey Pokey!",
-      "description": [
-        {
-          "text": "Dropped from a Legendary in Mushroom Gorge\n\nObtain the Bastion Piercer"
-        }
-      ],
-      "show_toast": true,
-      "announce_to_chat": true,
-      "hidden": false
+  "display": {
+    "icon": {
+      "id": "minecraft:netherite_hoe",
+      "components": {
+        "item_model": "infinity_cave:bastion_piercer"
+      }
     },
-    "parent": "infinity_cave:display/mushroom_gorge/geraldo",
-    "criteria": {
-      "requirement": {
-        "trigger": "minecraft:inventory_changed",
-        "conditions": {
-          "items": [
-            {
-              "items": [
-                "minecraft:netherite_sword"
-              ],
+    "title": "Pokey Pokey!",
+    "description": [
+      {
+        "text": "Dropped from a Legendary in Mushroom Gorge\n\nObtain the Bastion Piercer"
+      }
+    ],
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "infinity_cave:display/mushroom_gorge/geraldo",
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "minecraft:netherite_sword"
+            ],
             "predicates": {
               "minecraft:custom_data": {
                 "infinity_cave": {
@@ -33,10 +33,9 @@
                 }
               }
             }
-            }
-          ]
-        }
+          }
+        ]
       }
     }
   }
-  
+}

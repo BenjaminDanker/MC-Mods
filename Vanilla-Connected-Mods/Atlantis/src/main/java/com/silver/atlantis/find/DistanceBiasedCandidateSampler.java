@@ -1,8 +1,7 @@
 package com.silver.atlantis.find;
 
-import net.minecraft.util.math.BlockPos;
-
 import java.util.Random;
+import net.minecraft.core.BlockPos;
 
 /**
  * Picks candidate centers around spawn with a higher probability near spawn,

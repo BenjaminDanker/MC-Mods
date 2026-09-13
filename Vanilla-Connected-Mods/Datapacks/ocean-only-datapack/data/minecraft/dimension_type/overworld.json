@@ -36,12 +36,14 @@
   },
   "timelines": "#minecraft:in_overworld",
   "cloud_height": 256,
+  "default_clock": "minecraft:overworld",
   "ultrawarm": false,
   "natural": true,
   "piglin_safe": false,
   "respawn_anchor_works": false,
   "bed_works": true,
   "has_raids": true,
+  "has_ender_dragon_fight": false,
   "has_skylight": true,
   "has_ceiling": true,
   "coordinate_scale": 1,
@@ -54,11 +56,7 @@
   "monster_spawn_light_level": {
     "type": "minecraft:uniform",
     "min_inclusive": 0,
-    "max_inclusive": 7,
-    "value": {
-      "min_inclusive": 0,
-      "max_inclusive": 7
-    }
+    "max_inclusive": 7
   },
   "monster_spawn_block_light_limit": 0
 }

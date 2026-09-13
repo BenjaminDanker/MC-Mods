@@ -1,13 +1,13 @@
 package com.silver.skyislands.nocreepers.mixins;
 
-import net.minecraft.block.spawner.MobSpawnerEntry;
-import net.minecraft.block.spawner.MobSpawnerLogic;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.collection.Pool;
-import net.minecraft.util.collection.Weighted;
-import net.minecraft.world.World;
+import net.minecraft.world.level.SpawnData;
+import net.minecraft.world.level.BaseSpawner;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.resources.Identifier;
+import net.minecraft.util.random.WeightedRandomList;
+import net.minecraft.util.random.WeightedEntry;
+import net.minecraft.world.level.Level;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -17,18 +17,18 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-@Mixin(MobSpawnerLogic.class)
+@Mixin(BaseSpawner.class)
 public abstract class MobSpawnerLogicMixin {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(MobSpawnerLogicMixin.class);
 
-    private static final Identifier CREEPER_ID = Identifier.of("minecraft", "creeper");
+    private static final Identifier CREEPER_ID = Identifier.fromNamespaceAndPath("minecraft", "creeper");
 
     @Shadow
-    private MobSpawnerEntry spawnEntry;
+    private SpawnData spawnEntry;
 
     @Shadow
-    private Pool<MobSpawnerEntry> spawnPotentials;
+    private WeightedRandomList<SpawnData> spawnPotentials;
 
     @Shadow
     private int spawnDelay;
@@ -40,10 +40,10 @@ public abstract class MobSpawnerLogicMixin {
     private int maxSpawnDelay;
 
     @Inject(method = "serverTick", at = @At("HEAD"), cancellable = true)
-    private void skyIslands$blockCreeperSpawnerServerTick(ServerWorld world, net.minecraft.util.math.BlockPos pos, CallbackInfo ci) {
+    private void skyIslands$blockCreeperSpawnerServerTick(ServerLevel world, net.minecraft.core.BlockPos pos, CallbackInfo ci) {
         // This is the critical path where actual spawning happens.
         if (isCreeperSpawnerConfigured()) {
-            this.spawnDelay = world.getRandom().nextBetween(this.minSpawnDelay, this.maxSpawnDelay);
+            this.spawnDelay = world.getRandom().nextIntBetweenInclusive(this.minSpawnDelay, this.maxSpawnDelay);
             if (LOGGER.isDebugEnabled()) {
                 LOGGER.debug("[Sky-Islands][nocreepers] blocked creeper spawner serverTick at {} delayReset={}", pos, this.spawnDelay);
             }
@@ -52,11 +52,11 @@ public abstract class MobSpawnerLogicMixin {
     }
 
     @Inject(method = "updateSpawns", at = @At("HEAD"), cancellable = true)
-    private void skyIslands$blockCreeperSpawner(World world, net.minecraft.util.math.BlockPos pos, CallbackInfo ci) {
+    private void skyIslands$blockCreeperSpawner(Level world, net.minecraft.core.BlockPos pos, CallbackInfo ci) {
         // Only affects mob spawner block logic. Spawn eggs and natural spawns are unaffected.
         if (isCreeperSpawnerConfigured()) {
             // Don't spawn anything; just reset the delay so it doesn't try every tick.
-            this.spawnDelay = world.getRandom().nextBetween(this.minSpawnDelay, this.maxSpawnDelay);
+            this.spawnDelay = world.getRandom().nextIntBetweenInclusive(this.minSpawnDelay, this.maxSpawnDelay);
             if (LOGGER.isDebugEnabled()) {
                 LOGGER.debug("[Sky-Islands][nocreepers] blocked creeper spawner updateSpawns at {} delayReset={}", pos, this.spawnDelay);
             }
@@ -73,9 +73,9 @@ public abstract class MobSpawnerLogicMixin {
         }
 
         if (this.spawnPotentials != null && !this.spawnPotentials.isEmpty()) {
-            for (Weighted<MobSpawnerEntry> weighted : this.spawnPotentials.getEntries()) {
+            for (WeightedEntry<SpawnData> weighted : this.spawnPotentials.getEntries()) {
                 Object v = weighted.value();
-                if (v instanceof MobSpawnerEntry entry && isCreeperSpawnEntry(entry)) {
+                if (v instanceof SpawnData entry && isCreeperSpawnEntry(entry)) {
                     if (LOGGER.isDebugEnabled()) {
                         LOGGER.debug("[Sky-Islands][nocreepers] spawner configured for creeper via spawnPotentials");
                     }
@@ -87,13 +87,13 @@ public abstract class MobSpawnerLogicMixin {
         return false;
     }
 
-    private static boolean isCreeperSpawnEntry(MobSpawnerEntry entry) {
+    private static boolean isCreeperSpawnEntry(SpawnData entry) {
         if (entry == null) {
             return false;
         }
 
         try {
-            NbtCompound nbt = entry.getNbt();
+            CompoundTag nbt = entry.getNbt();
             if (nbt == null) {
                 return false;
             }
@@ -129,7 +129,7 @@ public abstract class MobSpawnerLogicMixin {
         }
     }
 
-    private static String extractEntityId(NbtCompound nbt) {
+    private static String extractEntityId(CompoundTag nbt) {
         if (nbt == null) {
             return "";
         }

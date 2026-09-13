@@ -23,10 +23,10 @@
             "condition": "minecraft:entity_properties",
             "entity": "this",
             "predicate": {
-              "type": "minecraft:zombie",
+              "minecraft:entity_type": "minecraft:zombie",
               "team": "ic.mob_team",
               "passenger": {
-                "type": "armor_stand"
+                "minecraft:entity_type": "armor_stand"
               },
               "equipment": {
                 "chest": {

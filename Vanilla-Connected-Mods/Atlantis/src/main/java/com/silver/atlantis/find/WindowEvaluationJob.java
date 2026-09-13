@@ -1,6 +1,6 @@
 package com.silver.atlantis.find;
 
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.core.BlockPos;
 
 /**
  * Incremental evaluation of a window's avg(|h - mean(h)|) using two passes:

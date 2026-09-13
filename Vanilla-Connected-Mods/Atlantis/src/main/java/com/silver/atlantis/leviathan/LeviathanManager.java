@@ -2,30 +2,29 @@ package com.silver.atlantis.leviathan;
 
 import com.silver.atlantis.AtlantisMod;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.SpawnReason;
-import net.minecraft.entity.attribute.EntityAttributeInstance;
-import net.minecraft.entity.attribute.DefaultAttributeRegistry;
-import net.minecraft.entity.attribute.DefaultAttributeContainer;
-import net.minecraft.entity.attribute.EntityAttributes;
-import net.minecraft.entity.mob.MobEntity;
-import net.minecraft.fluid.Fluids;
-import net.minecraft.registry.Registries;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.ChunkPos;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.Heightmap;
-import net.minecraft.world.WorldProperties;
-import net.minecraft.world.border.WorldBorder;
-
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.ai.attributes.DefaultAttributes;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.border.WorldBorder;
+import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.material.Fluids;
+import net.minecraft.world.level.storage.LevelData;
+import net.minecraft.world.phys.Vec3;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -122,15 +121,15 @@ public final class LeviathanManager {
             newConfig.despawnRadiusBlocks);
     }
 
-    public static int dump(ServerCommandSource source, boolean includeVirtual, boolean includeLoaded) {
+    public static int dump(CommandSourceStack source, boolean includeVirtual, boolean includeLoaded) {
         if (config == null || virtualStore == null) {
-            source.sendError(Text.literal("Leviathan manager not initialized."));
+            source.sendFailure(Component.literal("Leviathan manager not initialized."));
             return 0;
         }
 
-        ServerWorld overworld = source.getServer().getOverworld();
+        ServerLevel overworld = source.getServer().overworld();
         if (overworld == null) {
-            source.sendError(Text.literal("No overworld available."));
+            source.sendFailure(Component.literal("No overworld available."));
             return 0;
         }
 
@@ -140,7 +139,7 @@ public final class LeviathanManager {
         int virtualCount = includeVirtual ? snapshot.size() : 0;
         int loadedCount = includeLoaded ? loaded.size() : 0;
 
-        source.sendFeedback(() -> Text.literal("Atlantis leviathans: virtual=" + virtualCount + " loaded=" + loadedCount), false);
+        source.sendSuccess(() -> Component.literal("Atlantis leviathans: virtual=" + virtualCount + " loaded=" + loadedCount), false);
 
         int shown = 0;
         for (VirtualLeviathanStore.VirtualLeviathanState state : snapshot) {
@@ -160,7 +159,7 @@ public final class LeviathanManager {
                 state.scaleMultiplier(),
                 state.damageMultiplier(),
                 state.healthMultiplier());
-            source.sendFeedback(() -> Text.literal(line), false);
+            source.sendSuccess(() -> Component.literal(line), false);
 
             if (includeLoaded) {
                 Entity entity = loaded.get(state.id());
@@ -168,7 +167,7 @@ public final class LeviathanManager {
                     LeviathanCombatRuntime runtime = combatRuntimeById.get(state.id());
                     String engagementState = runtime == null || runtime.targetUuid == null ? "PASSIVE" : "ENGAGED/" + runtime.substate;
                     String target = runtime == null || runtime.targetUuid == null ? "<none>" : shortId(runtime.targetUuid);
-                    String loadedTypeId = Registries.ENTITY_TYPE.getId(entity.getType()).toString();
+                    String loadedTypeId = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString();
                     String loadedLine = String.format(Locale.ROOT,
                         "   loadedType=%s loadedPos=(%.1f, %.1f, %.1f) engagement=%s target=%s",
                         loadedTypeId,
@@ -177,7 +176,7 @@ public final class LeviathanManager {
                         entity.getZ(),
                         engagementState,
                         target);
-                    source.sendFeedback(() -> Text.literal(loadedLine), false);
+                    source.sendSuccess(() -> Component.literal(loadedLine), false);
                 }
             }
             shown++;
@@ -185,7 +184,7 @@ public final class LeviathanManager {
 
         if (snapshot.size() > shown) {
             final int shownFinal = shown;
-            source.sendFeedback(() -> Text.literal("(output truncated; showing first " + shownFinal + ")"), false);
+            source.sendSuccess(() -> Component.literal("(output truncated; showing first " + shownFinal + ")"), false);
         }
 
         return 1;
@@ -202,11 +201,11 @@ public final class LeviathanManager {
 
         serverTicks++;
 
-        ServerWorld overworld = server.getOverworld();
+        ServerLevel overworld = server.overworld();
         if (overworld == null) {
             return;
         }
-        List<ServerPlayerEntity> activePlayers = overworld.getPlayers(player -> player != null && !player.isSpectator() && player.isAlive());
+        List<ServerPlayer> activePlayers = overworld.getPlayers(player -> player != null && !player.isSpectator() && player.isAlive());
 
         updateEffectiveDistancesFromServerSettings(server);
 
@@ -317,7 +316,7 @@ public final class LeviathanManager {
         loadedIdsLastTick.addAll(loadedById.keySet());
     }
 
-    private static void retireAndReplaceVirtualLeviathan(ServerWorld world,
+    private static void retireAndReplaceVirtualLeviathan(ServerLevel world,
                                                          VirtualLeviathanStore.VirtualLeviathanState removed,
                                                          String reason) {
         virtualStore.remove(removed.id());
@@ -343,7 +342,7 @@ public final class LeviathanManager {
             round1(replacement.pos().z));
     }
 
-    private static void ensureMinimumPopulation(ServerWorld world) {
+    private static void ensureMinimumPopulation(ServerLevel world) {
         int deficit = config.minimumLeviathans - virtualStore.size();
         if (deficit <= 0) {
             AtlantisMod.LOGGER.debug("[Atlantis][leviathan] ensure minimum satisfied current={} minimum={}", virtualStore.size(), config.minimumLeviathans);
@@ -369,7 +368,7 @@ public final class LeviathanManager {
         }
     }
 
-    private static VirtualLeviathanStore.VirtualLeviathanState createVirtualLeviathan(ServerWorld world, Random random) {
+    private static VirtualLeviathanStore.VirtualLeviathanState createVirtualLeviathan(ServerLevel world, Random random) {
         BlockPos spawn = resolveWorldSpawn(world);
         WorldBorder border = world.getWorldBorder();
 
@@ -381,10 +380,10 @@ public final class LeviathanManager {
         int yJitter = config.spawnYRandomRange <= 0 ? 0 : random.nextInt(config.spawnYRandomRange * 2 + 1) - config.spawnYRandomRange;
         double spawnY = config.spawnY + yJitter;
 
-        Vec3d chosenPos = new Vec3d(
-            clamp(spawnX, border.getBoundWest() + 8.0, border.getBoundEast() - 8.0),
+        Vec3 chosenPos = new Vec3(
+            clamp(spawnX, border.getMinX() + 8.0, border.getMaxX() - 8.0),
             spawnY,
-            clamp(spawnZ, border.getBoundNorth() + 8.0, border.getBoundSouth() - 8.0));
+            clamp(spawnZ, border.getMinZ() + 8.0, border.getMaxZ() - 8.0));
 
         double angle = random.nextDouble() * Math.PI * 2.0;
         String entityTypeId = selectRandomEntityTypeId(random);
@@ -405,29 +404,29 @@ public final class LeviathanManager {
         );
     }
 
-    private static VirtualLeviathanStore.VirtualLeviathanState advanceVirtualState(ServerWorld world, VirtualLeviathanStore.VirtualLeviathanState state) {
+    private static VirtualLeviathanStore.VirtualLeviathanState advanceVirtualState(ServerLevel world, VirtualLeviathanStore.VirtualLeviathanState state) {
         if (!config.virtualTravelEnabled) {
             return state;
         }
 
         long dt = Math.max(1L, serverTicks - state.lastTick());
-        Vec3d steered = steerHeading(world, state.pos(), state.headingX(), state.headingZ(), Math.min(20L, dt));
+        Vec3 steered = steerHeading(world, state.pos(), state.headingX(), state.headingZ(), Math.min(20L, dt));
 
-        Vec3d moved = new Vec3d(
+        Vec3 moved = new Vec3(
             state.pos().x + steered.x * config.virtualSpeedBlocksPerTick * dt,
             state.pos().y,
             state.pos().z + steered.z * config.virtualSpeedBlocksPerTick * dt
         );
 
         WorldBorder border = world.getWorldBorder();
-        moved = new Vec3d(
-            clamp(moved.x, border.getBoundWest() + 8.0, border.getBoundEast() - 8.0),
+        moved = new Vec3(
+            clamp(moved.x, border.getMinX() + 8.0, border.getMaxX() - 8.0),
             moved.y,
-            clamp(moved.z, border.getBoundNorth() + 8.0, border.getBoundSouth() - 8.0)
+            clamp(moved.z, border.getMinZ() + 8.0, border.getMaxZ() - 8.0)
         );
 
-        Vec3d virtualHeading = normalizeXZ(steered.x, steered.z);
-        Vec3d corrected = new Vec3d(moved.x, moved.y, moved.z);
+        Vec3 virtualHeading = normalizeXZ(steered.x, steered.z);
+        Vec3 corrected = new Vec3(moved.x, moved.y, moved.z);
         return new VirtualLeviathanStore.VirtualLeviathanState(
             state.id(),
             corrected,
@@ -442,24 +441,24 @@ public final class LeviathanManager {
         );
     }
 
-    private static Vec3d steerHeading(ServerWorld world, Vec3d pos, double headingX, double headingZ, long dt) {
+    private static Vec3 steerHeading(ServerLevel world, Vec3 pos, double headingX, double headingZ, long dt) {
         BlockPos spawn = resolveWorldSpawn(world);
-        Vec3d fromSpawn = new Vec3d(pos.x - spawn.getX(), 0.0, pos.z - spawn.getZ());
+        Vec3 fromSpawn = new Vec3(pos.x - spawn.getX(), 0.0, pos.z - spawn.getZ());
         double dist = Math.sqrt(fromSpawn.x * fromSpawn.x + fromSpawn.z * fromSpawn.z);
 
-        Vec3d desired = new Vec3d(headingX, 0.0, headingZ);
+        Vec3 desired = new Vec3(headingX, 0.0, headingZ);
         if (dist < config.roamMinDistanceBlocks) {
             desired = normalizeXZ(fromSpawn.x, fromSpawn.z);
         } else if (dist > config.roamMaxDistanceBlocks) {
             desired = normalizeXZ(-fromSpawn.x, -fromSpawn.z);
         }
 
-        Vec3d current = normalizeXZ(headingX, headingZ);
+        Vec3 current = normalizeXZ(headingX, headingZ);
         double maxTurnRadians = 0.09d * Math.max(1L, dt);
         return turnLimited(current, desired, maxTurnRadians);
     }
 
-    private static Vec3d turnLimited(Vec3d current, Vec3d desired, double maxTurnRadians) {
+    private static Vec3 turnLimited(Vec3 current, Vec3 desired, double maxTurnRadians) {
         double currentAngle = Math.atan2(current.z, current.x);
         double desiredAngle = Math.atan2(desired.z, desired.x);
         double delta = wrapRadians(desiredAngle - currentAngle);
@@ -467,8 +466,8 @@ public final class LeviathanManager {
         return normalizeXZ(Math.cos(currentAngle + limited), Math.sin(currentAngle + limited));
     }
 
-    private static void tryMaterialize(ServerWorld world,
-                                       List<ServerPlayerEntity> activePlayers,
+    private static void tryMaterialize(ServerLevel world,
+                                       List<ServerPlayer> activePlayers,
                                        VirtualLeviathanStore.VirtualLeviathanState state,
                                        Map<UUID, Entity> loadedById) {
         if (loadedById.containsKey(state.id())) {
@@ -489,9 +488,9 @@ public final class LeviathanManager {
             return;
         }
 
-        ChunkPos center = new ChunkPos(BlockPos.ofFloored(state.pos()));
+        ChunkPos center = ChunkPos.containing(BlockPos.containing(state.pos()));
         if (!isSpawnReady(world, state.id(), center)) {
-            AtlantisMod.LOGGER.debug("[Atlantis][leviathan] materialize skipped spawn not ready id={} chunk=({}, {})", shortId(state.id()), center.x, center.z);
+            AtlantisMod.LOGGER.debug("[Atlantis][leviathan] materialize skipped spawn not ready id={} chunk=({}, {})", shortId(state.id()), center.x(), center.z());
             return;
         }
         if (!isWaterValid(world, state.pos())) {
@@ -508,13 +507,13 @@ public final class LeviathanManager {
 
         AtlantisMod.LOGGER.info("[Atlantis][leviathan] materialize id={} uuid={} pos=({}, {}, {})",
             shortId(state.id()),
-            entity.getUuidAsString(),
+            entity.getStringUUID(),
             round1(entity.getX()),
             round1(entity.getY()),
             round1(entity.getZ()));
     }
 
-    private static Entity spawnLeviathanFromVirtual(ServerWorld world, VirtualLeviathanStore.VirtualLeviathanState state) {
+    private static Entity spawnLeviathanFromVirtual(ServerLevel world, VirtualLeviathanStore.VirtualLeviathanState state) {
         AtlantisMod.LOGGER.debug("[Atlantis][leviathan] spawning loaded leviathan id={} entityTypeId={} pos=({}, {}, {}) heading=({}, {})",
             shortId(state.id()),
             state.entityTypeId(),
@@ -529,26 +528,26 @@ public final class LeviathanManager {
             throw new IllegalStateException("Configured leviathan entityTypeId missing from validated pool: " + state.entityTypeId());
         }
 
-        Entity entity = entityType.create(world, SpawnReason.EVENT);
+        Entity entity = entityType.create(world, EntitySpawnReason.EVENT);
         if (entity == null) {
             throw new IllegalStateException("Failed to create leviathan entity for configured entityTypeId=" + state.entityTypeId());
         }
 
-        entity.refreshPositionAndAngles(state.pos().x, state.pos().y, state.pos().z, 0.0f, 0.0f);
-        entity.addCommandTag(MANAGED_TAG);
-        entity.addCommandTag(LeviathanIdTags.toTag(state.id()));
+        entity.snapTo(state.pos().x, state.pos().y, state.pos().z, 0.0f, 0.0f);
+        entity.addTag(MANAGED_TAG);
+        entity.addTag(LeviathanIdTags.toTag(state.id()));
 
         if (!(entity instanceof LivingEntity living)) {
             throw new IllegalStateException("Configured leviathan entity type is not LivingEntity. entityTypeId=" + state.entityTypeId());
         }
 
-        EntityAttributeInstance scale = living.getAttributeInstance(EntityAttributes.SCALE);
+        AttributeInstance scale = living.getAttribute(Attributes.SCALE);
         if (scale == null) {
             throw new IllegalStateException("entityScale requires SCALE attribute support but entity has no SCALE attribute. entityTypeId=" + state.entityTypeId());
         }
         scale.setBaseValue(config.entityScale * state.scaleMultiplier());
 
-        EntityAttributeInstance maxHealth = living.getAttributeInstance(EntityAttributes.MAX_HEALTH);
+        AttributeInstance maxHealth = living.getAttribute(Attributes.MAX_HEALTH);
         if (maxHealth == null) {
             throw new IllegalStateException("depthHealth requires MAX_HEALTH attribute support but entity has no MAX_HEALTH attribute. entityTypeId=" + state.entityTypeId());
         }
@@ -556,39 +555,39 @@ public final class LeviathanManager {
         maxHealth.setBaseValue(Math.max(1.0d, scaledMaxHealth));
         living.setHealth((float) maxHealth.getValue());
 
-        if (entity instanceof MobEntity mob) {
-            mob.setPersistent();
+        if (entity instanceof Mob mob) {
+            mob.setPersistenceRequired();
             mob.setTarget(null);
             AtlantisMod.LOGGER.debug("[Atlantis][leviathan] marked spawned mob persistent id={} entityUuid={}",
                 shortId(state.id()),
-                entity.getUuidAsString());
+                entity.getStringUUID());
         }
 
-        Vec3d initialVelocity = new Vec3d(
+        Vec3 initialVelocity = new Vec3(
             state.headingX() * config.virtualSpeedBlocksPerTick,
             0.0,
             state.headingZ() * config.virtualSpeedBlocksPerTick
         );
-        entity.setVelocity(initialVelocity);
+        entity.setDeltaMovement(initialVelocity);
 
-        if (!world.spawnEntity(entity)) {
+        if (!world.addFreshEntity(entity)) {
             throw new IllegalStateException("Failed to spawn leviathan entity into world for id=" + state.id());
         }
 
         return entity;
     }
 
-    private static boolean updateCombat(ServerWorld world, Entity entity, LeviathanCombatRuntime runtime) {
+    private static boolean updateCombat(ServerLevel world, Entity entity, LeviathanCombatRuntime runtime) {
         return LeviathanRuntimeService.updateCombat(world, entity, runtime, config, serverTicks, virtualStore);
     }
 
-    private static void applyLoadedPassiveMovement(ServerWorld world, Entity entity, VirtualLeviathanStore.VirtualLeviathanState state) {
+    private static void applyLoadedPassiveMovement(ServerLevel world, Entity entity, VirtualLeviathanStore.VirtualLeviathanState state) {
         LeviathanRuntimeService.applyLoadedPassiveMovement(world, entity, state, config);
     }
 
     private static VirtualLeviathanStore.VirtualLeviathanState syncStateFromLoaded(Entity entity, UUID id) {
-        Vec3d velocity = entity.getVelocity();
-        Vec3d heading = resolveHeadingForSync(entity, id, velocity);
+        Vec3 velocity = entity.getDeltaMovement();
+        Vec3 heading = resolveHeadingForSync(entity, id, velocity);
         VirtualLeviathanStore.VirtualLeviathanState existing = virtualStore == null ? null : virtualStore.get(id);
         if (existing != null) {
             return new VirtualLeviathanStore.VirtualLeviathanState(
@@ -605,7 +604,7 @@ public final class LeviathanManager {
             );
         }
 
-        String entityTypeId = Registries.ENTITY_TYPE.getId(entity.getType()).toString();
+        String entityTypeId = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString();
         double spawnY = entity.getY();
         return new VirtualLeviathanStore.VirtualLeviathanState(
             id,
@@ -621,7 +620,7 @@ public final class LeviathanManager {
         );
     }
 
-    private static Vec3d resolveHeadingForSync(Entity entity, UUID id, Vec3d velocity) {
+    private static Vec3 resolveHeadingForSync(Entity entity, UUID id, Vec3 velocity) {
         double vx = velocity == null ? 0.0d : velocity.x;
         double vz = velocity == null ? 0.0d : velocity.z;
         double speedSq = vx * vx + vz * vz;
@@ -646,20 +645,20 @@ public final class LeviathanManager {
             return normalizeHeadingStrict(existing.headingX(), existing.headingZ(), id);
         }
 
-        double yawRadians = Math.toRadians(entity.getYaw() + 90.0d);
+        double yawRadians = Math.toRadians(entity.getYRot() + 90.0d);
         double yx = Math.cos(yawRadians);
         double yz = Math.sin(yawRadians);
         double ySq = yx * yx + yz * yz;
         if (ySq >= 1.0e-6d) {
-            AtlantisMod.LOGGER.warn("[Atlantis][leviathan] sync heading fallback using entity yaw id={} yaw={}", shortId(id), round1(entity.getYaw()));
+            AtlantisMod.LOGGER.warn("[Atlantis][leviathan] sync heading fallback using entity yaw id={} yaw={}", shortId(id), round1(entity.getYRot()));
             return normalizeHeadingStrict(yx, yz, id);
         }
 
         throw new IllegalStateException("Unable to resolve non-zero heading for loaded leviathan id=" + id);
     }
 
-    private static Vec3d posOf(Entity entity) {
-        return new Vec3d(entity.getX(), entity.getY(), entity.getZ());
+    private static Vec3 posOf(Entity entity) {
+        return new Vec3(entity.getX(), entity.getY(), entity.getZ());
     }
 
     private static void reconcileLoadedToVirtual(Map<UUID, Entity> loadedById) {
@@ -683,7 +682,7 @@ public final class LeviathanManager {
         }
     }
 
-    private static Map<UUID, Entity> loadedManagedById(ServerWorld world) {
+    private static Map<UUID, Entity> loadedManagedById(ServerLevel world) {
         Map<UUID, Entity> loaded = LeviathanManagedEntityIndex.snapshot(world);
         if (AtlantisMod.LOGGER.isDebugEnabled()) {
             AtlantisMod.LOGGER.debug("[Atlantis][leviathan] loaded managed scan complete count={}", loaded.size());
@@ -763,42 +762,42 @@ public final class LeviathanManager {
         if (id == null) {
             throw new IllegalStateException("Configured entityTypeId invalid: " + entityTypeId);
         }
-        if (!Registries.ENTITY_TYPE.containsId(id)) {
+        if (!BuiltInRegistries.ENTITY_TYPE.containsKey(id)) {
             throw new IllegalStateException("Configured entityTypeId not found: " + entityTypeId);
         }
-        return Registries.ENTITY_TYPE.get(id);
+        return BuiltInRegistries.ENTITY_TYPE.getValue(id);
     }
 
     private static void validateScaleCompatibility(EntityType<?> entityType, String entityTypeId) {
         @SuppressWarnings("unchecked")
         EntityType<? extends LivingEntity> livingType = (EntityType<? extends LivingEntity>) entityType;
-        DefaultAttributeContainer container = DefaultAttributeRegistry.get(livingType);
+        AttributeSupplier container = DefaultAttributes.getSupplier(livingType);
         if (container == null) {
             throw new IllegalStateException("entityScale requires LivingEntity type with default attributes, but configured entity is not supported: " + entityTypeId);
         }
 
         try {
-            container.getBaseValue(EntityAttributes.SCALE);
+            container.getBaseValue(Attributes.SCALE);
             AtlantisMod.LOGGER.info("[Atlantis][leviathan] entity scale compatibility validated entityTypeId={} scale={}", entityTypeId, config.entityScale);
         } catch (Exception e) {
             throw new IllegalStateException("entityScale requires SCALE attribute support, but entity type lacks SCALE attribute: " + entityTypeId, e);
         }
     }
 
-    private static boolean isAnyPlayerNear(ServerWorld world, Vec3d pos, int radiusBlocks) {
+    private static boolean isAnyPlayerNear(ServerLevel world, Vec3 pos, int radiusBlocks) {
         if (radiusBlocks <= 0) {
             return false;
         }
         return isAnyPlayerNear(world.getPlayers(player -> player != null && !player.isSpectator() && player.isAlive()), pos, radiusBlocks);
     }
 
-    private static boolean isAnyPlayerNear(List<ServerPlayerEntity> players, Vec3d pos, int radiusBlocks) {
+    private static boolean isAnyPlayerNear(List<ServerPlayer> players, Vec3 pos, int radiusBlocks) {
         if (radiusBlocks <= 0 || players == null || players.isEmpty()) {
             return false;
         }
 
         double r2 = (double) radiusBlocks * (double) radiusBlocks;
-        for (ServerPlayerEntity player : players) {
+        for (ServerPlayer player : players) {
             double dx = player.getX() - pos.x;
             double dy = player.getY() - pos.y;
             double dz = player.getZ() - pos.z;
@@ -809,46 +808,46 @@ public final class LeviathanManager {
         return false;
     }
 
-    private static boolean isWaterValid(ServerWorld world, Vec3d pos) {
+    private static boolean isWaterValid(ServerLevel world, Vec3 pos) {
         if (!config.requireWaterForSpawn) {
             return true;
         }
 
-        BlockPos at = BlockPos.ofFloored(pos);
+        BlockPos at = BlockPos.containing(pos);
         if (!isChunkLoadedForBlock(world, at)) {
             return false;
         }
-        if (!world.getFluidState(at).isOf(Fluids.WATER)) {
+        if (!world.getFluidState(at).is(Fluids.WATER)) {
             return false;
         }
 
         int requiredDepth = Math.max(1, config.minWaterDepthBlocksForTravel);
         for (int i = 0; i < requiredDepth; i++) {
-            BlockPos check = at.down(i);
+            BlockPos check = at.below(i);
             if (!isChunkLoadedForBlock(world, check)) {
                 return false;
             }
-            if (!world.getFluidState(check).isOf(Fluids.WATER)) {
+            if (!world.getFluidState(check).is(Fluids.WATER)) {
                 return false;
             }
         }
 
-        int surfaceY = world.getTopY(Heightmap.Type.WORLD_SURFACE, at.getX(), at.getZ());
+        int surfaceY = world.getHeight(Heightmap.Types.WORLD_SURFACE, at.getX(), at.getZ());
         return at.getY() <= surfaceY;
     }
 
-    private static BlockPos resolveWorldSpawn(ServerWorld world) {
-        WorldProperties.SpawnPoint spawnPoint = null;
+    private static BlockPos resolveWorldSpawn(ServerLevel world) {
+        LevelData.RespawnData spawnPoint = null;
         if (world.getServer() != null) {
-            spawnPoint = world.getServer().getSpawnPoint();
+            spawnPoint = world.getServer().getRespawnData();
         }
         if (spawnPoint == null) {
-            spawnPoint = world.getLevelProperties().getSpawnPoint();
+            spawnPoint = world.getLevelData().getRespawnData();
         }
-        return spawnPoint != null ? spawnPoint.getPos() : BlockPos.ORIGIN;
+        return spawnPoint != null ? spawnPoint.pos() : BlockPos.ZERO;
     }
 
-    private static Vec3d normalizeHeadingStrict(double x, double z, UUID id) {
+    private static Vec3 normalizeHeadingStrict(double x, double z, UUID id) {
         if (!Double.isFinite(x) || !Double.isFinite(z)) {
             throw new IllegalStateException("Invalid non-finite heading for leviathan id=" + id);
         }
@@ -856,15 +855,15 @@ public final class LeviathanManager {
         if (len < 1.0e-6d) {
             throw new IllegalStateException("Invalid zero heading for leviathan id=" + id);
         }
-        return new Vec3d(x / len, 0.0, z / len);
+        return new Vec3(x / len, 0.0, z / len);
     }
 
-    private static Vec3d normalizeXZ(double x, double z) {
+    private static Vec3 normalizeXZ(double x, double z) {
         double len = Math.sqrt(x * x + z * z);
         if (len < 1.0e-6d) {
             throw new IllegalStateException("Heading normalization failed (zero vector)");
         }
-        return new Vec3d(x / len, 0.0, z / len);
+        return new Vec3(x / len, 0.0, z / len);
     }
 
     private static double wrapRadians(double radians) {
@@ -877,8 +876,8 @@ public final class LeviathanManager {
         return radians;
     }
 
-    private static boolean isChunkLoadedForBlock(ServerWorld world, BlockPos pos) {
-        return world.getChunkManager().isChunkLoaded(pos.getX() >> 4, pos.getZ() >> 4);
+    private static boolean isChunkLoadedForBlock(ServerLevel world, BlockPos pos) {
+        return world.getChunkSource().hasChunk(pos.getX() >> 4, pos.getZ() >> 4);
     }
 
     private static double clamp(double value, double min, double max) {
@@ -920,7 +919,7 @@ public final class LeviathanManager {
         }
 
         if (initialServerViewDistanceChunks < 0) {
-            initialServerViewDistanceChunks = Math.max(2, server.getPlayerManager().getViewDistance());
+            initialServerViewDistanceChunks = Math.max(2, server.getPlayerList().getViewDistance());
             AtlantisMod.LOGGER.info("[Atlantis][leviathan] captured initial server view distance={} chunks ({} blocks)",
                 initialServerViewDistanceChunks,
                 initialServerViewDistanceChunks * 16);
@@ -941,36 +940,36 @@ public final class LeviathanManager {
 
     }
 
-    private static boolean isSpawnReady(ServerWorld world, UUID id, ChunkPos centerChunk) {
+    private static boolean isSpawnReady(ServerLevel world, UUID id, ChunkPos centerChunk) {
         if (!config.forceChunkLoadingEnabled || chunkPreloader == null) {
-            boolean loaded = world.getChunkManager().isChunkLoaded(centerChunk.x, centerChunk.z);
+            boolean loaded = world.getChunkSource().hasChunk(centerChunk.x(), centerChunk.z());
             if (!loaded) {
-                AtlantisMod.LOGGER.debug("[Atlantis][leviathan] spawn readiness false (naturally unloaded) id={} chunk=({}, {})", shortId(id), centerChunk.x, centerChunk.z);
+                AtlantisMod.LOGGER.debug("[Atlantis][leviathan] spawn readiness false (naturally unloaded) id={} chunk=({}, {})", shortId(id), centerChunk.x(), centerChunk.z());
             }
             return loaded;
         }
         boolean loaded = chunkPreloader.isChunkLoaded(world, centerChunk);
         if (!loaded) {
-            AtlantisMod.LOGGER.debug("[Atlantis][leviathan] spawn readiness false (preloader pending) id={} chunk=({}, {})", shortId(id), centerChunk.x, centerChunk.z);
+            AtlantisMod.LOGGER.debug("[Atlantis][leviathan] spawn readiness false (preloader pending) id={} chunk=({}, {})", shortId(id), centerChunk.x(), centerChunk.z());
         }
         return loaded;
     }
 
     private static Set<ChunkPos> computeDesiredChunks(VirtualLeviathanStore.VirtualLeviathanState state) {
         Set<ChunkPos> out = new LinkedHashSet<>();
-        ChunkPos center = new ChunkPos(BlockPos.ofFloored(state.pos()));
+        ChunkPos center = ChunkPos.containing(BlockPos.containing(state.pos()));
 
         int radius = Math.max(0, config.preloadRadiusChunks);
         for (int dx = -radius; dx <= radius; dx++) {
             for (int dz = -radius; dz <= radius; dz++) {
-                out.add(new ChunkPos(center.x + dx, center.z + dz));
+                out.add(new ChunkPos(center.x() + dx, center.z() + dz));
             }
         }
 
         int ahead = Math.max(0, config.preloadAheadChunks);
         for (int i = 1; i <= ahead; i++) {
-            int ax = center.x + (int) Math.round((state.headingX() * i));
-            int az = center.z + (int) Math.round((state.headingZ() * i));
+            int ax = center.x() + (int) Math.round((state.headingX() * i));
+            int az = center.z() + (int) Math.round((state.headingZ() * i));
             out.add(new ChunkPos(ax, az));
         }
 

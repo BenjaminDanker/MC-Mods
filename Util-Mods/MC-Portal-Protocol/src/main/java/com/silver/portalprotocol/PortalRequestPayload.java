@@ -1,32 +1,32 @@
 package com.silver.portalprotocol;
 
-import net.minecraft.network.RegistryByteBuf;
-import net.minecraft.network.codec.PacketCodec;
-import net.minecraft.network.packet.CustomPayload;
-import net.minecraft.util.Identifier;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.Identifier;
 
-public record PortalRequestPayload(byte[] payload) implements CustomPayload {
-    public static final Id<PortalRequestPayload> PACKET_ID =
-            new CustomPayload.Id<>(Identifier.of("wakeuplobby", "portal_request"));
+public record PortalRequestPayload(byte[] payload) implements CustomPacketPayload {
+    public static final Type<PortalRequestPayload> PACKET_ID =
+            new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath("wakeuplobby", "portal_request"));
 
-    public static final PacketCodec<RegistryByteBuf, PortalRequestPayload> codec =
-            PacketCodec.of(PortalRequestPayload::write, PortalRequestPayload::read);
+    public static final StreamCodec<RegistryFriendlyByteBuf, PortalRequestPayload> codec =
+            StreamCodec.ofMember(PortalRequestPayload::write, PortalRequestPayload::read);
 
-    public static PortalRequestPayload read(RegistryByteBuf buf) {
+    public static PortalRequestPayload read(RegistryFriendlyByteBuf buf) {
         int remaining = buf.readableBytes();
         byte[] bytes = new byte[Math.max(0, remaining)];
         buf.readBytes(bytes);
         return new PortalRequestPayload(bytes);
     }
 
-    public void write(RegistryByteBuf buf) {
+    public void write(RegistryFriendlyByteBuf buf) {
         if (payload != null && payload.length > 0) {
             buf.writeBytes(payload);
         }
     }
 
     @Override
-    public Id<? extends CustomPayload> getId() {
+    public Type<? extends CustomPacketPayload> type() {
         return PACKET_ID;
     }
 }

@@ -2,17 +2,17 @@ package com.silver.atlantis.spawn.marker;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.mob.MobEntity;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.nbt.NbtHelper;
-import net.minecraft.registry.Registries;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.storage.NbtReadView;
-import net.minecraft.storage.NbtWriteView;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.ErrorReporter;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtUtils;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.ProblemReporter;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.level.storage.TagValueInput;
+import net.minecraft.world.level.storage.TagValueOutput;
 
 /**
  * Persistent marker for a mob that can be spawned/despawned by proximity.
@@ -27,43 +27,43 @@ public record AtlantisMobMarker(String entityTypeId, String entityNbtSnbt, boole
         Codec.FLOAT.optionalFieldOf("pitch", 0.0f).forGetter(AtlantisMobMarker::pitch)
     ).apply(instance, AtlantisMobMarker::new));
 
-    public static AtlantisMobMarker fromEntity(MobEntity entity) {
+    public static AtlantisMobMarker fromEntity(Mob entity) {
         if (entity == null) {
             return null;
         }
 
-        Identifier typeId = Registries.ENTITY_TYPE.getId(entity.getType());
+        Identifier typeId = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
         if (typeId == null) {
             return null;
         }
 
-        NbtCompound nbt = new NbtCompound();
-        NbtWriteView writeView = NbtWriteView.create(ErrorReporter.EMPTY, entity.getRegistryManager());
-        if (!entity.saveData(writeView)) {
+        CompoundTag nbt = new CompoundTag();
+        TagValueOutput writeView = TagValueOutput.createWithContext(ProblemReporter.DISCARDING, entity.registryAccess());
+        if (!entity.save(writeView)) {
             return null;
         }
-        nbt.copyFrom(writeView.getNbt());
+        nbt.merge(writeView.buildResult());
 
         String snbt;
         try {
-            snbt = NbtHelper.toNbtProviderString(nbt);
+            snbt = NbtUtils.structureToSnbt(nbt);
         } catch (Exception e) {
             return null;
         }
 
-        return new AtlantisMobMarker(typeId.toString(), snbt, true, entity.getYaw(), entity.getPitch());
+        return new AtlantisMobMarker(typeId.toString(), snbt, true, entity.getYRot(), entity.getXRot());
     }
 
-    public NbtCompound toEntityNbt() {
+    public CompoundTag toEntityNbt() {
         try {
-            NbtCompound parsed = NbtHelper.fromNbtProviderString(entityNbtSnbt);
-            return parsed == null ? new NbtCompound() : parsed;
+            CompoundTag parsed = NbtUtils.snbtToStructure(entityNbtSnbt);
+            return parsed == null ? new CompoundTag() : parsed;
         } catch (Exception ignored) {
-            return new NbtCompound();
+            return new CompoundTag();
         }
     }
 
-    public MobEntity createMob(ServerWorld world) {
+    public Mob createMob(ServerLevel world) {
         if (world == null) {
             return null;
         }
@@ -73,28 +73,28 @@ public record AtlantisMobMarker(String entityTypeId, String entityNbtSnbt, boole
             return null;
         }
 
-        EntityType<?> type = Registries.ENTITY_TYPE.get(id);
-        if (type == null || (type == EntityType.PIG && !"pig".equals(id.getPath()))) {
+        EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getValue(id);
+        if (type == null) {
             return null;
         }
 
-        Entity entity = type.create(world, net.minecraft.entity.SpawnReason.COMMAND);
-        if (!(entity instanceof MobEntity mob)) {
+        Entity entity = type.create(world, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+        if (!(entity instanceof Mob mob)) {
             return null;
         }
 
-        NbtCompound nbt = toEntityNbt();
+        CompoundTag nbt = toEntityNbt();
         // Remove UUID to prevent collisions when spawning from markers
         nbt.remove("UUID");
         try {
-            net.minecraft.storage.ReadView readView = NbtReadView.create(ErrorReporter.EMPTY, world.getRegistryManager(), nbt);
-            mob.readData(readView);
+            net.minecraft.world.level.storage.ValueInput readView = TagValueInput.create(ProblemReporter.DISCARDING, world.registryAccess(), nbt);
+            mob.load(readView);
         } catch (Exception ignored) {
             return null;
         }
 
         // Mark mob to prevent despawning
-        mob.addCommandTag("no_despawn");
+        mob.addTag("no_despawn");
 
         return mob;
     }

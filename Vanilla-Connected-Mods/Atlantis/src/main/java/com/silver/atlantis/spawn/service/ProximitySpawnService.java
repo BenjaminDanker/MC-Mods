@@ -8,12 +8,12 @@ import com.silver.atlantis.spawn.config.SpawnDifficultyConfig;
 import com.silver.atlantis.spawn.config.SpawnMobConfig;
 import com.silver.atlantis.spawn.marker.AtlantisMobMarkerState;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.World;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.Level;
 import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSets;
@@ -50,7 +50,7 @@ public final class ProximitySpawnService {
     private static final class StructureMobJob {
         private final UUID requesterId;
         private final String requesterName;
-        private final ServerWorld world;
+        private final ServerLevel world;
         private final ActiveConstructBounds bounds;
         private final boolean dryRun;
         private final Random random;
@@ -92,7 +92,7 @@ public final class ProximitySpawnService {
         private StructureMobJob(
             UUID requesterId,
             String requesterName,
-            ServerWorld world,
+            ServerLevel world,
             ActiveConstructBounds bounds,
             boolean dryRun,
             Random random,
@@ -151,18 +151,18 @@ public final class ProximitySpawnService {
         }
     }
 
-    public int runStructureMob(ServerCommandSource source, boolean dryRun) {
+    public int runStructureMob(CommandSourceStack source, boolean dryRun) {
         MinecraftServer server = source.getServer();
 
         ActiveConstructBounds activeBounds = ActiveConstructBoundsResolver.tryResolveLatest();
         if (activeBounds == null) {
-            source.sendFeedback(() -> Text.literal("No active construct bounds found; /structuremob only seeds markers within the current cycle build. Run /construct first."), false);
+            source.sendSuccess(() -> Component.literal("No active construct bounds found; /structuremob only seeds markers within the current cycle build. Run /construct first."), false);
             return 0;
         }
 
-        ServerWorld world = resolveWorld(server, activeBounds.dimensionId());
+        ServerLevel world = resolveWorld(server, activeBounds.dimensionId());
         if (world == null) {
-            source.sendFeedback(() -> Text.literal("No world loaded for active construct dimension."), false);
+            source.sendSuccess(() -> Component.literal("No world loaded for active construct dimension."), false);
             return 0;
         }
 
@@ -173,19 +173,19 @@ public final class ProximitySpawnService {
         if (!cacheHit) {
             candidatePositions = CANDIDATE_POSITIONS.loadCandidatePositions(activeBounds);
             if (candidatePositions == null || candidatePositions.isEmpty()) {
-                source.sendFeedback(() -> Text.literal("No placed-block index found for active construct run; cannot seed structure mobs."), false);
+                source.sendSuccess(() -> Component.literal("No placed-block index found for active construct run; cannot seed structure mobs."), false);
                 return 0;
             }
         }
 
         synchronized (JOB_LOCK) {
             if (activeJob != null) {
-                source.sendFeedback(() -> Text.literal("structuremob is already running."), false);
+                source.sendSuccess(() -> Component.literal("structuremob is already running."), false);
                 return 0;
             }
 
-            UUID requesterId = source.getPlayer() != null ? source.getPlayer().getUuid() : null;
-            String requesterName = source.getName();
+            UUID requesterId = source.getPlayer() != null ? source.getPlayer().getUUID() : null;
+            String requesterName = source.getTextName();
             Random random = new Random(world.getRandom().nextLong());
             int easyY = resolveEasyY(activeBounds);
 
@@ -233,7 +233,7 @@ public final class ProximitySpawnService {
                         boss
                     );
 
-                    source.sendFeedback(() -> Text.literal(dryRunMessage), false);
+                    source.sendSuccess(() -> Component.literal(dryRunMessage), false);
 
                     activeJob = null;
                     return 1;
@@ -242,9 +242,9 @@ public final class ProximitySpawnService {
         }
 
         if (cacheHit) {
-            source.sendFeedback(() -> Text.literal("structuremob started from cache (multi-tick seed only)."), false);
+            source.sendSuccess(() -> Component.literal("structuremob started from cache (multi-tick seed only)."), false);
         } else {
-            source.sendFeedback(() -> Text.literal("structuremob started (multi-tick scan + seed)."), false);
+            source.sendSuccess(() -> Component.literal("structuremob started (multi-tick scan + seed)."), false);
         }
         return 1;
     }
@@ -418,7 +418,7 @@ public final class ProximitySpawnService {
                         job.seeded,
                         job.skipped,
                         job.replaced,
-                        job.world.getRegistryKey().getValue(),
+                        job.world.dimension().identifier(),
                         job.bounds.minX(), job.bounds.minY(), job.bounds.minZ(),
                         job.bounds.maxX(), job.bounds.maxY(), job.bounds.maxZ()
                     );
@@ -434,14 +434,14 @@ public final class ProximitySpawnService {
         }
     }
 
-    public int checkSpawnPause(ServerCommandSource source) {
+    public int checkSpawnPause(CommandSourceStack source) {
         Set<String> tokens = ProximityMobManager.getInstance().getActivePauseTokens();
         if (tokens.isEmpty()) {
-            source.sendFeedback(() -> Text.literal("No active spawn pause tokens."), false);
+            source.sendSuccess(() -> Component.literal("No active spawn pause tokens."), false);
             return 0;
         }
 
-        source.sendFeedback(() -> Text.literal(String.format(
+        source.sendSuccess(() -> Component.literal(String.format(
             "Active spawn pause tokens (%d): %s",
             tokens.size(),
             String.join(", ", tokens)
@@ -449,15 +449,15 @@ public final class ProximitySpawnService {
         return tokens.size();
     }
 
-    public int clearSpawnPause(ServerCommandSource source) {
+    public int clearSpawnPause(CommandSourceStack source) {
         Set<String> tokens = ProximityMobManager.getInstance().getActivePauseTokens();
         if (tokens.isEmpty()) {
-            source.sendFeedback(() -> Text.literal("No active spawn pause tokens to clear."), false);
+            source.sendSuccess(() -> Component.literal("No active spawn pause tokens to clear."), false);
             return 0;
         }
 
         ProximityMobManager.getInstance().clearAllExternalPauses();
-        source.sendFeedback(() -> Text.literal(String.format(
+        source.sendSuccess(() -> Component.literal(String.format(
             "Cleared %d spawn pause token(s): %s",
             tokens.size(),
             String.join(", ", tokens)
@@ -465,18 +465,18 @@ public final class ProximitySpawnService {
         return tokens.size();
     }
 
-    public int clearStructureMob(ServerCommandSource source) {
+    public int clearStructureMob(CommandSourceStack source) {
         MinecraftServer server = source.getServer();
 
         ActiveConstructBounds activeBounds = ActiveConstructBoundsResolver.tryResolveLatest();
         if (activeBounds == null) {
-            source.sendFeedback(() -> Text.literal("No active construct bounds found; nothing to clear."), false);
+            source.sendSuccess(() -> Component.literal("No active construct bounds found; nothing to clear."), false);
             return 0;
         }
 
-        ServerWorld world = resolveWorld(server, activeBounds.dimensionId());
+        ServerLevel world = resolveWorld(server, activeBounds.dimensionId());
         if (world == null) {
-            source.sendFeedback(() -> Text.literal("No world loaded for active construct dimension; nothing to clear."), false);
+            source.sendSuccess(() -> Component.literal("No world loaded for active construct dimension; nothing to clear."), false);
             return 0;
         }
 
@@ -489,7 +489,7 @@ public final class ProximitySpawnService {
         int removedMarkers = Math.max(0, beforeMarkers - afterMarkers);
         int activeAfter = ProximityMobManager.getInstance().countActive(world);
 
-        source.sendFeedback(() -> Text.literal(String.format(
+        source.sendSuccess(() -> Component.literal(String.format(
             Locale.ROOT,
             "Cleared Atlantis structuremob in bounds: removedMarkers=%d activeRemaining=%d.",
             removedMarkers,
@@ -505,9 +505,9 @@ public final class ProximitySpawnService {
         }
 
         if (job.requesterId != null && server != null) {
-            var player = server.getPlayerManager().getPlayer(job.requesterId);
+            var player = server.getPlayerList().getPlayer(job.requesterId);
             if (player != null) {
-                player.sendMessage(Text.literal(message), false);
+                player.sendSystemMessage(Component.literal(message), false);
                 return;
             }
         }
@@ -515,13 +515,13 @@ public final class ProximitySpawnService {
         AtlantisMod.LOGGER.info("[structuremob:{}] {}", job.requesterName, message);
     }
 
-    private ServerWorld resolveWorld(MinecraftServer server, String dimensionId) {
+    private ServerLevel resolveWorld(MinecraftServer server, String dimensionId) {
         if (dimensionId == null || dimensionId.isBlank()) {
-            return server.getWorld(World.OVERWORLD);
+            return server.getLevel(Level.OVERWORLD);
         }
 
-        for (ServerWorld world : server.getWorlds()) {
-            if (world.getRegistryKey().getValue().toString().equals(dimensionId)) {
+        for (ServerLevel world : server.getAllLevels()) {
+            if (world.dimension().identifier().toString().equals(dimensionId)) {
                 return world;
             }
         }

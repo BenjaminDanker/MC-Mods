@@ -1,18 +1,6 @@
 package com.silver.atlantis.construct;
 
 import com.silver.atlantis.AtlantisMod;
-import com.silver.atlantis.construct.mixin.VersionedChunkStorageAccessor;
-import net.minecraft.block.Block;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.nbt.NbtHelper;
-import net.minecraft.nbt.NbtList;
-import net.minecraft.registry.Registries;
-import net.minecraft.server.world.ServerChunkLoadingManager;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.ChunkPos;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -23,6 +11,15 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.NbtUtils;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.level.ChunkMap;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.block.Block;
 
 final class UnloadedChunkNbtEditor {
 
@@ -38,22 +35,22 @@ final class UnloadedChunkNbtEditor {
 
     static final class ChunkMutationContext {
         private final ChunkPos chunkPos;
-        private final NbtCompound chunkNbt;
-        private final NbtList sections;
-        private final NbtList blockEntities;
+        private final CompoundTag chunkNbt;
+        private final ListTag sections;
+        private final ListTag blockEntities;
         private final Map<Integer, SectionData> sectionByY = new HashMap<>();
 
-        ChunkMutationContext(ChunkPos chunkPos, NbtCompound chunkNbt) {
+        ChunkMutationContext(ChunkPos chunkPos, CompoundTag chunkNbt) {
             this.chunkPos = chunkPos;
             this.chunkNbt = chunkNbt;
 
-            NbtList existingSections = chunkNbt.getListOrEmpty("sections");
+            ListTag existingSections = chunkNbt.getListOrEmpty("sections");
             this.sections = existingSections;
             if (!chunkNbt.contains("sections")) {
                 chunkNbt.put("sections", this.sections);
             }
 
-            NbtList existingBlockEntities = chunkNbt.getListOrEmpty("block_entities");
+            ListTag existingBlockEntities = chunkNbt.getListOrEmpty("block_entities");
             this.blockEntities = existingBlockEntities;
             if (!chunkNbt.contains("block_entities")) {
                 chunkNbt.put("block_entities", this.blockEntities);
@@ -67,7 +64,7 @@ final class UnloadedChunkNbtEditor {
             int sectionY = Math.floorDiv(y, 16);
 
             SectionData section = getOrCreateSection(sectionY, false);
-            NbtCompound stateNbt = section.getStateAt(localX, localY, localZ);
+            CompoundTag stateNbt = section.getStateAt(localX, localY, localZ);
             String blockString = toBlockString(stateNbt);
             String nbtSnbt = extractBlockEntitySnbtAt(x, y, z);
             return new BlockSnapshot(blockString, nbtSnbt);
@@ -80,10 +77,10 @@ final class UnloadedChunkNbtEditor {
             int sectionY = Math.floorDiv(y, 16);
 
             SectionData section = getOrCreateSection(sectionY, true);
-            NbtCompound targetState = parseBlockString(blockString);
+            CompoundTag targetState = parseBlockString(blockString);
             boolean changed = section.setStateAt(localX, localY, localZ, targetState);
 
-            String targetBlockName = targetState.getString("Name", "minecraft:air");
+            String targetBlockName = targetState.getStringOr("Name", "minecraft:air");
             String filteredBlockEntitySnbt = blockSupportsBlockEntity(targetBlockName) ? blockEntitySnbt : null;
             boolean blockEntityChanged = setBlockEntityAt(x, y, z, filteredBlockEntitySnbt);
             return changed || blockEntityChanged;
@@ -108,15 +105,15 @@ final class UnloadedChunkNbtEditor {
             }
 
             for (int i = 0; i < sections.size(); i++) {
-                NbtCompound section = sections.getCompoundOrEmpty(i);
-                if (section.getByte("Y", (byte) 0) == (byte) sectionY) {
+                CompoundTag section = sections.getCompoundOrEmpty(i);
+                if (section.getByteOr("Y", (byte) 0) == (byte) sectionY) {
                     SectionData data = new SectionData(section, true);
                     sectionByY.put(sectionY, data);
                     return data;
                 }
             }
 
-            NbtCompound created = createEmptySection(sectionY);
+            CompoundTag created = createEmptySection(sectionY);
             if (createIfMissing) {
                 sections.add(created);
             }
@@ -127,11 +124,11 @@ final class UnloadedChunkNbtEditor {
 
         private String extractBlockEntitySnbtAt(int x, int y, int z) {
             for (int i = 0; i < blockEntities.size(); i++) {
-                NbtCompound be = blockEntities.getCompoundOrEmpty(i);
-                if (be.getInt("x", Integer.MIN_VALUE) == x
-                    && be.getInt("y", Integer.MIN_VALUE) == y
-                    && be.getInt("z", Integer.MIN_VALUE) == z) {
-                    return NbtHelper.toNbtProviderString(be);
+                CompoundTag be = blockEntities.getCompoundOrEmpty(i);
+                if (be.getIntOr("x", Integer.MIN_VALUE) == x
+                    && be.getIntOr("y", Integer.MIN_VALUE) == y
+                    && be.getIntOr("z", Integer.MIN_VALUE) == z) {
+                    return NbtUtils.structureToSnbt(be);
                 }
             }
             return null;
@@ -140,10 +137,10 @@ final class UnloadedChunkNbtEditor {
         private boolean setBlockEntityAt(int x, int y, int z, String blockEntitySnbt) {
             boolean removed = false;
             for (int i = blockEntities.size() - 1; i >= 0; i--) {
-                NbtCompound be = blockEntities.getCompoundOrEmpty(i);
-                if (be.getInt("x", Integer.MIN_VALUE) == x
-                    && be.getInt("y", Integer.MIN_VALUE) == y
-                    && be.getInt("z", Integer.MIN_VALUE) == z) {
+                CompoundTag be = blockEntities.getCompoundOrEmpty(i);
+                if (be.getIntOr("x", Integer.MIN_VALUE) == x
+                    && be.getIntOr("y", Integer.MIN_VALUE) == y
+                    && be.getIntOr("z", Integer.MIN_VALUE) == z) {
                     blockEntities.remove(i);
                     removed = true;
                 }
@@ -153,21 +150,21 @@ final class UnloadedChunkNbtEditor {
                 return removed;
             }
 
-            NbtCompound be;
+            CompoundTag be;
             try {
-                be = NbtHelper.fromNbtProviderString(blockEntitySnbt);
+                be = NbtUtils.snbtToStructure(blockEntitySnbt);
             } catch (Exception e) {
                 return removed;
             }
 
             if (!be.contains("id") && be.contains("Id")) {
-                String legacyId = be.getString("Id", "");
+                String legacyId = be.getStringOr("Id", "");
                 if (!isBlankSafe(legacyId)) {
                     be.putString("id", legacyId);
                 }
             }
 
-            String beId = be.getString("id", "");
+            String beId = be.getStringOr("id", "");
             if (isBlankSafe(beId)) {
                 return removed;
             }
@@ -186,67 +183,64 @@ final class UnloadedChunkNbtEditor {
     record BlockStateSpec(String blockString, String blockEntitySnbt) {
     }
 
-    static Optional<NbtCompound> loadChunkNbt(ServerWorld world, ChunkPos chunkPos) {
-        ServerChunkLoadingManager loadingManager = world.getChunkManager().chunkLoadingManager;
-        Optional<NbtCompound> optional;
+    static Optional<CompoundTag> loadChunkNbt(ServerLevel world, ChunkPos chunkPos) {
+        ChunkMap loadingManager = world.getChunkSource().chunkMap;
+        Optional<CompoundTag> optional;
         try {
-            optional = loadingManager.getNbt(chunkPos)
+            optional = loadingManager.read(chunkPos)
                 .orTimeout(CHUNK_NBT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 .join();
         } catch (Exception e) {
-            AtlantisMod.LOGGER.warn("Timed out loading chunk NBT for {}:{}", chunkPos.x, chunkPos.z);
+            AtlantisMod.LOGGER.warn("Timed out loading chunk NBT for {}:{}", chunkPos.x(), chunkPos.z());
             return Optional.empty();
         }
         if (optional.isEmpty()) {
             return Optional.empty();
         }
 
-        NbtCompound chunkNbt = optional.get().copy();
+        CompoundTag chunkNbt = optional.get().copy();
 
-        return Optional.of(((VersionedChunkStorageAccessor) loadingManager).atlantis$invokeUpdateChunkNbt(
-            world.getRegistryKey(),
-            () -> world.getChunkManager().getPersistentStateManager(),
-            chunkNbt,
-            world.getChunkManager().getChunkGenerator().getCodecKey()
-        ));
+        // ChunkMap now exposes already data-fixed NBT through SimpleRegionStorage;
+        // the old ChunkStorage.updateChunkNbt hook was removed in 26.2.
+        return Optional.of(chunkNbt);
     }
 
-    static void saveChunkNbt(ServerWorld world, ChunkPos chunkPos, NbtCompound chunkNbt) {
-        ServerChunkLoadingManager loadingManager = world.getChunkManager().chunkLoadingManager;
-        loadingManager.setNbt(chunkPos, () -> chunkNbt)
+    static void saveChunkNbt(ServerLevel world, ChunkPos chunkPos, CompoundTag chunkNbt) {
+        ChunkMap loadingManager = world.getChunkSource().chunkMap;
+        loadingManager.write(chunkPos, () -> chunkNbt)
             .orTimeout(CHUNK_NBT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .join();
     }
 
-    static boolean hasChunkNbt(ServerWorld world, ChunkPos chunkPos) {
-        ServerChunkLoadingManager loadingManager = world.getChunkManager().chunkLoadingManager;
+    static boolean hasChunkNbt(ServerLevel world, ChunkPos chunkPos) {
+        ChunkMap loadingManager = world.getChunkSource().chunkMap;
         try {
-            return loadingManager.getNbt(chunkPos)
+            return loadingManager.read(chunkPos)
                 .orTimeout(CHUNK_NBT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 .join()
                 .isPresent();
         } catch (Exception e) {
-            AtlantisMod.LOGGER.warn("Timed out probing chunk NBT for {}:{}", chunkPos.x, chunkPos.z);
+            AtlantisMod.LOGGER.warn("Timed out probing chunk NBT for {}:{}", chunkPos.x(), chunkPos.z());
             return false;
         }
     }
 
-    static boolean mutateChunk(ServerWorld world, ChunkPos chunkPos, MutationConsumer consumer) {
-        if (world.getChunkManager().isChunkLoaded(chunkPos.x, chunkPos.z)) {
+    static boolean mutateChunk(ServerLevel world, ChunkPos chunkPos, MutationConsumer consumer) {
+        if (world.getChunkSource().hasChunk(chunkPos.x(), chunkPos.z())) {
             return false;
         }
 
-        Optional<NbtCompound> optionalChunkNbt = loadChunkNbt(world, chunkPos);
+        Optional<CompoundTag> optionalChunkNbt = loadChunkNbt(world, chunkPos);
         if (optionalChunkNbt.isEmpty()) {
             return false;
         }
 
-        NbtCompound chunkNbt = optionalChunkNbt.get();
+        CompoundTag chunkNbt = optionalChunkNbt.get();
         ChunkMutationContext context = new ChunkMutationContext(chunkPos, chunkNbt);
         consumer.accept(context);
         context.finish();
 
-        if (world.getChunkManager().isChunkLoaded(chunkPos.x, chunkPos.z)) {
+        if (world.getChunkSource().hasChunk(chunkPos.x(), chunkPos.z())) {
             return false;
         }
 
@@ -254,7 +248,7 @@ final class UnloadedChunkNbtEditor {
             saveChunkNbt(world, chunkPos, chunkNbt);
             return true;
         } catch (Exception e) {
-            AtlantisMod.LOGGER.warn("Timed out saving chunk NBT for {}:{}", chunkPos.x, chunkPos.z);
+            AtlantisMod.LOGGER.warn("Timed out saving chunk NBT for {}:{}", chunkPos.x(), chunkPos.z());
             return false;
         }
     }
@@ -325,7 +319,7 @@ final class UnloadedChunkNbtEditor {
         }
     }
 
-    static NbtCompound parseBlockString(String blockString) {
+    static CompoundTag parseBlockString(String blockString) {
         String normalized = normalizeBlockString(blockString);
         String name = normalized;
         String propsRaw = null;
@@ -339,11 +333,11 @@ final class UnloadedChunkNbtEditor {
             }
         }
 
-        NbtCompound out = new NbtCompound();
+        CompoundTag out = new CompoundTag();
         out.putString("Name", isBlankSafe(name) ? "minecraft:air" : name);
 
         if (propsRaw != null && !isBlankSafe(propsRaw)) {
-            NbtCompound props = new NbtCompound();
+            CompoundTag props = new CompoundTag();
             for (String part : propsRaw.split(",")) {
                 String[] kv = part.split("=", 2);
                 if (kv.length != 2) {
@@ -359,14 +353,14 @@ final class UnloadedChunkNbtEditor {
         return out;
     }
 
-    static String toBlockString(NbtCompound stateNbt) {
-        String name = stateNbt.getString("Name", "minecraft:air");
-        NbtCompound props = stateNbt.getCompoundOrEmpty("Properties");
+    static String toBlockString(CompoundTag stateNbt) {
+        String name = stateNbt.getStringOr("Name", "minecraft:air");
+        CompoundTag props = stateNbt.getCompoundOrEmpty("Properties");
         if (props.isEmpty()) {
             return name;
         }
 
-        List<String> keys = new ArrayList<>(props.getKeys());
+        List<String> keys = new ArrayList<>(props.keySet());
         keys.sort(String::compareTo);
 
         StringBuilder out = new StringBuilder(name).append('[');
@@ -375,18 +369,18 @@ final class UnloadedChunkNbtEditor {
                 out.append(',');
             }
             String key = keys.get(i);
-            out.append(key).append('=').append(props.getString(key, ""));
+            out.append(key).append('=').append(props.getStringOr(key, ""));
         }
         out.append(']');
         return out.toString();
     }
 
-    private static NbtCompound createEmptySection(int sectionY) {
-        NbtCompound section = new NbtCompound();
+    private static CompoundTag createEmptySection(int sectionY) {
+        CompoundTag section = new CompoundTag();
         section.putByte("Y", (byte) sectionY);
 
-        NbtCompound blockStates = new NbtCompound();
-        NbtList palette = new NbtList();
+        CompoundTag blockStates = new CompoundTag();
+        ListTag palette = new ListTag();
         palette.add(parseBlockString("minecraft:air"));
         blockStates.put("palette", palette);
         section.put("block_states", blockStates);
@@ -403,12 +397,12 @@ final class UnloadedChunkNbtEditor {
             return false;
         }
 
-        Block block = Registries.BLOCK.get(id);
+        Block block = BuiltInRegistries.BLOCK.getValue(id);
         if (block == null) {
             return false;
         }
 
-        return block.getDefaultState().hasBlockEntity();
+        return block.defaultBlockState().hasBlockEntity();
     }
 
     private static boolean isBlankSafe(String value) {
@@ -440,15 +434,15 @@ final class UnloadedChunkNbtEditor {
     }
 
     private static final class SectionData {
-        private final NbtCompound section;
+        private final CompoundTag section;
         private boolean attachedToSectionsList;
-        private final NbtCompound blockStates;
-        private final List<NbtCompound> palette = new ArrayList<>();
+        private final CompoundTag blockStates;
+        private final List<CompoundTag> palette = new ArrayList<>();
         private final Map<String, Integer> paletteIndexByKey = new HashMap<>();
         private final int[] states = new int[4096];
         private boolean dirty;
 
-        SectionData(NbtCompound section, boolean attachedToSectionsList) {
+        SectionData(CompoundTag section, boolean attachedToSectionsList) {
             this.section = section;
             this.attachedToSectionsList = attachedToSectionsList;
             this.blockStates = section.getCompoundOrEmpty("block_states");
@@ -456,14 +450,14 @@ final class UnloadedChunkNbtEditor {
                 section.put("block_states", blockStates);
             }
 
-            NbtList paletteNbt = blockStates.getListOrEmpty("palette");
+            ListTag paletteNbt = blockStates.getListOrEmpty("palette");
             if (paletteNbt.isEmpty()) {
-                NbtCompound air = parseBlockString("minecraft:air");
+                CompoundTag air = parseBlockString("minecraft:air");
                 palette.add(air);
                 paletteIndexByKey.put(toBlockString(air), 0);
             } else {
                 for (int i = 0; i < paletteNbt.size(); i++) {
-                    NbtCompound state = paletteNbt.getCompoundOrEmpty(i).copy();
+                    CompoundTag state = paletteNbt.getCompoundOrEmpty(i).copy();
                     palette.add(state);
                     paletteIndexByKey.put(toBlockString(state), i);
                 }
@@ -472,7 +466,7 @@ final class UnloadedChunkNbtEditor {
             decodeStates(blockStates.getLongArray("data").orElse(new long[0]));
         }
 
-        NbtCompound getStateAt(int localX, int localY, int localZ) {
+        CompoundTag getStateAt(int localX, int localY, int localZ) {
             int index = linearIndex(localX, localY, localZ);
             int paletteIndex = states[index];
             if (paletteIndex < 0 || paletteIndex >= palette.size()) {
@@ -481,7 +475,7 @@ final class UnloadedChunkNbtEditor {
             return palette.get(paletteIndex).copy();
         }
 
-        boolean setStateAt(int localX, int localY, int localZ, NbtCompound stateNbt) {
+        boolean setStateAt(int localX, int localY, int localZ, CompoundTag stateNbt) {
             int index = linearIndex(localX, localY, localZ);
             int targetPaletteIndex = getOrCreatePaletteIndex(stateNbt);
             if (states[index] == targetPaletteIndex) {
@@ -497,8 +491,8 @@ final class UnloadedChunkNbtEditor {
                 return;
             }
 
-            NbtList paletteNbt = new NbtList();
-            for (NbtCompound state : palette) {
+            ListTag paletteNbt = new ListTag();
+            for (CompoundTag state : palette) {
                 paletteNbt.add(state.copy());
             }
             blockStates.put("palette", paletteNbt);
@@ -514,7 +508,7 @@ final class UnloadedChunkNbtEditor {
             dirty = false;
         }
 
-        private int getOrCreatePaletteIndex(NbtCompound stateNbt) {
+        private int getOrCreatePaletteIndex(CompoundTag stateNbt) {
             String key = toBlockString(stateNbt);
             Integer existing = paletteIndexByKey.get(key);
             if (existing != null) {

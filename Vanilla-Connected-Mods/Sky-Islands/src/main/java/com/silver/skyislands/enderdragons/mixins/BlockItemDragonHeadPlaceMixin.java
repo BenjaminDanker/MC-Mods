@@ -1,11 +1,11 @@
 package com.silver.skyislands.enderdragons.mixins;
 
 import com.silver.skyislands.enderdragons.EnderDragonManager;
-import net.minecraft.item.BlockItem;
-import net.minecraft.item.ItemPlacementContext;
-import net.minecraft.util.ActionResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.World;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.context.BlockPlaceContext;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.Level;
 
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -15,23 +15,23 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(BlockItem.class)
 public abstract class BlockItemDragonHeadPlaceMixin {
 
-    @Inject(method = "place(Lnet/minecraft/item/ItemPlacementContext;)Lnet/minecraft/util/ActionResult;", at = @At("RETURN"))
-    private void skyislands$trackDragonHeadPlace(ItemPlacementContext context, CallbackInfoReturnable<ActionResult> cir) {
+    @Inject(method = "place", at = @At("RETURN"))
+    private void skyislands$trackDragonHeadPlace(BlockPlaceContext context, CallbackInfoReturnable<InteractionResult> cir) {
         if (context == null) {
             return;
         }
 
-        ActionResult result = cir.getReturnValue();
-        if (result == null || !result.isAccepted()) {
+        InteractionResult result = cir.getReturnValue();
+        if (result == null || !result.consumesAction()) {
             return;
         }
 
-        World world = context.getWorld();
-        if (world == null || world.isClient()) {
+        Level world = context.getLevel();
+        if (world == null || world.isClientSide()) {
             return;
         }
 
-        BlockPos pos = context.getBlockPos();
+        BlockPos pos = context.getClickedPos();
         EnderDragonManager.onPossibleDragonHeadPlaced(world, pos);
     }
 }

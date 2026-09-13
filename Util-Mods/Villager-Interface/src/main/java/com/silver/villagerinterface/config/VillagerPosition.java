@@ -1,6 +1,6 @@
 package com.silver.villagerinterface.config;
 
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.phys.Vec3;
 
 public final class VillagerPosition {
     private final double x;
@@ -25,7 +25,7 @@ public final class VillagerPosition {
         return z;
     }
 
-    public Vec3d toVec3d() {
-        return new Vec3d(x, y, z);
+    public Vec3 toVec3() {
+        return new Vec3(x, y, z);
     }
 }

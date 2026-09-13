@@ -1,12 +1,11 @@
 package com.silver.atlantis.protect;
 
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.BlockPos;
-
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
@@ -16,7 +15,7 @@ import java.util.UUID;
  */
 public final class ProtectionService {
 
-    private static final Text INNER_AIR_ENTER_MESSAGE = Text.literal("Celantis build by Natac");
+    private static final Component INNER_AIR_ENTER_MESSAGE = Component.literal("Celantis build by Natac");
 
     private final Set<UUID> playersInsideInnerAir = new HashSet<>();
 
@@ -31,26 +30,26 @@ public final class ProtectionService {
     private void checkInnerAirEntry(MinecraftServer server) {
         Set<UUID> online = new HashSet<>();
 
-        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
-            online.add(player.getUuid());
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            online.add(player.getUUID());
 
-            ServerWorld world = player.getEntityWorld();
-            BlockPos feetPos = player.getBlockPos();
-            BlockPos headPos = feetPos.up();
+            ServerLevel world = player.level();
+            BlockPos feetPos = player.blockPosition();
+            BlockPos headPos = feetPos.above();
 
             boolean isInsideInnerAir =
                 ProtectionManager.INSTANCE.isInteriorProtected(world, feetPos)
                     || ProtectionManager.INSTANCE.isInteriorProtected(world, headPos);
 
-            boolean wasInsideInnerAir = playersInsideInnerAir.contains(player.getUuid());
+            boolean wasInsideInnerAir = playersInsideInnerAir.contains(player.getUUID());
             if (isInsideInnerAir && !wasInsideInnerAir) {
-                player.sendMessage(INNER_AIR_ENTER_MESSAGE, true);
-                playersInsideInnerAir.add(player.getUuid());
+                player.sendSystemMessage(INNER_AIR_ENTER_MESSAGE, true);
+                playersInsideInnerAir.add(player.getUUID());
             } else if (!isInsideInnerAir && wasInsideInnerAir) {
-                playersInsideInnerAir.remove(player.getUuid());
+                playersInsideInnerAir.remove(player.getUUID());
                 // Clear the previous action-bar notification immediately when
                 // the player leaves the protected interior (including after undo).
-                player.sendMessage(Text.empty(), true);
+                player.sendSystemMessage(Component.empty(), true);
             }
         }
 

@@ -10,13 +10,12 @@ import com.silver.aipets.fabric.authority.PetAuthorityGateway;
 import com.silver.aipets.fabric.authority.PetAuthoritySnapshot;
 import com.silver.aipets.fabric.entity.PetEntityData;
 import com.silver.aipets.fabric.entity.PetEntityFactory;
-import net.minecraft.entity.Entity;
+import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.ChunkPos;
-
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.ChunkPos;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -56,8 +55,8 @@ public final class PetEntityRecoveryCoordinator {
         Objects.requireNonNull(server, "server");
         if (ticksUntilScan-- > 0) return;
         ticksUntilScan = SCAN_INTERVAL_TICKS - 1;
-        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
-            recoverOwner(server, player.getUuid());
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            recoverOwner(server, player.getUUID());
         }
     }
 
@@ -94,7 +93,7 @@ public final class PetEntityRecoveryCoordinator {
             UUID ownerUuid,
             Optional<PetAuthoritySnapshot> snapshot,
             CompletableFuture<PetRecoveryStatus> result) {
-        if (server.getPlayerManager().getPlayer(ownerUuid) == null) {
+        if (server.getPlayerList().getPlayer(ownerUuid) == null) {
             finish(ownerUuid, result, PetRecoveryStatus.OWNER_OFFLINE, null);
             return;
         }
@@ -112,8 +111,8 @@ public final class PetEntityRecoveryCoordinator {
             return;
         }
         List<CompletableFuture<PetEntityReconciliationResult>> checks = new ArrayList<>();
-        for (ServerWorld world : server.getWorlds()) {
-            for (Entity entity : world.iterateEntities()) {
+        for (ServerLevel world : server.getAllLevels()) {
+            for (Entity entity : world.getAllEntities()) {
                 if (entity instanceof PetEntityData data
                         && data.aipets$isPet()
                         && pet.petId().equals(data.aipets$getPetId())
@@ -164,7 +163,7 @@ public final class PetEntityRecoveryCoordinator {
             UUID expectedPetId,
             Optional<PetAuthoritySnapshot> snapshot,
             CompletableFuture<PetRecoveryStatus> result) {
-        if (server.getPlayerManager().getPlayer(ownerUuid) == null || snapshot.isEmpty()
+        if (server.getPlayerList().getPlayer(ownerUuid) == null || snapshot.isEmpty()
                 || !snapshot.orElseThrow().pet().petId().equals(expectedPetId)) {
             finish(ownerUuid, result, PetRecoveryStatus.CONTEXT_CHANGED, null);
             return;
@@ -179,14 +178,14 @@ public final class PetEntityRecoveryCoordinator {
             return;
         }
         UUID entityUuid = local.placement().entityUuid().orElseThrow();
-        Entity existing = local.world().getEntityAnyDimension(entityUuid);
+        Entity existing = local.world().getEntityInAnyDimension(entityUuid);
         if (existing != null && !existing.isRemoved()) {
             finish(ownerUuid, result, PetRecoveryStatus.AUTHORITATIVE_ENTITY_PRESENT, null);
             return;
         }
         var prepared = factory.prepare(
                 local.world(), pet, entityUuid, local.placement().position(), current.sleeping());
-        if (!local.world().spawnEntity(prepared.entity())) {
+        if (!local.world().addFreshEntity(prepared.entity())) {
             prepared.entity().discard();
             finish(ownerUuid, result, PetRecoveryStatus.CONTEXT_CHANGED, null);
             return;
@@ -200,13 +199,13 @@ public final class PetEntityRecoveryCoordinator {
                 || placed.entityUuid().isEmpty()) {
             return Optional.empty();
         }
-        for (ServerWorld world : server.getWorlds()) {
-            DimensionId dimension = DimensionId.parse(world.getRegistryKey().getValue().toString());
+        for (ServerLevel world : server.getAllLevels()) {
+            DimensionId dimension = DimensionId.parse(world.dimension().identifier().toString());
             if (!dimension.equals(placed.dimensionId())) continue;
-            BlockPos block = BlockPos.ofFloored(
+            BlockPos block = BlockPos.containing(
                     placed.position().x(), placed.position().y(), placed.position().z());
-            ChunkPos chunk = new ChunkPos(block);
-            if (world.getChunkManager().isChunkLoaded(chunk.x, chunk.z)) {
+            ChunkPos chunk = ChunkPos.containing(block);
+            if (world.getChunkSource().hasChunk(chunk.x(), chunk.z())) {
                 return Optional.of(new LocalPlacement(world, placed));
             }
             return Optional.empty();
@@ -246,10 +245,10 @@ public final class PetEntityRecoveryCoordinator {
     }
 
     private static void onServer(MinecraftServer server, Runnable action) {
-        if (server.isOnThread()) action.run();
+        if (server.isSameThread()) action.run();
         else server.execute(action);
     }
 
-    private record LocalPlacement(ServerWorld world, PlacedPlacement placement) {
+    private record LocalPlacement(ServerLevel world, PlacedPlacement placement) {
     }
 }

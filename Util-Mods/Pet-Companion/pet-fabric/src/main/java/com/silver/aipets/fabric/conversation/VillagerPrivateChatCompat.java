@@ -3,8 +3,7 @@ package com.silver.aipets.fabric.conversation;
 import com.silver.aipets.common.observability.StructuredPetEvent;
 import com.silver.aipets.fabric.PetCompanionMod;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.server.network.ServerPlayerEntity;
-
+import net.minecraft.server.level.ServerPlayer;
 import java.lang.reflect.Method;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -17,7 +16,7 @@ final class VillagerPrivateChatCompat {
     private VillagerPrivateChatCompat() {
     }
 
-    static boolean isConversationActive(ServerPlayerEntity player) {
+    static boolean isConversationActive(ServerPlayer player) {
         Objects.requireNonNull(player, "player");
         if (!FabricLoader.getInstance().isModLoaded(MOD_ID)) return false;
         try {
@@ -28,7 +27,7 @@ final class VillagerPrivateChatCompat {
             Object manager = getManager.invoke(null);
             if (manager == null) return false;
             Method isInConversation = manager.getClass().getMethod(
-                    "isInConversation", ServerPlayerEntity.class);
+                    "isInConversation", ServerPlayer.class);
             return Boolean.TRUE.equals(isInConversation.invoke(manager, player));
         } catch (ReflectiveOperationException | LinkageError failure) {
             if (LOGGED_FAILURE.compareAndSet(false, true)) {

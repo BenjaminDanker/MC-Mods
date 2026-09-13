@@ -2,24 +2,23 @@ package com.silver.atlantis.worldgen;
 
 import com.silver.atlantis.AtlantisMod;
 import com.mojang.serialization.Codec;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.block.PillarBlock;
-import net.minecraft.registry.tag.BlockTags;
-import net.minecraft.fluid.Fluids;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.random.Random;
-import net.minecraft.world.Heightmap;
-import net.minecraft.world.StructureWorldAccess;
-import net.minecraft.world.gen.feature.DefaultFeatureConfig;
-import net.minecraft.world.gen.feature.Feature;
-import net.minecraft.world.gen.feature.util.FeatureContext;
-
 import java.util.concurrent.atomic.AtomicLong;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.tags.BlockTags;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.WorldGenLevel;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.RotatedPillarBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.levelgen.feature.Feature;
+import net.minecraft.world.level.levelgen.feature.FeaturePlaceContext;
+import net.minecraft.world.level.levelgen.feature.configurations.NoneFeatureConfiguration;
+import net.minecraft.world.level.material.Fluids;
 
-public final class AtlantisDriftwoodFeature extends Feature<DefaultFeatureConfig> {
+public final class AtlantisDriftwoodFeature extends Feature<NoneFeatureConfiguration> {
     private static final AtomicLong GENERATE_CALLS = new AtomicLong();
     private static final AtomicLong CHUNKS_WITH_PLACEMENT = new AtomicLong();
     private static final AtomicLong PLACED_BLOCKS_TOTAL = new AtomicLong();
@@ -29,22 +28,22 @@ public final class AtlantisDriftwoodFeature extends Feature<DefaultFeatureConfig
     private static final AtomicLong REJECT_NO_REPLACEABLE_TOTAL = new AtomicLong();
     private static final AtomicLong REJECT_NO_COLUMN_MATCH_TOTAL = new AtomicLong();
 
-    public AtlantisDriftwoodFeature(Codec<DefaultFeatureConfig> codec) {
+    public AtlantisDriftwoodFeature(Codec<NoneFeatureConfiguration> codec) {
         super(codec);
     }
 
     @Override
-    public boolean generate(FeatureContext<DefaultFeatureConfig> context) {
-        StructureWorldAccess world = context.getWorld();
-        Random random = context.getRandom();
-        BlockPos origin = context.getOrigin();
+    public boolean place(FeaturePlaceContext<NoneFeatureConfiguration> context) {
+        WorldGenLevel world = context.level();
+        RandomSource random = context.random();
+        BlockPos origin = context.origin();
         long calls = GENERATE_CALLS.incrementAndGet();
 
         boolean placedAny = false;
         int placedBlocksThisCall = 0;
         int attempts = 1;
-        BlockPos.Mutable pos = new BlockPos.Mutable();
-        BlockPos.Mutable floorPos = new BlockPos.Mutable();
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        BlockPos.MutableBlockPos floorPos = new BlockPos.MutableBlockPos();
         int rejectedNoDepth = 0;
         int rejectedNoWater = 0;
         int rejectedBadFloor = 0;
@@ -52,8 +51,8 @@ public final class AtlantisDriftwoodFeature extends Feature<DefaultFeatureConfig
         int rejectedNoColumnMatch = 0;
 
         for (int i = 0; i < attempts; i++) {
-            int x = origin.getX() + random.nextBetween(-3, 3);
-            int z = origin.getZ() + random.nextBetween(-3, 3);
+            int x = origin.getX() + random.nextIntBetweenInclusive(-3, 3);
+            int z = origin.getZ() + random.nextIntBetweenInclusive(-3, 3);
 
             int floorY = findOceanFloorY(world, x, z);
             if (floorY == Integer.MIN_VALUE) {
@@ -63,7 +62,7 @@ public final class AtlantisDriftwoodFeature extends Feature<DefaultFeatureConfig
 
             pos.set(x, floorY + 1, z);
             BlockState waterState = world.getBlockState(pos);
-            if (!waterState.getFluidState().isOf(Fluids.WATER)) {
+            if (!waterState.getFluidState().is(Fluids.WATER)) {
                 rejectedNoWater++;
                 continue;
             }
@@ -79,7 +78,7 @@ public final class AtlantisDriftwoodFeature extends Feature<DefaultFeatureConfig
             int length = 1 + random.nextInt(2);
             int dx = axis == Direction.Axis.X ? 1 : 0;
             int dz = axis == Direction.Axis.Z ? 1 : 0;
-            BlockState log = Blocks.OAK_LOG.getDefaultState().with(PillarBlock.AXIS, axis);
+            BlockState log = Blocks.OAK_LOG.defaultBlockState().setValue(RotatedPillarBlock.AXIS, axis);
 
             for (int j = 0; j < length; j++) {
                 int sx = x + dx * j;
@@ -98,7 +97,7 @@ public final class AtlantisDriftwoodFeature extends Feature<DefaultFeatureConfig
                     continue;
                 }
 
-                world.setBlockState(pos, log, Block.NOTIFY_LISTENERS);
+                world.setBlock(pos, log, Block.UPDATE_CLIENTS);
                 placedAny = true;
                 placedBlocksThisCall++;
             }
@@ -121,46 +120,46 @@ public final class AtlantisDriftwoodFeature extends Feature<DefaultFeatureConfig
     }
 
     private static boolean isValidOceanFloor(BlockState state) {
-        if (state.isIn(BlockTags.DIRT) || state.isIn(BlockTags.SAND) || state.isIn(BlockTags.BASE_STONE_OVERWORLD)) {
+        if (state.is(BlockTags.DIRT) || state.is(BlockTags.SAND) || state.is(BlockTags.BASE_STONE_OVERWORLD)) {
             return true;
         }
 
-        return state.isOf(Blocks.SAND)
-            || state.isOf(Blocks.GRAVEL)
-            || state.isOf(Blocks.STONE)
-            || state.isOf(Blocks.CLAY)
-            || state.isOf(Blocks.DIRT)
-            || state.isOf(Blocks.MUD)
-            || state.isOf(Blocks.DEEPSLATE);
+        return state.is(Blocks.SAND)
+            || state.is(Blocks.GRAVEL)
+            || state.is(Blocks.STONE)
+            || state.is(Blocks.CLAY)
+            || state.is(Blocks.DIRT)
+            || state.is(Blocks.MUD)
+            || state.is(Blocks.DEEPSLATE);
     }
 
     private static boolean canReplace(BlockState state) {
-        return state.getFluidState().isOf(Fluids.WATER)
+        return state.getFluidState().is(Fluids.WATER)
             || state.isAir()
-            || state.isIn(BlockTags.REPLACEABLE_BY_TREES)
-            || state.isReplaceable();
+            || state.is(BlockTags.REPLACEABLE_BY_TREES)
+            || state.canBeReplaced();
     }
 
-    private static int findOceanFloorY(StructureWorldAccess world, int x, int z) {
-        int topY = world.getTopY(Heightmap.Type.WORLD_SURFACE_WG, x, z) - 1;
-        int seaLevel = world.toServerWorld().getSeaLevel();
-        int startY = Math.max(world.getBottomY() + 2, Math.max(seaLevel + 24, topY));
-        int minY = world.getBottomY() + 1;
+    private static int findOceanFloorY(WorldGenLevel world, int x, int z) {
+        int topY = world.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x, z) - 1;
+        int seaLevel = world.getLevel().getSeaLevel();
+        int startY = Math.max(world.getMinY() + 2, Math.max(seaLevel + 24, topY));
+        int minY = world.getMinY() + 1;
 
-        BlockPos.Mutable above = new BlockPos.Mutable();
-        BlockPos.Mutable below = new BlockPos.Mutable();
+        BlockPos.MutableBlockPos above = new BlockPos.MutableBlockPos();
+        BlockPos.MutableBlockPos below = new BlockPos.MutableBlockPos();
 
         for (int y = startY; y >= minY; y--) {
             above.set(x, y, z);
             below.set(x, y - 1, z);
 
             BlockState aboveState = world.getBlockState(above);
-            if (!aboveState.getFluidState().isOf(Fluids.WATER)) {
+            if (!aboveState.getFluidState().is(Fluids.WATER)) {
                 continue;
             }
 
             BlockState belowState = world.getBlockState(below);
-            if (!belowState.getFluidState().isOf(Fluids.WATER) && isValidOceanFloor(belowState)) {
+            if (!belowState.getFluidState().is(Fluids.WATER) && isValidOceanFloor(belowState)) {
                 return y - 1;
             }
         }

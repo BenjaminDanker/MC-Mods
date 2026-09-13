@@ -1,7 +1,7 @@
 package com.silver.entitypruner;
 
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.mob.MobEntity;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.Mob;
 
 /** Identifies mobs that must never be treated as disposable by the pruner. */
 public final class EntityProtection {
@@ -15,10 +15,10 @@ public final class EntityProtection {
     }
 
     public static boolean isProtectedMob(Entity entity) {
-        return entity instanceof MobEntity mob
-                && (mob.isPersistent()
-                || entity.getCommandTags().contains(NO_DESPAWN_TAG)
-                || entity.getCommandTags().contains(ATLANTIS_SPAWNED_MOB_TAG)
+        return entity instanceof Mob mob
+                && (mob.requiresCustomPersistence()
+                || entity.entityTags().contains(NO_DESPAWN_TAG)
+                || entity.entityTags().contains(ATLANTIS_SPAWNED_MOB_TAG)
                 || entity.hasCustomName());
     }
 }

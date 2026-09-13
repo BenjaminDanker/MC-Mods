@@ -6,8 +6,8 @@ import com.silver.portalprotocol.PortalRequestPayload;
 import com.silver.portalprotocol.PortalRequestPayloadCodec;
 import com.silver.portalprotocol.PortalRequestSigner;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.Text;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.network.chat.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,11 +36,11 @@ public final class PortalRedirector {
             VANILLA_ENTRANCE_PORTAL);
     }
 
-    public static boolean redirectToConfiguredServer(ServerPlayerEntity player, String reason) {
+    public static boolean redirectToConfiguredServer(ServerPlayer player, String reason) {
         return redirectToConfiguredServer(player, reason, null);
     }
 
-    public static boolean redirectToConfiguredServer(ServerPlayerEntity player, String reason, String portalOverride) {
+    public static boolean redirectToConfiguredServer(ServerPlayer player, String reason, String portalOverride) {
         if (player == null || configManager == null) {
             LOGGER.info("[Sky-Islands][portal] redirect skipped: player or config manager missing ({})", reason);
             return false;
@@ -57,14 +57,14 @@ public final class PortalRedirector {
         LOGGER.info("[Sky-Islands][portal] redirect request start player={} reason={} world={} pos=({}, {}, {}) target={}",
             player.getName().getString(),
             reason,
-            player.getCommandSource().getWorld().getRegistryKey().getValue(),
+            player.createCommandSourceStack().getLevel().dimension().identifier(),
             player.getX(),
             player.getY(),
             player.getZ(),
             config.portalRedirectTargetServer());
 
         long now = System.currentTimeMillis();
-        Long lastRedirect = recentRedirects.get(player.getUuid());
+        Long lastRedirect = recentRedirects.get(player.getUUID());
         if (lastRedirect != null && now - lastRedirect < REDIRECT_COOLDOWN_MS) {
             LOGGER.info("[Sky-Islands][portal] redirect skipped for {} due to cooldown {}ms ({})",
                 player.getName().getString(),
@@ -77,7 +77,7 @@ public final class PortalRedirector {
             return false;
         }
 
-        recentRedirects.put(player.getUuid(), now);
+        recentRedirects.put(player.getUUID(), now);
         return true;
     }
 
@@ -92,7 +92,7 @@ public final class PortalRedirector {
         return configManager.getConfig().portalRedirectTargetServer();
     }
 
-    private static boolean sendPortalRequest(ServerPlayerEntity player, SkyIslandsPortalConfig config, String reason, String portalOverride) {
+    private static boolean sendPortalRequest(ServerPlayer player, SkyIslandsPortalConfig config, String reason, String portalOverride) {
         String targetServer = config.portalRedirectTargetServer();
         if (targetServer == null || targetServer.isBlank()) {
             return false;
@@ -107,14 +107,14 @@ public final class PortalRedirector {
             ? portalOverride
             : VANILLA_ENTRANCE_PORTAL;
 
-        player.sendMessage(Text.literal("Redirecting you to " + targetServer + "..."), false);
+        player.sendSystemMessage(Component.literal("Redirecting you to " + targetServer + "..."), false);
 
         try {
             long issuedAtMs = System.currentTimeMillis();
             String nonce = PortalRequestPayloadCodec.generateNonce();
-            byte[] unsigned = PortalRequestPayloadCodec.encodeUnsigned(player.getUuid(), targetServer.trim(), destinationPortal, issuedAtMs, nonce);
+            byte[] unsigned = PortalRequestPayloadCodec.encodeUnsigned(player.getUUID(), targetServer.trim(), destinationPortal, issuedAtMs, nonce);
             byte[] signature = PortalRequestSigner.hmacSha256(secret.trim(), unsigned);
-            byte[] signed = PortalRequestPayloadCodec.encodeSigned(player.getUuid(), targetServer.trim(), destinationPortal, issuedAtMs, nonce, signature);
+            byte[] signed = PortalRequestPayloadCodec.encodeSigned(player.getUUID(), targetServer.trim(), destinationPortal, issuedAtMs, nonce, signature);
             LOGGER.info("[Sky-Islands][portal] sending portal request player={} target={} portal='{}' issuedAtMs={} nonce={}",
                 player.getName().getString(),
                 targetServer.trim(),

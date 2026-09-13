@@ -21,25 +21,27 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicLong;
 import io.netty.buffer.Unpooled;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.nbt.NbtList;
-import net.minecraft.network.PacketByteBuf;
-import net.minecraft.network.packet.s2c.play.ChunkDataS2CPacket;
-import net.minecraft.network.packet.s2c.play.ChunkLoadDistanceS2CPacket;
-import net.minecraft.network.packet.s2c.play.LightData;
-import net.minecraft.network.packet.s2c.play.LightUpdateS2CPacket;
-import net.minecraft.network.packet.s2c.play.UnloadChunkS2CPacket;
+import net.fabricmc.fabric.api.networking.v1.context.PacketContext;
+import net.fabricmc.fabric.api.networking.v1.context.PacketContextProvider;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
+import net.minecraft.network.protocol.game.ClientboundSetChunkCacheRadiusPacket;
+import net.minecraft.network.protocol.game.ClientboundLightUpdatePacketData;
+import net.minecraft.network.protocol.game.ClientboundLightUpdatePacket;
+import net.minecraft.network.protocol.game.ClientboundForgetLevelChunkPacket;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerChunkLoadingManager;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.ChunkPos;
-import net.minecraft.world.chunk.PalettesFactory;
-import net.minecraft.world.chunk.ProtoChunk;
-import net.minecraft.world.chunk.ChunkNibbleArray;
-import net.minecraft.world.chunk.SerializedChunk;
-import net.minecraft.world.chunk.WorldChunk;
-import net.minecraft.world.chunk.light.LightingProvider;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerChunkCache;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.chunk.PalettedContainerFactory;
+import net.minecraft.world.level.chunk.ProtoChunk;
+import net.minecraft.world.level.chunk.DataLayer;
+import net.minecraft.world.level.chunk.storage.SerializableChunkData;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.lighting.LevelLightEngine;
 
 public final class ViewExtendService {
     private static final BitSet EMPTY_BIT_SET = new BitSet();
@@ -192,14 +194,14 @@ public final class ViewExtendService {
         maybeLogMetrics(server);
     }
 
-    private void tickPlayer(MinecraftServer server, ServerWorld world, ServerPlayerEntity player, int maxPerTick) {
-        String worldKey = world.getRegistryKey().getValue().toString();
-        long stateKey = stateKey(player.getUuid(), worldKey);
-        PlayerState state = statesByPlayer.computeIfAbsent(stateKey, ignored -> new PlayerState(player.getUuid(), worldKey));
+    private void tickPlayer(MinecraftServer server, ServerLevel world, ServerPlayer player, int maxPerTick) {
+        String worldKey = world.dimension().identifier().toString();
+        long stateKey = stateKey(player.getUUID(), worldKey);
+        PlayerState state = statesByPlayer.computeIfAbsent(stateKey, ignored -> new PlayerState(player.getUUID(), worldKey));
 
-        int centerX = player.getChunkPos().x;
-        int centerZ = player.getChunkPos().z;
-        int normalDistance = world.getServer().getPlayerManager().getViewDistance();
+        int centerX = player.chunkPosition().x();
+        int centerZ = player.chunkPosition().z();
+        int normalDistance = world.getServer().getPlayerList().getViewDistance();
         int totalDistance = getEffectiveTotalDistance(player, normalDistance);
 
         updateClientLoadDistance(player, state, totalDistance);
@@ -262,8 +264,8 @@ public final class ViewExtendService {
     }
 
     private int queueUpgradeCandidates(
-            ServerWorld world,
-            ServerPlayerEntity player,
+            ServerLevel world,
+            ServerPlayer player,
             PlayerState state,
             String worldKey,
             int centerX,
@@ -278,8 +280,8 @@ public final class ViewExtendService {
                 break;
             }
 
-            int chunkX = ChunkPos.getPackedX(chunkLong);
-            int chunkZ = ChunkPos.getPackedZ(chunkLong);
+            int chunkX = ChunkPos.getX(chunkLong);
+            int chunkZ = ChunkPos.getZ(chunkLong);
             if (!withinDistance(chunkX, chunkZ, centerX, centerZ, totalDistance)
                     || withinDistance(chunkX, chunkZ, centerX, centerZ, normalDistance)) {
                 continue;
@@ -297,8 +299,8 @@ public final class ViewExtendService {
     }
 
     private int tryQueueCandidate(
-            ServerWorld world,
-            ServerPlayerEntity player,
+            ServerLevel world,
+            ServerPlayer player,
             PlayerState state,
             String worldKey,
             int centerX,
@@ -306,13 +308,13 @@ public final class ViewExtendService {
             int chunkX,
             int chunkZ,
             boolean upgradePriority) {
-        long chunkLong = ChunkPos.toLong(chunkX, chunkZ);
+        long chunkLong = ChunkPos.pack(chunkX, chunkZ);
         
         int missingUntil = state.missingUntilTick.getOrDefault(chunkLong, 0);
         if (this.ticks < missingUntil) {
-            // It's on cooldown for disk reads. But if it just finished generating and is now a full WorldChunk,
+            // It's on cooldown for disk reads. But if it just finished generating and is now a full LevelChunk,
             // we bypass the cooldown so it gets sent immediately!
-            if (!world.getChunkManager().isChunkLoaded(chunkX, chunkZ) || world.getChunkManager().getWorldChunk(chunkX, chunkZ) == null) {
+            if (!world.getChunkSource().hasChunk(chunkX, chunkZ) || world.getChunkSource().getChunkNow(chunkX, chunkZ) == null) {
                 return 0; // Skip, it's on cooldown and not in memory
             }
         }
@@ -384,7 +386,7 @@ public final class ViewExtendService {
 
         state.pending.add(chunkLong);
         state.pendingLodByChunk.put(chunkLong, desiredLodLevel);
-        enqueueNbtReadRequest(player.getUuid(), worldKey, new ChunkPos(chunkX, chunkZ), desiredLodLevel, upgradePriority);
+        enqueueNbtReadRequest(player.getUUID(), worldKey, new ChunkPos(chunkX, chunkZ), desiredLodLevel, upgradePriority);
         return 1;
     }
 
@@ -395,8 +397,8 @@ public final class ViewExtendService {
     }
 
         private void requestAndSendChunk(
-            ServerWorld world,
-            ServerPlayerEntity player,
+            ServerLevel world,
+            ServerPlayer player,
             PlayerState state,
             String worldKey,
             ChunkPos pos,
@@ -405,16 +407,16 @@ public final class ViewExtendService {
         if (!upgradePriority && isPreparedQueueAtHardLimit()) {
             totalQueueBackpressureDeferrals++;
             lifetimeQueueBackpressureDeferrals++;
-            state.pending.remove(pos.toLong());
-            state.pendingLodByChunk.remove(pos.toLong());
+            state.pending.remove(pos.pack());
+            state.pendingLodByChunk.remove(pos.pack());
             return;
         }
 
-        if (world.getChunkManager().isChunkLoaded(pos.x, pos.z)) {
-            WorldChunk loaded = world.getChunkManager().getWorldChunk(pos.x, pos.z);
+        if (world.getChunkSource().hasChunk(pos.x(), pos.z())) {
+            LevelChunk loaded = world.getChunkSource().getChunkNow(pos.x(), pos.z());
             if (loaded != null) {
                 sendChunkPacket(player, loaded, null, null, null);
-                long packed = pos.toLong();
+                long packed = pos.pack();
                 state.pending.remove(packed);
                 state.pendingLodByChunk.remove(packed);
                 state.sent.add(packed);
@@ -424,25 +426,25 @@ public final class ViewExtendService {
             }
         }
 
-        ServerChunkLoadingManager loadingManager = world.getChunkManager().chunkLoadingManager;
+        ServerChunkCache loadingManager = world.getChunkSource();
         totalDiskNbtReads++;
         lifetimeDiskNbtReads++;
-        loadingManager.getNbt(pos).thenAccept(optionalNbt -> {
+        loadingManager.chunkMap.read(pos).thenAccept(optionalNbt -> {
             if (optionalNbt.isEmpty()) {
-                preparedChunkQueue.add(PreparedChunkTask.missing(player.getUuid(), worldKey, pos, lodLevel));
+                preparedChunkQueue.add(PreparedChunkTask.missing(player.getUUID(), worldKey, pos, lodLevel));
                 totalPreparedTasksQueued++;
                 return;
             }
 
             preprocessExecutor.execute(() -> {
                 try {
-                    NbtCompound chunkNbt = optionalNbt.get().copy();
+                    CompoundTag chunkNbt = optionalNbt.get().copy();
                     applyLodToChunkNbt(chunkNbt, lodLevel);
                     int remapCount = remapLegacyBlockIds(chunkNbt);
-                    preparedChunkQueue.add(PreparedChunkTask.withNbt(player.getUuid(), worldKey, pos, chunkNbt, remapCount, lodLevel));
+                    preparedChunkQueue.add(PreparedChunkTask.withNbt(player.getUUID(), worldKey, pos, chunkNbt, remapCount, lodLevel));
                     totalPreparedTasksQueued++;
                 } catch (Exception exception) {
-                    preparedChunkQueue.add(PreparedChunkTask.failed(player.getUuid(), worldKey, pos, lodLevel));
+                    preparedChunkQueue.add(PreparedChunkTask.failed(player.getUUID(), worldKey, pos, lodLevel));
                     totalPreparedTasksQueued++;
                 }
             });
@@ -458,13 +460,13 @@ public final class ViewExtendService {
                 break;
             }
 
-            ServerPlayerEntity player = server.getPlayerManager().getPlayer(request.playerUuid());
+            ServerPlayer player = server.getPlayerList().getPlayer(request.playerUuid());
             if (player == null || !player.isAlive()) {
                 continue;
             }
 
-            ServerWorld world = player.getEntityWorld();
-            String worldKey = world.getRegistryKey().getValue().toString();
+            ServerLevel world = player.level();
+            String worldKey = world.dimension().identifier().toString();
             if (!worldKey.equals(request.worldKey())) {
                 continue;
             }
@@ -475,7 +477,7 @@ public final class ViewExtendService {
                 continue;
             }
 
-            long packed = request.pos().toLong();
+            long packed = request.pos().pack();
             if (!state.pending.contains(packed)) {
                 continue;
             }
@@ -485,13 +487,13 @@ public final class ViewExtendService {
                 continue;
             }
 
-            int normalDistance = world.getServer().getPlayerManager().getViewDistance();
+            int normalDistance = world.getServer().getPlayerList().getViewDistance();
             int totalDistance = getEffectiveTotalDistance(player, normalDistance);
-            int centerX = player.getChunkPos().x;
-            int centerZ = player.getChunkPos().z;
+            int centerX = player.chunkPosition().x();
+            int centerZ = player.chunkPosition().z();
 
-            if (!withinDistance(request.pos().x, request.pos().z, centerX, centerZ, totalDistance)
-                    || withinDistance(request.pos().x, request.pos().z, centerX, centerZ, normalDistance)) {
+            if (!withinDistance(request.pos().x(), request.pos().z(), centerX, centerZ, totalDistance)
+                    || withinDistance(request.pos().x(), request.pos().z(), centerX, centerZ, normalDistance)) {
                 state.pending.remove(packed);
                 state.pendingLodByChunk.remove(packed);
                 state.unloadOutsideSinceTick.remove(packed);
@@ -513,7 +515,7 @@ public final class ViewExtendService {
             }
             totalPreparedTasksProcessed++;
 
-            ServerPlayerEntity player = server.getPlayerManager().getPlayer(task.playerUuid());
+            ServerPlayer player = server.getPlayerList().getPlayer(task.playerUuid());
             if (player == null || !player.isAlive()) {
                 continue;
             }
@@ -524,32 +526,32 @@ public final class ViewExtendService {
                 continue;
             }
 
-            ServerWorld world = player.getEntityWorld();
-            String worldKey = world.getRegistryKey().getValue().toString();
+            ServerLevel world = player.level();
+            String worldKey = world.dimension().identifier().toString();
             if (!worldKey.equals(task.worldKey())) {
-                originalState.pending.remove(task.pos().toLong());
-                originalState.pendingLodByChunk.remove(task.pos().toLong());
-                originalState.unloadOutsideSinceTick.remove(task.pos().toLong());
+                originalState.pending.remove(task.pos().pack());
+                originalState.pendingLodByChunk.remove(task.pos().pack());
+                originalState.unloadOutsideSinceTick.remove(task.pos().pack());
                 continue;
             }
 
             PlayerState state = originalState;
 
             ChunkPos pos = task.pos();
-            long packed = pos.toLong();
+            long packed = pos.pack();
 
             int desiredPendingLod = state.pendingLodByChunk.getOrDefault(packed, Integer.MAX_VALUE);
             if (desiredPendingLod != task.lodLevel()) {
                 continue;
             }
 
-            int normalDistance = world.getServer().getPlayerManager().getViewDistance();
+            int normalDistance = world.getServer().getPlayerList().getViewDistance();
             int totalDistance = getEffectiveTotalDistance(player, normalDistance);
-            int centerX = player.getChunkPos().x;
-            int centerZ = player.getChunkPos().z;
+            int centerX = player.chunkPosition().x();
+            int centerZ = player.chunkPosition().z();
 
-            if (!withinDistance(pos.x, pos.z, centerX, centerZ, totalDistance)
-                    || withinDistance(pos.x, pos.z, centerX, centerZ, normalDistance)) {
+            if (!withinDistance(pos.x(), pos.z(), centerX, centerZ, totalDistance)
+                    || withinDistance(pos.x(), pos.z(), centerX, centerZ, normalDistance)) {
                 state.pending.remove(packed);
                 state.pendingLodByChunk.remove(packed);
                 state.unloadOutsideSinceTick.remove(packed);
@@ -579,23 +581,18 @@ public final class ViewExtendService {
 
             if (!task.parsedReady()) {
                 try {
-                    ServerChunkLoadingManager loadingManager = world.getChunkManager().chunkLoadingManager;
-                    NbtCompound chunkNbt = ((ServerChunkLoadingManagerAccessor) loadingManager).viewextend$invokeUpdateChunkNbt(
-                            world.getRegistryKey(),
-                            () -> world.getChunkManager().getPersistentStateManager(),
-                            task.chunkNbt(),
-                            world.getChunkManager().getChunkGenerator().getCodecKey());
+                    CompoundTag chunkNbt = task.chunkNbt();
 
-                    int bottomSectionY = world.getChunkManager().getLightingProvider().getBottomY();
-                    int topSectionY = world.getChunkManager().getLightingProvider().getTopY();
-                    boolean hasSkyLight = world.getDimension().hasSkyLight();
+                    int bottomSectionY = world.getMinSectionY();
+                    int topSectionY = world.getMaxSectionY() + 1;
+                    boolean hasSkyLight = world.dimensionType().hasSkyLight();
 
                     preprocessExecutor.execute(() -> {
                         try {
-                            PalettesFactory palettesFactory = PalettesFactory.fromRegistryManager(world.getRegistryManager());
-                            SerializedChunk serialized = SerializedChunk.fromNbt(world, palettesFactory, chunkNbt);
+                            PalettedContainerFactory palettesFactory = PalettedContainerFactory.create(world.registryAccess());
+                            SerializableChunkData serialized = SerializableChunkData.parse(world, palettesFactory, chunkNbt);
                             boolean isOceanBiome = isChunkInOceanBiome(chunkNbt);
-                            LightData deterministicLightData = createDeterministicLightData(
+                    ClientboundLightUpdatePacketData deterministicLightData = createDeterministicLightData(
                                     pos,
                                     bottomSectionY,
                                     topSectionY,
@@ -628,20 +625,15 @@ public final class ViewExtendService {
             }
 
             try {
-                ServerChunkLoadingManager loadingManager = world.getChunkManager().chunkLoadingManager;
-                SerializedChunk serialized = task.serializedChunk();
-                ProtoChunk proto = serialized.convert(
-                    world,
-                    world.getPointOfInterestStorage(),
-                    ((ServerChunkLoadingManagerAccessor) loadingManager).viewextend$invokeGetStorageKey(),
-                    pos);
-                WorldChunk transientChunk = new WorldChunk(world, proto, chunk -> {
+                SerializableChunkData serialized = task.serializedChunk();
+                ProtoChunk proto = serialized.read(world, world.getChunkSource().getPoiManager(), world.getChunkSource().chunkMap.storageInfo(), pos);
+                LevelChunk transientChunk = new LevelChunk(world, proto, chunk -> {
                 });
-                transientChunk.setLightOn(true);
                 transientChunk.getBlockEntities().clear();
 
-                LightingProvider lightingProvider = world.getChunkManager().getLightingProvider();
+                LevelLightEngine lightingProvider = world.getChunkSource().getLightEngine();
                 PacketTemplate packetTemplate = createSerializedPacketTemplate(
+                        player,
                         transientChunk,
                         lightingProvider,
                         serialized,
@@ -666,89 +658,120 @@ public final class ViewExtendService {
     }
 
     private void sendChunkPacket(
-            ServerPlayerEntity player,
-            WorldChunk chunk,
-            LightingProvider lightingProvider,
-            SerializedChunk serializedChunk,
-            LightData prebuiltLightData) {
-        LightingProvider resolvedLightingProvider = lightingProvider != null
+            ServerPlayer player,
+            LevelChunk chunk,
+            LevelLightEngine lightingProvider,
+            SerializableChunkData serializedChunk,
+            ClientboundLightUpdatePacketData prebuiltLightData) {
+        LevelLightEngine resolvedLightingProvider = lightingProvider != null
                 ? lightingProvider
-                : chunk.getWorld().getChunkManager().getLightingProvider();
+                : ((ServerLevel) chunk.getLevel()).getChunkSource().getLightEngine();
         ChunkPos pos = chunk.getPos();
-        ChunkDataS2CPacket packet;
+        ClientboundLevelChunkWithLightPacket packet;
         BitSet includeNone = new BitSet();
         if (serializedChunk != null) {
-            packet = new ChunkDataS2CPacket(chunk, resolvedLightingProvider, includeNone, includeNone);
+            packet = createChunkPacket(player, chunk, resolvedLightingProvider, includeNone, includeNone);
         } else {
-            packet = new ChunkDataS2CPacket(chunk, resolvedLightingProvider, null, null);
+            packet = createChunkPacket(player, chunk, resolvedLightingProvider, null, null);
         }
-        LightUpdateS2CPacket lightPacket = serializedChunk != null
-                ? new LightUpdateS2CPacket(pos, resolvedLightingProvider, includeNone, includeNone)
-                : new LightUpdateS2CPacket(pos, resolvedLightingProvider, null, null);
+        ClientboundLightUpdatePacket lightPacket = serializedChunk != null
+                ? new ClientboundLightUpdatePacket(pos, resolvedLightingProvider, includeNone, includeNone)
+                : new ClientboundLightUpdatePacket(pos, resolvedLightingProvider, null, null);
 
         if (serializedChunk != null) {
-            LightData deterministicLightData = prebuiltLightData != null
+            ClientboundLightUpdatePacketData deterministicLightData = prebuiltLightData != null
                     ? prebuiltLightData
                     : createDeterministicLightData(
                             pos,
-                            resolvedLightingProvider.getBottomY(),
-                            resolvedLightingProvider.getTopY(),
+                            resolvedLightingProvider.getMinLightSection(),
+                            resolvedLightingProvider.getMaxLightSection() + 1,
                             serializedChunk,
-                            chunk.getWorld().getDimension().hasSkyLight(),
+                            chunk.getLevel().dimensionType().hasSkyLight(),
                         false,
                         isChunkInOcean(chunk));
-            totalDeterministicBlockLightSections += deterministicLightData.getInitedBlock().cardinality();
-            totalDeterministicSkyLightSections += deterministicLightData.getInitedSky().cardinality();
-            lifetimeDeterministicBlockLightSections += deterministicLightData.getInitedBlock().cardinality();
-            lifetimeDeterministicSkyLightSections += deterministicLightData.getInitedSky().cardinality();
+            totalDeterministicBlockLightSections += deterministicLightData.getBlockYMask().cardinality();
+            totalDeterministicSkyLightSections += deterministicLightData.getSkyYMask().cardinality();
+            lifetimeDeterministicBlockLightSections += deterministicLightData.getBlockYMask().cardinality();
+            lifetimeDeterministicSkyLightSections += deterministicLightData.getSkyYMask().cardinality();
             ((LightUpdateS2CPacketAccessor) (Object) lightPacket).viewextend$setData(deterministicLightData);
             ((ChunkDataS2CPacketAccessor) (Object) packet).viewextend$setLightData(deterministicLightData);
         }
 
         totalChunkPacketsSent++;
         lifetimeChunkPacketsSent++;
-        int packetBytes = packet.getChunkData().getSectionsDataBuf().readableBytes();
+        int packetBytes = packet.getChunkData().getReadBuffer().readableBytes();
         totalNetworkBytesEstimate += packetBytes;
         lifetimeNetworkBytesEstimate += packetBytes;
         recordLodSend(0);
-        player.networkHandler.sendPacket(packet);
-        player.networkHandler.sendPacket(lightPacket);
+        player.connection.send(packet);
+        player.connection.send(lightPacket);
     }
 
     private PacketTemplate createSerializedPacketTemplate(
-            WorldChunk chunk,
-            LightingProvider lightingProvider,
-            SerializedChunk serializedChunk,
-            LightData prebuiltLightData,
+            ServerPlayer player,
+            LevelChunk chunk,
+            LevelLightEngine lightingProvider,
+            SerializableChunkData serializedChunk,
+            ClientboundLightUpdatePacketData prebuiltLightData,
             int lodLevel) {
-        LightingProvider resolvedLightingProvider = lightingProvider != null
+        LevelLightEngine resolvedLightingProvider = lightingProvider != null
                 ? lightingProvider
-                : chunk.getWorld().getChunkManager().getLightingProvider();
+                : ((ServerLevel) chunk.getLevel()).getChunkSource().getLightEngine();
         ChunkPos pos = chunk.getPos();
         BitSet includeNone = new BitSet();
-        ChunkDataS2CPacket chunkPacket = new ChunkDataS2CPacket(chunk, resolvedLightingProvider, includeNone, includeNone);
-        LightUpdateS2CPacket lightPacket = new LightUpdateS2CPacket(pos, resolvedLightingProvider, includeNone, includeNone);
+        ClientboundLevelChunkWithLightPacket chunkPacket = createChunkPacket(
+                player,
+                chunk,
+                resolvedLightingProvider,
+                includeNone,
+                includeNone);
+        ClientboundLightUpdatePacket lightPacket = new ClientboundLightUpdatePacket(pos, resolvedLightingProvider, includeNone, includeNone);
 
-        LightData deterministicLightData = prebuiltLightData != null
+        ClientboundLightUpdatePacketData deterministicLightData = prebuiltLightData != null
                 ? prebuiltLightData
                 : createDeterministicLightData(
                         pos,
-                        resolvedLightingProvider.getBottomY(),
-                        resolvedLightingProvider.getTopY(),
+                        resolvedLightingProvider.getMinLightSection(),
+                        resolvedLightingProvider.getMaxLightSection() + 1,
                         serializedChunk,
-                    chunk.getWorld().getDimension().hasSkyLight(),
+                    chunk.getLevel().dimensionType().hasSkyLight(),
             false,
             isChunkInOcean(chunk));
         ((LightUpdateS2CPacketAccessor) (Object) lightPacket).viewextend$setData(deterministicLightData);
         ((ChunkDataS2CPacketAccessor) (Object) chunkPacket).viewextend$setLightData(deterministicLightData);
 
-        int chunkPacketBytes = chunkPacket.getChunkData().getSectionsDataBuf().readableBytes();
-        int blockSections = deterministicLightData.getInitedBlock().cardinality();
-        int skySections = deterministicLightData.getInitedSky().cardinality();
+        int chunkPacketBytes = chunkPacket.getChunkData().getReadBuffer().readableBytes();
+        int blockSections = deterministicLightData.getBlockYMask().cardinality();
+        int skySections = deterministicLightData.getSkyYMask().cardinality();
         return new PacketTemplate(chunkPacket, lightPacket, chunkPacketBytes, blockSections, skySections);
     }
 
-    private void sendPacketTemplate(ServerPlayerEntity player, PacketTemplate packetTemplate, int lodLevel) {
+    /**
+     * Fabric's packet context is normally installed by the connection before a packet is
+     * constructed. View Extend constructs synthetic chunk packets itself, so it must install
+     * the recipient's context around the constructor as well. Polymer uses that context while
+     * its mixins translate block states and block-entity data for vanilla clients.
+     */
+    private static ClientboundLevelChunkWithLightPacket createChunkPacket(
+            ServerPlayer player,
+            LevelChunk chunk,
+            LevelLightEngine lightingProvider,
+            BitSet skyLightMask,
+            BitSet blockLightMask) {
+        if (!(player.connection instanceof PacketContextProvider contextProvider)) {
+            throw new IllegalStateException("Server connection does not provide a Fabric packet context");
+        }
+
+        return PacketContext.supplyWithContext(
+                contextProvider,
+                () -> new ClientboundLevelChunkWithLightPacket(
+                        chunk,
+                        lightingProvider,
+                        skyLightMask,
+                        blockLightMask));
+    }
+
+    private void sendPacketTemplate(ServerPlayer player, PacketTemplate packetTemplate, int lodLevel) {
         totalChunkPacketsSent++;
         lifetimeChunkPacketsSent++;
         totalNetworkBytesEstimate += packetTemplate.chunkPacketBytes();
@@ -758,8 +781,8 @@ public final class ViewExtendService {
         lifetimeDeterministicBlockLightSections += packetTemplate.blockLightSections();
         lifetimeDeterministicSkyLightSections += packetTemplate.skyLightSections();
         recordLodSend(lodLevel);
-        player.networkHandler.sendPacket(packetTemplate.chunkPacket());
-        player.networkHandler.sendPacket(packetTemplate.lightPacket());
+        player.connection.send(packetTemplate.chunkPacket());
+        player.connection.send(packetTemplate.lightPacket());
     }
 
     private PacketTemplate getGlobalPacketTemplate(GlobalChunkKey key) {
@@ -899,7 +922,7 @@ public final class ViewExtendService {
     }
 
     private void unloadOutOfRange(
-            ServerPlayerEntity player,
+            ServerPlayer player,
             PlayerState state,
             int centerX,
             int centerZ,
@@ -909,8 +932,8 @@ public final class ViewExtendService {
         int unloadedThisTick = 0;
         long[] sentSnapshot = state.sent.toLongArray();
         for (long packed : sentSnapshot) {
-            int chunkX = ChunkPos.getPackedX(packed);
-            int chunkZ = ChunkPos.getPackedZ(packed);
+            int chunkX = ChunkPos.getX(packed);
+            int chunkZ = ChunkPos.getZ(packed);
             boolean insideNormal = withinDistance(chunkX, chunkZ, centerX, centerZ, normalDistance);
             boolean insideUnloadDistance = withinDistance(chunkX, chunkZ, centerX, centerZ, unloadDistance);
 
@@ -944,7 +967,7 @@ public final class ViewExtendService {
                 continue;
             }
 
-            player.networkHandler.sendPacket(new UnloadChunkS2CPacket(new ChunkPos(chunkX, chunkZ)));
+            player.connection.send(new ClientboundForgetLevelChunkPacket(new ChunkPos(chunkX, chunkZ)));
             totalUnloadPacketsSent++;
             lifetimeUnloadPacketsSent++;
             totalNetworkBytesEstimate += 9;
@@ -961,8 +984,8 @@ public final class ViewExtendService {
     private void prunePendingInsideNormal(PlayerState state, int centerX, int centerZ, int normalDistance) {
         long[] currentPending = state.pending.toLongArray();
         for (long packed : currentPending) {
-            int chunkX = ChunkPos.getPackedX(packed);
-            int chunkZ = ChunkPos.getPackedZ(packed);
+            int chunkX = ChunkPos.getX(packed);
+            int chunkZ = ChunkPos.getZ(packed);
             if (withinDistance(chunkX, chunkZ, centerX, centerZ, normalDistance)) {
                 state.pending.remove(packed);
                 state.pendingLodByChunk.remove(packed);
@@ -971,14 +994,14 @@ public final class ViewExtendService {
         }
     }
 
-    public void onLikelyClientUnload(ServerPlayerEntity player, ChunkPos pos) {
-        long stateKey = stateKey(player.getUuid(), player.getEntityWorld().getRegistryKey().getValue().toString());
+    public void onLikelyClientUnload(ServerPlayer player, ChunkPos pos) {
+        long stateKey = stateKey(player.getUUID(), player.level().dimension().identifier().toString());
         PlayerState state = statesByPlayer.get(stateKey);
         if (state == null) {
             return;
         }
 
-        long packed = pos.toLong();
+        long packed = pos.pack();
         state.sent.remove(packed);
         state.sentLodByChunk.remove(packed);
         state.pending.remove(packed);
@@ -986,11 +1009,11 @@ public final class ViewExtendService {
         state.unloadOutsideSinceTick.remove(packed);
     }
 
-    private void updateClientLoadDistance(ServerPlayerEntity player, PlayerState state, int totalDistance) {
+    private void updateClientLoadDistance(ServerPlayer player, PlayerState state, int totalDistance) {
         if (state.clientChunkLoadDistance == totalDistance) {
             return;
         }
-        player.networkHandler.sendPacket(new ChunkLoadDistanceS2CPacket(totalDistance));
+        player.connection.send(new ClientboundSetChunkCacheRadiusPacket(totalDistance));
         state.clientChunkLoadDistance = totalDistance;
         totalChunkLoadDistancePackets++;
         lifetimeChunkLoadDistancePackets++;
@@ -1019,7 +1042,7 @@ public final class ViewExtendService {
             payloadCacheEntries += state.payloadCache.size();
         }
 
-        int onlinePlayers = server.getPlayerManager().getPlayerList().size();
+        int onlinePlayers = server.getPlayerList().getPlayers().size();
         Runtime runtime = Runtime.getRuntime();
         long usedMemoryBytes = runtime.totalMemory() - runtime.freeMemory();
         long committedMemoryBytes = runtime.totalMemory();
@@ -1149,24 +1172,24 @@ public final class ViewExtendService {
         totalBlockLightFallbackSections = 0;
     }
 
-    private LightData createDeterministicLightData(
+    private ClientboundLightUpdatePacketData createDeterministicLightData(
             ChunkPos pos,
             int bottomSectionY,
             int topSectionY,
-            SerializedChunk serializedChunk,
+            SerializableChunkData serializedChunk,
             boolean hasSkyLight,
             boolean forceFullBright,
             boolean isOceanBiome) {
         int sectionHeight = Math.max(0, topSectionY - bottomSectionY);
         if (sectionHeight == 0) {
-            PacketByteBuf emptyBuffer = new PacketByteBuf(Unpooled.buffer(32));
+            FriendlyByteBuf emptyBuffer = new FriendlyByteBuf(Unpooled.buffer(32));
             emptyBuffer.writeBitSet(EMPTY_BIT_SET);
             emptyBuffer.writeBitSet(EMPTY_BIT_SET);
             emptyBuffer.writeBitSet(EMPTY_BIT_SET);
             emptyBuffer.writeBitSet(EMPTY_BIT_SET);
             emptyBuffer.writeCollection(List.<byte[]>of(), (buf, array) -> buf.writeByteArray(array));
             emptyBuffer.writeCollection(List.<byte[]>of(), (buf, array) -> buf.writeByteArray(array));
-            LightData lightData = new LightData(emptyBuffer, pos.x, pos.z);
+            ClientboundLightUpdatePacketData lightData = new ClientboundLightUpdatePacketData(emptyBuffer, pos.x(), pos.z());
             emptyBuffer.release();
             return lightData;
         }
@@ -1176,8 +1199,8 @@ public final class ViewExtendService {
         List<byte[]> skyNibbles = new ArrayList<>(sectionHeight);
         List<byte[]> blockNibbles = new ArrayList<>(sectionHeight);
 
-        SerializedChunk.SectionData[] sectionDataByIndex = new SerializedChunk.SectionData[sectionHeight];
-        for (SerializedChunk.SectionData sectionData : serializedChunk.sectionData()) {
+        SerializableChunkData.SectionData[] sectionDataByIndex = new SerializableChunkData.SectionData[sectionHeight];
+        for (SerializableChunkData.SectionData sectionData : serializedChunk.sectionData()) {
             int index = sectionData.y() - bottomSectionY;
             if (index >= 0 && index < sectionHeight) {
                 sectionDataByIndex[index] = sectionData;
@@ -1185,17 +1208,17 @@ public final class ViewExtendService {
         }
 
         for (int section = 0; section < sectionHeight; section++) {
-            SerializedChunk.SectionData sectionData = sectionDataByIndex[section];
+            SerializableChunkData.SectionData sectionData = sectionDataByIndex[section];
             int sectionY = bottomSectionY + section;
             // Consider section underwater if it's in an ocean biome and at or below sea level (Y=64)
             boolean isUnderwaterSection = isOceanBiome && (sectionY * 16) < 64;
 
             if (hasSkyLight) {
                 initedSky.set(section);
-                if (!forceFullBright && sectionData != null && sectionData.skyLight() != null && !sectionData.skyLight().isUninitialized()) {
+                if (!forceFullBright && sectionData != null && sectionData.skyLight() != null) {
                     totalSkyLightNbtSections++;
                     lifetimeSkyLightNbtSections++;
-                    skyNibbles.add(sectionData.skyLight().asByteArray());
+                    skyNibbles.add(sectionData.skyLight().getData());
                 } else {
                     totalSkyLightFallbackSections++;
                     lifetimeSkyLightFallbackSections++;
@@ -1221,10 +1244,10 @@ public final class ViewExtendService {
             }
 
             initedBlock.set(section);
-            if (!forceFullBright && sectionData != null && sectionData.blockLight() != null && !sectionData.blockLight().isUninitialized()) {
+            if (!forceFullBright && sectionData != null && sectionData.blockLight() != null) {
                 totalBlockLightNbtSections++;
                 lifetimeBlockLightNbtSections++;
-                blockNibbles.add(sectionData.blockLight().asByteArray());
+                blockNibbles.add(sectionData.blockLight().getData());
             } else {
                 totalBlockLightFallbackSections++;
                 lifetimeBlockLightFallbackSections++;
@@ -1234,14 +1257,14 @@ public final class ViewExtendService {
 
         int perSectionNibbleBytes = hasSkyLight ? 4096 : 2048;
         int estimatedSize = 128 + (sectionHeight * perSectionNibbleBytes);
-        PacketByteBuf buffer = new PacketByteBuf(Unpooled.buffer(Math.max(256, estimatedSize)));
+        FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer(Math.max(256, estimatedSize)));
         buffer.writeBitSet(initedSky);
         buffer.writeBitSet(initedBlock);
         buffer.writeBitSet(EMPTY_BIT_SET);
         buffer.writeBitSet(EMPTY_BIT_SET);
         buffer.writeCollection(skyNibbles, (buf, array) -> buf.writeByteArray(array));
         buffer.writeCollection(blockNibbles, (buf, array) -> buf.writeByteArray(array));
-        LightData lightData = new LightData(buffer, pos.x, pos.z);
+        ClientboundLightUpdatePacketData lightData = new ClientboundLightUpdatePacketData(buffer, pos.x(), pos.z());
         buffer.release();
         return lightData;
     }
@@ -1256,26 +1279,26 @@ public final class ViewExtendService {
         globalPacketTemplateTotalEstimatedBytes.set(0L);
     }
 
-    public boolean shouldSuppressVanillaUnload(ServerPlayerEntity player, ChunkPos pos) {
-        int normalDistance = player.getEntityWorld().getServer().getPlayerManager().getViewDistance();
+    public boolean shouldSuppressVanillaUnload(ServerPlayer player, ChunkPos pos) {
+        int normalDistance = player.level().getServer().getPlayerList().getViewDistance();
         int totalDistance = getEffectiveTotalDistance(player, normalDistance);
-        int centerX = player.getChunkPos().x;
-        int centerZ = player.getChunkPos().z;
+        int centerX = player.chunkPosition().x();
+        int centerZ = player.chunkPosition().z();
 
-        if (!withinDistance(pos.x, pos.z, centerX, centerZ, totalDistance)) {
+        if (!withinDistance(pos.x(), pos.z(), centerX, centerZ, totalDistance)) {
             return false;
         }
-        if (withinDistance(pos.x, pos.z, centerX, centerZ, normalDistance)) {
+        if (withinDistance(pos.x(), pos.z(), centerX, centerZ, normalDistance)) {
             return false;
         }
 
-        String worldKey = player.getEntityWorld().getRegistryKey().getValue().toString();
-        long stateKey = stateKey(player.getUuid(), worldKey);
-        PlayerState state = statesByPlayer.computeIfAbsent(stateKey, ignored -> new PlayerState(player.getUuid(), worldKey));
+        String worldKey = player.level().dimension().identifier().toString();
+        long stateKey = stateKey(player.getUUID(), worldKey);
+        PlayerState state = statesByPlayer.computeIfAbsent(stateKey, ignored -> new PlayerState(player.getUUID(), worldKey));
 
-        long packed = pos.toLong();
+        long packed = pos.pack();
         if (!state.sent.contains(packed)) {
-            int retainedLodLevel = resolveLodLevel(centerX, centerZ, pos.x, pos.z);
+            int retainedLodLevel = resolveLodLevel(centerX, centerZ, pos.x(), pos.z());
             state.sent.add(packed);
             state.sentLodByChunk.put(packed, retainedLodLevel);
         }
@@ -1289,10 +1312,10 @@ public final class ViewExtendService {
         return true;
     }
 
-    public int getEffectiveTotalDistance(ServerPlayerEntity player, int normalDistance) {
+    public int getEffectiveTotalDistance(ServerPlayer player, int normalDistance) {
         int configuredTotal = normalDistance + config.unsimulatedViewDistance();
         int hardCap = config.clientReportedViewDistanceHardCap();
-        int rawClientDistance = player.getViewDistance();
+        int rawClientDistance = player.requestedViewDistance();
         int normalizedClientDistance;
         if (rawClientDistance > 0) {
             normalizedClientDistance = rawClientDistance;
@@ -1310,22 +1333,22 @@ public final class ViewExtendService {
         return Math.max(normalDistance, cappedByClient);
     }
 
-    private int remapLegacyBlockIds(NbtCompound chunkNbt) {
-        int dataVersion = chunkNbt.getInt("DataVersion", Integer.MAX_VALUE);
+        private int remapLegacyBlockIds(CompoundTag chunkNbt) {
+        int dataVersion = chunkNbt.getIntOr("DataVersion", Integer.MAX_VALUE);
         if (dataVersion > LEGACY_BLOCK_REMAP_MAX_DATA_VERSION) {
             return 0;
         }
 
         int remapCount = 0;
-        NbtList sections = chunkNbt.getListOrEmpty("sections");
+        ListTag sections = chunkNbt.getListOrEmpty("sections");
         for (int i = 0; i < sections.size(); i++) {
-            NbtCompound section = sections.getCompoundOrEmpty(i);
-            NbtCompound blockStates = section.getCompoundOrEmpty("block_states");
-            NbtList palette = blockStates.getListOrEmpty("palette");
+            CompoundTag section = sections.getCompoundOrEmpty(i);
+            CompoundTag blockStates = section.getCompoundOrEmpty("block_states");
+            ListTag palette = blockStates.getListOrEmpty("palette");
 
             for (int paletteIndex = 0; paletteIndex < palette.size(); paletteIndex++) {
-                NbtCompound state = palette.getCompoundOrEmpty(paletteIndex);
-                String name = state.getString("Name", "");
+                CompoundTag state = palette.getCompoundOrEmpty(paletteIndex);
+                String name = state.getStringOr("Name", "");
                 String remapped = LEGACY_BLOCK_ID_REMAP.get(name);
                 if (remapped != null) {
                     state.putString("Name", remapped);
@@ -1348,12 +1371,12 @@ public final class ViewExtendService {
         return 0;
     }
 
-    private void applyLodToChunkNbt(NbtCompound chunkNbt, int lodLevel) {
+    private void applyLodToChunkNbt(CompoundTag chunkNbt, int lodLevel) {
         if (lodLevel <= 0) {
             return;
         }
 
-        NbtList sections = chunkNbt.getListOrEmpty("sections");
+        ListTag sections = chunkNbt.getListOrEmpty("sections");
         if (sections.isEmpty()) {
             return;
         }
@@ -1361,7 +1384,7 @@ public final class ViewExtendService {
         int previousSectionY = Integer.MIN_VALUE;
         boolean unsortedSectionOrder = false;
         for (int index = 0; index < sections.size(); index++) {
-            int sectionY = sections.getCompoundOrEmpty(index).getByte("Y", (byte) 0);
+            int sectionY = sections.getCompoundOrEmpty(index).getByteOr("Y", (byte) 0);
             if (sectionY < previousSectionY) {
                 unsortedSectionOrder = true;
                 break;
@@ -1373,20 +1396,20 @@ public final class ViewExtendService {
             lifetimeUnsortedSectionInputs++;
         }
 
-        List<NbtCompound> sortedSections = new ArrayList<>(sections.size());
+        List<CompoundTag> sortedSections = new ArrayList<>(sections.size());
         for (int index = 0; index < sections.size(); index++) {
             sortedSections.add(sections.getCompoundOrEmpty(index));
         }
-        sortedSections.sort(Comparator.comparingInt(section -> section.getByte("Y", (byte) 0)));
+        sortedSections.sort(Comparator.comparingInt(section -> section.getByteOr("Y", (byte) 0)));
 
         int keepNonAirSections = config.lod1TopNonAirSections();
 
         int highestNonAirSectionY = Integer.MIN_VALUE;
-        for (NbtCompound section : sortedSections) {
+        for (CompoundTag section : sortedSections) {
             if (!sectionHasNonAir(section)) {
                 continue;
             }
-            int y = section.getByte("Y", (byte) 0);
+            int y = section.getByteOr("Y", (byte) 0);
             if (y > highestNonAirSectionY) {
                 highestNonAirSectionY = y;
             }
@@ -1397,24 +1420,24 @@ public final class ViewExtendService {
         }
 
         int minKeepY = highestNonAirSectionY - (keepNonAirSections - 1);
-        NbtList filteredSections = new NbtList();
-        for (NbtCompound section : sortedSections) {
-            int y = section.getByte("Y", (byte) 0);
+        ListTag filteredSections = new ListTag();
+        for (CompoundTag section : sortedSections) {
+            int y = section.getByteOr("Y", (byte) 0);
             if (y >= minKeepY && sectionHasNonAir(section)) {
                 filteredSections.add(section.copy());
             }
         }
         chunkNbt.put("sections", filteredSections);
 
-        chunkNbt.put("block_entities", new NbtList());
+        chunkNbt.put("block_entities", new ListTag());
     }
 
-    private boolean sectionHasNonAir(NbtCompound section) {
-        NbtCompound blockStates = section.getCompoundOrEmpty("block_states");
-        NbtList palette = blockStates.getListOrEmpty("palette");
+    private boolean sectionHasNonAir(CompoundTag section) {
+        CompoundTag blockStates = section.getCompoundOrEmpty("block_states");
+        ListTag palette = blockStates.getListOrEmpty("palette");
         for (int index = 0; index < palette.size(); index++) {
-            NbtCompound state = palette.getCompoundOrEmpty(index);
-            String name = state.getString("Name", "");
+            CompoundTag state = palette.getCompoundOrEmpty(index);
+            String name = state.getStringOr("Name", "");
             if (!"minecraft:air".equals(name) && !"minecraft:cave_air".equals(name) && !"minecraft:void_air".equals(name)) {
                 return true;
             }
@@ -1463,19 +1486,19 @@ public final class ViewExtendService {
      * @param chunkNbt The chunk NBT data
      * @return true if the chunk's primary biome is an ocean variant
      */
-    private static boolean isChunkInOceanBiome(NbtCompound chunkNbt) {
+    private static boolean isChunkInOceanBiome(CompoundTag chunkNbt) {
         try {
-            NbtList sections = chunkNbt.getListOrEmpty("sections");
+            ListTag sections = chunkNbt.getListOrEmpty("sections");
             for (int sectionIndex = 0; sectionIndex < sections.size(); sectionIndex++) {
-                NbtCompound section = sections.getCompoundOrEmpty(sectionIndex);
-                NbtCompound biomes = section.getCompoundOrEmpty("biomes");
-                NbtList biomePalette = biomes.getListOrEmpty("palette");
+                CompoundTag section = sections.getCompoundOrEmpty(sectionIndex);
+                CompoundTag biomes = section.getCompoundOrEmpty("biomes");
+                ListTag biomePalette = biomes.getListOrEmpty("palette");
 
                 for (int paletteIndex = 0; paletteIndex < biomePalette.size(); paletteIndex++) {
                     String biomeId = biomePalette.getString(paletteIndex).orElse("");
                     if (biomeId.isEmpty()) {
-                        NbtCompound biomeEntry = biomePalette.getCompoundOrEmpty(paletteIndex);
-                        biomeId = biomeEntry.getString("Name", "");
+                        CompoundTag biomeEntry = biomePalette.getCompoundOrEmpty(paletteIndex);
+                        biomeId = biomeEntry.getStringOr("Name", "");
                     }
 
                     if (!biomeId.isEmpty() && isOceanBiomeId(biomeId)) {
@@ -1490,13 +1513,13 @@ public final class ViewExtendService {
     }
 
     /**
-     * Checks if a chunk is in an ocean biome from a WorldChunk.
+     * Checks if a chunk is in an ocean biome from a LevelChunk.
      * Simplified version - returns false as NBT-based detection is more reliable.
      * 
      * @param chunk The world chunk
      * @return false (NBT-based detection is used in preprocessing where it matters)
      */
-    private static boolean isChunkInOcean(WorldChunk chunk) {
+    private static boolean isChunkInOcean(LevelChunk chunk) {
         // The NBT-based detection is used during preprocessing
         // Here we return false as a safe default for runtime chunk checks
         return false;
@@ -1534,7 +1557,7 @@ public final class ViewExtendService {
     private static byte[] createWaterAwareSkyLightFallback(int sectionY) {
         int seaSurfaceY = 63;
         int sectionBaseY = sectionY * 16;
-        ChunkNibbleArray nibbleArray = new ChunkNibbleArray(0);
+        DataLayer nibbleArray = new DataLayer(0);
 
         for (int localY = 0; localY < 16; localY++) {
             int blockY = sectionBaseY + localY;
@@ -1548,7 +1571,7 @@ public final class ViewExtendService {
             }
         }
 
-        return nibbleArray.asByteArray();
+        return nibbleArray.getData();
     }
 
     private void recomputeEffectiveBudgets() {
@@ -1588,13 +1611,13 @@ public final class ViewExtendService {
     private void cleanupDisconnected(MinecraftServer server) {
         List<Long> toRemove = new ArrayList<>();
         statesByPlayer.forEach((key, state) -> {
-            ServerPlayerEntity player = server.getPlayerManager().getPlayer(state.playerUuid);
+            ServerPlayer player = server.getPlayerList().getPlayer(state.playerUuid);
             if (player == null) {
                 toRemove.add(key);
                 return;
             }
 
-            String currentWorldKey = player.getEntityWorld().getRegistryKey().getValue().toString();
+            String currentWorldKey = player.level().dimension().identifier().toString();
             if (!currentWorldKey.equals(state.worldKey)) {
                 toRemove.add(key);
             }
@@ -1607,12 +1630,12 @@ public final class ViewExtendService {
 
     private List<PlayerTickTarget> collectTickTargets(MinecraftServer server) {
         List<PlayerTickTarget> targets = new ArrayList<>();
-        for (ServerWorld world : server.getWorlds()) {
-            List<ServerPlayerEntity> players = world.getPlayers();
+        for (ServerLevel world : server.getAllLevels()) {
+            List<ServerPlayer> players = world.getPlayers(player -> true);
             if (players.isEmpty()) {
                 continue;
             }
-            for (ServerPlayerEntity player : players) {
+            for (ServerPlayer player : players) {
                 targets.add(new PlayerTickTarget(world, player));
             }
         }
@@ -1635,7 +1658,7 @@ public final class ViewExtendService {
         int[] caps = new int[count];
 
         for (int index = 0; index < count; index++) {
-            ServerPlayerEntity player = targets.get(index).player();
+            ServerPlayer player = targets.get(index).player();
             boolean priority = isPriorityStreamer(player);
             int weight = priority ? PRIORITY_WEIGHT : NORMAL_WEIGHT;
             int cap = priority ? Math.max(basePerPlayerBudget, basePerPlayerBudget * 6) : basePerPlayerBudget;
@@ -1692,7 +1715,7 @@ public final class ViewExtendService {
         return budgets;
     }
 
-    private static boolean isPriorityStreamer(ServerPlayerEntity player) {
+    private static boolean isPriorityStreamer(ServerPlayer player) {
         return player.getAbilities().flying;
     }
 
@@ -1771,7 +1794,7 @@ public final class ViewExtendService {
         return ((long) uuid.hashCode() << 32) ^ worldKey.hashCode();
     }
 
-    private record PlayerTickTarget(ServerWorld world, ServerPlayerEntity player) {
+    private record PlayerTickTarget(ServerLevel world, ServerPlayer player) {
     }
 
     private record NbtReadRequest(UUID playerUuid, String worldKey, ChunkPos pos, int lodLevel, boolean upgradePriority) {
@@ -1785,13 +1808,13 @@ public final class ViewExtendService {
             String worldKey,
             ChunkPos pos,
             int lodLevel,
-            NbtCompound chunkNbt,
-            SerializedChunk serializedChunk,
-            LightData deterministicLightData,
+            CompoundTag chunkNbt,
+            SerializableChunkData serializedChunk,
+            ClientboundLightUpdatePacketData deterministicLightData,
             int remapCount,
             boolean missing,
             boolean failed) {
-        private static PreparedChunkTask withNbt(UUID playerUuid, String worldKey, ChunkPos pos, NbtCompound chunkNbt, int remapCount, int lodLevel) {
+        private static PreparedChunkTask withNbt(UUID playerUuid, String worldKey, ChunkPos pos, CompoundTag chunkNbt, int remapCount, int lodLevel) {
             return new PreparedChunkTask(playerUuid, worldKey, pos, lodLevel, chunkNbt, null, null, remapCount, false, false);
         }
 
@@ -1800,8 +1823,8 @@ public final class ViewExtendService {
                 String worldKey,
                 ChunkPos pos,
                 int lodLevel,
-                SerializedChunk serializedChunk,
-                LightData deterministicLightData,
+                SerializableChunkData serializedChunk,
+                ClientboundLightUpdatePacketData deterministicLightData,
                 int remapCount) {
             return new PreparedChunkTask(playerUuid, worldKey, pos, lodLevel, null, serializedChunk, deterministicLightData, remapCount, false, false);
         }
@@ -1820,8 +1843,8 @@ public final class ViewExtendService {
     }
 
     private record PacketTemplate(
-            ChunkDataS2CPacket chunkPacket,
-            LightUpdateS2CPacket lightPacket,
+            ClientboundLevelChunkWithLightPacket chunkPacket,
+            ClientboundLightUpdatePacket lightPacket,
             int chunkPacketBytes,
             int blockLightSections,
             int skyLightSections) {

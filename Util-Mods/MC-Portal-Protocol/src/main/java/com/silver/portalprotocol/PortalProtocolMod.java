@@ -11,7 +11,7 @@ public final class PortalProtocolMod implements ModInitializer {
 
     @Override
     public void onInitialize() {
-        PayloadTypeRegistry.playS2C().register(PortalRequestPayload.PACKET_ID, PortalRequestPayload.codec);
+        PayloadTypeRegistry.clientboundPlay().register(PortalRequestPayload.PACKET_ID, PortalRequestPayload.codec);
         LOGGER.info("Registered wakeuplobby:portal_request payload protocol");
     }
 }

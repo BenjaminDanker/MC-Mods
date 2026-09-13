@@ -2,19 +2,18 @@ package com.silver.atlantis.spawn.drop;
 
 import com.silver.atlantis.AtlantisMod;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.NbtComponent;
-import net.minecraft.entity.ItemEntity;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.registry.Registries;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.Identifier;
-
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.CustomData;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -55,11 +54,11 @@ public final class SpecialItemConversionManager {
         );
     }
 
-    public static void onInventoryMaybeChanged(ServerPlayerEntity player) {
+    public static void onInventoryMaybeChanged(ServerPlayer player) {
         if (player == null) {
             return;
         }
-        UUID id = player.getUuid();
+        UUID id = player.getUUID();
         PENDING_PLAYERS.add(id);
         // Delay the scan slightly; markDirty can fire repeatedly during a single action.
         NEXT_ALLOWED_TICK.putIfAbsent(id, TICKS + 2);
@@ -83,7 +82,7 @@ public final class SpecialItemConversionManager {
                 continue;
             }
 
-            ServerPlayerEntity player = server.getPlayerManager().getPlayer(id);
+            ServerPlayer player = server.getPlayerList().getPlayer(id);
             if (player == null) {
                 it.remove();
                 NEXT_ALLOWED_TICK.remove(id);
@@ -97,7 +96,7 @@ public final class SpecialItemConversionManager {
         }
     }
 
-    private static void tryConvert(ServerPlayerEntity player, int threshold) {
+    private static void tryConvert(ServerPlayer player, int threshold) {
         int count = countSpecialDrops(player);
         int crafts = count / threshold;
         if (crafts <= 0) {
@@ -106,7 +105,7 @@ public final class SpecialItemConversionManager {
 
         ItemStack rewardTemplate = SpecialSeaLanternItem.createOne();
         if (rewardTemplate.isEmpty()) {
-            AtlantisMod.LOGGER.warn("Skipping conversion for {}: reward item could not be created", player.getNameForScoreboard());
+            AtlantisMod.LOGGER.warn("Skipping conversion for {}: reward item could not be created", player.getScoreboardName());
             return;
         }
 
@@ -121,11 +120,11 @@ public final class SpecialItemConversionManager {
             ItemStack reward = rewardTemplate.copy();
             reward.setCount(give);
 
-            if (!player.getInventory().insertStack(reward)) {
-                if (player.getEntityWorld() instanceof ServerWorld world) {
+            if (!player.getInventory().add(reward)) {
+                if (player.level() instanceof ServerLevel world) {
                     ItemEntity drop = new ItemEntity(world, player.getX(), player.getY(), player.getZ(), reward);
-                    drop.setToDefaultPickupDelay();
-                    world.spawnEntity(drop);
+                    drop.setDefaultPickUpDelay();
+                    world.addFreshEntity(drop);
                 }
             }
 
@@ -133,35 +132,35 @@ public final class SpecialItemConversionManager {
         }
     }
 
-    private static void tryMarkOceanDefeatedOnce(ServerPlayerEntity player) {
-        if (player == null || player.getCommandTags().contains(MPDS_OCEAN_DEFEATED_TAG)) {
+    private static void tryMarkOceanDefeatedOnce(ServerPlayer player) {
+        if (player == null || player.entityTags().contains(MPDS_OCEAN_DEFEATED_TAG)) {
             return;
         }
 
-        MinecraftServer server = player.getCommandSource().getServer();
+        MinecraftServer server = player.createCommandSourceStack().getServer();
         if (server == null) {
             return;
         }
 
-        String playerName = player.getNameForScoreboard();
-        ServerCommandSource source = server.getCommandSource();
+        String playerName = player.getScoreboardName();
+        CommandSourceStack source = server.createCommandSourceStack();
 
         try {
-            server.getCommandManager().executeWithPrefix(source, "/mpdsgrantbossreward " + playerName + " ocean 1");
-            player.addCommandTag(MPDS_OCEAN_DEFEATED_TAG);
+            server.getCommands().performPrefixedCommand(source, "/mpdsgrantbossreward " + playerName + " ocean 1");
+            player.addTag(MPDS_OCEAN_DEFEATED_TAG);
         } catch (Exception e) {
             AtlantisMod.LOGGER.error("Failed to update MPDS ocean defeated flag for {}", playerName, e);
         }
     }
 
-    private static int countSpecialDrops(ServerPlayerEntity player) {
+    private static int countSpecialDrops(ServerPlayer player) {
         if (player == null) {
             return 0;
         }
 
         int total = 0;
-        for (int slot = 0; slot < player.getInventory().size(); slot++) {
-            ItemStack stack = player.getInventory().getStack(slot);
+        for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
+            ItemStack stack = player.getInventory().getItem(slot);
             if (isSpecialDropStack(stack)) {
                 total += stack.getCount();
             }
@@ -169,24 +168,24 @@ public final class SpecialItemConversionManager {
         return total;
     }
 
-    private static void consumeSpecialDrops(ServerPlayerEntity player, int amount) {
+    private static void consumeSpecialDrops(ServerPlayer player, int amount) {
         if (player == null || amount <= 0) {
             return;
         }
 
         int remaining = amount;
-        for (int slot = 0; slot < player.getInventory().size(); slot++) {
+        for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
             if (remaining <= 0) {
                 break;
             }
 
-            ItemStack stack = player.getInventory().getStack(slot);
+            ItemStack stack = player.getInventory().getItem(slot);
             if (!isSpecialDropStack(stack)) {
                 continue;
             }
 
             int take = Math.min(remaining, stack.getCount());
-            stack.decrement(take);
+            stack.shrink(take);
             remaining -= take;
         }
     }
@@ -201,11 +200,11 @@ public final class SpecialItemConversionManager {
             return false;
         }
 
-        if (!stack.isOf(configuredItem)) {
+        if (!stack.is(configuredItem)) {
             return false;
         }
 
-        NbtCompound custom = readCustomData(stack);
+        CompoundTag custom = readCustomData(stack);
         if (custom == null) {
             return false;
         }
@@ -227,7 +226,7 @@ public final class SpecialItemConversionManager {
             return null;
         }
 
-        Item item = Registries.ITEM.get(configuredId);
+        Item item = BuiltInRegistries.ITEM.getValue(configuredId);
         if (item == null) {
             AtlantisMod.LOGGER.warn("Unknown special drop item in config: {}", SpawnSpecialConfig.SPECIAL_DROP_ITEM_ID);
             configuredSpecialDropItem = null;
@@ -238,11 +237,11 @@ public final class SpecialItemConversionManager {
         return configuredSpecialDropItem;
     }
 
-    private static NbtCompound readCustomData(ItemStack stack) {
-        NbtComponent custom = stack.get(DataComponentTypes.CUSTOM_DATA);
+    private static CompoundTag readCustomData(ItemStack stack) {
+        CustomData custom = stack.get(DataComponents.CUSTOM_DATA);
         if (custom == null) {
             return null;
         }
-        return custom.copyNbt();
+        return custom.copyTag();
     }
 }

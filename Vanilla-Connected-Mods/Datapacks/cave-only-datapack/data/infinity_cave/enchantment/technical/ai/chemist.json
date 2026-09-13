@@ -60,13 +60,13 @@
             "condition": "minecraft:entity_properties",
             "entity": "this",
             "predicate": {
-              "type": "#infinity_cave:aggro",
-               "targeted_entity": {
+              "minecraft:entity_type": "#infinity_cave:aggro",
+              "targeted_entity": {
                 "distance": {
-                "absolute": {
-                  "max": 20
-                    }
-                 }
+                  "absolute": {
+                    "max": 20
+                  }
+                }
               }
             }
           }

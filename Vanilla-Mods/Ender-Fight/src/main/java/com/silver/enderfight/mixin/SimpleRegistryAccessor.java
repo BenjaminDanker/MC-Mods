@@ -2,31 +2,30 @@ package com.silver.enderfight.mixin;
 
 import it.unimi.dsi.fastutil.objects.Reference2IntMap;
 import it.unimi.dsi.fastutil.objects.ObjectList;
-import net.minecraft.registry.SimpleRegistry;
-import net.minecraft.registry.entry.RegistryEntry;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
-import org.spongepowered.asm.mixin.gen.Invoker;
 
 import java.util.Map;
+import net.minecraft.core.Holder;
+import net.minecraft.core.MappedRegistry;
 
-@Mixin(SimpleRegistry.class)
+@Mixin(MappedRegistry.class)
 public interface SimpleRegistryAccessor<T> {
-    @Accessor("keyToEntry")
-    Map<?, RegistryEntry.Reference<T>> getKeyToEntry();
+    @Accessor("byKey")
+    Map<?, Holder.Reference<T>> getKeyToEntry();
 
-    @Accessor("idToEntry")
-    Map<?, RegistryEntry.Reference<T>> getIdToEntry();
+    @Accessor("byLocation")
+    Map<?, Holder.Reference<T>> getIdToEntry();
 
-    @Accessor("valueToEntry")
-    Map<T, RegistryEntry.Reference<T>> getValueToEntry();
+    @Accessor("byValue")
+    Map<T, Holder.Reference<T>> getValueToEntry();
 
-    @Accessor("entryToRawId")
+    @Accessor("toId")
     Reference2IntMap<T> getEntryToRawId();
 
-    @Accessor("rawIdToEntry")
-    ObjectList<RegistryEntry.Reference<T>> getRawIdToEntry();
+    @Accessor("byId")
+    ObjectList<Holder.Reference<T>> getRawIdToEntry();
 
     @Accessor("frozen")
     boolean getFrozen();
@@ -34,12 +33,7 @@ public interface SimpleRegistryAccessor<T> {
     @Accessor("frozen")
     void setFrozen(boolean frozen);
 
-    @Accessor("intrusiveValueToEntry")
+    @Accessor("unregisteredIntrusiveHolders")
     @Nullable
-    Map<T, RegistryEntry.Reference<T>> getIntrusiveValueToEntry();
-
-    @Invoker("method_45938")
-    static void invokeSetValue(Object value, RegistryEntry.Reference<?> reference) {
-        throw new UnsupportedOperationException("Accessor method body replaced at runtime");
-    }
+    Map<T, Holder.Reference<T>> getIntrusiveValueToEntry();
 }

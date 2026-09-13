@@ -1,11 +1,11 @@
 package com.silver.skyislands.specialitems;
 
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.NbtComponent;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.text.Text;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.item.component.CustomData;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
 
 public final class SpecialArrowItem {
     public static final String KEY_ID = "id";
@@ -17,19 +17,19 @@ public final class SpecialArrowItem {
 
     public static ItemStack createOne() {
         ItemStack stack = new ItemStack(Items.ARROW, 1);
-        NbtComponent.set(DataComponentTypes.CUSTOM_DATA, stack, tag -> {
+        CustomData.update(DataComponents.CUSTOM_DATA, stack, tag -> {
             tag.putString(KEY_ID, ID);
             tag.putString(KEY_ID_TYPE, "Soulbound");
         });
-        stack.set(DataComponentTypes.CUSTOM_NAME, Text.literal("Special Arrow"));
+        stack.set(DataComponents.CUSTOM_NAME, Component.literal("Special Arrow"));
         return stack;
     }
 
     public static boolean isSpecialArrow(ItemStack stack) {
-        if (stack == null || stack.isEmpty() || !stack.isOf(Items.ARROW)) {
+        if (stack == null || stack.isEmpty() || !stack.is(Items.ARROW.builtInRegistryHolder())) {
             return false;
         }
-        NbtCompound nbt = readCustomData(stack);
+        CompoundTag nbt = readCustomData(stack);
         if (nbt == null) {
             return false;
         }
@@ -38,11 +38,11 @@ public final class SpecialArrowItem {
         return ID.equals(id) && "Soulbound".equals(idType);
     }
 
-    private static NbtCompound readCustomData(ItemStack stack) {
-        NbtComponent custom = stack.get(DataComponentTypes.CUSTOM_DATA);
+    private static CompoundTag readCustomData(ItemStack stack) {
+        CustomData custom = stack.get(DataComponents.CUSTOM_DATA);
         if (custom == null) {
             return null;
         }
-        return custom.copyNbt();
+        return custom.copyTag();
     }
 }

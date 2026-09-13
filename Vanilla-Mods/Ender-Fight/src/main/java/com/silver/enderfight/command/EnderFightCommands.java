@@ -6,9 +6,11 @@ import com.mojang.brigadier.exceptions.SimpleCommandExceptionType;
 import com.silver.enderfight.EnderFightMod;
 import com.silver.enderfight.reset.EndResetManager;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
-import net.minecraft.server.command.CommandManager;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.text.Text;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.Commands;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.permissions.LevelBasedPermissionSet;
+import net.minecraft.server.permissions.PermissionLevel;
 
 /**
  * Registers administrative commands for Ender Fight. Currently exposes a single command that forces
@@ -16,9 +18,9 @@ import net.minecraft.text.Text;
  */
 public final class EnderFightCommands {
     private static final SimpleCommandExceptionType RESET_FAILED =
-        new SimpleCommandExceptionType(Text.literal("Unable to reset The End; see server logs for details."));
+        new SimpleCommandExceptionType(Component.literal("Unable to reset The End; see server logs for details."));
     private static final SimpleCommandExceptionType NOT_READY =
-        new SimpleCommandExceptionType(Text.literal("End reset system not initialised yet."));
+        new SimpleCommandExceptionType(Component.literal("End reset system not initialised yet."));
 
     private EnderFightCommands() {
     }
@@ -29,14 +31,15 @@ public final class EnderFightCommands {
         );
     }
 
-    private static void registerCommands(CommandDispatcher<ServerCommandSource> dispatcher) {
-        dispatcher.register(CommandManager.literal("enderfight")
-            .requires(source -> source.hasPermissionLevel(4))
-            .then(CommandManager.literal("resetend")
+    private static void registerCommands(CommandDispatcher<CommandSourceStack> dispatcher) {
+        dispatcher.register(Commands.literal("enderfight")
+            .requires(source -> source.permissions() instanceof LevelBasedPermissionSet levels
+                && levels.level().isEqualOrHigherThan(PermissionLevel.byId(4)))
+            .then(Commands.literal("resetend")
                 .executes(context -> executeReset(context.getSource()))));
     }
 
-    private static int executeReset(ServerCommandSource source) throws CommandSyntaxException {
+    private static int executeReset(CommandSourceStack source) throws CommandSyntaxException {
         EndResetManager manager = EnderFightMod.getEndResetManager();
         if (manager == null) {
             throw NOT_READY.create();
@@ -47,7 +50,7 @@ public final class EnderFightCommands {
             throw RESET_FAILED.create();
         }
 
-        source.sendFeedback(() -> Text.literal("Manual End reset triggered."), true);
+        source.sendSuccess(() -> Component.literal("Manual End reset triggered."), true);
         return 1;
     }
 }

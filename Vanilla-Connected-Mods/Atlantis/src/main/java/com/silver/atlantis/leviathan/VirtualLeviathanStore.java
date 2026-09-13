@@ -9,8 +9,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.util.math.Vec3d;
-
+import net.minecraft.world.phys.Vec3;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -185,7 +184,7 @@ public final class VirtualLeviathanStore {
             double damageMultiplier = parseOptionalDouble(obj, "damageMultiplier", 1.0d);
             double healthMultiplier = parseOptionalDouble(obj, "healthMultiplier", 1.0d);
 
-            byId.put(id, new VirtualLeviathanState(id, new Vec3d(x, y, z), headingX, headingZ, tick, entityTypeId, spawnY, scaleMultiplier, damageMultiplier, healthMultiplier));
+            byId.put(id, new VirtualLeviathanState(id, new Vec3(x, y, z), headingX, headingZ, tick, entityTypeId, spawnY, scaleMultiplier, damageMultiplier, healthMultiplier));
         }
 
         leviathansById.clear();
@@ -307,7 +306,7 @@ public final class VirtualLeviathanStore {
     }
 
     public record VirtualLeviathanState(UUID id,
-                                        Vec3d pos,
+                                        Vec3 pos,
                                         double headingX,
                                         double headingZ,
                                         long lastTick,
@@ -354,7 +353,7 @@ public final class VirtualLeviathanStore {
             headingZ /= len;
         }
 
-        public VirtualLeviathanState withPos(Vec3d newPos, long tick) {
+        public VirtualLeviathanState withPos(Vec3 newPos, long tick) {
             return new VirtualLeviathanState(id, newPos, headingX, headingZ, tick, entityTypeId, spawnYAtCreation, scaleMultiplier, damageMultiplier, healthMultiplier);
         }
 

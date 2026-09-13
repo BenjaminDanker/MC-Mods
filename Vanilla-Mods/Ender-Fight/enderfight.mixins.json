@@ -2,22 +2,25 @@
   "required": true,
   "minVersion": "0.8",
   "package": "com.silver.enderfight.mixin",
-  "compatibilityLevel": "JAVA_21",
+  "compatibilityLevel": "JAVA_25",
   "mixins": [
+    "EndGatewayBlockEntityAccessor",
     "EndGatewayBlockEntityInvoker",
+    "HolderReferenceAccessor",
     "EndGatewayBlockMixin",
+    "GlassBottleItemMixin",
+    "ItemEntityMixin",
+    "EndPortalBlockCollisionMixin",
     "EndPortalBlockMixin",
     "MinecraftServerAccessor",
-    "RandomSequencesStateAccessor",
+    "NoiseChunkGeneratorMixin",
     "ServerChunkLoadingManagerAccessor",
     "ServerWorldAccessor",
-    "SimpleRegistryAccessor",
-    "GlassBottleItemMixin"
+    "SimpleRegistryAccessor"
   ],
   "server": [],
   "client": [],
   "injectors": {
     "defaultRequire": 1
-  },
-  "refmap": "enderfight-refmap.json"
+  }
 }

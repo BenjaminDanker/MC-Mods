@@ -4,7 +4,7 @@
     "fallback": "Spider Web"
   },
   "supported_items": "#minecraft:enchantable/weapon",
-  "primary_items": "#minecraft:enchantable/sword",
+  "primary_items": "#minecraft:swords",
   "weight": 4,
   "max_level": 3,
   "min_cost": {

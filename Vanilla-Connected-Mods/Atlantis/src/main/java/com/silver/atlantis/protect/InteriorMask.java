@@ -1,11 +1,10 @@
 package com.silver.atlantis.protect;
 
-import net.minecraft.util.math.BlockPos;
-
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.util.BitSet;
+import net.minecraft.core.BlockPos;
 
 /**
  * Compact world-space mask for interior-air markers in one schematic.

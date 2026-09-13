@@ -36,14 +36,14 @@ import com.silver.aipets.fabric.transfer.PetTransferCoordinator;
 import com.silver.aipets.fabric.transfer.PetTransferOutcome;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.ItemStack;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.item.ItemStack;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -95,12 +95,14 @@ public final class PetCompanionMod implements ModInitializer {
     public void onInitialize() {
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
                 PetCommands.register(dispatcher));
+        ServerLifecycleEvents.SERVER_STARTED.register(server ->
+                PetCommands.register(server.getCommands().getDispatcher()));
         UseEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
             var result = PetInteractionRouter.interact(player, entity, hand);
-            if (!world.isClient() && result == net.minecraft.util.ActionResult.PASS
-                    && PRIVATE_CHAT_INPUT.isActive(player.getUuid())) {
+            if (!world.isClientSide() && result == net.minecraft.world.InteractionResult.PASS
+                    && PRIVATE_CHAT_INPUT.isActive(player.getUUID())) {
                 // Switching to another entity (including an interactive villager) ends pet input.
-                PRIVATE_CHAT_INPUT.endOwner((net.minecraft.server.network.ServerPlayerEntity) player,
+                PRIVATE_CHAT_INPUT.endOwner((net.minecraft.server.level.ServerPlayer) player,
                         "Your pet conversation has ended.");
             }
             return result;
@@ -114,7 +116,7 @@ public final class PetCompanionMod implements ModInitializer {
                 PRIVATE_CHAT_INPUT.cancelPet(data.aipets$getPetId());
             }
         });
-        ServerTickEvents.END_WORLD_TICK.register(PERIODIC_RECONCILIATION::onEndWorldTick);
+        ServerTickEvents.END_LEVEL_TICK.register(PERIODIC_RECONCILIATION::onEndWorldTick);
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             petCompassManager().ifPresent(manager -> manager.onEndServerTick(server));
             entityRecoveryCoordinator().ifPresent(manager -> manager.tick(server));
@@ -128,17 +130,17 @@ public final class PetCompanionMod implements ModInitializer {
             transferCoordinator().ifPresentOrElse(coordinator ->
                     coordinator.claimDestination(handler.player).thenAccept(outcome -> {
                             LOGGER.info(StructuredPetEvent.operation("transfer_destination_join")
-                                    .owner(handler.player.getUuid())
+                                    .owner(handler.player.getUUID())
                                     .backend(AUTHORITY_BACKEND.get())
                                     .outcome(outcome.status().name().toLowerCase(java.util.Locale.ROOT))
                                     .toJson());
                             entityRecoveryCoordinator().ifPresent(recovery ->
-                                    recovery.recoverOwner(server, handler.player.getUuid()));
+                                    recovery.recoverOwner(server, handler.player.getUUID()));
                         }), () -> entityRecoveryCoordinator().ifPresent(recovery ->
-                            recovery.recoverOwner(server, handler.player.getUuid())));
+                            recovery.recoverOwner(server, handler.player.getUUID())));
         });
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
-            UUID ownerUuid = handler.player.getUuid();
+            UUID ownerUuid = handler.player.getUUID();
             PetCommands.clearPlayerState(ownerUuid);
             PRIVATE_CHAT_INPUT.cancelOwner(ownerUuid);
             conversationCoordinator().ifPresent(coordinator ->
@@ -337,12 +339,12 @@ public final class PetCompanionMod implements ModInitializer {
     public static int queueLoadedReconciliation(net.minecraft.server.MinecraftServer server) {
         Objects.requireNonNull(server, "server");
         int queued = 0;
-        for (net.minecraft.server.world.ServerWorld world : server.getWorlds()) {
+        for (net.minecraft.server.level.ServerLevel world : server.getAllLevels()) {
             queued += PERIODIC_RECONCILIATION.scanLoadedNow(world);
         }
         entityRecoveryCoordinator().ifPresent(recovery ->
-                server.getPlayerManager().getPlayerList().forEach(player ->
-                        recovery.recoverOwner(server, player.getUuid())));
+                server.getPlayerList().getPlayers().forEach(player ->
+                        recovery.recoverOwner(server, player.getUUID())));
         return queued;
     }
 
@@ -351,7 +353,7 @@ public final class PetCompanionMod implements ModInitializer {
      * The returned future never performs database I/O on the Minecraft server thread.
      */
     public static CompletableFuture<PetTransferOutcome> preparePortalTransfer(
-            net.minecraft.server.network.ServerPlayerEntity player,
+            net.minecraft.server.level.ServerPlayer player,
             String finalDestinationBackend) {
         PetTransferCoordinator coordinator = TRANSFER_COORDINATOR.get();
         if (coordinator == null) {
@@ -372,12 +374,12 @@ public final class PetCompanionMod implements ModInitializer {
     }
 
     /** Shared by inventory mixins; unsigned or wrong-owner candidates are never accepted. */
-    public static boolean isPetCompassAllowed(PlayerInventory inventory, ItemStack stack) {
+    public static boolean isPetCompassAllowed(Inventory inventory, ItemStack stack) {
         if (!PetCompassItem.isCandidate(stack)) {
             return true;
         }
         return petCompassManager()
-                .map(manager -> manager.isAllowedInPlayerInventory(stack, inventory.player.getUuid()))
+                .map(manager -> manager.isAllowedInPlayerInventory(stack, inventory.player.getUUID()))
                 .orElse(false);
     }
 

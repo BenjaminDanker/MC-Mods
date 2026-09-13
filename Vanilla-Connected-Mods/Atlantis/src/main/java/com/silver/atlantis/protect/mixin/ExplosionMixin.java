@@ -1,22 +1,22 @@
 package com.silver.atlantis.protect.mixin;
 
 import com.silver.atlantis.protect.ProtectionManager;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.explosion.ExplosionImpl;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.List;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.ServerExplosion;
 
-@Mixin(ExplosionImpl.class)
+@Mixin(ServerExplosion.class)
 public abstract class ExplosionMixin {
 
-    @Inject(method = "destroyBlocks", at = @At("HEAD"))
+    @Inject(method = "interactWithBlocks", at = @At("HEAD"))
     private void atlantis$filterProtectedBlocks(List<BlockPos> blocks, CallbackInfo ci) {
         // ExplosionImpl is server-side; getWorld() returns ServerWorld.
-        var serverWorld = ((ExplosionImpl) (Object) this).getWorld();
+        var serverWorld = ((ServerExplosion) (Object) this).level();
         blocks.removeIf(pos -> ProtectionManager.INSTANCE.isAnyProtected(serverWorld, pos));
     }
 }

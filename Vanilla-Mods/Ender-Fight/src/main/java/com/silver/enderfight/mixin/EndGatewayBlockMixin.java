@@ -3,20 +3,21 @@ package com.silver.enderfight.mixin;
 import com.silver.enderfight.EnderFightMod;
 import com.silver.enderfight.portal.PortalInterceptor;
 import com.silver.enderfight.reset.EndResetManager;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.EndGatewayBlock;
-import net.minecraft.block.entity.BlockEntity;
-import net.minecraft.block.entity.EndGatewayBlockEntity;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityCollisionHandler;
+import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.TeleportTarget;
-import net.minecraft.world.World;
-import net.minecraft.world.gen.feature.EndGatewayFeatureConfig;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.InsideBlockEffectApplier;
+import net.minecraft.world.entity.projectile.throwableitemprojectile.ThrownEnderpearl;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.EndGatewayBlock;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.TheEndGatewayBlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.levelgen.feature.configurations.EndGatewayConfiguration;
+import net.minecraft.world.level.portal.TeleportTransition;
+import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -29,26 +30,31 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(EndGatewayBlock.class)
 public abstract class EndGatewayBlockMixin {
 
-    @Inject(method = "onEntityCollision", at = @At("HEAD"), cancellable = true)
-    private void enderfight$redirectGatewayTeleport(BlockState state, World world, BlockPos pos, Entity entity, EntityCollisionHandler collisionHandler, boolean moved, CallbackInfo ci) {
-        if (!(world instanceof ServerWorld serverWorld)) {
+    @Inject(method = "entityInside", at = @At("HEAD"), cancellable = true)
+    private void enderfight$redirectGatewayTeleport(BlockState state, Level world, BlockPos pos, Entity entity, InsideBlockEffectApplier collisionHandler, boolean moved, CallbackInfo ci) {
+        if (!(world instanceof ServerLevel serverWorld)) {
             return;
         }
-        if (!(entity instanceof ServerPlayerEntity player)) {
+        ServerPlayer player = entity instanceof ServerPlayer serverPlayer ? serverPlayer : null;
+        ThrownEnderpearl pearl = entity instanceof ThrownEnderpearl thrownPearl ? thrownPearl : null;
+        ServerPlayer pearlOwner = pearl != null && pearl.getOwner() instanceof ServerPlayer serverPlayer
+            ? serverPlayer
+            : null;
+        if (player == null && pearlOwner == null) {
             return;
         }
-        if (!entity.canUsePortals(false)) {
+        if (!entity.canUsePortal(false)) {
             return;
         }
-        if (!PortalInterceptor.isManagedEndDimension(serverWorld.getRegistryKey())) {
+        if (!PortalInterceptor.isManagedEndDimension(serverWorld.dimension())) {
             return;
         }
 
         BlockEntity blockEntity = serverWorld.getBlockEntity(pos);
-        if (!(blockEntity instanceof EndGatewayBlockEntity gateway)) {
+        if (!(blockEntity instanceof TheEndGatewayBlockEntity gateway)) {
             return;
         }
-        if (gateway.needsCooldownBeforeTeleporting()) {
+        if (gateway.isCoolingDown()) {
             return;
         }
 
@@ -58,37 +64,41 @@ public abstract class EndGatewayBlockMixin {
             return;
         }
 
-        ServerWorld destinationWorld = manager.getActiveEndWorld(server);
+        ServerLevel destinationWorld = manager.getActiveEndWorld(server);
         if (destinationWorld == null) {
             destinationWorld = serverWorld;
         }
 
-        Vec3d exitPos;
-        Vec3d velocity = entity.getVelocity();
-        float targetYaw = entity.getYaw();
-        float targetPitch = entity.getPitch();
+        Vec3 exitPos;
+        Vec3 velocity = entity.getDeltaMovement();
+        float targetYaw = entity.getYRot();
+        float targetPitch = entity.getXRot();
 
         boolean sendToSpawnPlatform = shouldSendToSpawn(manager, destinationWorld, pos);
         if (sendToSpawnPlatform) {
             // Force returning gateways in managed End dimensions to land on the central platform instead of looping back to the same island.
             manager.ensureEndSpawnPlatform(destinationWorld);
             exitPos = manager.getEndSpawnLocation();
-            velocity = Vec3d.ZERO;
+            velocity = Vec3.ZERO;
             targetYaw = manager.getEndSpawnYaw();
             targetPitch = 0.0F;
-            PortalInterceptor.suppressNextRedirect(player);
+            if (player != null) {
+                PortalInterceptor.suppressNextRedirect(player);
+            } else {
+                PortalInterceptor.suppressNextRedirect(pearlOwner);
+            }
         } else {
-            exitPos = gateway.getOrCreateExitPortalPos(destinationWorld, pos);
+            exitPos = gateway.getPortalPosition(destinationWorld, pos);
             if (exitPos == null) {
                 BlockPos portalBase = EndGatewayBlockEntityInvoker.enderfight$setupExitPortalLocation(destinationWorld, pos);
                 if (portalBase == null) {
-                    EnderFightMod.LOGGER.warn("Gateway at {} failed to locate exit site in {}", pos, destinationWorld.getRegistryKey().getValue());
+                    EnderFightMod.LOGGER.warn("Gateway at {} failed to locate exit site in {}", pos, destinationWorld.dimension().identifier());
                     return;
                 }
-                BlockPos elevated = portalBase.up(10);
-                EndGatewayBlockEntityInvoker.enderfight$createPortal(destinationWorld, elevated, EndGatewayFeatureConfig.createConfig(portalBase, false));
-                gateway.setExitPortalPos(elevated, false);
-                exitPos = gateway.getOrCreateExitPortalPos(destinationWorld, pos);
+                BlockPos elevated = portalBase.above(10);
+                EndGatewayBlockEntityInvoker.enderfight$createPortal(destinationWorld, elevated, EndGatewayConfiguration.knownExit(portalBase, false));
+                gateway.setExitPosition(elevated, false);
+                exitPos = gateway.getPortalPosition(destinationWorld, pos);
             }
         }
 
@@ -97,23 +107,24 @@ public abstract class EndGatewayBlockMixin {
             return;
         }
 
-        TeleportTarget target = new TeleportTarget(
+        TeleportTransition target = new TeleportTransition(
             destinationWorld,
             exitPos,
             velocity,
             targetYaw,
             targetPitch,
-            TeleportTarget.ADD_PORTAL_CHUNK_TICKET
+            TeleportTransition.PLACE_PORTAL_TICKET
         );
 
-        entity.teleportTo(target);
-        EnderFightMod.LOGGER.info("Gateway at {} teleported {} to {}", pos, player.getName().getString(), destinationWorld.getRegistryKey().getValue());
-        EndGatewayBlockEntity.startTeleportCooldown(serverWorld, pos, state, gateway);
+        entity.teleport(target);
+        String actorName = player != null ? player.getName().getString() : pearlOwner.getName().getString() + "'s ender pearl";
+        EnderFightMod.LOGGER.info("Gateway at {} teleported {} to {}", pos, actorName, destinationWorld.dimension().identifier());
+        TheEndGatewayBlockEntity.triggerCooldown(serverWorld, pos, state, gateway);
         ci.cancel();
     }
 
-    private static boolean shouldSendToSpawn(EndResetManager manager, ServerWorld destinationWorld, BlockPos gatewayPos) {
-        if (!PortalInterceptor.isManagedEndDimension(destinationWorld.getRegistryKey()) || World.END.equals(destinationWorld.getRegistryKey())) {
+    private static boolean shouldSendToSpawn(EndResetManager manager, ServerLevel destinationWorld, BlockPos gatewayPos) {
+        if (!PortalInterceptor.isManagedEndDimension(destinationWorld.dimension()) || Level.END.equals(destinationWorld.dimension())) {
             return false;
         }
 
@@ -122,7 +133,7 @@ public abstract class EndGatewayBlockMixin {
             return false;
         }
 
-        double distanceSq = gatewayPos.getSquaredDistance(spawnBase);
+        double distanceSq = gatewayPos.distSqr(spawnBase);
         // Vanilla outer gateways spawn roughly 1000+ blocks away; anything beyond 256 blocks from the managed spawn is treated as a return portal.
         return distanceSq > 256D * 256D;
     }

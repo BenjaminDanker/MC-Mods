@@ -3,23 +3,22 @@ package com.silver.enderfight.portal;
 import com.silver.enderfight.EnderFightMod;
 import com.silver.enderfight.reset.EndResetManager;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
-import net.minecraft.network.RegistryByteBuf;
-import net.minecraft.network.codec.PacketCodec;
-import net.minecraft.network.packet.CustomPayload;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
-import net.minecraft.world.World;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.level.ServerPlayer;
 
 /**
  * Handles proxy requests to return a player to the overworld after a failed End portal handoff.
  */
 public final class ReturnOverworldHandler {
-    public static final CustomPayload.Id<ReturnOverworldPayload> PACKET_ID =
-        new CustomPayload.Id<>(Identifier.of("wakeuplobby", "return_overworld"));
+    public static final CustomPacketPayload.Type<ReturnOverworldPayload> PACKET_ID =
+        new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath("wakeuplobby", "return_overworld"));
 
-    public static final PacketCodec<RegistryByteBuf, ReturnOverworldPayload> codec =
-        PacketCodec.of(ReturnOverworldPayload::write, ReturnOverworldPayload::read);
+    public static final StreamCodec<RegistryFriendlyByteBuf, ReturnOverworldPayload> codec =
+        StreamCodec.ofMember(ReturnOverworldPayload::write, ReturnOverworldPayload::read);
 
     private ReturnOverworldHandler() {
     }
@@ -29,12 +28,12 @@ public final class ReturnOverworldHandler {
             (payload, context) -> context.server().execute(() -> handleRequest(context.player())));
     }
 
-    private static void handleRequest(ServerPlayerEntity player) {
+    private static void handleRequest(ServerPlayer player) {
         if (player == null) {
             return;
         }
 
-        if (!PortalInterceptor.isManagedEndDimension(player.getCommandSource().getWorld().getRegistryKey())) {
+        if (!PortalInterceptor.isManagedEndDimension(player.createCommandSourceStack().getLevel().dimension())) {
             return;
         }
 
@@ -43,21 +42,21 @@ public final class ReturnOverworldHandler {
             return;
         }
 
-        Text message = Text.literal("You have been returned to the Overworld.");
+        Component message = Component.literal("You have been returned to the Overworld.");
         manager.teleportPlayerToOverworld(player, message, "WakeUpLobby /return");
     }
 
-    public record ReturnOverworldPayload() implements CustomPayload {
-        public static ReturnOverworldPayload read(RegistryByteBuf buf) {
+    public record ReturnOverworldPayload() implements CustomPacketPayload {
+        public static ReturnOverworldPayload read(RegistryFriendlyByteBuf buf) {
             return new ReturnOverworldPayload();
         }
 
-        public void write(RegistryByteBuf buf) {
+        public void write(RegistryFriendlyByteBuf buf) {
             // No payload data.
         }
 
         @Override
-        public Id<? extends CustomPayload> getId() {
+        public Type<? extends CustomPacketPayload> type() {
             return PACKET_ID;
         }
     }

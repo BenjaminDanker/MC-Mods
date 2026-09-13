@@ -3,14 +3,14 @@ package com.silver.skyislands.giantmobs;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
-import net.minecraft.network.packet.s2c.play.ChunkDataS2CPacket;
-import net.minecraft.network.packet.s2c.play.LightUpdateS2CPacket;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ChunkTicketType;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.ChunkPos;
-import net.minecraft.world.chunk.WorldChunk;
-import net.minecraft.world.chunk.light.LightingProvider;
+import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
+import net.minecraft.network.protocol.game.ClientboundLightUpdatePacket;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.TicketType;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.lighting.LevelLightEngine;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,7 +25,7 @@ import java.util.concurrent.CompletableFuture;
 
 final class GiantChunkPreloader {
     private static final Logger LOGGER = LoggerFactory.getLogger(GiantChunkPreloader.class);
-    private static final ChunkTicketType TICKET_TYPE = ChunkTicketType.FORCED;
+    private static final TicketType TICKET_TYPE = TicketType.FORCED;
 
     private static final class GiantTickets {
         final Deque<ChunkPos> pending = new ArrayDeque<>();
@@ -42,12 +42,12 @@ final class GiantChunkPreloader {
         this.ticketLevel = ticketLevel;
     }
 
-    int request(ServerWorld world, UUID id, Iterable<ChunkPos> desiredChunks, long nowTick, int budget) {
+    int request(ServerLevel world, UUID id, Iterable<ChunkPos> desiredChunks, long nowTick, int budget) {
         GiantTickets tickets = ticketsByGiant.computeIfAbsent(id, ignored -> new GiantTickets());
         tickets.lastTouchedTick = nowTick;
 
         for (ChunkPos pos : desiredChunks) {
-            long key = ChunkPos.toLong(pos.x, pos.z);
+            long key = ChunkPos.pack(pos.x(), pos.z());
             if (tickets.ticketKeys.contains(key) || tickets.pendingKeys.contains(key)) {
                 continue;
             }
@@ -64,20 +64,20 @@ final class GiantChunkPreloader {
                 break;
             }
 
-            long key = ChunkPos.toLong(pos.x, pos.z);
+            long key = ChunkPos.pack(pos.x(), pos.z());
             tickets.pendingKeys.remove(key);
             if (tickets.ticketKeys.contains(key)) {
                 continue;
             }
 
             try {
-                CompletableFuture<?> future = world.getChunkManager().addChunkLoadingTicket(TICKET_TYPE, pos, ticketLevel);
+                CompletableFuture<?> future = world.getChunkSource().addTicketAndLoadWithRadius(TICKET_TYPE, pos, ticketLevel);
                 tickets.ticketKeys.add(key);
                 tickets.activeLoads.put(key, future);
                 started++;
             } catch (Exception ignored) {
                 if (LOGGER.isDebugEnabled()) {
-                    LOGGER.debug("[Sky-Islands][giants][preload] ticket add failed id={} chunk=({}, {})", id, pos.x, pos.z);
+                    LOGGER.debug("[Sky-Islands][giants][preload] ticket add failed id={} chunk=({}, {})", id, pos.x(), pos.z());
                 }
             }
         }
@@ -85,11 +85,11 @@ final class GiantChunkPreloader {
         return started;
     }
 
-    boolean isChunkLoaded(ServerWorld world, ChunkPos pos) {
-        return world.getChunkManager().isChunkLoaded(pos.x, pos.z);
+    boolean isChunkLoaded(ServerLevel world, ChunkPos pos) {
+        return world.getChunkSource().hasChunk(pos.x(), pos.z());
     }
 
-    void release(ServerWorld world, UUID id) {
+    void release(ServerLevel world, UUID id) {
         GiantTickets tickets = ticketsByGiant.remove(id);
         if (tickets == null) {
             return;
@@ -97,15 +97,15 @@ final class GiantChunkPreloader {
 
         try {
             for (long key : tickets.ticketKeys) {
-                int cx = ChunkPos.getPackedX(key);
-                int cz = ChunkPos.getPackedZ(key);
-                world.getChunkManager().removeTicket(TICKET_TYPE, new ChunkPos(cx, cz), ticketLevel);
+                int cx = ChunkPos.getX(key);
+                int cz = ChunkPos.getZ(key);
+                world.getChunkSource().removeTicketWithRadius(TICKET_TYPE, new ChunkPos(cx, cz), ticketLevel);
             }
         } catch (Exception ignored) {
         }
     }
 
-    void releaseUnused(ServerWorld world, long nowTick, int releaseAfterTicks) {
+    void releaseUnused(ServerLevel world, long nowTick, int releaseAfterTicks) {
         if (ticketsByGiant.isEmpty()) {
             return;
         }
@@ -121,9 +121,9 @@ final class GiantChunkPreloader {
             it.remove();
             try {
                 for (long key : entry.getValue().ticketKeys) {
-                    int cx = ChunkPos.getPackedX(key);
-                    int cz = ChunkPos.getPackedZ(key);
-                    world.getChunkManager().removeTicket(TICKET_TYPE, new ChunkPos(cx, cz), ticketLevel);
+                    int cx = ChunkPos.getX(key);
+                    int cz = ChunkPos.getZ(key);
+                    world.getChunkSource().removeTicketWithRadius(TICKET_TYPE, new ChunkPos(cx, cz), ticketLevel);
                 }
             } catch (Exception ignored) {
             }
@@ -134,7 +134,7 @@ final class GiantChunkPreloader {
         }
     }
 
-    private void pollActive(ServerWorld world, GiantTickets tickets) {
+    private void pollActive(ServerLevel world, GiantTickets tickets) {
         if (tickets.activeLoads.isEmpty()) {
             return;
         }
@@ -148,26 +148,26 @@ final class GiantChunkPreloader {
                 continue;
             }
 
-            int cx = ChunkPos.getPackedX(key);
-            int cz = ChunkPos.getPackedZ(key);
-            if (!world.getChunkManager().isChunkLoaded(cx, cz)) {
+            int cx = ChunkPos.getX(key);
+            int cz = ChunkPos.getZ(key);
+            if (!world.getChunkSource().hasChunk(cx, cz)) {
                 continue;
             }
 
             it.remove();
 
-            WorldChunk chunk = world.getChunkManager().getWorldChunk(cx, cz);
+            LevelChunk chunk = world.getChunkSource().getChunkNow(cx, cz);
             if (chunk == null) {
                 continue;
             }
 
-            LightingProvider lightingProvider = world.getChunkManager().getLightingProvider();
-            ChunkDataS2CPacket packet = new ChunkDataS2CPacket(chunk, lightingProvider, null, null);
-            LightUpdateS2CPacket lightPacket = new LightUpdateS2CPacket(chunk.getPos(), lightingProvider, null, null);
-            for (ServerPlayerEntity player : world.getPlayers()) {
-                if (Math.max(Math.abs(player.getChunkPos().x - cx), Math.abs(player.getChunkPos().z - cz)) <= 127) {
-                    player.networkHandler.sendPacket(packet);
-                    player.networkHandler.sendPacket(lightPacket);
+            LevelLightEngine lightingProvider = world.getChunkSource().getLightEngine();
+            ClientboundLevelChunkWithLightPacket packet = new ClientboundLevelChunkWithLightPacket(chunk, lightingProvider, null, null);
+            ClientboundLightUpdatePacket lightPacket = new ClientboundLightUpdatePacket(chunk.getPos(), lightingProvider, null, null);
+            for (ServerPlayer player : world.players()) {
+                if (Math.max(Math.abs(player.chunkPosition().x() - cx), Math.abs(player.chunkPosition().z() - cz)) <= 127) {
+                    player.connection.send(packet);
+                    player.connection.send(lightPacket);
                 }
             }
         }

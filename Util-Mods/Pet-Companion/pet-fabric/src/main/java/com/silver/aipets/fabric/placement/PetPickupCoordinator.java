@@ -12,11 +12,10 @@ import com.silver.aipets.fabric.authority.AuthorityMutationStatus;
 import com.silver.aipets.fabric.authority.PetAuthorityGateway;
 import com.silver.aipets.fabric.authority.PetAuthoritySnapshot;
 import com.silver.aipets.fabric.entity.PetEntityData;
-import net.minecraft.entity.Entity;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
 import java.time.Clock;
 import java.util.Objects;
 import java.util.Optional;
@@ -48,10 +47,10 @@ public final class PetPickupCoordinator {
         this.operationIds = Objects.requireNonNull(operationIds, "operationIds");
     }
 
-    public CompletableFuture<PetPickupOutcome> pickup(ServerPlayerEntity initiatingPlayer) {
+    public CompletableFuture<PetPickupOutcome> pickup(ServerPlayer initiatingPlayer) {
         Objects.requireNonNull(initiatingPlayer, "initiatingPlayer");
-        MinecraftServer server = initiatingPlayer.getEntityWorld().getServer();
-        UUID ownerUuid = initiatingPlayer.getUuid();
+        MinecraftServer server = initiatingPlayer.level().getServer();
+        UUID ownerUuid = initiatingPlayer.getUUID();
         CompletableFuture<PetPickupOutcome> outcome = new CompletableFuture<>();
         try {
             authority.findByOwner(ownerUuid).whenComplete((snapshot, failure) -> {
@@ -104,7 +103,7 @@ public final class PetPickupCoordinator {
             return;
         }
 
-        ServerPlayerEntity player = server.getPlayerManager().getPlayer(ownerUuid);
+        ServerPlayer player = server.getPlayerList().getPlayer(ownerUuid);
         if (player == null || !player.isAlive()) {
             outcome.complete(PetPickupOutcome.of(
                     PetPickupStatus.NOT_PLACED_HERE,
@@ -112,8 +111,8 @@ public final class PetPickupCoordinator {
                     "Owner left before pickup"));
             return;
         }
-        ServerWorld world = player.getEntityWorld();
-        DimensionId dimensionId = DimensionId.parse(world.getRegistryKey().getValue().toString());
+        ServerLevel world = player.level();
+        DimensionId dimensionId = DimensionId.parse(world.dimension().identifier().toString());
         if (!placed.dimensionId().equals(dimensionId)) {
             outcome.complete(PetPickupOutcome.of(
                     PetPickupStatus.NOT_PLACED_HERE,
@@ -123,9 +122,9 @@ public final class PetPickupCoordinator {
         }
 
         UUID entityUuid = placed.entityUuid().orElseThrow();
-        Entity entity = world.getEntityAnyDimension(entityUuid);
+        Entity entity = world.getEntityInAnyDimension(entityUuid);
         if (entity == null
-                || entity.getEntityWorld() != world
+                || entity.level() != world
                 || !(entity instanceof PetEntityData data)
                 || !data.aipets$isPet()
                 || !pet.petId().equals(data.aipets$getPetId())
@@ -215,7 +214,7 @@ public final class PetPickupCoordinator {
     }
 
     private static void onServer(MinecraftServer server, Runnable action) {
-        if (server.isOnThread()) {
+        if (server.isSameThread()) {
             action.run();
         } else {
             server.execute(action);

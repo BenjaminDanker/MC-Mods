@@ -3,24 +3,24 @@ package com.silver.atlantis.spawn.marker;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import com.silver.atlantis.spawn.bounds.ActiveConstructBounds;
-import net.minecraft.datafixer.DataFixTypes;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.ChunkPos;
-import net.minecraft.world.PersistentState;
-import net.minecraft.world.PersistentStateManager;
-import net.minecraft.world.PersistentStateType;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.datafix.DataFixTypes;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.saveddata.SavedData;
+import net.minecraft.world.level.saveddata.SavedDataType;
+import net.minecraft.world.level.storage.SavedDataStorage;
+import net.minecraft.resources.Identifier;
 
 /**
  * Persistent marker storage for Atlantis proximity spawn system.
  */
-public final class AtlantisMobMarkerState extends PersistentState {
+public final class AtlantisMobMarkerState extends SavedData {
 
     private static final String STATE_KEY = "atlantis_mob_markers";
 
@@ -36,8 +36,8 @@ public final class AtlantisMobMarkerState extends PersistentState {
         AtlantisMobMarkerState::toEntries
     );
 
-    private static final PersistentStateType<AtlantisMobMarkerState> TYPE =
-        new PersistentStateType<>(STATE_KEY, AtlantisMobMarkerState::new, CODEC, DataFixTypes.LEVEL);
+    private static final SavedDataType<AtlantisMobMarkerState> TYPE =
+        new SavedDataType<>(Identifier.fromNamespaceAndPath("atlantis", STATE_KEY), AtlantisMobMarkerState::new, CODEC, DataFixTypes.LEVEL);
 
     private final Map<Long, Map<BlockPos, AtlantisMobMarker>> markersByChunk = new HashMap<>();
 
@@ -53,21 +53,21 @@ public final class AtlantisMobMarkerState extends PersistentState {
             if (entry == null || entry.marker() == null) {
                 continue;
             }
-            BlockPos pos = BlockPos.fromLong(entry.packedPos());
+            BlockPos pos = BlockPos.of(entry.packedPos());
             putInternal(pos, entry.marker());
         }
     }
 
-    public static AtlantisMobMarkerState get(ServerWorld world) {
-        PersistentStateManager manager = world.getPersistentStateManager();
-        return manager.getOrCreate(TYPE);
+    public static AtlantisMobMarkerState get(ServerLevel world) {
+        SavedDataStorage manager = world.getDataStorage();
+        return manager.computeIfAbsent(TYPE);
     }
 
     public AtlantisMobMarker getMarker(BlockPos pos) {
         if (pos == null) {
             return null;
         }
-        long chunkKey = ChunkPos.toLong(pos.getX() >> 4, pos.getZ() >> 4);
+        long chunkKey = ChunkPos.pack(pos.getX() >> 4, pos.getZ() >> 4);
         Map<BlockPos, AtlantisMobMarker> byPos = markersByChunk.get(chunkKey);
         if (byPos == null) {
             return null;
@@ -80,8 +80,8 @@ public final class AtlantisMobMarkerState extends PersistentState {
             return;
         }
 
-        putInternal(pos.toImmutable(), marker);
-        markDirty();
+        putInternal(pos.immutable(), marker);
+        setDirty();
     }
 
     public void removeMarker(BlockPos pos) {
@@ -89,7 +89,7 @@ public final class AtlantisMobMarkerState extends PersistentState {
             return;
         }
 
-        long chunkKey = ChunkPos.toLong(pos.getX() >> 4, pos.getZ() >> 4);
+        long chunkKey = ChunkPos.pack(pos.getX() >> 4, pos.getZ() >> 4);
         Map<BlockPos, AtlantisMobMarker> byPos = markersByChunk.get(chunkKey);
         if (byPos == null) {
             return;
@@ -99,7 +99,7 @@ public final class AtlantisMobMarkerState extends PersistentState {
             if (byPos.isEmpty()) {
                 markersByChunk.remove(chunkKey);
             }
-            markDirty();
+            setDirty();
         }
     }
 
@@ -139,7 +139,7 @@ public final class AtlantisMobMarkerState extends PersistentState {
         }
 
         if (removed > 0) {
-            markDirty();
+            setDirty();
         }
         return removed;
     }
@@ -155,7 +155,7 @@ public final class AtlantisMobMarkerState extends PersistentState {
         Map<BlockPos, AtlantisMobMarker> out = new HashMap<>();
         for (int dx = -chunkRadius; dx <= chunkRadius; dx++) {
             for (int dz = -chunkRadius; dz <= chunkRadius; dz++) {
-                long chunkKey = ChunkPos.toLong(centerChunkX + dx, centerChunkZ + dz);
+                long chunkKey = ChunkPos.pack(centerChunkX + dx, centerChunkZ + dz);
                 Map<BlockPos, AtlantisMobMarker> byPos = markersByChunk.get(chunkKey);
                 if (byPos == null || byPos.isEmpty()) {
                     continue;
@@ -177,7 +177,7 @@ public final class AtlantisMobMarkerState extends PersistentState {
 
         for (int dx = -chunkRadius; dx <= chunkRadius; dx++) {
             for (int dz = -chunkRadius; dz <= chunkRadius; dz++) {
-                long chunkKey = ChunkPos.toLong(centerChunkX + dx, centerChunkZ + dz);
+                long chunkKey = ChunkPos.pack(centerChunkX + dx, centerChunkZ + dz);
                 Map<BlockPos, AtlantisMobMarker> byPos = markersByChunk.get(chunkKey);
                 if (byPos == null || byPos.isEmpty()) {
                     continue;
@@ -201,7 +201,7 @@ public final class AtlantisMobMarkerState extends PersistentState {
     }
 
     private void putInternal(BlockPos pos, AtlantisMobMarker marker) {
-        long chunkKey = ChunkPos.toLong(pos.getX() >> 4, pos.getZ() >> 4);
+        long chunkKey = ChunkPos.pack(pos.getX() >> 4, pos.getZ() >> 4);
         markersByChunk.computeIfAbsent(chunkKey, ignored -> new HashMap<>()).put(pos, marker);
     }
 

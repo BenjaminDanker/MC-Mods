@@ -29,7 +29,7 @@
             "condition": "entity_properties",
             "entity": "this",
             "predicate": {
-             "nbt": "{DeathTime:1s}"
+              "nbt": "{DeathTime:1s}"
             }
           }
         ]
@@ -64,13 +64,13 @@
             "condition": "minecraft:entity_properties",
             "entity": "this",
             "predicate": {
-              "type": "#infinity_cave:jump_ai",
+              "minecraft:entity_type": "#infinity_cave:jump_ai",
               "periodic_tick": 20,
               "flags": {
                 "is_on_ground": true
               },
               "targeted_entity": {
-                "type": "minecraft:player",
+                "minecraft:entity_type": "minecraft:player",
                 "flags": {
                   "is_on_ground": true
                 },
@@ -137,7 +137,7 @@
               "condition": "minecraft:entity_properties",
               "entity": "this",
               "predicate": {
-                "type": "#minecraft:undead"
+                "minecraft:entity_type": "#minecraft:undead"
               }
             }
           },
@@ -163,7 +163,7 @@
               },
               "periodic_tick": 50,
               "targeted_entity": {
-                "type": "minecraft:player"
+                "minecraft:entity_type": "minecraft:player"
               }
             }
           }
@@ -227,7 +227,7 @@
             "condition": "minecraft:entity_properties",
             "entity": "this",
             "predicate": {
-              "type": "#minecraft:undead",
+              "minecraft:entity_type": "#minecraft:undead",
               "slots": {
                 "weapon.offhand": {
                   "items": "minecraft:golden_apple"
@@ -235,7 +235,7 @@
               },
               "periodic_tick": 50,
               "targeted_entity": {
-                "type": "minecraft:player"
+                "minecraft:entity_type": "minecraft:player"
               }
             }
           }
@@ -262,7 +262,7 @@
             "condition": "minecraft:entity_properties",
             "entity": "this",
             "predicate": {
-              "type": "#infinity_cave:aggro",
+              "minecraft:entity_type": "#infinity_cave:aggro",
               "slots": {
                 "weapon.offhand": {
                   "items": "minecraft:wind_charge"
@@ -270,7 +270,7 @@
               },
               "periodic_tick": 25,
               "targeted_entity": {
-                "type": "minecraft:player"
+                "minecraft:entity_type": "minecraft:player"
               }
             }
           }
@@ -385,10 +385,10 @@
             "condition": "minecraft:entity_properties",
             "entity": "this",
             "predicate": {
-              "type": "#minecraft:skeletons",
+              "minecraft:entity_type": "#minecraft:skeletons",
               "periodic_tick": 20,
               "targeted_entity": {
-                "type": "minecraft:player"
+                "minecraft:entity_type": "minecraft:player"
               }
             }
           }
@@ -453,10 +453,10 @@
             "condition": "minecraft:entity_properties",
             "entity": "this",
             "predicate": {
-              "type": "#infinity_cave:can_spawn_zombies",
+              "minecraft:entity_type": "#infinity_cave:can_spawn_zombies",
               "periodic_tick": 20,
               "targeted_entity": {
-                "type": "minecraft:player"
+                "minecraft:entity_type": "minecraft:player"
               }
             }
           }

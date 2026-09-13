@@ -1,33 +1,20 @@
 {
   "pack": {
-    "pack_format": 71,
     "description": "Survive the Desert",
-    "supported_formats": [
-      71,
-      88
-    ],
-    "min_format": 71,
-    "max_format": 88
+    "min_format": [107, 1],
+    "max_format": [107, 1]
   },
   "overlays": {
     "entries": [
       {
         "directory": "overlay_80",
-        "formats": [
-          80,
-          88
-        ],
-        "min_format": 80,
-        "max_format": 88
+        "min_format": [107, 1],
+        "max_format": [107, 1]
       },
       {
        "directory": "overlay_88",
-        "formats": [
-          82,
-          88
-        ],
-        "min_format": 82,
-        "max_format": 88
+        "min_format": [107, 1],
+        "max_format": [107, 1]
       }
     ]
   }

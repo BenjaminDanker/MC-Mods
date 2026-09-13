@@ -1,11 +1,11 @@
 package com.silver.skyislands.specialitems;
 
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
-import net.minecraft.entity.ItemEntity;
-import net.minecraft.item.ItemStack;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.server.level.ServerPlayer;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,11 +48,11 @@ public final class SpecialItemConversionManager {
         }
     }
 
-    public static void onInventoryMaybeChanged(ServerPlayerEntity player) {
+    public static void onInventoryMaybeChanged(ServerPlayer player) {
         if (player == null) {
             return;
         }
-        pendingPlayers.add(player.getUuid());
+        pendingPlayers.add(player.getUUID());
     }
 
     private static void tick(MinecraftServer server) {
@@ -73,7 +73,7 @@ public final class SpecialItemConversionManager {
                 continue;
             }
 
-            ServerPlayerEntity player = server.getPlayerManager().getPlayer(id);
+            ServerPlayer player = server.getPlayerList().getPlayer(id);
             if (player == null) {
                 it.remove();
                 nextAllowedTick.remove(id);
@@ -91,7 +91,7 @@ public final class SpecialItemConversionManager {
         }
     }
 
-    private static boolean tryConvert(ServerPlayerEntity player, int feathersPerArrow) {
+    private static boolean tryConvert(ServerPlayer player, int feathersPerArrow) {
         int count = countSpecialFeathers(player);
         int crafts = count / feathersPerArrow;
         if (crafts <= 0) {
@@ -108,11 +108,11 @@ public final class SpecialItemConversionManager {
             int give = Math.min(remaining, 64);
             ItemStack arrows = SpecialArrowItem.createOne();
             arrows.setCount(give);
-            if (!player.getInventory().insertStack(arrows)) {
-                if (player.getEntityWorld() instanceof net.minecraft.server.world.ServerWorld world) {
+            if (!player.getInventory().add(arrows)) {
+                if (player.level() instanceof net.minecraft.server.level.ServerLevel world) {
                     ItemEntity drop = new ItemEntity(world, player.getX(), player.getY(), player.getZ(), arrows);
-                    drop.setToDefaultPickupDelay();
-                    world.spawnEntity(drop);
+                    drop.setDefaultPickUpDelay();
+                    world.addFreshEntity(drop);
                 }
             }
             remaining -= give;
@@ -121,34 +121,34 @@ public final class SpecialItemConversionManager {
         return true;
     }
 
-    private static void tryMarkSkyIslandDefeatedOnce(ServerPlayerEntity player) {
-        if (player == null || player.getCommandTags().contains(MPDS_SKYISLAND_DEFEATED_TAG)) {
+    private static void tryMarkSkyIslandDefeatedOnce(ServerPlayer player) {
+        if (player == null || player.entityTags().contains(MPDS_SKYISLAND_DEFEATED_TAG)) {
             return;
         }
 
-        MinecraftServer server = player.getCommandSource().getServer();
+        MinecraftServer server = player.createCommandSourceStack().getServer();
         if (server == null) {
             return;
         }
 
-        String playerName = player.getNameForScoreboard();
-        ServerCommandSource source = server.getCommandSource();
+        String playerName = player.getScoreboardName();
+        CommandSourceStack source = server.createCommandSourceStack();
 
         try {
-            server.getCommandManager().executeWithPrefix(source, "/mpdsgrantbossreward " + playerName + " skyisland 1");
-            player.addCommandTag(MPDS_SKYISLAND_DEFEATED_TAG);
+            server.getCommands().performPrefixedCommand(source, "mpdsgrantbossreward " + playerName + " skyisland 1");
+            player.addTag(MPDS_SKYISLAND_DEFEATED_TAG);
         } catch (Exception e) {
             LOGGER.error("Failed to update MPDS skyisland defeated flag for {}", playerName, e);
         }
     }
 
-    private static int countSpecialFeathers(ServerPlayerEntity player) {
+    private static int countSpecialFeathers(ServerPlayer player) {
         if (player == null) {
             return 0;
         }
         int total = 0;
-        for (int slot = 0; slot < player.getInventory().size(); slot++) {
-            ItemStack stack = player.getInventory().getStack(slot);
+        for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
+            ItemStack stack = player.getInventory().getItem(slot);
             if (SpecialFeatherItem.isSpecialFeather(stack)) {
                 total += stack.getCount();
             }
@@ -156,23 +156,23 @@ public final class SpecialItemConversionManager {
         return total;
     }
 
-    private static void consumeSpecialFeathers(ServerPlayerEntity player, int amount) {
+    private static void consumeSpecialFeathers(ServerPlayer player, int amount) {
         if (player == null || amount <= 0) {
             return;
         }
 
         int remaining = amount;
-        for (int slot = 0; slot < player.getInventory().size(); slot++) {
+        for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
             if (remaining <= 0) {
                 break;
             }
-            ItemStack stack = player.getInventory().getStack(slot);
+            ItemStack stack = player.getInventory().getItem(slot);
             if (!SpecialFeatherItem.isSpecialFeather(stack)) {
                 continue;
             }
 
             int take = Math.min(remaining, stack.getCount());
-            stack.decrement(take);
+            stack.shrink(take);
             remaining -= take;
         }
     }

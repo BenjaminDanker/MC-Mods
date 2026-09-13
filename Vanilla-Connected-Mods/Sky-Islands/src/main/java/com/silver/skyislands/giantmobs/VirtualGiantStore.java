@@ -7,7 +7,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.phys.Vec3;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -102,7 +102,7 @@ public final class VirtualGiantStore {
                     double z = getDouble(obj, "z", 0.0);
                     float yaw = (float) getDouble(obj, "yaw", 0.0);
                     long tick = getLong(obj, "tick", 0L);
-                    byId.put(id, new VirtualGiantState(id, new Vec3d(x, y, z), yaw, tick));
+                    byId.put(id, new VirtualGiantState(id, new Vec3(x, y, z), yaw, tick));
                 } catch (Exception ignored) {
                 }
             }
@@ -162,8 +162,8 @@ public final class VirtualGiantStore {
         }
     }
 
-    public record VirtualGiantState(UUID id, Vec3d pos, float yawDegrees, long lastTick) {
-        public VirtualGiantState withPos(Vec3d newPos, long tick) {
+    public record VirtualGiantState(UUID id, Vec3 pos, float yawDegrees, long lastTick) {
+        public VirtualGiantState withPos(Vec3 newPos, long tick) {
             return new VirtualGiantState(this.id, newPos, this.yawDegrees, tick);
         }
 

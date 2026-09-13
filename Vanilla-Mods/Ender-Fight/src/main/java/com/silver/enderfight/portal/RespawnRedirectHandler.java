@@ -2,8 +2,8 @@ package com.silver.enderfight.portal;
 
 import com.silver.enderfight.EnderFightMod;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 
 /**
  * Ensures End deaths do not trigger cross-server portal redirects by suppressing the next interception
@@ -19,11 +19,11 @@ public final class RespawnRedirectHandler {
                 return;
             }
 
-            ServerWorld previousWorld = getServerWorld(oldPlayer);
+            ServerLevel previousWorld = getServerWorld(oldPlayer);
             if (previousWorld == null) {
                 return;
             }
-            if (!PortalInterceptor.isManagedEndDimension(previousWorld.getRegistryKey())) {
+            if (!PortalInterceptor.isManagedEndDimension(previousWorld.dimension())) {
                 return;
             }
 
@@ -32,7 +32,7 @@ public final class RespawnRedirectHandler {
         });
     }
 
-    private static ServerWorld getServerWorld(ServerPlayerEntity player) {
-        return player.getCommandSource().getWorld();
+    private static ServerLevel getServerWorld(ServerPlayer player) {
+        return player.createCommandSourceStack().getLevel();
     }
 }

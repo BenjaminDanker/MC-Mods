@@ -7,15 +7,17 @@ import com.mojang.brigadier.exceptions.SimpleCommandExceptionType;
 import com.silver.villagerinterface.VillagerInterfaceMod;
 import com.silver.villagerinterface.conversation.ConversationManager;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
-import net.minecraft.server.command.CommandManager;
+import net.minecraft.commands.Commands;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.Text;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.permissions.LevelBasedPermissionSet;
+import net.minecraft.server.permissions.PermissionLevel;
+import net.minecraft.network.chat.Component;
 
 public final class VillagerInterfaceCommands {
     private static final SimpleCommandExceptionType PLAYER_ONLY =
-        new SimpleCommandExceptionType(Text.literal("This command must be run by a player."));
+        new SimpleCommandExceptionType(Component.literal("This command must be run by a player."));
 
     private VillagerInterfaceCommands() {
     }
@@ -30,40 +32,42 @@ public final class VillagerInterfaceCommands {
 
     public static void registerNow(MinecraftServer server) {
         VillagerInterfaceMod.LOGGER.info("Registering Villager Interface commands (server started)");
-        registerCommands(server.getCommandManager().getDispatcher());
+        registerCommands(server.getCommands().getDispatcher());
     }
 
-    private static void registerCommands(CommandDispatcher<ServerCommandSource> dispatcher) {
-        dispatcher.register(CommandManager.literal("villagerinterface")
-            .requires(source -> source.hasPermissionLevel(2))
-            .then(CommandManager.literal("devtest")
+    private static void registerCommands(CommandDispatcher<CommandSourceStack> dispatcher) {
+        dispatcher.register(Commands.literal("villagerinterface")
+            .requires(source -> source.permissions() instanceof LevelBasedPermissionSet level
+                && level.level().isEqualOrHigherThan(PermissionLevel.GAMEMASTERS))
+            .then(Commands.literal("devtest")
                 .executes(context -> executeDevTest(context.getSource(), 4))
-                .then(CommandManager.argument("count", IntegerArgumentType.integer(1, 32))
+                .then(Commands.argument("count", IntegerArgumentType.integer(1, 32))
                     .executes(context -> executeDevTest(
                         context.getSource(),
                         IntegerArgumentType.getInteger(context, "count")
                     )))));
 
-        dispatcher.register(CommandManager.literal("vi")
-            .requires(source -> source.hasPermissionLevel(2))
-            .then(CommandManager.literal("devtest")
+        dispatcher.register(Commands.literal("vi")
+            .requires(source -> source.permissions() instanceof LevelBasedPermissionSet level
+                && level.level().isEqualOrHigherThan(PermissionLevel.GAMEMASTERS))
+            .then(Commands.literal("devtest")
                 .executes(context -> executeDevTest(context.getSource(), 4))
-                .then(CommandManager.argument("count", IntegerArgumentType.integer(1, 32))
+                .then(Commands.argument("count", IntegerArgumentType.integer(1, 32))
                     .executes(context -> executeDevTest(
                         context.getSource(),
                         IntegerArgumentType.getInteger(context, "count")
                     )))));
     }
 
-    private static int executeDevTest(ServerCommandSource source, int count) throws CommandSyntaxException {
-        ServerPlayerEntity player = source.getPlayer();
+    private static int executeDevTest(CommandSourceStack source, int count) throws CommandSyntaxException {
+        ServerPlayer player = source.getPlayer();
         if (player == null) {
             throw PLAYER_ONLY.create();
         }
 
         ConversationManager manager = VillagerInterfaceMod.getConversationManager();
         if (manager == null) {
-            throw new SimpleCommandExceptionType(Text.literal("Conversation system not initialized.")).create();
+            throw new SimpleCommandExceptionType(Component.literal("Conversation system not initialized.")).create();
         }
 
         return manager.runDevProviderTest(player, count);

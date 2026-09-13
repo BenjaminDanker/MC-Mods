@@ -41,13 +41,13 @@
           "function": "infinity_cave:mechanics/rideable_frog/death"
         },
         "requirements": [
-              {
-                "condition": "minecraft:entity_properties",
-                "entity": "this",
-                "predicate": {
-                  "nbt": "{DeathTime:10s}"
-                }
-              }
+          {
+            "condition": "minecraft:entity_properties",
+            "entity": "this",
+            "predicate": {
+              "nbt": "{DeathTime:10s}"
+            }
+          }
         ]
       },
       {
@@ -57,13 +57,12 @@
             "entity": "this",
             "predicate": {
               "passenger": {
-                  "type": "minecraft:player",
-                  "type_specific": {
-                    "type": "minecraft:player",
-                    "input": {
-                      "jump": true
-                    }
+                "minecraft:entity_type": "minecraft:player",
+                "minecraft:type_specific/player": {
+                  "input": {
+                    "jump": true
                   }
+                }
               }
             }
           }
@@ -76,26 +75,25 @@
       {
         "requirements": [
           {
-              "condition": "minecraft:entity_scores",
-              "entity": "this",
-              "scores": {
-                "ic.frog_leap": {
-                  "min": 1
-                }
+            "condition": "minecraft:entity_scores",
+            "entity": "this",
+            "scores": {
+              "ic.frog_leap": {
+                "min": 1
               }
+            }
           },
           {
             "condition": "minecraft:entity_properties",
             "entity": "this",
             "predicate": {
               "passenger": {
-                  "type": "minecraft:player",
-                  "type_specific": {
-                    "type": "minecraft:player",
-                    "input": {
-                      "jump": false
-                    }
+                "minecraft:entity_type": "minecraft:player",
+                "minecraft:type_specific/player": {
+                  "input": {
+                    "jump": false
                   }
+                }
               }
             }
           }
@@ -112,13 +110,12 @@
             "entity": "this",
             "predicate": {
               "passenger": {
-                  "type": "minecraft:player",
-                  "type_specific": {
-                    "type": "minecraft:player",
-                    "input": {
-                      "jump": false,
-                      "forward": true
-                    }
+                "minecraft:entity_type": "minecraft:player",
+                "minecraft:type_specific/player": {
+                  "input": {
+                    "jump": false,
+                    "forward": true
+                  }
                 }
               }
             }
@@ -136,13 +133,12 @@
             "entity": "this",
             "predicate": {
               "passenger": {
-                  "type": "minecraft:player",
-                  "type_specific": {
-                    "type": "minecraft:player",
-                    "input": {
-                     "jump": false,
-                      "backward": true
-                    }
+                "minecraft:entity_type": "minecraft:player",
+                "minecraft:type_specific/player": {
+                  "input": {
+                    "jump": false,
+                    "backward": true
+                  }
                 }
               }
             }
@@ -160,13 +156,12 @@
             "entity": "this",
             "predicate": {
               "passenger": {
-                  "type": "minecraft:player",
-                  "type_specific": {
-                    "type": "minecraft:player",
-                    "input": {
-                     "jump": false,
-                      "left": true
-                    }
+                "minecraft:entity_type": "minecraft:player",
+                "minecraft:type_specific/player": {
+                  "input": {
+                    "jump": false,
+                    "left": true
+                  }
                 }
               }
             }
@@ -184,13 +179,12 @@
             "entity": "this",
             "predicate": {
               "passenger": {
-                  "type": "minecraft:player",
-                  "type_specific": {
-                    "type": "minecraft:player",
-                    "input": {
-                     "jump": false,
-                      "right": true
-                    }
+                "minecraft:entity_type": "minecraft:player",
+                "minecraft:type_specific/player": {
+                  "input": {
+                    "jump": false,
+                    "right": true
+                  }
                 }
               }
             }

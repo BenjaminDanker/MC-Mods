@@ -1,10 +1,10 @@
 package com.silver.spawnprotect.protect;
 
 import com.silver.spawnprotect.SpawnProtectMod;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.resources.Identifier;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.AABB;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -30,7 +30,7 @@ public final class SpawnProtectConfig {
     private final int maxZ;
     private final boolean disablePvp;
     private final boolean allowOpBypass;
-    private final Box protectedBox;
+    private final AABB protectedBox;
 
     private SpawnProtectConfig(
         boolean enabled,
@@ -46,7 +46,7 @@ public final class SpawnProtectConfig {
     ) {
         Identifier parsed = Identifier.tryParse((dimensionId != null) ? dimensionId.trim() : "");
         if (parsed == null) {
-            parsed = Identifier.of("minecraft", "overworld");
+            parsed = Identifier.fromNamespaceAndPath("minecraft", "overworld");
         }
 
         this.enabled = enabled;
@@ -60,7 +60,7 @@ public final class SpawnProtectConfig {
         this.maxZ = Math.max(minZ, maxZ);
         this.disablePvp = disablePvp;
         this.allowOpBypass = allowOpBypass;
-        this.protectedBox = new Box(
+        this.protectedBox = new AABB(
             this.minX,
             this.minY,
             this.minZ,
@@ -185,12 +185,12 @@ public final class SpawnProtectConfig {
             && z >= minZ && z <= maxZ;
     }
 
-    public boolean contains(ServerWorld world, BlockPos pos) {
+    public boolean contains(ServerLevel world, BlockPos pos) {
         if (!enabled || world == null || pos == null) {
             return false;
         }
 
-        if (!dimensionKey.equals(world.getRegistryKey().getValue())) {
+        if (!dimensionKey.equals(world.dimension().identifier())) {
             return false;
         }
 
@@ -218,7 +218,7 @@ public final class SpawnProtectConfig {
         return enabled && checkDimension != null && dimensionKey.equals(checkDimension);
     }
 
-    public Box protectedBox() {
+    public AABB protectedBox() {
         return protectedBox;
     }
 

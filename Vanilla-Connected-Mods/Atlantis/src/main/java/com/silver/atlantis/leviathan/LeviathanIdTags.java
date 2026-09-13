@@ -1,10 +1,9 @@
 package com.silver.atlantis.leviathan;
 
 import com.silver.atlantis.AtlantisMod;
-import net.minecraft.entity.Entity;
-
 import java.util.Optional;
 import java.util.UUID;
+import net.minecraft.world.entity.Entity;
 
 public final class LeviathanIdTags {
     private static final String PREFIX = "atlantis_leviathan_id:";
@@ -18,23 +17,23 @@ public final class LeviathanIdTags {
     }
 
     public static Optional<UUID> getId(Entity entity) {
-        for (String tag : entity.getCommandTags()) {
+        for (String tag : entity.entityTags()) {
             if (!tag.startsWith(PREFIX)) {
                 continue;
             }
             try {
                 UUID id = UUID.fromString(tag.substring(PREFIX.length()));
-                AtlantisMod.LOGGER.debug("[Atlantis][leviathan] id tag parse success id={} entityUuid={}", shortId(id), entity.getUuidAsString());
+                AtlantisMod.LOGGER.debug("[Atlantis][leviathan] id tag parse success id={} entityUuid={}", shortId(id), entity.getStringUUID());
                 return Optional.of(id);
             } catch (Exception e) {
                 AtlantisMod.LOGGER.warn("[Atlantis][leviathan] id tag parse failed tag={} entityUuid={} error={}",
                     tag,
-                    entity.getUuidAsString(),
+                    entity.getStringUUID(),
                     e.getMessage());
                 return Optional.empty();
             }
         }
-        AtlantisMod.LOGGER.debug("[Atlantis][leviathan] id tag missing entityUuid={}", entity.getUuidAsString());
+        AtlantisMod.LOGGER.debug("[Atlantis][leviathan] id tag missing entityUuid={}", entity.getStringUUID());
         return Optional.empty();
     }
 

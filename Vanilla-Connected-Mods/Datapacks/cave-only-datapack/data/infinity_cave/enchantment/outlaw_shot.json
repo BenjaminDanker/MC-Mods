@@ -19,14 +19,14 @@
             "condition": "minecraft:entity_properties",
             "entity": "this",
             "predicate": {
-              "type": "#infinity_cave:plunder"
+              "minecraft:entity_type": "#infinity_cave:plunder"
             }
           },
           {
             "condition": "minecraft:entity_properties",
             "entity": "direct_attacker",
             "predicate": {
-              "type": "#minecraft:arrows"
+              "minecraft:entity_type": "#minecraft:arrows"
             }
           }
         ]

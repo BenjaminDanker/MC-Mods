@@ -1,20 +1,21 @@
 package com.silver.spawnprotect.protect;
 
 import com.silver.spawnprotect.SpawnProtectMod;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.mob.MobEntity;
-import net.minecraft.entity.passive.AbstractDonkeyEntity;
-import net.minecraft.entity.passive.AbstractHorseEntity;
-import net.minecraft.entity.passive.CamelEntity;
-import net.minecraft.entity.passive.CatEntity;
-import net.minecraft.entity.passive.LlamaEntity;
-import net.minecraft.entity.passive.TraderLlamaEntity;
-import net.minecraft.entity.passive.VillagerEntity;
-import net.minecraft.entity.passive.WolfEntity;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.animal.equine.Donkey;
+import net.minecraft.world.entity.animal.equine.AbstractHorse;
+import net.minecraft.world.entity.animal.camel.Camel;
+import net.minecraft.world.entity.animal.feline.Cat;
+import net.minecraft.world.entity.animal.equine.Llama;
+import net.minecraft.world.entity.animal.equine.TraderLlama;
+import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.animal.wolf.Wolf;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.entity.EntityTypeTest;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -28,7 +29,7 @@ public final class SpawnProtectionManager {
     public static final SpawnProtectionManager INSTANCE = new SpawnProtectionManager();
 
     private volatile SpawnProtectConfig config = SpawnProtectConfig.defaultConfig();
-    private static final Predicate<MobEntity> ANY_MOB = mob -> true;
+    private static final Predicate<Mob> ANY_MOB = mob -> true;
 
     private SpawnProtectionManager() {
     }
@@ -39,7 +40,7 @@ public final class SpawnProtectionManager {
         SpawnProtectMod.LOGGER.info("Spawn Protect loaded for dimension {}", config.dimensionId());
     }
 
-    public boolean isWithinProtectedBounds(ServerWorld world, BlockPos pos) {
+    public boolean isWithinProtectedBounds(ServerLevel world, BlockPos pos) {
         if (world == null || pos == null) {
             return false;
         }
@@ -48,7 +49,7 @@ public final class SpawnProtectionManager {
         return snapshot.contains(world, pos);
     }
 
-    public boolean shouldBlockBreak(ServerPlayerEntity player, BlockPos pos) {
+    public boolean shouldBlockBreak(ServerPlayer player, BlockPos pos) {
         if (player == null || pos == null) {
             return false;
         }
@@ -60,7 +61,7 @@ public final class SpawnProtectionManager {
         return isWithinProtectedBounds(playerWorld(player), pos);
     }
 
-    public boolean shouldBlockPlace(ServerPlayerEntity player, BlockPos pos) {
+    public boolean shouldBlockPlace(ServerPlayer player, BlockPos pos) {
         if (player == null || pos == null) {
             return false;
         }
@@ -72,7 +73,7 @@ public final class SpawnProtectionManager {
         return isWithinProtectedBounds(playerWorld(player), pos);
     }
 
-    public boolean shouldBlockDrop(ServerPlayerEntity player) {
+    public boolean shouldBlockDrop(ServerPlayer player) {
         if (player == null) {
             return false;
         }
@@ -81,10 +82,10 @@ public final class SpawnProtectionManager {
             return false;
         }
 
-        return isWithinProtectedBounds(playerWorld(player), player.getBlockPos());
+        return isWithinProtectedBounds(playerWorld(player), player.blockPosition());
     }
 
-    public boolean shouldBlockPvp(ServerPlayerEntity attacker, ServerPlayerEntity victim) {
+    public boolean shouldBlockPvp(ServerPlayer attacker, ServerPlayer victim) {
         if (attacker == null || victim == null) {
             return false;
         }
@@ -98,30 +99,30 @@ public final class SpawnProtectionManager {
             return false;
         }
 
-        return isWithinProtectedBounds(playerWorld(attacker), attacker.getBlockPos())
-            || isWithinProtectedBounds(playerWorld(victim), victim.getBlockPos());
+        return isWithinProtectedBounds(playerWorld(attacker), attacker.blockPosition())
+            || isWithinProtectedBounds(playerWorld(victim), victim.blockPosition());
     }
 
-    public boolean hasProtectedBoundsInWorld(ServerWorld world) {
+    public boolean hasProtectedBoundsInWorld(ServerLevel world) {
         if (world == null) {
             return false;
         }
 
         SpawnProtectConfig snapshot = config;
-        return snapshot.matchesDimension(world.getRegistryKey().getValue());
+        return snapshot.matchesDimension(world.dimension().identifier());
     }
 
-    public List<MobEntity> getMobsWithinProtectedBounds(ServerWorld world) {
+    public List<Mob> getMobsWithinProtectedBounds(ServerLevel world) {
         if (world == null) {
             return List.of();
         }
 
         SpawnProtectConfig snapshot = config;
-        if (!snapshot.matchesDimension(world.getRegistryKey().getValue())) {
+        if (!snapshot.matchesDimension(world.dimension().identifier())) {
             return List.of();
         }
 
-        return world.getEntitiesByClass(MobEntity.class, snapshot.protectedBox(), ANY_MOB);
+        return world.getEntities(EntityTypeTest.forClass(Mob.class), snapshot.protectedBox(), ANY_MOB);
     }
 
     public boolean isAllowedEntityInProtectedBounds(Entity entity) {
@@ -129,22 +130,22 @@ public final class SpawnProtectionManager {
             return false;
         }
 
-        return entity instanceof VillagerEntity
-            || entity instanceof AbstractHorseEntity
-            || entity instanceof AbstractDonkeyEntity
-            || entity instanceof LlamaEntity
-            || entity instanceof TraderLlamaEntity
-            || entity instanceof CamelEntity
-            || entity instanceof CatEntity
-            || (entity instanceof WolfEntity wolf && wolf.isTamed());
+        return entity instanceof Villager
+            || entity instanceof AbstractHorse
+            || entity instanceof Donkey
+            || entity instanceof Llama
+            || entity instanceof TraderLlama
+            || entity instanceof Camel
+            || entity instanceof Cat
+            || (entity instanceof Wolf wolf && wolf.isTame());
     }
 
-    private boolean isAllowedBypass(ServerPlayerEntity player) {
+    private boolean isAllowedBypass(ServerPlayer player) {
         SpawnProtectConfig snapshot = config;
-        return snapshot.allowOpBypass() && player.hasPermissionLevel(2);
+        return snapshot.allowOpBypass() && player.permissions().hasPermission(net.minecraft.server.permissions.Permissions.COMMANDS_ADMIN);
     }
 
-    private static ServerWorld playerWorld(ServerPlayerEntity player) {
-        return (ServerWorld) player.getEntityWorld();
+    private static ServerLevel playerWorld(ServerPlayer player) {
+        return player.level();
     }
 }

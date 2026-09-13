@@ -2,8 +2,8 @@
     "condition": "minecraft:entity_properties",
     "entity": "this",
     "predicate": {
-      "targeted_entity": {
-        "type": "minecraft:player"
-      }
+        "targeted_entity": {
+            "minecraft:entity_type": "minecraft:player"
+        }
     }
-  }
+}

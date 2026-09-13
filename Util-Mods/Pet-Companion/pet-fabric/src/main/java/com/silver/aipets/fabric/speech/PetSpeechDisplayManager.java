@@ -1,16 +1,14 @@
 package com.silver.aipets.fabric.speech;
 
 import com.silver.aipets.fabric.entity.PetEntityData;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.SpawnReason;
-import net.minecraft.entity.decoration.DisplayEntity;
-import net.minecraft.entity.passive.TameableEntity;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.MathHelper;
-
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.Display;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.EntityTypes;
+import net.minecraft.world.entity.TamableAnimal;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -26,46 +24,46 @@ public final class PetSpeechDisplayManager {
         this.policy = Objects.requireNonNull(policy, "policy");
     }
 
-    public DisplayEntity.TextDisplayEntity show(TameableEntity pet, String reply) {
+    public Display.TextDisplay show(TamableAnimal pet, String reply) {
         requirePet(pet);
-        if (!(pet.getEntityWorld() instanceof ServerWorld world)) {
+        if (!(pet.level() instanceof ServerLevel world)) {
             throw new IllegalArgumentException("Speech requires a server-world pet");
         }
         UUID petId = ((PetEntityData) pet).aipets$getPetId();
         remove(petId);
         PetSpeechPolicy.PreparedSpeech prepared = policy.prepare(reply);
-        DisplayEntity.TextDisplayEntity display = EntityType.TEXT_DISPLAY.create(
-                world, SpawnReason.COMMAND);
+        Display.TextDisplay display = EntityTypes.TEXT_DISPLAY.create(
+                world, EntitySpawnReason.COMMAND);
         if (display == null) throw new IllegalStateException("Minecraft did not create a Text Display");
-        display.setText(Text.literal(prepared.wrappedText()));
+        display.setText(Component.literal(prepared.wrappedText()));
         // CENTER is rendered per-client toward that viewer's camera. The server only
         // maintains the display's position above the pet and never rotates per viewer.
-        display.setBillboardMode(DisplayEntity.BillboardMode.CENTER);
+        display.setBillboardConstraints(Display.BillboardConstraints.CENTER);
         display.setLineWidth(policy.wrapColumns() * 6);
         display.setViewRange(policy.viewRange());
         position(display, pet);
-        if (!world.spawnEntity(display)) {
+        if (!world.addFreshEntity(display)) {
             display.discard();
             throw new IllegalStateException("Minecraft rejected the pet speech display spawn");
         }
         long lifetimeTicks = Math.max(1, (prepared.lifetime().toMillis() + 49L) / 50L);
         active.put(petId, new ActiveDisplay(
-                petId, pet.getUuid(), display, world.getTime() + lifetimeTicks));
+                petId, pet.getUUID(), display, world.getGameTime() + lifetimeTicks));
         return display;
     }
 
     public void tick(MinecraftServer server) {
         Objects.requireNonNull(server, "server");
         active.values().removeIf(current -> {
-            DisplayEntity.TextDisplayEntity display = current.display();
+            Display.TextDisplay display = current.display();
             if (display.isRemoved()) return true;
-            ServerWorld world = (ServerWorld) display.getEntityWorld();
+            ServerLevel world = (ServerLevel) display.level();
             Entity entity = world.getEntity(current.petEntityId());
-            if (!(entity instanceof TameableEntity pet)
+            if (!(entity instanceof TamableAnimal pet)
                     || !(pet instanceof PetEntityData data)
                     || !data.aipets$isPet()
                     || !data.aipets$getPetId().equals(current.petId())
-                    || world.getTime() >= current.expiresAtTick()) {
+                    || world.getGameTime() >= current.expiresAtTick()) {
                 display.discard(); return true;
             }
             position(display, pet);
@@ -87,7 +85,7 @@ public final class PetSpeechDisplayManager {
         active.clear();
     }
 
-    public Optional<DisplayEntity.TextDisplayEntity> active(UUID petId) {
+    public Optional<Display.TextDisplay> active(UUID petId) {
         ActiveDisplay found = active.get(petId);
         return found == null || found.display().isRemoved()
                 ? Optional.empty() : Optional.of(found.display());
@@ -95,13 +93,13 @@ public final class PetSpeechDisplayManager {
 
     public int activeCount() { return active.size(); }
 
-    private void position(DisplayEntity.TextDisplayEntity display, TameableEntity pet) {
-        display.refreshPositionAndAngles(
-                pet.getX(), pet.getY() + pet.getHeight() + policy.verticalGap(), pet.getZ(),
+    private void position(Display.TextDisplay display, TamableAnimal pet) {
+        display.snapTo(
+                pet.getX(), pet.getY() + pet.getBbHeight() + policy.verticalGap(), pet.getZ(),
                 0.0F, 0.0F);
     }
 
-    private static void requirePet(TameableEntity pet) {
+    private static void requirePet(TamableAnimal pet) {
         Objects.requireNonNull(pet, "pet");
         if (!(pet instanceof PetEntityData data) || !data.aipets$isPet()) {
             throw new IllegalArgumentException("Speech target is not a marked pet");
@@ -110,5 +108,5 @@ public final class PetSpeechDisplayManager {
 
     private record ActiveDisplay(
             UUID petId, UUID petEntityId,
-            DisplayEntity.TextDisplayEntity display, long expiresAtTick) { }
+            Display.TextDisplay display, long expiresAtTick) { }
 }

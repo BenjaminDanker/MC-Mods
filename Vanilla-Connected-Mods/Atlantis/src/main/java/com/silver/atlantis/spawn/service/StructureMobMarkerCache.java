@@ -4,8 +4,7 @@ import com.silver.atlantis.AtlantisMod;
 import com.silver.atlantis.spawn.bounds.ActiveConstructBounds;
 import com.silver.atlantis.spawn.config.SpawnMobConfig;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.util.math.BlockPos;
-
+import net.minecraft.core.BlockPos;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
@@ -73,9 +72,9 @@ final class StructureMobMarkerCache {
                     continue;
                 }
                 
-                BlockPos cachedPos = BlockPos.fromLong(posKey);
+                BlockPos cachedPos = BlockPos.of(posKey);
                 // Apply the offset to translate the cached marker to the new build location
-                BlockPos translatedPos = cachedPos.add(offsetX, offsetY, offsetZ);
+                BlockPos translatedPos = cachedPos.offset(offsetX, offsetY, offsetZ);
                 
                 markers.add(new ProximitySpawnService.SpawnMarker(translatedPos, SPAWN_TYPES[ordinal]));
             }

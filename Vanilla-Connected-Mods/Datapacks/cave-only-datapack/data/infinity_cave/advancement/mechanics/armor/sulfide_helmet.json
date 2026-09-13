@@ -27,7 +27,7 @@
           }
         },
         "entity": {
-          "type": "#infinity_cave:all_living",
+          "minecraft:entity_type": "#infinity_cave:all_living",
           "effects": {
             "minecraft:poison": {}
           }

@@ -23,7 +23,7 @@
             "condition": "minecraft:entity_properties",
             "entity": "this",
             "predicate": {
-              "type": "minecraft:polar_bear",
+              "minecraft:entity_type": "minecraft:polar_bear",
               "team": "ic.mob_team",
               "equipment": {
                 "chest": {

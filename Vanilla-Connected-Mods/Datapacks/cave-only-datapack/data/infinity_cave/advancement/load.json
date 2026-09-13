@@ -4,8 +4,7 @@
       "trigger": "minecraft:tick",
       "conditions": {
         "player": {
-          "type_specific": {
-            "type": "player",
+          "minecraft:type_specific/player": {
             "advancements": {
               "infinity_cave:mechanics/weapons/sonic_bow/tick": true,
               "infinity_cave:mechanics/weapons/thunder_harpoon/tick": true

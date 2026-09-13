@@ -100,7 +100,7 @@ team modify ic.mob_team color gold
 
 # Misc
 scoreboard objectives add ic.health health
-gamerule commandModificationBlockLimit 10000000
+gamerule max_block_modifications 10000000
 scoreboard players set #disable_offhand ic.int 0
 scoreboard players set #antipillar ic.int 0
 scoreboard players set #doublespawn ic.int 1

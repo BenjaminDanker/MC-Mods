@@ -11,15 +11,14 @@ import com.silver.aipets.fabric.PetCompanionMod;
 import com.silver.aipets.fabric.authority.PetAuthorityGateway;
 import com.silver.aipets.fabric.authority.PetAuthoritySnapshot;
 import com.silver.aipets.fabric.entity.PetEntityData;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.item.ItemStack;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.GlobalPos;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.GlobalPos;
-
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.ItemStack;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -51,18 +50,18 @@ public final class PetCompassManager {
     }
 
     public PetCompassIssueResult issueOrRefresh(
-            ServerPlayerEntity player,
+            ServerPlayer player,
             PetAuthoritySnapshot snapshot) {
         Objects.requireNonNull(player, "player");
         Objects.requireNonNull(snapshot, "snapshot");
         Pet pet = snapshot.pet();
-        if (!pet.ownerUuid().equals(player.getUuid())) {
+        if (!pet.ownerUuid().equals(player.getUUID())) {
             throw new IllegalArgumentException("Authority snapshot does not belong to player");
         }
 
         Reconciliation reconciliation = reconcileInventory(player, Optional.of(snapshot));
         if (reconciliation.kept().isPresent()) {
-            trackedOwners.add(player.getUuid());
+            trackedOwners.add(player.getUUID());
             return new PetCompassIssueResult(
                     PetCompassIssueStatus.REFRESHED,
                     reconciliation.presentation(),
@@ -71,20 +70,20 @@ public final class PetCompassManager {
 
         ItemStack compass = PetCompassItem.create(pet, signer);
         String presentation = updatePresentation(player, compass, snapshot);
-        if (player.getInventory().getEmptySlot() < 0) {
+        if (player.getInventory().getFreeSlot() < 0) {
             return new PetCompassIssueResult(
                     PetCompassIssueStatus.INVENTORY_FULL,
                     presentation,
                     reconciliation.removed());
         }
-        if (!player.getInventory().insertStack(compass)) {
+        if (!player.getInventory().add(compass)) {
             return new PetCompassIssueResult(
                     PetCompassIssueStatus.INVENTORY_FULL,
                     presentation,
                     reconciliation.removed());
         }
-        player.getInventory().markDirty();
-        trackedOwners.add(player.getUuid());
+        player.getInventory().setChanged();
+        trackedOwners.add(player.getUUID());
         return new PetCompassIssueResult(
                 PetCompassIssueStatus.ISSUED,
                 presentation,
@@ -103,8 +102,8 @@ public final class PetCompassManager {
                 .ifPresent(marker -> trackedOwners.remove(marker.ownerUuid()));
     }
 
-    public void validateAsync(ServerPlayerEntity player) {
-        UUID ownerUuid = player.getUuid();
+    public void validateAsync(ServerPlayer player) {
+        UUID ownerUuid = player.getUUID();
         if (!containsCandidate(player.getInventory())) {
             trackedOwners.remove(ownerUuid);
             return;
@@ -115,10 +114,10 @@ public final class PetCompassManager {
         }
         try {
             authority.findByOwner(ownerUuid).whenComplete((snapshot, failure) -> {
-                MinecraftServer server = player.getEntityWorld().getServer();
+                MinecraftServer server = player.level().getServer();
                 Runnable finish = () -> {
                     try {
-                        ServerPlayerEntity current = server.getPlayerManager().getPlayer(ownerUuid);
+                        ServerPlayer current = server.getPlayerList().getPlayer(ownerUuid);
                         if (current == player && failure == null && snapshot != null) {
                             reconcileInventory(current, snapshot);
                         } else if (failure != null) {
@@ -131,7 +130,7 @@ public final class PetCompassManager {
                     }
                 };
                 try {
-                    if (server.isOnThread()) {
+                    if (server.isSameThread()) {
                         finish.run();
                     } else {
                         server.execute(finish);
@@ -153,7 +152,7 @@ public final class PetCompassManager {
             return;
         }
         for (UUID ownerUuid : Set.copyOf(trackedOwners)) {
-            ServerPlayerEntity player = server.getPlayerManager().getPlayer(ownerUuid);
+            ServerPlayer player = server.getPlayerList().getPlayer(ownerUuid);
             if (player == null) trackedOwners.remove(ownerUuid);
             else validateAsync(player);
         }
@@ -166,24 +165,24 @@ public final class PetCompassManager {
     }
 
     private Reconciliation reconcileInventory(
-            ServerPlayerEntity player,
+            ServerPlayer player,
             Optional<PetAuthoritySnapshot> authoritySnapshot) {
-        PlayerInventory inventory = player.getInventory();
+        Inventory inventory = player.getInventory();
         Pet expectedPet = authoritySnapshot.map(PetAuthoritySnapshot::pet).orElse(null);
         ItemStack kept = null;
         int removed = 0;
-        for (int slot = 0; slot < inventory.size(); slot++) {
-            ItemStack stack = inventory.getStack(slot);
+        for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
+            ItemStack stack = inventory.getItem(slot);
             if (!PetCompassItem.isCandidate(stack)) {
                 continue;
             }
             Optional<PetCompassMarker> marker = PetCompassItem.trustedMarker(stack, signer);
             boolean matches = expectedPet != null
                     && marker.isPresent()
-                    && marker.orElseThrow().ownerUuid().equals(player.getUuid())
+                    && marker.orElseThrow().ownerUuid().equals(player.getUUID())
                     && marker.orElseThrow().petId().equals(expectedPet.petId());
             if (!matches || kept != null) {
-                inventory.setStack(slot, ItemStack.EMPTY);
+                inventory.setItem(slot, ItemStack.EMPTY);
                 removed++;
                 continue;
             }
@@ -199,13 +198,13 @@ public final class PetCompassManager {
             presentation = updatePresentation(player, kept, authoritySnapshot.orElseThrow());
         }
         if (removed > 0 || kept != null) {
-            inventory.markDirty();
+            inventory.setChanged();
         }
         return new Reconciliation(Optional.ofNullable(kept), presentation, removed);
     }
 
     private String updatePresentation(
-            ServerPlayerEntity player,
+            ServerPlayer player,
             ItemStack stack,
             PetAuthoritySnapshot snapshot) {
         Pet pet = snapshot.pet();
@@ -217,15 +216,14 @@ public final class PetCompassManager {
                     status = "On " + friendlyName(placed.backendId());
                 } else {
                     DimensionId playerDimension = DimensionId.parse(
-                            player.getEntityWorld().getRegistryKey().getValue().toString());
+                            player.level().dimension().identifier().toString());
                     if (!placed.dimensionId().equals(playerDimension)) {
                         status = "In " + placed.dimensionId();
                     } else {
-                        Optional<BlockPos> livePosition = livePosition(player.getEntityWorld(), pet, placed);
+                        Optional<BlockPos> livePosition = livePosition(player.level(), pet, placed);
                         BlockPos targetPosition = livePosition.orElseGet(() -> blockPosition(placed.position()));
-                        target = Optional.of(GlobalPos.create(
-                                player.getEntityWorld().getRegistryKey(),
-                                targetPosition));
+                        target = Optional.of(GlobalPos.of(
+                                player.level().dimension(), targetPosition));
                         status = livePosition.isPresent()
                                 ? "Points to current position"
                                 : "Points to last known position";
@@ -242,14 +240,14 @@ public final class PetCompassManager {
     }
 
     private Optional<BlockPos> livePosition(
-            ServerWorld world,
+            ServerLevel world,
             Pet pet,
             PlacedPlacement placed) {
         if (placed.entityUuid().isEmpty()) {
             return Optional.empty();
         }
-        Entity entity = world.getEntityAnyDimension(placed.entityUuid().orElseThrow());
-        if (entity == null || entity.getEntityWorld() != world || !(entity instanceof PetEntityData data)) {
+        Entity entity = world.getEntityInAnyDimension(placed.entityUuid().orElseThrow());
+        if (entity == null || entity.level() != world || !(entity instanceof PetEntityData data)) {
             return Optional.empty();
         }
         if (!data.aipets$isPet()
@@ -257,7 +255,7 @@ public final class PetCompassManager {
                 || !pet.ownerUuid().equals(data.aipets$getOwnerUuid())) {
             return Optional.empty();
         }
-        return Optional.of(entity.getBlockPos());
+        return Optional.of(entity.blockPosition());
     }
 
     private String friendlyName(BackendId backendId) {
@@ -265,12 +263,12 @@ public final class PetCompassManager {
     }
 
     private static BlockPos blockPosition(WorldPosition position) {
-        return BlockPos.ofFloored(position.x(), position.y(), position.z());
+        return BlockPos.containing(position.x(), position.y(), position.z());
     }
 
-    private static boolean containsCandidate(PlayerInventory inventory) {
-        for (int slot = 0; slot < inventory.size(); slot++) {
-            if (PetCompassItem.isCandidate(inventory.getStack(slot))) {
+    private static boolean containsCandidate(Inventory inventory) {
+        for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
+            if (PetCompassItem.isCandidate(inventory.getItem(slot))) {
                 return true;
             }
         }

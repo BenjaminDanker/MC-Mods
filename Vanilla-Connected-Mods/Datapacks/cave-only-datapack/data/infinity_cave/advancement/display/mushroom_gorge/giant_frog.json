@@ -23,7 +23,7 @@
             "condition": "minecraft:entity_properties",
             "entity": "this",
             "predicate": {
-              "type": "minecraft:frog",
+              "minecraft:entity_type": "minecraft:frog",
               "team": "ic.mob_team",
               "equipment": {
                 "chest": {

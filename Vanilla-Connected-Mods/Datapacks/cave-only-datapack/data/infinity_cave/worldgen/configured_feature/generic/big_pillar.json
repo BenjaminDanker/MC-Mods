@@ -29,6 +29,7 @@
       "max_exclusive": 0.4
     },
     "min_radius_for_wind": 4,
-    "min_bluntness_for_wind": 0.8
+    "min_bluntness_for_wind": 0.8,
+    "replaceable_blocks": "#minecraft:dripstone_replaceable_blocks"
   }
 }

@@ -1,10 +1,10 @@
 package com.silver.spawnprotect.mixin;
 
 import com.silver.spawnprotect.protect.SpawnProtectionManager;
-import net.minecraft.entity.Entity;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.core.BlockPos;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -18,9 +18,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(Entity.class)
 public abstract class EntityMixin {
 
-    @Inject(method = "canModifyAt", at = @At("HEAD"), cancellable = true)
-    private void spawnprotect$preventMobGriefInProtectedBounds(ServerWorld world, BlockPos pos, CallbackInfoReturnable<Boolean> cir) {
-        if ((Object) this instanceof ServerPlayerEntity) {
+    @Inject(method = "mayInteract", at = @At("HEAD"), cancellable = true)
+    private void spawnprotect$preventMobGriefInProtectedBounds(ServerLevel world, BlockPos pos, CallbackInfoReturnable<Boolean> cir) {
+        if ((Object) this instanceof ServerPlayer) {
             return;
         }
 

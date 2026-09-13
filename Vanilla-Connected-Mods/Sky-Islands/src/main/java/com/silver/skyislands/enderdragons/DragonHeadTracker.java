@@ -10,12 +10,12 @@ import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.ChunkPos;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.ChunkPos;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -75,7 +75,7 @@ final class DragonHeadTracker {
         }
     }
 
-    void onPossiblePlaced(ServerWorld world, BlockPos pos) {
+    void onPossiblePlaced(ServerLevel world, BlockPos pos) {
         if (world == null || pos == null) {
             return;
         }
@@ -86,7 +86,7 @@ final class DragonHeadTracker {
         add(world, pos);
     }
 
-    void onPossibleBroken(ServerWorld world, BlockPos pos, BlockState previousState) {
+    void onPossibleBroken(ServerLevel world, BlockPos pos, BlockState previousState) {
         if (world == null || pos == null) {
             return;
         }
@@ -95,7 +95,7 @@ final class DragonHeadTracker {
         }
 
         String dim = dimId(world);
-        long packed = pos.toImmutable().asLong();
+        long packed = pos.immutable().asLong();
         LongOpenHashSet set = headsByDimension.get(dim);
         if (set == null || !set.contains(packed)) {
             if (LOGGER.isDebugEnabled()) {
@@ -106,7 +106,7 @@ final class DragonHeadTracker {
         remove(world, pos);
     }
 
-    boolean isStillHead(ServerWorld world, BlockPos pos) {
+    boolean isStillHead(ServerLevel world, BlockPos pos) {
         if (world == null || pos == null) {
             return false;
         }
@@ -117,7 +117,7 @@ final class DragonHeadTracker {
         }
 
         // If the chunk is loaded, validate immediately (cheap and keeps behavior crisp).
-        if (world.isChunkLoaded(pos)) {
+        if (world.isLoaded(pos)) {
             if (!isDragonHead(world.getBlockState(pos))) {
                 remove(world, pos);
                 return false;
@@ -127,7 +127,7 @@ final class DragonHeadTracker {
         return true;
     }
 
-    List<BlockPos> findHeadsNear(ServerWorld world, BlockPos center, int radius, int vertical, int maxFound) {
+    List<BlockPos> findHeadsNear(ServerLevel world, BlockPos center, int radius, int vertical, int maxFound) {
         if (world == null || center == null || radius <= 0 || maxFound <= 0) {
             return List.of();
         }
@@ -156,7 +156,7 @@ final class DragonHeadTracker {
 
         for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
             for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
-                long ck = ChunkPos.toLong(chunkX, chunkZ);
+                long ck = ChunkPos.pack(chunkX, chunkZ);
                 LongOpenHashSet positions = byChunk.get(ck);
                 if (positions == null || positions.isEmpty()) {
                     continue;
@@ -165,7 +165,7 @@ final class DragonHeadTracker {
                 LongIterator it = positions.iterator();
                 while (it.hasNext()) {
                     long packed = it.nextLong();
-                    BlockPos p = BlockPos.fromLong(packed);
+                    BlockPos p = BlockPos.of(packed);
                     int y = p.getY();
                     if (y < minY || y > maxY) {
                         continue;
@@ -225,9 +225,9 @@ final class DragonHeadTracker {
         }
     }
 
-    private void add(ServerWorld world, BlockPos pos) {
+    private void add(ServerLevel world, BlockPos pos) {
         String dim = dimId(world);
-        long packed = pos.toImmutable().asLong();
+        long packed = pos.immutable().asLong();
 
         LongOpenHashSet set = headsByDimension.computeIfAbsent(dim, ignored -> new LongOpenHashSet());
         if (!set.add(packed)) {
@@ -245,9 +245,9 @@ final class DragonHeadTracker {
         }
     }
 
-    private void remove(ServerWorld world, BlockPos pos) {
+    private void remove(ServerLevel world, BlockPos pos) {
         String dim = dimId(world);
-        long packed = pos.toImmutable().asLong();
+        long packed = pos.immutable().asLong();
 
         LongOpenHashSet set = headsByDimension.get(dim);
         if (set == null || !set.remove(packed)) {
@@ -269,7 +269,7 @@ final class DragonHeadTracker {
         int removed = 0;
         int checked = 0;
 
-        for (ServerWorld world : server.getWorlds()) {
+        for (ServerLevel world : server.getAllLevels()) {
             String dim = dimId(world);
             LongOpenHashSet set = headsByDimension.get(dim);
             if (set == null || set.isEmpty()) {
@@ -279,10 +279,10 @@ final class DragonHeadTracker {
             LongIterator it = set.iterator();
             while (it.hasNext()) {
                 long packed = it.nextLong();
-                BlockPos pos = BlockPos.fromLong(packed);
+                BlockPos pos = BlockPos.of(packed);
 
                 // Avoid loading chunks; only validate if currently loaded.
-                if (!world.isChunkLoaded(pos)) {
+                if (!world.isLoaded(pos)) {
                     continue;
                 }
 
@@ -360,8 +360,8 @@ final class DragonHeadTracker {
     }
 
     private void indexAdd(String dim, long packedPos) {
-        BlockPos pos = BlockPos.fromLong(packedPos);
-        long ck = ChunkPos.toLong(pos.getX() >> 4, pos.getZ() >> 4);
+        BlockPos pos = BlockPos.of(packedPos);
+        long ck = ChunkPos.pack(pos.getX() >> 4, pos.getZ() >> 4);
 
         Map<Long, LongOpenHashSet> byChunk = chunkIndexByDimension.computeIfAbsent(dim, ignored -> new HashMap<>());
         byChunk.computeIfAbsent(ck, ignored -> new LongOpenHashSet()).add(packedPos);
@@ -372,8 +372,8 @@ final class DragonHeadTracker {
         if (byChunk == null) {
             return;
         }
-        BlockPos pos = BlockPos.fromLong(packedPos);
-        long ck = ChunkPos.toLong(pos.getX() >> 4, pos.getZ() >> 4);
+        BlockPos pos = BlockPos.of(packedPos);
+        long ck = ChunkPos.pack(pos.getX() >> 4, pos.getZ() >> 4);
 
         LongOpenHashSet set = byChunk.get(ck);
         if (set == null) {
@@ -386,10 +386,10 @@ final class DragonHeadTracker {
     }
 
     private static boolean isDragonHead(BlockState state) {
-        return state != null && (state.isOf(Blocks.DRAGON_HEAD) || state.isOf(Blocks.DRAGON_WALL_HEAD));
+        return state != null && (state.is(Blocks.DRAGON_HEAD) || state.is(Blocks.DRAGON_WALL_HEAD));
     }
 
-    private static String dimId(ServerWorld world) {
-        return world.getRegistryKey().getValue().toString();
+    private static String dimId(ServerLevel world) {
+        return world.dimension().identifier().toString();
     }
 }

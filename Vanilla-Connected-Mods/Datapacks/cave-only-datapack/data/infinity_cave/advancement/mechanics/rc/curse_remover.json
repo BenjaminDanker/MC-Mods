@@ -19,12 +19,12 @@
         ],
         "item": {
           "predicates": {
-              "minecraft:custom_data": {
-                "infinity_cave": {
-                  "item": "curse_remover",
-                  "tier": 4
-                }
+            "minecraft:custom_data": {
+              "infinity_cave": {
+                "item": "curse_remover",
+                "tier": 4
               }
+            }
           }
         }
       }

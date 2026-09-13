@@ -9,9 +9,9 @@ import com.silver.atlantis.heightcap.HeightCapCommandManager;
 import com.silver.atlantis.leviathan.LeviathanCommandManager;
 import com.silver.atlantis.spawn.command.ProximitySpawnCommandManager;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
-import net.minecraft.server.command.CommandManager;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.text.Text;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.Commands;
+import net.minecraft.network.chat.Component;
 
 /**
  * Root command for Atlantis admin actions.
@@ -52,14 +52,14 @@ public final class AtlantisCommandManager {
         );
     }
 
-    private void registerCommand(CommandDispatcher<ServerCommandSource> dispatcher) {
+    private void registerCommand(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(
-            CommandManager.literal("atlantis")
-                .requires(source -> source.hasPermissionLevel(2))
-                .then(CommandManager.literal("pause")
+            Commands.literal("atlantis")
+                .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+                .then(Commands.literal("pause")
                     .executes(context -> pause(context.getSource()))
                 )
-                .then(CommandManager.literal("resume")
+                .then(Commands.literal("resume")
                     .executes(context -> resume(context.getSource()))
                 )
                 .then(cycleCommandManager.buildSubcommand())
@@ -71,33 +71,33 @@ public final class AtlantisCommandManager {
         );
     }
 
-    private int pause(ServerCommandSource source) {
+    private int pause(CommandSourceStack source) {
         if (!constructService.isRunning()) {
-            source.sendFeedback(() -> Text.literal("No construct/undo job is running."), false);
+            source.sendSuccess(() -> Component.literal("No construct/undo job is running."), false);
             return 0;
         }
         if (constructService.isPaused()) {
-            source.sendFeedback(() -> Text.literal("Job is already paused: " + constructService.getActiveJobDescription()), false);
+            source.sendSuccess(() -> Component.literal("Job is already paused: " + constructService.getActiveJobDescription()), false);
             return 0;
         }
 
         constructService.pause();
-        source.sendFeedback(() -> Text.literal("Paused job: " + constructService.getActiveJobDescription()), false);
+        source.sendSuccess(() -> Component.literal("Paused job: " + constructService.getActiveJobDescription()), false);
         return 1;
     }
 
-    private int resume(ServerCommandSource source) {
+    private int resume(CommandSourceStack source) {
         if (!constructService.isRunning()) {
-            source.sendFeedback(() -> Text.literal("No construct/undo job is running."), false);
+            source.sendSuccess(() -> Component.literal("No construct/undo job is running."), false);
             return 0;
         }
         if (!constructService.isPaused()) {
-            source.sendFeedback(() -> Text.literal("Job is not paused: " + constructService.getActiveJobDescription()), false);
+            source.sendSuccess(() -> Component.literal("Job is not paused: " + constructService.getActiveJobDescription()), false);
             return 0;
         }
 
         constructService.resume();
-        source.sendFeedback(() -> Text.literal("Resumed job: " + constructService.getActiveJobDescription()), false);
+        source.sendSuccess(() -> Component.literal("Resumed job: " + constructService.getActiveJobDescription()), false);
         return 1;
     }
 }

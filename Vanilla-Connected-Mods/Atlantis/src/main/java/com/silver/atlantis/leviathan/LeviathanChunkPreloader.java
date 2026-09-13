@@ -4,10 +4,6 @@ import com.silver.atlantis.AtlantisMod;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
-import net.minecraft.server.world.ChunkTicketType;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.ChunkPos;
-
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashMap;
@@ -15,9 +11,12 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.TicketType;
+import net.minecraft.world.level.ChunkPos;
 
 final class LeviathanChunkPreloader {
-    private static final ChunkTicketType TICKET_TYPE = ChunkTicketType.FORCED;
+    private static final TicketType TICKET_TYPE = TicketType.FORCED;
 
     private static final class LeviathanTickets {
         final Deque<ChunkPos> pending = new ArrayDeque<>();
@@ -35,7 +34,7 @@ final class LeviathanChunkPreloader {
         AtlantisMod.LOGGER.info("[Atlantis][leviathan] chunk preloader initialized ticketLevel={}", ticketLevel);
     }
 
-    int request(ServerWorld world, UUID id, Iterable<ChunkPos> desiredChunks, long nowTick, int budget) {
+    int request(ServerLevel world, UUID id, Iterable<ChunkPos> desiredChunks, long nowTick, int budget) {
         if (budget <= 0) {
             touch(id, nowTick);
             pollActive(world, id);
@@ -47,7 +46,7 @@ final class LeviathanChunkPreloader {
         tickets.lastTouchedTick = nowTick;
 
         for (ChunkPos pos : desiredChunks) {
-            long key = ChunkPos.toLong(pos.x, pos.z);
+            long key = ChunkPos.pack(pos.x(), pos.z());
             if (tickets.ticketKeys.contains(key) || tickets.pendingKeys.contains(key)) {
                 continue;
             }
@@ -69,27 +68,27 @@ final class LeviathanChunkPreloader {
                 break;
             }
 
-            long key = ChunkPos.toLong(pos.x, pos.z);
+            long key = ChunkPos.pack(pos.x(), pos.z());
             tickets.pendingKeys.remove(key);
             if (tickets.ticketKeys.contains(key)) {
                 continue;
             }
 
             try {
-                CompletableFuture<?> future = world.getChunkManager().addChunkLoadingTicket(TICKET_TYPE, pos, ticketLevel);
+                CompletableFuture<?> future = world.getChunkSource().addTicketAndLoadWithRadius(TICKET_TYPE, pos, ticketLevel);
                 tickets.ticketKeys.add(key);
                 tickets.activeLoads.put(key, future);
                 started++;
                 AtlantisMod.LOGGER.debug("[Atlantis][leviathan] chunk ticket added id={} chunk=({}, {}) level={}",
                     shortId(id),
-                    pos.x,
-                    pos.z,
+                    pos.x(),
+                    pos.z(),
                     ticketLevel);
             } catch (Exception e) {
                 AtlantisMod.LOGGER.warn("[Atlantis][leviathan] chunk ticket add failed id={} chunk=({}, {}) error={}",
                     shortId(id),
-                    pos.x,
-                    pos.z,
+                    pos.x(),
+                    pos.z(),
                     e.getMessage());
             }
         }
@@ -102,11 +101,11 @@ final class LeviathanChunkPreloader {
         return started;
     }
 
-    boolean isChunkLoaded(ServerWorld world, ChunkPos pos) {
-        return world.getChunkManager().isChunkLoaded(pos.x, pos.z);
+    boolean isChunkLoaded(ServerLevel world, ChunkPos pos) {
+        return world.getChunkSource().hasChunk(pos.x(), pos.z());
     }
 
-    void release(ServerWorld world, UUID id) {
+    void release(ServerLevel world, UUID id) {
         LeviathanTickets tickets = ticketsByLeviathan.remove(id);
         if (tickets == null) {
             AtlantisMod.LOGGER.debug("[Atlantis][leviathan] chunk release no-op id={}", shortId(id));
@@ -115,9 +114,9 @@ final class LeviathanChunkPreloader {
 
         try {
             for (long key : tickets.ticketKeys) {
-                int cx = ChunkPos.getPackedX(key);
-                int cz = ChunkPos.getPackedZ(key);
-                world.getChunkManager().removeTicket(TICKET_TYPE, new ChunkPos(cx, cz), ticketLevel);
+                int cx = ChunkPos.getX(key);
+                int cz = ChunkPos.getZ(key);
+                world.getChunkSource().removeTicketWithRadius(TICKET_TYPE, new ChunkPos(cx, cz), ticketLevel);
             }
             AtlantisMod.LOGGER.debug("[Atlantis][leviathan] chunk release removed tickets id={} count={}", shortId(id), tickets.ticketKeys.size());
         } catch (Exception e) {
@@ -131,7 +130,7 @@ final class LeviathanChunkPreloader {
         AtlantisMod.LOGGER.debug("[Atlantis][leviathan] chunk release state cleared id={}", shortId(id));
     }
 
-    void releaseUnused(ServerWorld world, long nowTick, int releaseAfterTicks) {
+    void releaseUnused(ServerLevel world, long nowTick, int releaseAfterTicks) {
         Iterator<Map.Entry<UUID, LeviathanTickets>> it = ticketsByLeviathan.entrySet().iterator();
         while (it.hasNext()) {
             Map.Entry<UUID, LeviathanTickets> entry = it.next();
@@ -142,9 +141,9 @@ final class LeviathanChunkPreloader {
             it.remove();
             try {
                 for (long key : entry.getValue().ticketKeys) {
-                    int cx = ChunkPos.getPackedX(key);
-                    int cz = ChunkPos.getPackedZ(key);
-                    world.getChunkManager().removeTicket(TICKET_TYPE, new ChunkPos(cx, cz), ticketLevel);
+                    int cx = ChunkPos.getX(key);
+                    int cz = ChunkPos.getZ(key);
+                    world.getChunkSource().removeTicketWithRadius(TICKET_TYPE, new ChunkPos(cx, cz), ticketLevel);
                 }
                 AtlantisMod.LOGGER.debug("[Atlantis][leviathan] chunk releaseUnused removed stale id={} count={}",
                     shortId(entry.getKey()),
@@ -157,14 +156,14 @@ final class LeviathanChunkPreloader {
         }
     }
 
-    private void pollActive(ServerWorld world, UUID id) {
+    private void pollActive(ServerLevel world, UUID id) {
         LeviathanTickets tickets = ticketsByLeviathan.get(id);
         if (tickets != null) {
             pollActive(world, tickets);
         }
     }
 
-    private void pollActive(ServerWorld world, LeviathanTickets tickets) {
+    private void pollActive(ServerLevel world, LeviathanTickets tickets) {
         if (tickets.activeLoads.isEmpty()) {
             return;
         }
@@ -179,9 +178,9 @@ final class LeviathanChunkPreloader {
                 continue;
             }
 
-            int cx = ChunkPos.getPackedX(key);
-            int cz = ChunkPos.getPackedZ(key);
-            if (!world.getChunkManager().isChunkLoaded(cx, cz)) {
+            int cx = ChunkPos.getX(key);
+            int cz = ChunkPos.getZ(key);
+            if (!world.getChunkSource().hasChunk(cx, cz)) {
                 continue;
             }
 

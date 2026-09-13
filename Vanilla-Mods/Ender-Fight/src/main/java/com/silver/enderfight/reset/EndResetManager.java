@@ -8,55 +8,53 @@ import com.silver.enderfight.dragon.DragonBreathModifier;
 import com.silver.enderfight.duck.NoiseChunkGeneratorExtension;
 import com.silver.enderfight.duck.ServerWorldDuck;
 import com.silver.enderfight.mixin.MinecraftServerAccessor;
+import com.silver.enderfight.mixin.HolderReferenceAccessor;
 import com.silver.enderfight.mixin.SimpleRegistryAccessor;
 import com.silver.enderfight.portal.PortalInterceptor;
 import com.silver.enderfight.util.WorldSeedOverrides;
-import net.fabricmc.fabric.api.entity.event.v1.ServerEntityWorldChangeEvents;
 import net.fabricmc.fabric.api.networking.v1.PacketSender;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.entity.boss.ServerBossBar;
-import net.minecraft.entity.boss.dragon.EnderDragonFight;
-import net.minecraft.registry.CombinedDynamicRegistries;
-import net.minecraft.registry.DynamicRegistryManager;
-import net.minecraft.registry.MutableRegistry;
-import net.minecraft.registry.Registry;
-import net.minecraft.registry.RegistryKey;
-import net.minecraft.registry.RegistryKeys;
-import net.minecraft.registry.RegistryWrapper;
-import net.minecraft.registry.ServerDynamicRegistryType;
-import net.minecraft.registry.SimpleRegistry;
-import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.registry.entry.RegistryEntryInfo;
-import net.minecraft.registry.tag.TagKey;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.core.LayeredRegistryAccess;
+import net.minecraft.core.MappedRegistry;
+import net.minecraft.core.RegistrationInfo;
+import net.minecraft.core.Registry;
+import net.minecraft.core.RegistryAccess;
+import net.minecraft.core.WritableRegistry;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.network.ServerPlayNetworkHandler;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.WorldSavePath;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.math.random.RandomSequencesState;
-import net.minecraft.world.SaveProperties;
-import net.minecraft.world.TeleportTarget;
-import net.minecraft.world.World;
-import net.minecraft.world.WorldProperties;
-import net.minecraft.world.biome.Biome;
-import net.minecraft.world.biome.source.BiomeAccess;
-import net.minecraft.world.biome.source.TheEndBiomeSource;
-import net.minecraft.world.dimension.DimensionOptions;
-import net.minecraft.world.dimension.DimensionType;
-import net.minecraft.world.gen.chunk.ChunkGeneratorSettings;
-import net.minecraft.world.gen.chunk.NoiseChunkGenerator;
-import net.minecraft.world.level.ServerWorldProperties;
-import net.minecraft.world.level.UnmodifiableLevelProperties;
-import net.minecraft.world.spawner.SpecialSpawner;
-import net.minecraft.util.math.noise.DoublePerlinNoiseSampler;
-import net.minecraft.world.gen.noise.NoiseConfig;
-
+import net.minecraft.server.RegistryLayer;
+import net.minecraft.server.level.ServerBossEvent;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.network.ServerGamePacketListenerImpl;
+import net.minecraft.tags.TagKey;
+import net.minecraft.world.level.CustomSpawner;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.biome.BiomeManager;
+import net.minecraft.world.level.biome.TheEndBiomeSource;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.dimension.DimensionType;
+import net.minecraft.world.level.dimension.LevelStem;
+import net.minecraft.world.level.dimension.end.EnderDragonFight;
+import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
+import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
+import net.minecraft.world.level.levelgen.RandomState;
+import net.minecraft.world.level.levelgen.synth.NormalNoise;
+import net.minecraft.world.level.portal.TeleportTransition;
+import net.minecraft.world.level.storage.DerivedLevelData;
+import net.minecraft.world.level.storage.LevelData;
+import net.minecraft.world.level.storage.LevelResource;
+import net.minecraft.world.level.storage.ServerLevelData;
+import net.minecraft.world.level.storage.WorldData;
+import net.minecraft.world.phys.Vec3;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
 import java.lang.reflect.Method;
@@ -89,9 +87,9 @@ public class EndResetManager {
     private static final DateTimeFormatter DIMENSION_KEY_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmmss").withZone(ZoneOffset.UTC);
     private static final String DRAGON_BOSS_BAR_FIELD_NAME = "field_13119"; // obfuscated getter for EnderDragonFight#bossBar
 
-    private static final Identifier STABLE_END_ID = Identifier.of(EnderFightMod.MOD_ID, "daily_end_active");
-    private static final RegistryKey<World> STABLE_END_WORLD_KEY = RegistryKey.of(RegistryKeys.WORLD, STABLE_END_ID);
-    private static final TagKey<Biome> END_BIOME_TAG = TagKey.of(RegistryKeys.BIOME, Identifier.of("minecraft", "is_end"));
+    private static final Identifier STABLE_END_ID = Identifier.fromNamespaceAndPath(EnderFightMod.MOD_ID, "daily_end_active");
+    private static final ResourceKey<Level> STABLE_END_WORLD_KEY = ResourceKey.create(Registries.DIMENSION, STABLE_END_ID);
+    private static final TagKey<Biome> END_BIOME_TAG = TagKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("minecraft", "is_end"));
 
     private final ConfigManager configManager;
 
@@ -100,25 +98,25 @@ public class EndResetManager {
     private boolean countdownActive;
     private long countdownTicksRemaining;
     private boolean warningSent;
-    private RegistryKey<World> activeEndWorldKey = World.END;
+    private ResourceKey<Level> activeEndWorldKey = Level.END;
     private int wallClockCheckAccumulator;
     private boolean resetIntervalElapsed;
     private boolean warningWindowExceeded;
     private long lastActionBarBucket = Long.MIN_VALUE;
     private boolean lastActionBarSecondMode;
-    private Text lastActionBarMessage;
+    private Component lastActionBarMessage;
 
     private static final int VANILLA_END_REDIRECT_DELAY_TICKS = 1;
     private final Map<UUID, Integer> pendingVanillaEndRedirects = new ConcurrentHashMap<>();
+    private final Map<UUID, ResourceKey<Level>> observedPlayerWorlds = new ConcurrentHashMap<>();
 
     private static final BlockPos END_PLATFORM_BASE = new BlockPos(100, 49, 0);
-    private static final Vec3d END_PLATFORM_SPAWN = Vec3d.ofCenter(END_PLATFORM_BASE).add(0.0, 1.0, 0.0);
+    private static final Vec3 END_PLATFORM_SPAWN = Vec3.atCenterOf(END_PLATFORM_BASE).add(0.0, 1.0, 0.0);
     private static final float END_PLATFORM_YAW = 180.0F;
     private static java.lang.reflect.Field dragonBossBarField;
 
     public EndResetManager(ConfigManager configManager) {
         this.configManager = configManager;
-        ServerEntityWorldChangeEvents.AFTER_PLAYER_CHANGE_WORLD.register(this::handlePlayerWorldChange);
         ServerPlayConnectionEvents.JOIN.register(this::handlePlayerJoin);
         ServerPlayConnectionEvents.DISCONNECT.register(this::handlePlayerDisconnect);
     }
@@ -137,11 +135,11 @@ public class EndResetManager {
         // single stable id so we can truly retire old dimensions instead of accumulating persistent defs.
         migrateActiveEndToStableDirectory(server, state);
 
-        RegistryKey<World> activeKeyToKeep = state.getActiveDimensionKey();
+        ResourceKey<Level> activeKeyToKeep = state.getActiveDimensionKey();
 
         // If any prior build produced duplicate entries in the DIMENSION registry's raw-id tables,
         // Minecraft can crash on shutdown while serializing registries. Rebuild the tables up front.
-        MutableRegistry<DimensionOptions> dimensionRegistry = locateDimensionRegistry(server);
+        WritableRegistry<LevelStem> dimensionRegistry = locateDimensionRegistry(server);
         if (dimensionRegistry != null) {
             rebuildDimensionRegistryIndices(dimensionRegistry);
         }
@@ -165,7 +163,7 @@ public class EndResetManager {
             return;
         }
 
-        RegistryKey<World> activeKeyToKeep = activeEndWorldKey;
+        ResourceKey<Level> activeKeyToKeep = activeEndWorldKey;
         if (persistentState != null) {
             activeKeyToKeep = persistentState.getActiveDimensionKey();
             persistentState.save(server);
@@ -177,7 +175,7 @@ public class EndResetManager {
     }
 
     public void onServerStopped(MinecraftServer server) {
-        RegistryKey<World> activeKeyToKeep = activeEndWorldKey;
+        ResourceKey<Level> activeKeyToKeep = activeEndWorldKey;
         if (persistentState != null) {
             activeKeyToKeep = persistentState.getActiveDimensionKey();
             // State is already persisted during SERVER_STOPPING; keep this as a last-resort fallback.
@@ -190,7 +188,7 @@ public class EndResetManager {
         this.persistentState = null;
         this.countdownActive = false;
         this.warningSent = false;
-        this.activeEndWorldKey = World.END;
+        this.activeEndWorldKey = Level.END;
         this.lastActionBarBucket = Long.MIN_VALUE;
         this.lastActionBarSecondMode = false;
         this.lastActionBarMessage = null;
@@ -203,6 +201,7 @@ public class EndResetManager {
 
         cachedConfig = configManager.getConfig();
 
+        observePlayerWorldChanges(server);
         processPendingVanillaEndRedirects(server);
 
         updateResetScheduleFlags();
@@ -230,7 +229,7 @@ public class EndResetManager {
             return;
         }
 
-        List<ServerPlayerEntity> endPlayers = server.getPlayerManager().getPlayerList().stream()
+        List<ServerPlayer> endPlayers = server.getPlayerList().getPlayers().stream()
             .filter(this::isPlayerInEndContext)
             .collect(Collectors.toList());
         if (endPlayers.isEmpty()) {
@@ -242,12 +241,12 @@ public class EndResetManager {
             return;
         }
 
-        for (ServerPlayerEntity player : endPlayers) {
-            player.sendMessage(lastActionBarMessage, true);
+        for (ServerPlayer player : endPlayers) {
+            player.sendSystemMessage(lastActionBarMessage, true);
         }
     }
 
-    private void sendResetActionBarToPlayer(ServerPlayerEntity player) {
+    private void sendResetActionBarToPlayer(ServerPlayer player) {
         if (!isPlayerInEndContext(player)) {
             return;
         }
@@ -257,7 +256,7 @@ public class EndResetManager {
             return;
         }
 
-        player.sendMessage(lastActionBarMessage, true);
+        player.sendSystemMessage(lastActionBarMessage, true);
     }
 
     private void refreshActionBarMessageIfNeeded() {
@@ -271,7 +270,7 @@ public class EndResetManager {
         }
 
         String timeRemaining = formatRemainingTime(remainingMillis);
-        lastActionBarMessage = Text.literal("End resets in " + timeRemaining);
+        lastActionBarMessage = Component.literal("End resets in " + timeRemaining);
         lastActionBarBucket = bucket;
         lastActionBarSecondMode = secondMode;
     }
@@ -301,35 +300,35 @@ public class EndResetManager {
         return Math.max(0L, targetResetMillis - Instant.now().toEpochMilli());
     }
 
-    private boolean isPlayerInEndContext(ServerPlayerEntity player) {
+    private boolean isPlayerInEndContext(ServerPlayer player) {
         if (player == null) {
             return false;
         }
 
-        ServerWorld world = player.getCommandSource().getWorld();
+        ServerLevel world = player.createCommandSourceStack().getLevel();
         if (world == null) {
             return false;
         }
 
-        if (PortalInterceptor.isManagedEndDimension(world.getRegistryKey())) {
+        if (PortalInterceptor.isManagedEndDimension(world.dimension())) {
             return true;
         }
 
-        Identifier dimensionId = world.getRegistryKey().getValue();
+        Identifier dimensionId = world.dimension().identifier();
         if (dimensionId != null && dimensionId.getPath().contains("end")) {
             return true;
         }
 
-        return isEndBiome(world, player.getBlockPos());
+        return isEndBiome(world, player.blockPosition());
     }
 
-    private boolean isEndBiome(ServerWorld world, BlockPos position) {
+    private boolean isEndBiome(ServerLevel world, BlockPos position) {
         if (world == null || position == null) {
             return false;
         }
 
-        RegistryEntry<Biome> biome = world.getBiome(position);
-        return biome.isIn(END_BIOME_TAG);
+        Holder<Biome> biome = world.getBiome(position);
+        return biome.is(END_BIOME_TAG);
     }
 
     private String formatRemainingTime(long remainingMillis) {
@@ -396,16 +395,16 @@ public class EndResetManager {
     }
 
     private void notifyPlayersOfReset(MinecraftServer server) {
-        ServerWorld endWorld = getActiveEndWorld(server);
+        ServerLevel endWorld = getActiveEndWorld(server);
         if (endWorld == null) {
             return;
         }
 
-        Text message = Text.literal(cachedConfig.warningMessage());
-        for (ServerPlayerEntity player : endWorld.getPlayers()) {
-            player.sendMessage(message, false);
+        Component message = Component.literal(cachedConfig.warningMessage());
+        for (ServerPlayer player : endWorld.players()) {
+            player.sendSystemMessage(message, false);
         }
-        EnderFightMod.LOGGER.info("Warned {} players about upcoming End reset", endWorld.getPlayers().size());
+        EnderFightMod.LOGGER.info("Warned {} players about upcoming End reset", endWorld.players().size());
     }
 
     private boolean performReset(MinecraftServer server, boolean alignToExpectedSchedule) {
@@ -413,23 +412,23 @@ public class EndResetManager {
             EnderFightMod.LOGGER.warn("Cannot reset End – server reference was null");
             return false;
         }
-        ServerWorld endWorld = getActiveEndWorld(server);
+        ServerLevel endWorld = getActiveEndWorld(server);
         if (endWorld == null) {
             EnderFightMod.LOGGER.warn("Could not acquire End world to reset; aborting");
             return false;
         }
 
-        List<ServerPlayerEntity> playersInEnd = new ArrayList<>(endWorld.getPlayers());
+        List<ServerPlayer> playersInEnd = new ArrayList<>(endWorld.players());
         if (playersInEnd.isEmpty()) {
-            EnderFightMod.LOGGER.info("Resetting {} – no players detected in End dimension {}; skipping teleport", endWorld.getRegistryKey().getValue(), endWorld.getRegistryKey());
+            EnderFightMod.LOGGER.info("Resetting {} – no players detected in End dimension {}; skipping teleport", endWorld.dimension().identifier(), endWorld.dimension());
         } else {
             String names = playersInEnd.stream().map(p -> p.getName().getString()).collect(Collectors.joining(", "));
-            EnderFightMod.LOGGER.info("Resetting {} – teleporting players out: {}", endWorld.getRegistryKey().getValue(), names);
+            EnderFightMod.LOGGER.info("Resetting {} – teleporting players out: {}", endWorld.dimension().identifier(), names);
             teleportPlayersToOverworld(server, playersInEnd);
         }
 
         long newSeed = ThreadLocalRandom.current().nextLong();
-        boolean rebuilt = rebuildEndWorld(server, endWorld, endWorld.getRegistryKey(), newSeed);
+        boolean rebuilt = rebuildEndWorld(server, endWorld, endWorld.dimension(), newSeed);
         if (!rebuilt) {
             EnderFightMod.LOGGER.warn("End reset aborted after failing to rebuild the dimension");
             return false;
@@ -466,16 +465,16 @@ public class EndResetManager {
     }
 
     private void ensureDragonFightState(MinecraftServer server) {
-        ServerWorld endWorld = getActiveEndWorld(server);
+        ServerLevel endWorld = getActiveEndWorld(server);
         if (endWorld == null) {
             return;
         }
-        EnderDragonFight fight = endWorld.getEnderDragonFight();
+        EnderDragonFight fight = endWorld.getDragonFight();
         if (fight == null) {
             return;
         }
 
-        fight.respawnDragon();
+        fight.tryRespawn();
         EnderFightMod.LOGGER.info("Forced EnderDragonFight respawn to regenerate exit portal and gateway state");
     }
 
@@ -535,24 +534,24 @@ public class EndResetManager {
     /**
      * Collects all players currently residing in the End dimension. Exposed for unit tests and mixin hooks.
      */
-    protected List<ServerPlayerEntity> detectPlayersInEnd(ServerWorld endWorld) {
-        return Collections.unmodifiableList(new ArrayList<>(endWorld.getPlayers()));
+    protected List<ServerPlayer> detectPlayersInEnd(ServerLevel endWorld) {
+        return Collections.unmodifiableList(new ArrayList<>(endWorld.players()));
     }
 
     /**
      * Teleports the supplied players back to the overworld spawn using FabricDimensions.
      */
-    protected void teleportPlayersToOverworld(MinecraftServer server, List<ServerPlayerEntity> players) {
-        Text notification = Text.literal(cachedConfig.teleportMessage());
+    protected void teleportPlayersToOverworld(MinecraftServer server, List<ServerPlayer> players) {
+        Component notification = Component.literal(cachedConfig.teleportMessage());
         teleportPlayersToOverworld(server, players, notification, "End reset");
     }
 
-    public void teleportPlayerToOverworld(ServerPlayerEntity player, Text message, String logContext) {
+    public void teleportPlayerToOverworld(ServerPlayer player, Component message, String logContext) {
         if (player == null) {
             return;
         }
 
-        MinecraftServer server = player.getCommandSource().getServer();
+        MinecraftServer server = player.createCommandSourceStack().getServer();
         if (server == null) {
             return;
         }
@@ -560,54 +559,54 @@ public class EndResetManager {
         teleportPlayersToOverworld(server, java.util.List.of(player), message, logContext);
     }
 
-    private void teleportPlayersToOverworld(MinecraftServer server, List<ServerPlayerEntity> players, Text message, String logContext) {
+    private void teleportPlayersToOverworld(MinecraftServer server, List<ServerPlayer> players, Component message, String logContext) {
         if (players.isEmpty()) {
             return;
         }
 
-        ServerWorld overworld = server.getOverworld();
+        ServerLevel overworld = server.overworld();
         if (overworld == null) {
             EnderFightMod.LOGGER.error("Overworld missing while attempting to teleport End players");
             return;
         }
 
         MinecraftServer ownerServer = overworld.getServer();
-        WorldProperties.SpawnPoint spawnPoint = ownerServer != null ? ownerServer.getSpawnPoint() : null;
+        LevelData.RespawnData spawnPoint = ownerServer != null ? ownerServer.getRespawnData() : null;
         if (spawnPoint == null) {
-            spawnPoint = overworld.getLevelProperties().getSpawnPoint();
+            spawnPoint = overworld.getLevelData().getRespawnData();
         }
 
-    BlockPos spawnPos = spawnPoint != null ? spawnPoint.getPos() : BlockPos.ORIGIN;
-    Vec3d spawnVec = Vec3d.ofCenter(spawnPos);
+    BlockPos spawnPos = spawnPoint != null ? spawnPoint.pos() : BlockPos.ZERO;
+    Vec3 spawnVec = Vec3.atCenterOf(spawnPos);
         float spawnYaw = 0.0F;
         float spawnPitch = 0.0F;
         if (spawnPoint != null) {
             // Reflectively read yaw/pitch so we preserve configured spawn orientation even when mappings lack named helpers.
             try {
-                spawnYaw = (float) WorldProperties.SpawnPoint.class.getMethod("yaw").invoke(spawnPoint);
-                spawnPitch = (float) WorldProperties.SpawnPoint.class.getMethod("pitch").invoke(spawnPoint);
+                spawnYaw = (float) LevelData.RespawnData.class.getMethod("yaw").invoke(spawnPoint);
+                spawnPitch = (float) LevelData.RespawnData.class.getMethod("pitch").invoke(spawnPoint);
             } catch (ReflectiveOperationException ex) {
                 EnderFightMod.LOGGER.debug("Unable to read spawn yaw/pitch from SpawnPoint record", ex);
             }
         }
 
-        if (spawnPoint != null && !World.OVERWORLD.equals(spawnPoint.getDimension())) {
-            EnderFightMod.LOGGER.warn("Server spawn point dimension {} differs from overworld; using position {} regardless", spawnPoint.getDimension().getValue(), spawnPos);
+        if (spawnPoint != null && !Level.OVERWORLD.equals(spawnPoint.dimension())) {
+            EnderFightMod.LOGGER.warn("Server spawn point dimension {} differs from overworld; using position {} regardless", spawnPoint.dimension().identifier(), spawnPos);
         }
 
-        for (ServerPlayerEntity player : players) {
+        for (ServerPlayer player : players) {
             if (ownerServer != null) {
-                ownerServer.getBossBarManager().onPlayerDisconnect(player);
+                ownerServer.getCustomBossEvents().onPlayerDisconnect(player);
                 EnderFightMod.LOGGER.info("Cleared boss bars for {} via disconnect hook", player.getName().getString());
             }
 
             tryRemoveFromDragonBossBar(player);
 
             PortalInterceptor.suppressNextRedirect(player);
-            TeleportTarget target = new TeleportTarget(overworld, spawnVec, Vec3d.ZERO, spawnYaw, spawnPitch, TeleportTarget.NO_OP);
-            player.teleportTo(target);
+            TeleportTransition target = new TeleportTransition(overworld, spawnVec, Vec3.ZERO, spawnYaw, spawnPitch, TeleportTransition.DO_NOTHING);
+            player.teleport(target);
             if (message != null) {
-                player.sendMessage(message, false);
+                player.sendSystemMessage(message, false);
             }
         }
 
@@ -621,33 +620,60 @@ public class EndResetManager {
             names);
     }
 
-    private void handlePlayerWorldChange(ServerPlayerEntity player, ServerWorld origin, ServerWorld destination) {
-        if (activeEndWorldKey == null || activeEndWorldKey.equals(World.END)) {
+    private void handlePlayerWorldChange(ServerPlayer player, ServerLevel origin, ServerLevel destination) {
+        if (activeEndWorldKey == null || activeEndWorldKey.equals(Level.END)) {
             return;
         }
-        if (!destination.getRegistryKey().equals(World.END)) {
+        if (!destination.dimension().equals(Level.END)) {
             return;
         }
-        if (PortalInterceptor.isManagedEndDimension(origin.getRegistryKey())) {
+        if (PortalInterceptor.isManagedEndDimension(origin.dimension())) {
             return;
         }
         MinecraftServer server = destination.getServer();
         if (server == null) {
             return;
         }
-        ServerWorld targetWorld = server.getWorld(activeEndWorldKey);
+        ServerLevel targetWorld = server.getLevel(activeEndWorldKey);
         if (targetWorld == null || targetWorld == destination) {
             return;
         }
 
-        UUID playerId = player.getUuid();
+        UUID playerId = player.getUUID();
         pendingVanillaEndRedirects.putIfAbsent(playerId, VANILLA_END_REDIRECT_DELAY_TICKS);
         EnderFightMod.LOGGER.info(
             "Queued player {} for vanilla End -> custom End redirect in {} tick(s) (target={})",
             player.getName().getString(),
             VANILLA_END_REDIRECT_DELAY_TICKS,
-            activeEndWorldKey.getValue()
+            activeEndWorldKey.identifier()
         );
+    }
+
+    /**
+     * Fabric's entity world-change callback was removed from the 26.2 API. Polling the small player
+     * list once per server tick preserves the same semantics without depending on an internal hook.
+     */
+    private void observePlayerWorldChanges(MinecraftServer server) {
+        if (server == null) {
+            return;
+        }
+
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            ServerLevel destination = player.level();
+            ResourceKey<Level> destinationKey = destination.dimension();
+            ResourceKey<Level> originKey = observedPlayerWorlds.put(player.getUUID(), destinationKey);
+            if (originKey == null || originKey.equals(destinationKey)) {
+                continue;
+            }
+
+            ServerLevel origin = server.getLevel(originKey);
+            if (origin != null) {
+                PortalInterceptor.handlePortalTeleport(player, originKey, destinationKey, configManager.getConfig());
+                handlePlayerWorldChange(player, origin, destination);
+            }
+        }
+
+        observedPlayerWorlds.keySet().removeIf(id -> server.getPlayerList().getPlayer(id) == null);
     }
 
     private void processPendingVanillaEndRedirects(MinecraftServer server) {
@@ -668,21 +694,21 @@ public class EndResetManager {
 
             iterator.remove();
 
-            ServerPlayerEntity player = server.getPlayerManager().getPlayer(playerId);
+            ServerPlayer player = server.getPlayerList().getPlayer(playerId);
             if (player == null) {
                 continue;
             }
 
-            ServerWorld currentWorld = player.getCommandSource().getWorld();
-            if (currentWorld == null || !World.END.equals(currentWorld.getRegistryKey())) {
+            ServerLevel currentWorld = player.createCommandSourceStack().getLevel();
+            if (currentWorld == null || !Level.END.equals(currentWorld.dimension())) {
                 continue;
             }
 
-            if (activeEndWorldKey == null || activeEndWorldKey.equals(World.END)) {
+            if (activeEndWorldKey == null || activeEndWorldKey.equals(Level.END)) {
                 continue;
             }
 
-            ServerWorld targetWorld = server.getWorld(activeEndWorldKey);
+            ServerLevel targetWorld = server.getLevel(activeEndWorldKey);
             if (targetWorld == null || targetWorld == currentWorld) {
                 continue;
             }
@@ -690,18 +716,19 @@ public class EndResetManager {
             EnderFightMod.LOGGER.info(
                 "Redirecting player {} from vanilla End into custom End {} (delayed)",
                 player.getName().getString(),
-                activeEndWorldKey.getValue()
+                activeEndWorldKey.identifier()
             );
 
             ensureEndSpawnPlatform(targetWorld);
-            TeleportTarget target = new TeleportTarget(targetWorld, END_PLATFORM_SPAWN, Vec3d.ZERO, END_PLATFORM_YAW, 0.0F, TeleportTarget.NO_OP);
-            player.teleportTo(target);
+            TeleportTransition target = new TeleportTransition(targetWorld, END_PLATFORM_SPAWN, Vec3.ZERO, END_PLATFORM_YAW, 0.0F, TeleportTransition.DO_NOTHING);
+            player.teleport(target);
             sendResetActionBarToPlayer(player);
         }
     }
 
-    private void handlePlayerJoin(ServerPlayNetworkHandler handler, PacketSender sender, MinecraftServer server) {
-        ServerPlayerEntity player = handler.player;
+    private void handlePlayerJoin(ServerGamePacketListenerImpl handler, PacketSender sender, MinecraftServer server) {
+        ServerPlayer player = handler.player;
+        observedPlayerWorlds.put(player.getUUID(), player.level().dimension());
 
         DragonBreathModifier.purgeExtraSpecialDragonBreath(player, "player join");
 
@@ -709,7 +736,7 @@ public class EndResetManager {
             return;
         }
 
-        RegistryKey<World> recordedKey = persistentState.getRecordedEndDimension(player.getUuid());
+        ResourceKey<Level> recordedKey = persistentState.getRecordedEndDimension(player.getUUID());
         if (recordedKey == null) {
             EnderFightMod.LOGGER.debug("No offline End record for {}; skipping safeguard", player.getName().getString());
             sendResetActionBarToPlayer(player);
@@ -718,19 +745,19 @@ public class EndResetManager {
 
         EnderFightMod.LOGGER.info("Offline End record found for {}: recordedKey={} activeKey={}",
             player.getName().getString(),
-            recordedKey.getValue(),
-            getActiveEndWorldKey().getValue());
+            recordedKey.identifier(),
+            getActiveEndWorldKey().identifier());
 
-    RegistryKey<World> activeKey = getActiveEndWorldKey();
+    ResourceKey<Level> activeKey = getActiveEndWorldKey();
 
-        ServerWorld currentWorld = player.getCommandSource().getWorld();
-        if (currentWorld != null && !PortalInterceptor.isManagedEndDimension(currentWorld.getRegistryKey())) {
+        ServerLevel currentWorld = player.createCommandSourceStack().getLevel();
+        if (currentWorld != null && !PortalInterceptor.isManagedEndDimension(currentWorld.dimension())) {
             EnderFightMod.LOGGER.info("Player {} already placed in {} after End reset; forcing return to spawn",
-                player.getName().getString(), currentWorld.getRegistryKey().getValue());
+                player.getName().getString(), currentWorld.dimension().identifier());
             DragonBreathModifier.purgeExtraSpecialDragonBreath(player, "offline End reset (post-login spawn correction)");
-            Text message = Text.literal("The End reset while you were offline; you've been returned to spawn.");
+            Component message = Component.literal("The End reset while you were offline; you've been returned to spawn.");
             teleportPlayersToOverworld(server, ImmutableList.of(player), message, "Offline End reset safeguard (post-login)");
-            if (persistentState.clearRecordedPlayer(player.getUuid())) {
+            if (persistentState.clearRecordedPlayer(player.getUUID())) {
                 persistentState.save(server);
             }
             return;
@@ -741,7 +768,7 @@ public class EndResetManager {
                 player.getName().getString(),
                 PortalInterceptor.isManagedEndDimension(recordedKey),
                 recordedKey.equals(activeKey));
-            if (persistentState.clearRecordedPlayer(player.getUuid())) {
+            if (persistentState.clearRecordedPlayer(player.getUUID())) {
                 persistentState.save(server);
             }
             return;
@@ -750,45 +777,46 @@ public class EndResetManager {
         if (hasPendingServerPortalsHandoff(player)) {
             EnderFightMod.LOGGER.info("Skipping offline End safeguard for {} – pending ServerPortals handoff detected",
                 player.getName().getString());
-            if (persistentState.clearRecordedPlayer(player.getUuid())) {
+            if (persistentState.clearRecordedPlayer(player.getUUID())) {
                 persistentState.save(server);
             }
             return;
         }
 
         EnderFightMod.LOGGER.info("Executing offline End safeguard for {} (recorded {}, active {})",
-            player.getName().getString(), recordedKey.getValue(), activeKey.getValue());
-        Text message = Text.literal("The End reset while you were offline; you've been returned to spawn.");
+            player.getName().getString(), recordedKey.identifier(), activeKey.identifier());
+        Component message = Component.literal("The End reset while you were offline; you've been returned to spawn.");
         DragonBreathModifier.purgeExtraSpecialDragonBreath(player, "offline End reset teleport");
         teleportPlayersToOverworld(server, ImmutableList.of(player), message, "Offline End reset safeguard");
 
-        if (persistentState.clearRecordedPlayer(player.getUuid())) {
+        if (persistentState.clearRecordedPlayer(player.getUUID())) {
             persistentState.save(server);
         }
     }
 
-    private void handlePlayerDisconnect(ServerPlayNetworkHandler handler, MinecraftServer server) {
+    private void handlePlayerDisconnect(ServerGamePacketListenerImpl handler, MinecraftServer server) {
         if (persistentState == null) {
             return;
         }
 
-        ServerPlayerEntity player = handler.player;
-        pendingVanillaEndRedirects.remove(player.getUuid());
-        RegistryKey<World> worldKey = player.getCommandSource().getWorld().getRegistryKey();
+        ServerPlayer player = handler.player;
+        observedPlayerWorlds.remove(player.getUUID());
+        pendingVanillaEndRedirects.remove(player.getUUID());
+        ResourceKey<Level> worldKey = player.createCommandSourceStack().getLevel().dimension();
 
         boolean managedEnd = PortalInterceptor.isManagedEndDimension(worldKey);
         EnderFightMod.LOGGER.info("Player {} disconnecting from world {} (managedEnd={})",
-            player.getName().getString(), worldKey.getValue(), managedEnd);
+            player.getName().getString(), worldKey.identifier(), managedEnd);
 
         tryRemoveFromDragonBossBar(player);
 
         boolean changed;
         if (managedEnd) {
-            persistentState.recordPlayerLoggedOutInEnd(player.getUuid(), worldKey);
-            EnderFightMod.LOGGER.info("Recorded {} as offline-in-End for {}", player.getName().getString(), worldKey.getValue());
+            persistentState.recordPlayerLoggedOutInEnd(player.getUUID(), worldKey);
+            EnderFightMod.LOGGER.info("Recorded {} as offline-in-End for {}", player.getName().getString(), worldKey.identifier());
             changed = true;
         } else {
-            changed = persistentState.clearRecordedPlayer(player.getUuid());
+            changed = persistentState.clearRecordedPlayer(player.getUUID());
             if (changed) {
                 EnderFightMod.LOGGER.info("Cleared offline End record for {} after disconnect outside End", player.getName().getString());
             }
@@ -799,17 +827,17 @@ public class EndResetManager {
         }
     }
 
-    private void tryRemoveFromDragonBossBar(ServerPlayerEntity player) {
-        ServerWorld world = player.getCommandSource().getWorld();
+    private void tryRemoveFromDragonBossBar(ServerPlayer player) {
+        ServerLevel world = player.createCommandSourceStack().getLevel();
         if (world == null) {
             return;
         }
-        EnderDragonFight fight = world.getEnderDragonFight();
+        EnderDragonFight fight = world.getDragonFight();
         if (fight == null) {
             return;
         }
 
-        ServerBossBar bossBar = resolveDragonBossBar(fight);
+        ServerBossEvent bossBar = resolveDragonBossBar(fight);
         if (bossBar == null) {
             return;
         }
@@ -820,7 +848,7 @@ public class EndResetManager {
         }
     }
 
-    private ServerBossBar resolveDragonBossBar(EnderDragonFight fight) {
+    private ServerBossEvent resolveDragonBossBar(EnderDragonFight fight) {
         if (fight == null) {
             return null;
         }
@@ -831,7 +859,7 @@ public class EndResetManager {
                 dragonBossBarField.setAccessible(true);
             }
             Object value = dragonBossBarField.get(fight);
-            if (value instanceof ServerBossBar bossBar) {
+            if (value instanceof ServerBossEvent bossBar) {
                 return bossBar;
             }
         } catch (ReflectiveOperationException ex) {
@@ -840,64 +868,64 @@ public class EndResetManager {
         return null;
     }
 
-    public RegistryKey<World> getActiveEndWorldKey() {
-        return activeEndWorldKey == null ? World.END : activeEndWorldKey;
+    public ResourceKey<Level> getActiveEndWorldKey() {
+        return activeEndWorldKey == null ? Level.END : activeEndWorldKey;
     }
 
-    public ServerWorld getActiveEndWorld(MinecraftServer server) {
-        return server.getWorld(getActiveEndWorldKey());
+    public ServerLevel getActiveEndWorld(MinecraftServer server) {
+        return server.getLevel(getActiveEndWorldKey());
     }
 
     private void ensureActiveEndWorld(MinecraftServer server) {
         if (activeEndWorldKey == null) {
-            activeEndWorldKey = World.END;
+            activeEndWorldKey = Level.END;
         }
-        if (activeEndWorldKey.equals(World.END)) {
+        if (activeEndWorldKey.equals(Level.END)) {
             return;
         }
-        ServerWorld existingWorld = server.getWorld(activeEndWorldKey);
+        ServerLevel existingWorld = server.getLevel(activeEndWorldKey);
         if (existingWorld != null) {
-            EnderFightMod.LOGGER.debug("Existing End world {} detected on startup; ensuring spawn platform and dragon fight", activeEndWorldKey.getValue());
+            EnderFightMod.LOGGER.debug("Existing End world {} detected on startup; ensuring spawn platform and dragon fight", activeEndWorldKey.identifier());
             ensureEndSpawnPlatform(existingWorld);
-            initializeEndDragonFight(existingWorld);
+            initializeEnderDragonFight(existingWorld);
             return;
         }
 
-        MutableRegistry<DimensionOptions> dimensionRegistry = locateDimensionRegistry(server);
+        WritableRegistry<LevelStem> dimensionRegistry = locateDimensionRegistry(server);
         if (dimensionRegistry == null) {
             EnderFightMod.LOGGER.warn("Unable to locate dimension registry; falling back to vanilla End");
-            activeEndWorldKey = World.END;
+            activeEndWorldKey = Level.END;
             return;
         }
 
-        DimensionOptions template = dimensionRegistry.get(DimensionOptions.END);
+        LevelStem template = dimensionRegistry.getValue(LevelStem.END);
         if (template == null) {
             EnderFightMod.LOGGER.warn("Missing template End dimension options; unable to restore custom End");
-            activeEndWorldKey = World.END;
+            activeEndWorldKey = Level.END;
             return;
         }
 
         long seed = persistentState.getCurrentEndSeed();
-        NoiseChunkGenerator generator = createEndChunkGenerator(server, seed);
+        NoiseBasedChunkGenerator generator = createEndChunkGenerator(server, seed);
         if (generator == null) {
-            activeEndWorldKey = World.END;
+            activeEndWorldKey = Level.END;
             return;
         }
 
-        DimensionOptions options = new DimensionOptions(template.dimensionTypeEntry(), generator);
+        LevelStem options = new LevelStem(template.type(), generator);
         registerDimensionOptions(dimensionRegistry, activeEndWorldKey, options);
 
         MinecraftServerAccessor accessor = (MinecraftServerAccessor) server;
-        ServerWorld newWorld = instantiateEndWorld(server, accessor, activeEndWorldKey, options, seed);
+        ServerLevel newWorld = instantiateEndWorld(server, accessor, activeEndWorldKey, options, seed);
         accessor.getWorlds().put(activeEndWorldKey, newWorld);
-        initializeEndDragonFight(newWorld);
+        initializeEnderDragonFight(newWorld);
     }
 
     public BlockPos getEndSpawnPlatformBase() {
         return END_PLATFORM_BASE;
     }
 
-    public Vec3d getEndSpawnLocation() {
+    public Vec3 getEndSpawnLocation() {
         return END_PLATFORM_SPAWN;
     }
 
@@ -905,49 +933,49 @@ public class EndResetManager {
         return END_PLATFORM_YAW;
     }
 
-    public void ensureEndSpawnPlatform(ServerWorld world) {
+    public void ensureEndSpawnPlatform(ServerLevel world) {
         BlockPos base = END_PLATFORM_BASE;
         world.getChunk(base.getX() >> 4, base.getZ() >> 4);
 
-        BlockState obsidian = Blocks.OBSIDIAN.getDefaultState();
-        BlockState air = Blocks.AIR.getDefaultState();
-        BlockPos.Mutable mutable = new BlockPos.Mutable();
+        BlockState obsidian = Blocks.OBSIDIAN.defaultBlockState();
+        BlockState air = Blocks.AIR.defaultBlockState();
+        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
 
         for (int dx = -2; dx <= 2; dx++) {
             for (int dz = -2; dz <= 2; dz++) {
                 mutable.set(base.getX() + dx, base.getY(), base.getZ() + dz);
-                world.setBlockState(mutable, obsidian);
+                world.setBlockAndUpdate(mutable, obsidian);
 
                 for (int dy = 1; dy <= 4; dy++) {
                     mutable.set(base.getX() + dx, base.getY() + dy, base.getZ() + dz);
-                    world.setBlockState(mutable, air);
+                    world.setBlockAndUpdate(mutable, air);
                 }
             }
         }
 
-        EnderFightMod.LOGGER.debug("Ensured obsidian platform at {} in {}", base, world.getRegistryKey().getValue());
+        EnderFightMod.LOGGER.debug("Ensured obsidian platform at {} in {}", base, world.dimension().identifier());
     }
 
-    private boolean rebuildEndWorld(MinecraftServer server, ServerWorld oldWorld, RegistryKey<World> oldKey, long newSeed) {
-        MutableRegistry<DimensionOptions> dimensionRegistry = locateDimensionRegistry(server);
+    private boolean rebuildEndWorld(MinecraftServer server, ServerLevel oldWorld, ResourceKey<Level> oldKey, long newSeed) {
+        WritableRegistry<LevelStem> dimensionRegistry = locateDimensionRegistry(server);
         if (dimensionRegistry == null) {
             EnderFightMod.LOGGER.warn("Unable to access dimension registry; End seed unchanged");
             return false;
         }
 
-        DimensionOptions template = dimensionRegistry.get(DimensionOptions.END);
+        LevelStem template = dimensionRegistry.getValue(LevelStem.END);
         if (template == null) {
             EnderFightMod.LOGGER.warn("Dimension registry does not contain the End template; aborting reseed");
             return false;
         }
 
-        NoiseChunkGenerator generator = createEndChunkGenerator(server, newSeed);
+        NoiseBasedChunkGenerator generator = createEndChunkGenerator(server, newSeed);
         if (generator == null) {
             return false;
         }
 
-        DimensionOptions newOptions = new DimensionOptions(template.dimensionTypeEntry(), generator);
-        RegistryKey<World> newWorldKey = createNextDimensionKey(newSeed);
+        LevelStem newOptions = new LevelStem(template.type(), generator);
+        ResourceKey<Level> newWorldKey = createNextDimensionKey(newSeed);
 
         MinecraftServerAccessor accessor = (MinecraftServerAccessor) server;
 
@@ -968,11 +996,11 @@ public class EndResetManager {
             // Remove old chunk data so the new seed takes effect.
             deleteWorldDirectory(server, oldKey);
 
-            ServerWorld newWorld = instantiateEndWorld(server, accessor, oldKey, newOptions, newSeed);
+            ServerLevel newWorld = instantiateEndWorld(server, accessor, oldKey, newOptions, newSeed);
             EnderFightMod.LOGGER.info("Rebuilt End world {} with requested seed {}, actual world seed: {}",
-                oldKey.getValue(), newSeed, newWorld.getSeed());
+                oldKey.identifier(), newSeed, newWorld.getSeed());
             accessor.getWorlds().put(oldKey, newWorld);
-            initializeEndDragonFight(newWorld);
+            initializeEnderDragonFight(newWorld);
 
             activeEndWorldKey = oldKey;
             return true;
@@ -981,11 +1009,11 @@ public class EndResetManager {
         // Legacy path: different keys.
         registerDimensionOptions(dimensionRegistry, newWorldKey, newOptions);
 
-        ServerWorld newWorld = instantiateEndWorld(server, accessor, newWorldKey, newOptions, newSeed);
+        ServerLevel newWorld = instantiateEndWorld(server, accessor, newWorldKey, newOptions, newSeed);
         EnderFightMod.LOGGER.info("Created End world {} with requested seed {}, actual world seed: {}",
-            newWorldKey.getValue(), newSeed, newWorld.getSeed());
+            newWorldKey.identifier(), newSeed, newWorld.getSeed());
         accessor.getWorlds().put(newWorldKey, newWorld);
-        initializeEndDragonFight(newWorld);
+        initializeEnderDragonFight(newWorld);
 
         try {
             oldWorld.close();
@@ -1001,30 +1029,30 @@ public class EndResetManager {
         return true;
     }
 
-    private void unregisterStaleEndDimensions(MinecraftServer server, RegistryKey<World> activeKeyToKeep) {
-        MutableRegistry<DimensionOptions> dimensionRegistry = locateDimensionRegistry(server);
+    private void unregisterStaleEndDimensions(MinecraftServer server, ResourceKey<Level> activeKeyToKeep) {
+        WritableRegistry<LevelStem> dimensionRegistry = locateDimensionRegistry(server);
         if (dimensionRegistry == null) {
             return;
         }
 
         String keepPath = null;
-        if (activeKeyToKeep != null && activeKeyToKeep.getValue() != null && EnderFightMod.MOD_ID.equals(activeKeyToKeep.getValue().getNamespace())) {
-            keepPath = activeKeyToKeep.getValue().getPath();
+        if (activeKeyToKeep != null && activeKeyToKeep.identifier() != null && EnderFightMod.MOD_ID.equals(activeKeyToKeep.identifier().getNamespace())) {
+            keepPath = activeKeyToKeep.identifier().getPath();
         }
 
         final String keepPathFinal = keepPath;
 
-        List<RegistryKey<World>> toRemove = new ArrayList<>();
-        if (dimensionRegistry instanceof SimpleRegistry<DimensionOptions> simpleRegistry) {
+        List<ResourceKey<Level>> toRemove = new ArrayList<>();
+        if (dimensionRegistry instanceof MappedRegistry<LevelStem> simpleRegistry) {
             @SuppressWarnings("unchecked")
-            SimpleRegistryAccessor<DimensionOptions> accessor = (SimpleRegistryAccessor<DimensionOptions>) (Object) simpleRegistry;
+            SimpleRegistryAccessor<LevelStem> accessor = (SimpleRegistryAccessor<LevelStem>) (Object) simpleRegistry;
 
             for (Object keyObj : accessor.getKeyToEntry().keySet()) {
-                if (!(keyObj instanceof RegistryKey<?> dimKey)) {
+                if (!(keyObj instanceof ResourceKey<?> dimKey)) {
                     continue;
                 }
 
-                Identifier id = dimKey.getValue();
+                Identifier id = dimKey.identifier();
                 if (id == null) {
                     continue;
                 }
@@ -1038,7 +1066,7 @@ public class EndResetManager {
                 if (keepPathFinal != null && keepPathFinal.equals(path)) {
                     continue;
                 }
-                toRemove.add(RegistryKey.of(RegistryKeys.WORLD, id));
+                toRemove.add(ResourceKey.create(Registries.DIMENSION, id));
             }
         } else {
             EnderFightMod.LOGGER.warn("Dimension registry is not a SimpleRegistry; cannot unregister stale dimension defs safely");
@@ -1053,13 +1081,13 @@ public class EndResetManager {
         int removedDimensions = 0;
 
         MinecraftServerAccessor accessor = (MinecraftServerAccessor) server;
-        for (RegistryKey<World> key : toRemove) {
-            ServerWorld world = accessor.getWorlds().get(key);
+        for (ResourceKey<Level> key : toRemove) {
+            ServerLevel world = accessor.getWorlds().get(key);
             if (world != null) {
                 try {
                     world.close();
                 } catch (IOException ex) {
-                    EnderFightMod.LOGGER.debug("Error closing stale End world {} during shutdown", key.getValue(), ex);
+                    EnderFightMod.LOGGER.debug("Error closing stale End world {} during shutdown", key.identifier(), ex);
                 }
                 accessor.getWorlds().remove(key);
                 WorldSeedOverrides.removeSeedOverride(key);
@@ -1082,19 +1110,19 @@ public class EndResetManager {
         );
     }
 
-    private boolean unregisterDimensionOptions(MutableRegistry<DimensionOptions> registry, RegistryKey<World> worldKey) {
+    private boolean unregisterDimensionOptions(WritableRegistry<LevelStem> registry, ResourceKey<Level> worldKey) {
         if (registry == null || worldKey == null) {
             return false;
         }
 
-        RegistryKey<DimensionOptions> dimensionKey = RegistryKey.of(RegistryKeys.DIMENSION, worldKey.getValue());
-        if (!registry.contains(dimensionKey)) {
+        ResourceKey<LevelStem> dimensionKey = ResourceKey.create(Registries.LEVEL_STEM, worldKey.identifier());
+        if (!registry.containsKey(dimensionKey)) {
             return false;
         }
 
-        if (registry instanceof SimpleRegistry<DimensionOptions> simpleRegistry) {
+        if (registry instanceof MappedRegistry<LevelStem> simpleRegistry) {
             @SuppressWarnings("unchecked")
-            SimpleRegistryAccessor<DimensionOptions> accessor = (SimpleRegistryAccessor<DimensionOptions>) (Object) simpleRegistry;
+            SimpleRegistryAccessor<LevelStem> accessor = (SimpleRegistryAccessor<LevelStem>) (Object) simpleRegistry;
             boolean wasFrozen = accessor.getFrozen();
             if (wasFrozen) {
                 accessor.setFrozen(false);
@@ -1102,22 +1130,22 @@ public class EndResetManager {
             try {
                 // SimpleRegistry has no public removal API in this version; remove the entry from the backing maps.
                 @SuppressWarnings("unchecked")
-                Map<RegistryKey<DimensionOptions>, RegistryEntry.Reference<DimensionOptions>> keyToEntry =
-                    (Map<RegistryKey<DimensionOptions>, RegistryEntry.Reference<DimensionOptions>>) (Map<?, ?>) accessor.getKeyToEntry();
+                Map<ResourceKey<LevelStem>, Holder.Reference<LevelStem>> keyToEntry =
+                    (Map<ResourceKey<LevelStem>, Holder.Reference<LevelStem>>) (Map<?, ?>) accessor.getKeyToEntry();
 
                 @SuppressWarnings("unchecked")
-                Map<Identifier, RegistryEntry.Reference<DimensionOptions>> idToEntry =
-                    (Map<Identifier, RegistryEntry.Reference<DimensionOptions>>) (Map<?, ?>) accessor.getIdToEntry();
+                Map<Identifier, Holder.Reference<LevelStem>> idToEntry =
+                    (Map<Identifier, Holder.Reference<LevelStem>>) (Map<?, ?>) accessor.getIdToEntry();
 
-                RegistryEntry.Reference<DimensionOptions> removed = keyToEntry.remove(dimensionKey);
-                idToEntry.remove(worldKey.getValue());
+                Holder.Reference<LevelStem> removed = keyToEntry.remove(dimensionKey);
+                idToEntry.remove(worldKey.identifier());
 
                 if (removed != null) {
-                    DimensionOptions value = removed.value();
+                    LevelStem value = removed.value();
                     int rawId = accessor.getEntryToRawId().getInt(value);
                     accessor.getEntryToRawId().removeInt(value);
                     accessor.getValueToEntry().remove(value);
-                    Map<DimensionOptions, RegistryEntry.Reference<DimensionOptions>> intrusive = accessor.getIntrusiveValueToEntry();
+                    Map<LevelStem, Holder.Reference<LevelStem>> intrusive = accessor.getIntrusiveValueToEntry();
                     if (intrusive != null) {
                         intrusive.remove(value);
                     }
@@ -1127,22 +1155,22 @@ public class EndResetManager {
                     accessor.setFrozen(true);
                 }
             }
-            return !registry.contains(dimensionKey);
+            return !registry.containsKey(dimensionKey);
         }
 
         // Non-SimpleRegistry implementations cannot be safely mutated here.
         return false;
     }
 
-    private void replaceDimensionOptionsInPlace(MutableRegistry<DimensionOptions> registry,
-                                                RegistryKey<World> worldKey,
-                                                DimensionOptions newOptions) {
+    private void replaceDimensionOptionsInPlace(WritableRegistry<LevelStem> registry,
+                                                ResourceKey<Level> worldKey,
+                                                LevelStem newOptions) {
         if (registry == null || worldKey == null || newOptions == null) {
             return;
         }
 
-        RegistryKey<DimensionOptions> dimensionKey = RegistryKey.of(RegistryKeys.DIMENSION, worldKey.getValue());
-        if (!(registry instanceof SimpleRegistry<DimensionOptions> simpleRegistry)) {
+        ResourceKey<LevelStem> dimensionKey = ResourceKey.create(Registries.LEVEL_STEM, worldKey.identifier());
+        if (!(registry instanceof MappedRegistry<LevelStem> simpleRegistry)) {
             // Fallback: best-effort. (Should not happen in normal dedicated server runtime.)
             unregisterDimensionOptions(registry, worldKey);
             registerDimensionOptions(registry, worldKey, newOptions);
@@ -1150,32 +1178,32 @@ public class EndResetManager {
         }
 
         @SuppressWarnings("unchecked")
-        SimpleRegistryAccessor<DimensionOptions> accessor = (SimpleRegistryAccessor<DimensionOptions>) (Object) simpleRegistry;
+        SimpleRegistryAccessor<LevelStem> accessor = (SimpleRegistryAccessor<LevelStem>) (Object) simpleRegistry;
         boolean wasFrozen = accessor.getFrozen();
         if (wasFrozen) {
             accessor.setFrozen(false);
         }
         try {
             @SuppressWarnings("unchecked")
-            Map<RegistryKey<DimensionOptions>, RegistryEntry.Reference<DimensionOptions>> keyToEntry =
-                (Map<RegistryKey<DimensionOptions>, RegistryEntry.Reference<DimensionOptions>>) (Map<?, ?>) accessor.getKeyToEntry();
+            Map<ResourceKey<LevelStem>, Holder.Reference<LevelStem>> keyToEntry =
+                (Map<ResourceKey<LevelStem>, Holder.Reference<LevelStem>>) (Map<?, ?>) accessor.getKeyToEntry();
 
-            RegistryEntry.Reference<DimensionOptions> existing = keyToEntry.get(dimensionKey);
+            Holder.Reference<LevelStem> existing = keyToEntry.get(dimensionKey);
             if (existing == null) {
                 // Not present yet.
                 registerDimensionOptions(registry, worldKey, newOptions);
                 return;
             }
 
-            DimensionOptions oldValue = existing.value();
+            LevelStem oldValue = existing.value();
 
             // Update the reference value (no new entries created).
-            SimpleRegistryAccessor.invokeSetValue(newOptions, existing);
+            ((HolderReferenceAccessor<LevelStem>) (Object) existing).enderfight$bindValue(newOptions);
 
             // Keep maps consistent.
             accessor.getValueToEntry().remove(oldValue);
             accessor.getValueToEntry().put(newOptions, existing);
-            Map<DimensionOptions, RegistryEntry.Reference<DimensionOptions>> intrusive = accessor.getIntrusiveValueToEntry();
+            Map<LevelStem, Holder.Reference<LevelStem>> intrusive = accessor.getIntrusiveValueToEntry();
             if (intrusive != null) {
                 intrusive.remove(oldValue);
                 intrusive.put(newOptions, existing);
@@ -1191,13 +1219,13 @@ public class EndResetManager {
         }
     }
 
-    private void rebuildDimensionRegistryIndices(MutableRegistry<DimensionOptions> registry) {
-        if (!(registry instanceof SimpleRegistry<DimensionOptions> simpleRegistry)) {
+    private void rebuildDimensionRegistryIndices(WritableRegistry<LevelStem> registry) {
+        if (!(registry instanceof MappedRegistry<LevelStem> simpleRegistry)) {
             return;
         }
 
         @SuppressWarnings("unchecked")
-        SimpleRegistryAccessor<DimensionOptions> accessor = (SimpleRegistryAccessor<DimensionOptions>) (Object) simpleRegistry;
+        SimpleRegistryAccessor<LevelStem> accessor = (SimpleRegistryAccessor<LevelStem>) (Object) simpleRegistry;
 
         boolean wasFrozen = accessor.getFrozen();
         if (wasFrozen) {
@@ -1207,15 +1235,15 @@ public class EndResetManager {
         try {
             // Rebuild the raw-id tables from keyToEntry, which contains exactly one entry per key.
             @SuppressWarnings("unchecked")
-            Map<RegistryKey<DimensionOptions>, RegistryEntry.Reference<DimensionOptions>> keyToEntry =
-                (Map<RegistryKey<DimensionOptions>, RegistryEntry.Reference<DimensionOptions>>) (Map<?, ?>) accessor.getKeyToEntry();
+            Map<ResourceKey<LevelStem>, Holder.Reference<LevelStem>> keyToEntry =
+                (Map<ResourceKey<LevelStem>, Holder.Reference<LevelStem>>) (Map<?, ?>) accessor.getKeyToEntry();
 
-            ArrayList<RegistryEntry.Reference<DimensionOptions>> entries = new ArrayList<>(keyToEntry.values());
+            ArrayList<Holder.Reference<LevelStem>> entries = new ArrayList<>(keyToEntry.values());
             entries.sort(Comparator.comparing(ref -> {
                 if (ref == null) {
                     return "";
                 }
-                return String.valueOf(ref.registryKey().getValue());
+                return String.valueOf(ref.key().identifier());
             }));
 
             accessor.getRawIdToEntry().clear();
@@ -1223,30 +1251,30 @@ public class EndResetManager {
             accessor.getValueToEntry().clear();
 
             @SuppressWarnings("unchecked")
-            Map<Identifier, RegistryEntry.Reference<DimensionOptions>> idToEntry =
-                (Map<Identifier, RegistryEntry.Reference<DimensionOptions>>) (Map<?, ?>) accessor.getIdToEntry();
+            Map<Identifier, Holder.Reference<LevelStem>> idToEntry =
+                (Map<Identifier, Holder.Reference<LevelStem>>) (Map<?, ?>) accessor.getIdToEntry();
             idToEntry.clear();
 
-            Map<DimensionOptions, RegistryEntry.Reference<DimensionOptions>> intrusive = accessor.getIntrusiveValueToEntry();
+            Map<LevelStem, Holder.Reference<LevelStem>> intrusive = accessor.getIntrusiveValueToEntry();
             if (intrusive != null) {
                 intrusive.clear();
             }
 
             for (int rawId = 0; rawId < entries.size(); rawId++) {
-                RegistryEntry.Reference<DimensionOptions> ref = entries.get(rawId);
+                Holder.Reference<LevelStem> ref = entries.get(rawId);
                 if (ref == null) {
                     continue;
                 }
 
                 accessor.getRawIdToEntry().add(ref);
 
-                DimensionOptions value = ref.value();
+                LevelStem value = ref.value();
                 accessor.getEntryToRawId().put(value, rawId);
                 accessor.getValueToEntry().put(value, ref);
                 if (intrusive != null) {
                     intrusive.put(value, ref);
                 }
-                idToEntry.put(ref.registryKey().getValue(), ref);
+                idToEntry.put(ref.key().identifier(), ref);
             }
         } finally {
             if (wasFrozen) {
@@ -1255,40 +1283,40 @@ public class EndResetManager {
         }
     }
 
-    private NoiseChunkGenerator createEndChunkGenerator(MinecraftServer server, long seed) {
-        Optional<Registry<ChunkGeneratorSettings>> settingsRegistry = server.getRegistryManager().getOptional(RegistryKeys.CHUNK_GENERATOR_SETTINGS);
+    private NoiseBasedChunkGenerator createEndChunkGenerator(MinecraftServer server, long seed) {
+        Optional<Registry<NoiseGeneratorSettings>> settingsRegistry = server.registryAccess().lookup(Registries.NOISE_SETTINGS);
         if (settingsRegistry.isEmpty()) {
             EnderFightMod.LOGGER.warn("Failed to resolve chunk generator settings for End; aborting reseed");
             return null;
         }
 
-        Optional<RegistryEntry.Reference<ChunkGeneratorSettings>> settingsEntry = settingsRegistry.get().getEntry(ChunkGeneratorSettings.END.getValue());
+        Optional<Holder.Reference<NoiseGeneratorSettings>> settingsEntry = settingsRegistry.get().get(NoiseGeneratorSettings.END.identifier());
         if (settingsEntry.isEmpty()) {
             EnderFightMod.LOGGER.warn("Missing End chunk generator settings entry; aborting reseed");
             return null;
         }
 
-        RegistryWrapper.Impl<Biome> biomeLookup;
+        HolderLookup.RegistryLookup<Biome> biomeLookup;
         try {
-            biomeLookup = server.getRegistryManager().getOrThrow(RegistryKeys.BIOME);
+            biomeLookup = server.registryAccess().lookupOrThrow(Registries.BIOME);
         } catch (RuntimeException ex) {
             EnderFightMod.LOGGER.warn("Failed to resolve biome lookup for End; aborting reseed", ex);
             return null;
         }
 
-        TheEndBiomeSource endBiomeSource = TheEndBiomeSource.createVanilla(biomeLookup);
-        NoiseChunkGenerator generator = new NoiseChunkGenerator(endBiomeSource, settingsEntry.get());
+        TheEndBiomeSource endBiomeSource = TheEndBiomeSource.create(biomeLookup);
+        NoiseBasedChunkGenerator generator = new NoiseBasedChunkGenerator(endBiomeSource, settingsEntry.get());
 
-        RegistryWrapper.Impl<DoublePerlinNoiseSampler.NoiseParameters> noiseParametersLookup;
+        HolderLookup.RegistryLookup<NormalNoise.NoiseParameters> noiseParametersLookup;
         try {
-            noiseParametersLookup = server.getRegistryManager().getOrThrow(RegistryKeys.NOISE_PARAMETERS);
+            noiseParametersLookup = server.registryAccess().lookupOrThrow(Registries.NOISE);
         } catch (RuntimeException ex) {
             EnderFightMod.LOGGER.warn("Failed to resolve noise parameter lookup for End; terrain may repeat", ex);
             return generator;
         }
 
         if (((Object) generator) instanceof NoiseChunkGeneratorExtension extension) {
-            NoiseConfig customConfig = NoiseConfig.create(
+            RandomState customConfig = RandomState.create(
                 settingsEntry.get().value(),
                 noiseParametersLookup,
                 seed
@@ -1302,22 +1330,22 @@ public class EndResetManager {
         return generator;
     }
 
-    private void registerDimensionOptions(MutableRegistry<DimensionOptions> registry,
-                                          RegistryKey<World> worldKey,
-                                          DimensionOptions options) {
-        RegistryKey<DimensionOptions> dimensionKey = RegistryKey.of(RegistryKeys.DIMENSION, worldKey.getValue());
-        if (registry.contains(dimensionKey)) {
+    private void registerDimensionOptions(WritableRegistry<LevelStem> registry,
+                                          ResourceKey<Level> worldKey,
+                                          LevelStem options) {
+        ResourceKey<LevelStem> dimensionKey = ResourceKey.create(Registries.LEVEL_STEM, worldKey.identifier());
+        if (registry.containsKey(dimensionKey)) {
             return;
         }
-        if (registry instanceof SimpleRegistry<DimensionOptions> simpleRegistry) {
+        if (registry instanceof MappedRegistry<LevelStem> simpleRegistry) {
             @SuppressWarnings("unchecked")
-            SimpleRegistryAccessor<DimensionOptions> accessor = (SimpleRegistryAccessor<DimensionOptions>) (Object) simpleRegistry;
+            SimpleRegistryAccessor<LevelStem> accessor = (SimpleRegistryAccessor<LevelStem>) (Object) simpleRegistry;
             boolean wasFrozen = accessor.getFrozen();
             if (wasFrozen) {
                 accessor.setFrozen(false);
             }
             try {
-                simpleRegistry.add(dimensionKey, options, RegistryEntryInfo.DEFAULT);
+                simpleRegistry.register(dimensionKey, options, RegistrationInfo.BUILT_IN);
             } finally {
                 if (wasFrozen) {
                     accessor.setFrozen(true);
@@ -1325,27 +1353,26 @@ public class EndResetManager {
             }
             return;
         }
-        registry.add(dimensionKey, options, RegistryEntryInfo.DEFAULT);
+        registry.register(dimensionKey, options, RegistrationInfo.BUILT_IN);
     }
 
-    private ServerWorld instantiateEndWorld(MinecraftServer server,
+    private ServerLevel instantiateEndWorld(MinecraftServer server,
                                             MinecraftServerAccessor accessor,
-                                            RegistryKey<World> worldKey,
-                                            DimensionOptions dimensionOptions,
+                                            ResourceKey<Level> worldKey,
+                                            LevelStem dimensionOptions,
                                             long newSeed) {
         // CRITICAL: Set seed override BEFORE creating the world, as chunk generation starts immediately
         WorldSeedOverrides.setSeedOverride(worldKey, newSeed);
-        EnderFightMod.LOGGER.info("Pre-registered seed override for {}: {}", worldKey.getValue(), newSeed);
+        EnderFightMod.LOGGER.info("Pre-registered seed override for {}: {}", worldKey.identifier(), newSeed);
         
-        SaveProperties saveProperties = accessor.getSaveProperties();
-        ServerWorldProperties mainWorldProperties = saveProperties.getMainWorldProperties();
-        UnmodifiableLevelProperties derivedProperties = new UnmodifiableLevelProperties(saveProperties, mainWorldProperties);
+        WorldData saveProperties = accessor.getSaveProperties();
+        ServerLevelData mainWorldProperties = saveProperties.overworldData();
+        DerivedLevelData derivedProperties = new DerivedLevelData(saveProperties, mainWorldProperties);
         boolean debugWorld = saveProperties.isDebugWorld();
-        long hashedSeed = BiomeAccess.hashSeed(newSeed);
-        RandomSequencesState randomSequencesState = new RandomSequencesState(hashedSeed);
-        List<SpecialSpawner> spawners = ImmutableList.of();
+        long hashedSeed = BiomeManager.obfuscateSeed(newSeed);
+        List<CustomSpawner> spawners = ImmutableList.of();
 
-        ServerWorld world = new ServerWorld(
+        ServerLevel world = new ServerLevel(
             server,
             accessor.getWorkerExecutor(),
             accessor.getSession(),
@@ -1355,8 +1382,7 @@ public class EndResetManager {
             debugWorld,
             hashedSeed,
             spawners,
-            false,
-            randomSequencesState
+            false
         );
         
         // CRITICAL: Set seed override BEFORE world is fully initialized
@@ -1380,18 +1406,18 @@ public class EndResetManager {
         return world;
     }
 
-    private RegistryKey<World> createNextDimensionKey(long seed) {
+    private ResourceKey<Level> createNextDimensionKey(long seed) {
         // Use a stable custom dimension id so old dimensions do not accumulate in the world's dynamic
         // registry (which causes Minecraft to recreate empty folders every boot).
         return STABLE_END_WORLD_KEY;
     }
 
-    private RegistryKey<World> normalizeActiveEndKey(RegistryKey<World> key) {
+    private ResourceKey<Level> normalizeActiveEndKey(ResourceKey<Level> key) {
         if (key == null) {
             return STABLE_END_WORLD_KEY;
         }
 
-        Identifier id = key.getValue();
+        Identifier id = key.identifier();
         if (id == null) {
             return STABLE_END_WORLD_KEY;
         }
@@ -1408,12 +1434,12 @@ public class EndResetManager {
             return;
         }
 
-        RegistryKey<World> active = state.getActiveDimensionKey();
-        if (active == null || active.getValue() == null) {
+        ResourceKey<Level> active = state.getActiveDimensionKey();
+        if (active == null || active.identifier() == null) {
             return;
         }
 
-        Identifier id = active.getValue();
+        Identifier id = active.identifier();
         if (!EnderFightMod.MOD_ID.equals(id.getNamespace())) {
             return;
         }
@@ -1424,7 +1450,7 @@ public class EndResetManager {
             return;
         }
 
-        Path worldRoot = server.getSavePath(WorldSavePath.ROOT);
+        Path worldRoot = server.getWorldPath(LevelResource.ROOT);
         Path baseDir = worldRoot.resolve("dimensions").resolve(EnderFightMod.MOD_ID);
         Path from = baseDir.resolve(id.getPath());
         Path to = baseDir.resolve(STABLE_END_ID.getPath());
@@ -1453,28 +1479,28 @@ public class EndResetManager {
         }
     }
 
-    private MutableRegistry<DimensionOptions> locateDimensionRegistry(MinecraftServer server) {
-        CombinedDynamicRegistries<ServerDynamicRegistryType> combined = server.getCombinedDynamicRegistries();
-        DynamicRegistryManager.Immutable dimensionManager = combined.get(ServerDynamicRegistryType.DIMENSIONS);
-        Optional<Registry<DimensionOptions>> registry = dimensionManager.getOptional(RegistryKeys.DIMENSION);
+    private WritableRegistry<LevelStem> locateDimensionRegistry(MinecraftServer server) {
+        LayeredRegistryAccess<RegistryLayer> combined = server.registries();
+        RegistryAccess.Frozen dimensionManager = combined.getLayer(RegistryLayer.DIMENSIONS);
+        Optional<Registry<LevelStem>> registry = dimensionManager.lookup(Registries.LEVEL_STEM);
         if (registry.isEmpty()) {
             return null;
         }
-        if (registry.get() instanceof MutableRegistry<DimensionOptions> mutable) {
+        if (registry.get() instanceof WritableRegistry<LevelStem> mutable) {
             return mutable;
         }
-        if (registry.get() instanceof SimpleRegistry<DimensionOptions> simple) {
+        if (registry.get() instanceof MappedRegistry<LevelStem> simple) {
             return simple;
         }
         return null;
     }
 
-    private void cleanupStaleEndDimensions(MinecraftServer server, RegistryKey<World> activeKeyToKeep) {
+    private void cleanupStaleEndDimensions(MinecraftServer server, ResourceKey<Level> activeKeyToKeep) {
         if (server == null) {
             return;
         }
 
-        Path worldRoot = server.getSavePath(WorldSavePath.ROOT);
+        Path worldRoot = server.getWorldPath(LevelResource.ROOT);
         Path baseDir = worldRoot.resolve("dimensions").resolve(EnderFightMod.MOD_ID);
         if (!Files.isDirectory(baseDir)) {
             return;
@@ -1482,7 +1508,7 @@ public class EndResetManager {
 
         Path keepDir = null;
         if (activeKeyToKeep != null) {
-            Identifier activeId = activeKeyToKeep.getValue();
+            Identifier activeId = activeKeyToKeep.identifier();
             if (activeId != null && EnderFightMod.MOD_ID.equals(activeId.getNamespace())) {
                 // Avoid DimensionType#getSaveDirectory here to reduce risk of path mismatches on Windows.
                 keepDir = baseDir.resolve(activeId.getPath());
@@ -1594,9 +1620,9 @@ public class EndResetManager {
         });
     }
 
-    protected void deleteWorldDirectory(MinecraftServer server, RegistryKey<World> worldKey) {
-        Path worldRoot = server.getSavePath(WorldSavePath.ROOT);
-        Path directory = DimensionType.getSaveDirectory(worldKey, worldRoot);
+    protected void deleteWorldDirectory(MinecraftServer server, ResourceKey<Level> worldKey) {
+        Path worldRoot = server.getWorldPath(LevelResource.ROOT);
+        Path directory = DimensionType.getStorageFolder(worldKey, worldRoot);
         if (!Files.exists(directory)) {
             EnderFightMod.LOGGER.info("World folder {} missing (already clean)", directory);
             return;
@@ -1609,22 +1635,23 @@ public class EndResetManager {
     }
 
     @SuppressWarnings("deprecation")
-    private void initializeEndDragonFight(ServerWorld endWorld) {
-        if (endWorld.getEnderDragonFight() == null) {
-            EnderFightMod.LOGGER.info("Initializing ender dragon fight for {}", endWorld.getRegistryKey().getValue());
-            EnderDragonFight dragonFight = new EnderDragonFight(endWorld, endWorld.getSeed(), EnderDragonFight.Data.DEFAULT);
-            dragonFight.setSkipChunksLoadedCheck();
-            endWorld.setEnderDragonFight(dragonFight);
-            dragonFight.respawnDragon();
-            EnderFightMod.LOGGER.info("Requested dragon respawn for {}", endWorld.getRegistryKey().getValue());
+    private void initializeEnderDragonFight(ServerLevel endWorld) {
+        if (endWorld.getDragonFight() == null) {
+            EnderFightMod.LOGGER.info("Initializing ender dragon fight for {}", endWorld.dimension().identifier());
+            EnderDragonFight dragonFight = EnderDragonFight.createDefault();
+            dragonFight.init(endWorld, endWorld.getSeed(), ServerLevel.END_SPAWN_POINT);
+            dragonFight.skipArenaLoadedCheck();
+            endWorld.setDragonFight(dragonFight);
+            dragonFight.tryRespawn();
+            EnderFightMod.LOGGER.info("Requested dragon respawn for {}", endWorld.dimension().identifier());
         }
     }
 
-    private boolean hasPendingServerPortalsHandoff(ServerPlayerEntity player) {
+    private boolean hasPendingServerPortalsHandoff(ServerPlayer player) {
         try {
             Class<?> modClass = Class.forName("de.michiruf.serverportals.ServerPortalsMod");
             Method hasPending = modClass.getMethod("hasPendingPortalTeleport", java.util.UUID.class);
-            Object result = hasPending.invoke(null, player.getUuid());
+            Object result = hasPending.invoke(null, player.getUUID());
             if (result instanceof Boolean booleanResult) {
                 return booleanResult;
             }

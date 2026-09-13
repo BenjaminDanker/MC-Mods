@@ -1,8 +1,10 @@
 package com.silver.aipets.fabric.permission;
 
-import net.minecraft.server.command.ServerCommandSource;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.server.permissions.LevelBasedPermissionSet;
+import net.minecraft.server.permissions.PermissionLevel;
 
 /**
  * Named permission boundary with vanilla permission levels as a no-dependency fallback. A server
@@ -10,14 +12,15 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public final class PetPermissions {
     private static final PermissionChecker VANILLA =
-            (source, node, defaultRequiredLevel) -> source.hasPermissionLevel(defaultRequiredLevel);
+            (source, node, defaultRequiredLevel) -> source.permissions() instanceof LevelBasedPermissionSet levels
+                    && levels.level().isEqualOrHigherThan(PermissionLevel.byId(defaultRequiredLevel));
     private static final AtomicReference<PermissionChecker> CHECKER =
             new AtomicReference<>(VANILLA);
 
     private PetPermissions() {
     }
 
-    public static boolean check(ServerCommandSource source, PetPermission permission) {
+    public static boolean check(CommandSourceStack source, PetPermission permission) {
         Objects.requireNonNull(source, "source");
         Objects.requireNonNull(permission, "permission");
         return CHECKER.get().hasPermission(
@@ -34,7 +37,7 @@ public final class PetPermissions {
     @FunctionalInterface
     public interface PermissionChecker {
         boolean hasPermission(
-                ServerCommandSource source,
+                CommandSourceStack source,
                 String permissionNode,
                 int defaultRequiredLevel);
     }

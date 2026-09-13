@@ -14,11 +14,11 @@ import com.silver.aipets.fabric.entity.PetEntityData;
 import com.silver.aipets.fabric.entity.PetEntityFactory;
 import com.silver.aipets.fabric.entity.PreparedPetEntity;
 import com.silver.aipets.fabric.placement.SafePlacementFinder;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.passive.TameableEntity;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.TamableAnimal;
 import java.time.Clock;
 import java.util.Objects;
 import java.util.Optional;
@@ -46,7 +46,7 @@ public final class PetRecallCoordinator {
             Supplier<UUID> operationIds,
             Supplier<UUID> entityIds) {
         this(backendId, authority, safePlacementFinder, entityFactory, clock,
-                operationIds, entityIds, (world, entity) -> world.spawnEntity(entity));
+                operationIds, entityIds, (world, entity) -> world.addFreshEntity(entity));
     }
 
     public PetRecallCoordinator(
@@ -68,10 +68,10 @@ public final class PetRecallCoordinator {
         this.entitySpawner = Objects.requireNonNull(entitySpawner, "entitySpawner");
     }
 
-    public CompletableFuture<PetRecallOutcome> recall(ServerPlayerEntity initiatingPlayer) {
+    public CompletableFuture<PetRecallOutcome> recall(ServerPlayer initiatingPlayer) {
         Objects.requireNonNull(initiatingPlayer, "initiatingPlayer");
-        MinecraftServer server = initiatingPlayer.getEntityWorld().getServer();
-        UUID ownerUuid = initiatingPlayer.getUuid();
+        MinecraftServer server = initiatingPlayer.level().getServer();
+        UUID ownerUuid = initiatingPlayer.getUUID();
         CompletableFuture<PetRecallOutcome> outcome = new CompletableFuture<>();
         try {
             authority.findByOwner(ownerUuid).whenComplete((snapshot, failure) -> {
@@ -101,20 +101,20 @@ public final class PetRecallCoordinator {
         }
         PetAuthoritySnapshot authoritySnapshot = snapshot.orElseThrow();
         Pet pet = authoritySnapshot.pet();
-        ServerPlayerEntity player = server.getPlayerManager().getPlayer(ownerUuid);
+        ServerPlayer player = server.getPlayerList().getPlayer(ownerUuid);
         if (player == null || !player.isAlive()) {
             outcome.complete(PetRecallOutcome.of(
                     PetRecallStatus.PLAYER_CONTEXT_CHANGED, pet, null, "Owner left before recall"));
             return;
         }
-        ServerWorld world = player.getEntityWorld();
-        DimensionId dimension = DimensionId.parse(world.getRegistryKey().getValue().toString());
+        ServerLevel world = player.level();
+        DimensionId dimension = DimensionId.parse(world.dimension().identifier().toString());
         UUID entityUuid = Objects.requireNonNull(entityIds.get(), "entity ID supplier returned null");
         WorldPosition playerPosition = new WorldPosition(player.getX(), player.getY(), player.getZ());
         PreparedPetEntity prepared = entityFactory.prepare(
                 world, pet, entityUuid, playerPosition, authoritySnapshot.sleeping());
         Optional<WorldPosition> safe = safePlacementFinder.find(
-                world, prepared.entity(), player.getBlockPos());
+                world, prepared.entity(), player.blockPosition());
         if (safe.isEmpty()) {
             prepared.entity().discard();
             outcome.complete(PetRecallOutcome.of(
@@ -122,8 +122,8 @@ public final class PetRecallCoordinator {
             return;
         }
         WorldPosition target = safe.orElseThrow();
-        prepared.entity().refreshPositionAndAngles(
-                target.x(), target.y(), target.z(), player.getYaw(), 0.0F);
+        prepared.entity().snapTo(
+                target.x(), target.y(), target.z(), player.getYRot(), 0.0F);
         UUID operationId = Objects.requireNonNull(operationIds.get(), "operation ID supplier returned null");
         PetTransitions.Recall command = new PetTransitions.Recall(
                 ownerUuid, pet.recordVersion(), backendId, dimension, target,
@@ -152,9 +152,9 @@ public final class PetRecallCoordinator {
     private void completeCommit(
             MinecraftServer server,
             UUID ownerUuid,
-            ServerWorld world,
+            ServerLevel world,
             Pet before,
-            TameableEntity entity,
+            TamableAnimal entity,
             WorldPosition target,
             UUID entityUuid,
             UUID operationId,
@@ -186,8 +186,8 @@ public final class PetRecallCoordinator {
         }
         discardLoadedPreviousRepresentation(server, before);
         ((PetEntityData) entity).aipets$setRecordVersion(committed.recordVersion());
-        ServerPlayerEntity player = server.getPlayerManager().getPlayer(ownerUuid);
-        if (player == null || !player.isAlive() || player.getEntityWorld() != world) {
+        ServerPlayer player = server.getPlayerList().getPlayer(ownerUuid);
+        if (player == null || !player.isAlive() || player.level() != world) {
             entity.discard();
             compensate(committed, entityUuid, operationId, outcome, "Owner context changed");
             return;
@@ -244,7 +244,7 @@ public final class PetRecallCoordinator {
             return;
         }
         UUID oldEntityId = placed.entityUuid().orElseThrow();
-        for (ServerWorld candidateWorld : server.getWorlds()) {
+        for (ServerLevel candidateWorld : server.getAllLevels()) {
             Entity loaded = candidateWorld.getEntity(oldEntityId);
             if (loaded instanceof PetEntityData marker
                     && marker.aipets$isPet()
@@ -257,7 +257,7 @@ public final class PetRecallCoordinator {
 
     private boolean matches(
             Pet committed,
-            ServerWorld world,
+            ServerLevel world,
             WorldPosition target,
             UUID entityUuid,
             Pet before) {
@@ -265,17 +265,17 @@ public final class PetRecallCoordinator {
         return committed.petId().equals(before.petId())
                 && committed.ownerUuid().equals(before.ownerUuid())
                 && placed.backendId().equals(backendId)
-                && placed.dimensionId().toString().equals(world.getRegistryKey().getValue().toString())
+                && placed.dimensionId().toString().equals(world.dimension().identifier().toString())
                 && placed.position().equals(target)
                 && placed.entityUuid().filter(entityUuid::equals).isPresent();
     }
 
     private static void onServer(MinecraftServer server, Runnable action) {
-        if (server.isOnThread()) action.run(); else server.execute(action);
+        if (server.isSameThread()) action.run(); else server.execute(action);
     }
 
     @FunctionalInterface
     public interface EntitySpawner {
-        boolean spawn(ServerWorld world, TameableEntity entity);
+        boolean spawn(ServerLevel world, TamableAnimal entity);
     }
 }

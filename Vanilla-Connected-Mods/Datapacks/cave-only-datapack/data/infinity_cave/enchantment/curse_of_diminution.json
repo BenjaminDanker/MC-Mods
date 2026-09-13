@@ -2,8 +2,8 @@
   "description": {
     "translate": "enchantment.infinity_cave.curse_of_diminution",
     "fallback": "Curse of Diminution"
-    },
-    "exclusive_set": "#infinity_cave:exclusive_set/curses",
+  },
+  "exclusive_set": "#infinity_cave:exclusive_set/curses",
   "max_cost": {
     "base": 50,
     "per_level_above_first": 0
@@ -19,79 +19,78 @@
   ],
   "supported_items": "#minecraft:enchantable/equippable",
   "weight": 2,
-    "effects": {
-      "minecraft:attributes": [
-        {
-          "id": "ic.diminution",
-          "attribute": "minecraft:scale",
-          "amount": {
-            "type": "minecraft:linear",
-            "base": -0.25,
-            "per_level_above_first": -0.25
-          },
-          "operation": "add_multiplied_total"
+  "effects": {
+    "minecraft:attributes": [
+      {
+        "id": "ic.diminution",
+        "attribute": "minecraft:scale",
+        "amount": {
+          "type": "minecraft:linear",
+          "base": -0.25,
+          "per_level_above_first": -0.25
         },
-        {
-          "id": "ic.diminution",
-          "attribute": "minecraft:movement_speed",
-          "amount": {
-            "type": "minecraft:linear",
-            "base": -0.015,
-            "per_level_above_first": -0.015
-          },
-          "operation": "add_multiplied_total"
+        "operation": "add_multiplied_total"
+      },
+      {
+        "id": "ic.diminution",
+        "attribute": "minecraft:movement_speed",
+        "amount": {
+          "type": "minecraft:linear",
+          "base": -0.015,
+          "per_level_above_first": -0.015
         },
-        {
-          "id": "ic.diminution",
-          "attribute": "minecraft:jump_strength",
-          "amount": {
-            "type": "minecraft:linear",
-            "base": 0.05,
-            "per_level_above_first": 0.05
-          },
-          "operation": "add_multiplied_total"
+        "operation": "add_multiplied_total"
+      },
+      {
+        "id": "ic.diminution",
+        "attribute": "minecraft:jump_strength",
+        "amount": {
+          "type": "minecraft:linear",
+          "base": 0.05,
+          "per_level_above_first": 0.05
         },
-        {
-          "id": "ic.diminution",
-          "attribute": "minecraft:gravity",
-          "amount": {
-            "type": "minecraft:linear",
-            "base": -0.25,
-            "per_level_above_first": -0.25
-          },
-          "operation": "add_multiplied_total"
+        "operation": "add_multiplied_total"
+      },
+      {
+        "id": "ic.diminution",
+        "attribute": "minecraft:gravity",
+        "amount": {
+          "type": "minecraft:linear",
+          "base": -0.25,
+          "per_level_above_first": -0.25
         },
-        {
-          "id": "ic.diminution",
-          "attribute": "minecraft:entity_interaction_range",
-          "amount": {
-            "type": "minecraft:linear",
-            "base": -0.15,
-            "per_level_above_first": -0.15
-          },
-          "operation": "add_multiplied_total"
+        "operation": "add_multiplied_total"
+      },
+      {
+        "id": "ic.diminution",
+        "attribute": "minecraft:entity_interaction_range",
+        "amount": {
+          "type": "minecraft:linear",
+          "base": -0.15,
+          "per_level_above_first": -0.15
         },
-        {
-          "id": "ic.diminution",
-          "attribute": "minecraft:block_interaction_range",
-          "amount": {
-            "type": "minecraft:linear",
-            "base": -0.15,
-            "per_level_above_first": -0.15
-          },
-          "operation": "add_multiplied_total"
+        "operation": "add_multiplied_total"
+      },
+      {
+        "id": "ic.diminution",
+        "attribute": "minecraft:block_interaction_range",
+        "amount": {
+          "type": "minecraft:linear",
+          "base": -0.15,
+          "per_level_above_first": -0.15
         },
-        {
-          "id": "ic.diminution",
-          "attribute": "minecraft:safe_fall_distance",
-          "amount": {
-            "type": "minecraft:linear",
-            "base": 2,
-            "per_level_above_first": 2
-          },
-          "operation": "add_value"
-        }
-      ]
-    }
+        "operation": "add_multiplied_total"
+      },
+      {
+        "id": "ic.diminution",
+        "attribute": "minecraft:safe_fall_distance",
+        "amount": {
+          "type": "minecraft:linear",
+          "base": 2,
+          "per_level_above_first": 2
+        },
+        "operation": "add_value"
+      }
+    ]
   }
-  
+}

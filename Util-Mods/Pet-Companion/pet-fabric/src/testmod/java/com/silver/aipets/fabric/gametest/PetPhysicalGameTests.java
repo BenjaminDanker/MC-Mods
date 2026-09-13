@@ -59,47 +59,46 @@ import com.silver.aipets.service.adoption.AppearanceCatalog;
 import com.silver.aipets.service.adoption.InitialMood;
 import com.silver.aipets.service.adoption.PetRandomizer;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
+import net.minecraft.commands.CommandSource;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.Registry;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.players.PlayerList;
+import net.minecraft.util.ProblemReporter;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.SimpleContainer;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.EntityTypes;
+import net.minecraft.world.entity.TamableAnimal;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.animal.feline.Cat;
+import net.minecraft.world.entity.animal.feline.CatVariant;
+import net.minecraft.world.entity.animal.wolf.Wolf;
+import net.minecraft.world.entity.animal.wolf.WolfVariant;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.CustomData;
+import net.minecraft.world.item.component.LodestoneTracker;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.entity.HopperBlockEntity;
+import net.minecraft.world.level.storage.TagValueInput;
+import net.minecraft.world.level.storage.TagValueOutput;
+import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.phys.Vec3;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
-import net.minecraft.block.Blocks;
-import net.minecraft.block.entity.HopperBlockEntity;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.LodestoneTrackerComponent;
-import net.minecraft.component.type.NbtComponent;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.ItemEntity;
-import net.minecraft.entity.SpawnReason;
-import net.minecraft.entity.attribute.EntityAttributes;
-import net.minecraft.entity.passive.CatEntity;
-import net.minecraft.entity.passive.CatVariant;
-import net.minecraft.entity.passive.TameableEntity;
-import net.minecraft.entity.passive.WolfEntity;
-import net.minecraft.entity.passive.WolfVariant;
-import net.minecraft.inventory.SimpleInventory;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.registry.Registry;
-import net.minecraft.registry.RegistryKeys;
-import net.minecraft.server.PlayerManager;
-import net.minecraft.server.command.CommandOutput;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.screen.slot.Slot;
-import net.minecraft.storage.NbtReadView;
-import net.minecraft.storage.NbtWriteView;
-import net.minecraft.test.TestContext;
-import net.minecraft.text.Text;
-import net.minecraft.util.ActionResult;
-import net.minecraft.util.ErrorReporter;
-import net.minecraft.util.Hand;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.hit.EntityHitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.ChunkPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
-
 import java.time.Instant;
 import java.time.Clock;
 import java.time.Duration;
@@ -123,11 +122,11 @@ public final class PetPhysicalGameTests {
     private static final UUID OWNER_ID = UUID.fromString("20000000-0000-0000-0000-000000000002");
 
     @GameTest
-    public void randomizedAdoptionAppearanceMatchesRuntimeRegistries(TestContext context) {
-        ServerWorld world = context.getWorld();
+    public void randomizedAdoptionAppearanceMatchesRuntimeRegistries(GameTestHelper context) {
+        ServerLevel world = context.getLevel();
         AppearanceCatalog catalog = AppearanceCatalog.vanilla12110();
-        Registry<CatVariant> cats = world.getRegistryManager().getOrThrow(RegistryKeys.CAT_VARIANT);
-        Registry<WolfVariant> wolves = world.getRegistryManager().getOrThrow(RegistryKeys.WOLF_VARIANT);
+        Registry<CatVariant> cats = world.registryAccess().lookupOrThrow(Registries.CAT_VARIANT);
+        Registry<WolfVariant> wolves = world.registryAccess().lookupOrThrow(Registries.WOLF_VARIANT);
 
         catalog.variantsFor(PetSpecies.CAT).forEach(variant ->
                 assertRegistryContains(context, cats, variant));
@@ -143,23 +142,23 @@ public final class PetPhysicalGameTests {
             for (int sample = 0; sample < 512; sample++) {
                 AdoptionProfile profile = randomizer.generate(species, ADOPTED_AT);
                 boolean registered = switch (species) {
-                    case CAT -> cats.containsId(Identifier.of(profile.appearance().variantId().value()));
-                    case DOG -> wolves.containsId(Identifier.of(profile.appearance().variantId().value()));
+                    case CAT -> cats.containsKey(Identifier.parse(profile.appearance().variantId().value()));
+                    case DOG -> wolves.containsKey(Identifier.parse(profile.appearance().variantId().value()));
                 };
-                context.assertTrue(registered, Text.literal("Randomized variant must exist at runtime"));
+                context.assertTrue(registered, Component.literal("Randomized variant must exist at runtime"));
                 context.assertTrue(
                         APPEARANCE_RULES.scaleRange(species).contains(profile.appearance().scale()),
-                        Text.literal("Randomized scale must remain inside configured species bounds"));
+                        Component.literal("Randomized scale must remain inside configured species bounds"));
             }
         }
-        context.complete();
+        context.succeed();
     }
 
     @GameTest
-    public void factoryMaterializesExactIdentityAppearanceAndSafety(TestContext context) {
+    public void factoryMaterializesExactIdentityAppearanceAndSafety(GameTestHelper context) {
         PetEntityFactory factory = new PetEntityFactory();
-        Vec3d catPosition = context.getAbsolute(new Vec3d(1.5, 1.0, 1.5));
-        Vec3d dogPosition = context.getAbsolute(new Vec3d(3.5, 1.0, 1.5));
+        Vec3 catPosition = context.absoluteVec(new Vec3(1.5, 1.0, 1.5));
+        Vec3 dogPosition = context.absoluteVec(new Vec3(3.5, 1.0, 1.5));
         Pet catPet = pet(
                 UUID.fromString("10000000-0000-0000-0000-000000000001"),
                 PetSpecies.CAT,
@@ -174,109 +173,109 @@ public final class PetPhysicalGameTests {
                 11L);
 
         PreparedPetEntity preparedCat = factory.prepare(
-                context.getWorld(),
+                context.getLevel(),
                 catPet,
                 UUID.fromString("30000000-0000-0000-0000-000000000001"),
                 position(catPosition),
                 false);
         PreparedPetEntity preparedDog = factory.prepare(
-                context.getWorld(),
+                context.getLevel(),
                 dogPet,
                 UUID.fromString("30000000-0000-0000-0000-000000000002"),
                 position(dogPosition),
                 false);
 
-        context.assertFalse(preparedCat.compatibilityRepairRequired(), Text.literal("Known cat variant repaired"));
-        context.assertFalse(preparedDog.compatibilityRepairRequired(), Text.literal("Known dog variant repaired"));
-        context.assertTrue(context.getWorld().spawnEntity(preparedCat.entity()), Text.literal("Cat spawn failed"));
-        context.assertTrue(context.getWorld().spawnEntity(preparedDog.entity()), Text.literal("Dog spawn failed"));
+        context.assertFalse(preparedCat.compatibilityRepairRequired(), Component.literal("Known cat variant repaired"));
+        context.assertFalse(preparedDog.compatibilityRepairRequired(), Component.literal("Known dog variant repaired"));
+        context.assertTrue(context.getLevel().addFreshEntity(preparedCat.entity()), Component.literal("Cat spawn failed"));
+        context.assertTrue(context.getLevel().addFreshEntity(preparedDog.entity()), Component.literal("Dog spawn failed"));
 
         assertPhysicalPet(context, preparedCat.entity(), catPet, "minecraft:tabby");
         assertPhysicalPet(context, preparedDog.entity(), dogPet, "minecraft:ashen");
-        context.complete();
+        context.succeed();
     }
 
     @GameTest
-    public void genericScaleControlsCatAndWolfHitboxes(TestContext context) {
-        ServerWorld world = context.getWorld();
-        CatEntity smallCat = EntityType.CAT.create(world, SpawnReason.COMMAND);
-        CatEntity largeCat = EntityType.CAT.create(world, SpawnReason.COMMAND);
-        WolfEntity smallWolf = EntityType.WOLF.create(world, SpawnReason.COMMAND);
-        WolfEntity largeWolf = EntityType.WOLF.create(world, SpawnReason.COMMAND);
+    public void genericScaleControlsCatAndWolfHitboxes(GameTestHelper context) {
+        ServerLevel world = context.getLevel();
+        Cat smallCat = EntityTypes.CAT.create(world, EntitySpawnReason.COMMAND);
+        Cat largeCat = EntityTypes.CAT.create(world, EntitySpawnReason.COMMAND);
+        Wolf smallWolf = EntityTypes.WOLF.create(world, EntitySpawnReason.COMMAND);
+        Wolf largeWolf = EntityTypes.WOLF.create(world, EntitySpawnReason.COMMAND);
         context.assertTrue(smallCat != null && largeCat != null && smallWolf != null && largeWolf != null,
-                Text.literal("Minecraft failed to construct scale test entities"));
+                Component.literal("Minecraft failed to construct scale test entities"));
         setScale(smallCat, 0.5);
         setScale(largeCat, 1.25);
         setScale(smallWolf, 0.5);
         setScale(largeWolf, 1.25);
-        Vec3d smallCatPos = context.getAbsolute(new Vec3d(1.5, 1.0, 1.5));
-        Vec3d largeCatPos = context.getAbsolute(new Vec3d(3.5, 1.0, 1.5));
-        Vec3d smallWolfPos = context.getAbsolute(new Vec3d(1.5, 1.0, 3.5));
-        Vec3d largeWolfPos = context.getAbsolute(new Vec3d(3.5, 1.0, 3.5));
-        smallCat.refreshPositionAndAngles(smallCatPos.x, smallCatPos.y, smallCatPos.z, 0, 0);
-        largeCat.refreshPositionAndAngles(largeCatPos.x, largeCatPos.y, largeCatPos.z, 0, 0);
-        smallWolf.refreshPositionAndAngles(smallWolfPos.x, smallWolfPos.y, smallWolfPos.z, 0, 0);
-        largeWolf.refreshPositionAndAngles(largeWolfPos.x, largeWolfPos.y, largeWolfPos.z, 0, 0);
-        world.spawnEntity(smallCat);
-        world.spawnEntity(largeCat);
-        world.spawnEntity(smallWolf);
-        world.spawnEntity(largeWolf);
-        context.waitAndRun(1, () -> {
-            context.assertTrue(smallCat.getWidth() < largeCat.getWidth(),
-                    Text.literal("Cat generic.scale did not change hitbox width"));
-            context.assertTrue(smallCat.getHeight() < largeCat.getHeight(),
-                    Text.literal("Cat generic.scale did not change hitbox height"));
-            context.assertTrue(smallWolf.getWidth() < largeWolf.getWidth(),
-                    Text.literal("Wolf generic.scale did not change hitbox width"));
-            context.assertTrue(smallWolf.getHeight() < largeWolf.getHeight(),
-                    Text.literal("Wolf generic.scale did not change hitbox height"));
+        Vec3 smallCatPos = context.absoluteVec(new Vec3(1.5, 1.0, 1.5));
+        Vec3 largeCatPos = context.absoluteVec(new Vec3(3.5, 1.0, 1.5));
+        Vec3 smallWolfPos = context.absoluteVec(new Vec3(1.5, 1.0, 3.5));
+        Vec3 largeWolfPos = context.absoluteVec(new Vec3(3.5, 1.0, 3.5));
+        smallCat.snapTo(smallCatPos.x, smallCatPos.y, smallCatPos.z, 0, 0);
+        largeCat.snapTo(largeCatPos.x, largeCatPos.y, largeCatPos.z, 0, 0);
+        smallWolf.snapTo(smallWolfPos.x, smallWolfPos.y, smallWolfPos.z, 0, 0);
+        largeWolf.snapTo(largeWolfPos.x, largeWolfPos.y, largeWolfPos.z, 0, 0);
+        world.addFreshEntity(smallCat);
+        world.addFreshEntity(largeCat);
+        world.addFreshEntity(smallWolf);
+        world.addFreshEntity(largeWolf);
+        context.runAfterDelay(1, () -> {
+            context.assertTrue(smallCat.getBbWidth() < largeCat.getBbWidth(),
+                    Component.literal("Cat generic.scale did not change hitbox width"));
+            context.assertTrue(smallCat.getBbHeight() < largeCat.getBbHeight(),
+                    Component.literal("Cat generic.scale did not change hitbox height"));
+            context.assertTrue(smallWolf.getBbWidth() < largeWolf.getBbWidth(),
+                    Component.literal("Wolf generic.scale did not change hitbox width"));
+            context.assertTrue(smallWolf.getBbHeight() < largeWolf.getBbHeight(),
+                    Component.literal("Wolf generic.scale did not change hitbox height"));
             smallCat.discard();
             largeCat.discard();
             smallWolf.discard();
             largeWolf.discard();
-            context.complete();
+            context.succeed();
         });
     }
 
     @GameTest
-    public void identitySurvivesVanillaNbtRoundTrip(TestContext context) {
+    public void identitySurvivesVanillaNbtRoundTrip(GameTestHelper context) {
         Pet pet = pet(
                 UUID.fromString("10000000-0000-0000-0000-000000000003"),
                 PetSpecies.CAT,
                 "minecraft:calico",
                 0.72,
                 19L);
-        Vec3d absolute = context.getAbsolute(new Vec3d(2.5, 1.0, 2.5));
-        TameableEntity original = new PetEntityFactory().prepare(
-                context.getWorld(),
+        Vec3 absolute = context.absoluteVec(new Vec3(2.5, 1.0, 2.5));
+        TamableAnimal original = new PetEntityFactory().prepare(
+                context.getLevel(),
                 pet,
                 UUID.fromString("30000000-0000-0000-0000-000000000003"),
                 position(absolute),
                 true).entity();
 
-        NbtWriteView writeView = NbtWriteView.create(
-                ErrorReporter.EMPTY,
-                context.getWorld().getRegistryManager());
-        original.writeData(writeView);
+        TagValueOutput writeView = TagValueOutput.createWithContext(
+                ProblemReporter.DISCARDING,
+                context.getLevel().registryAccess());
+        original.saveWithoutId(writeView);
 
-        CatEntity restored = EntityType.CAT.create(context.getWorld(), SpawnReason.COMMAND);
-        context.assertTrue(restored != null, Text.literal("Minecraft failed to create restore target"));
-        restored.readData(NbtReadView.create(
-                ErrorReporter.EMPTY,
-                context.getWorld().getRegistryManager(),
-                writeView.getNbt()));
+        Cat restored = EntityTypes.CAT.create(context.getLevel(), EntitySpawnReason.COMMAND);
+        context.assertTrue(restored != null, Component.literal("Minecraft failed to create restore target"));
+        restored.load(TagValueInput.create(
+                ProblemReporter.DISCARDING,
+                context.getLevel().registryAccess(),
+                writeView.buildResult()));
 
         PetEntityData restoredData = (PetEntityData) restored;
         assertPhysicalPet(context, restored, pet, "minecraft:calico");
-        context.assertTrue(restoredData.aipets$isSleeping(), Text.literal("Sleeping flag changed"));
-        context.complete();
+        context.assertTrue(restoredData.aipets$isSleeping(), Component.literal("Sleeping flag changed"));
+        context.succeed();
     }
 
     @GameTest
-    public void markedPetsRejectVanillaCombatBreedingTamingAndTeleport(TestContext context) {
-        Vec3d absolute = context.getAbsolute(new Vec3d(2.5, 1.0, 2.5));
-        CatEntity pet = (CatEntity) new PetEntityFactory().prepare(
-                context.getWorld(),
+    public void markedPetsRejectVanillaCombatBreedingTamingAndTeleport(GameTestHelper context) {
+        Vec3 absolute = context.absoluteVec(new Vec3(2.5, 1.0, 2.5));
+        Cat pet = (Cat) new PetEntityFactory().prepare(
+                context.getLevel(),
                 pet(
                         UUID.fromString("10000000-0000-0000-0000-000000000004"),
                         PetSpecies.CAT,
@@ -286,9 +285,9 @@ public final class PetPhysicalGameTests {
                 UUID.fromString("30000000-0000-0000-0000-000000000004"),
                 position(absolute),
                 false).entity();
-        Vec3d dogAbsolute = context.getAbsolute(new Vec3d(5.5, 1.0, 2.5));
-        WolfEntity dog = (WolfEntity) new PetEntityFactory().prepare(
-                context.getWorld(),
+        Vec3 dogAbsolute = context.absoluteVec(new Vec3(5.5, 1.0, 2.5));
+        Wolf dog = (Wolf) new PetEntityFactory().prepare(
+                context.getLevel(),
                 pet(
                         UUID.fromString("10000000-0000-0000-0000-000000000006"),
                         PetSpecies.DOG,
@@ -298,105 +297,105 @@ public final class PetPhysicalGameTests {
                 UUID.fromString("30000000-0000-0000-0000-000000000007"),
                 position(dogAbsolute),
                 false).entity();
-        CatEntity ordinary = context.spawnMob(EntityType.CAT, new Vec3d(4.5, 1.0, 2.5));
-        context.assertTrue(context.getWorld().spawnEntity(pet), Text.literal("Marked cat spawn failed"));
-        context.assertTrue(context.getWorld().spawnEntity(dog), Text.literal("Marked dog spawn failed"));
+        Cat ordinary = context.spawnWithNoFreeWill(EntityTypes.CAT, new Vec3(4.5, 1.0, 2.5));
+        context.assertTrue(context.getLevel().addFreshEntity(pet), Component.literal("Marked cat spawn failed"));
+        context.assertTrue(context.getLevel().addFreshEntity(dog), Component.literal("Marked dog spawn failed"));
 
         float health = pet.getHealth();
-        boolean damaged = pet.damage(context.getWorld(), pet.getDamageSources().generic(), 2.0F);
-        context.assertFalse(damaged, Text.literal("Marked pet accepted damage"));
-        context.assertTrue(pet.getHealth() == health, Text.literal("Marked pet health changed"));
+        boolean damaged = pet.hurtServer(context.getLevel(), pet.damageSources().generic(), 2.0F);
+        context.assertFalse(damaged, Component.literal("Marked pet accepted damage"));
+        context.assertTrue(pet.getHealth() == health, Component.literal("Marked pet health changed"));
 
         pet.setTarget(ordinary);
-        context.assertTrue(pet.getTarget() == null, Text.literal("Marked pet accepted a target"));
+        context.assertTrue(pet.getTarget() == null, Component.literal("Marked pet accepted a target"));
         context.assertFalse(
-                pet.tryAttack(context.getWorld(), ordinary),
-                Text.literal("Marked pet attacked another entity"));
-        pet.setBreedingAge(-24_000);
-        context.assertEquals(0, pet.getBreedingAge(), Text.literal("Marked pet became a baby"));
-        pet.setLoveTicks(100);
-        context.assertEquals(0, pet.getLoveTicks(), Text.literal("Marked pet entered love mode"));
-        context.assertFalse(pet.canBreedWith(ordinary), Text.literal("Marked pet can breed"));
-        pet.setTamed(true, true);
-        context.assertFalse(pet.isTamed(), Text.literal("Marked pet entered vanilla tamed state"));
+                pet.doHurtTarget(context.getLevel(), ordinary),
+                Component.literal("Marked pet attacked another entity"));
+        pet.setAge(-24_000);
+        context.assertValueEqual(0, pet.getAge(), Component.literal("Marked pet became a baby"));
+        pet.setInLoveTime(100);
+        context.assertValueEqual(0, pet.getInLoveTime(), Component.literal("Marked pet entered love mode"));
+        context.assertFalse(pet.canMate(ordinary), Component.literal("Marked pet can breed"));
+        pet.setTame(true, true);
+        context.assertFalse(pet.isTame(), Component.literal("Marked pet entered vanilla tamed state"));
         pet.setOwner(ordinary);
-        context.assertTrue(pet.getOwnerReference() == null, Text.literal("Marked pet owner changed"));
-        context.assertFalse(pet.canBeLeashed(), Text.literal("Marked pet can be leashed"));
+        context.assertTrue(pet.getOwnerReference() == null, Component.literal("Marked pet owner changed"));
+        context.assertFalse(pet.canBeLeashed(), Component.literal("Marked pet can be leashed"));
         context.assertFalse(
-                dog.canAttackWithOwner(ordinary, pet),
-                Text.literal("Marked dog can assist owner combat"));
-        dog.setTamed(true, true);
-        context.assertFalse(dog.isTamed(), Text.literal("Marked dog entered vanilla tamed state"));
+                dog.wantsToAttack(ordinary, pet),
+                Component.literal("Marked dog can assist owner combat"));
+        dog.setTame(true, true);
+        context.assertFalse(dog.isTame(), Component.literal("Marked dog entered vanilla tamed state"));
         dog.setOwner(ordinary);
-        context.assertTrue(dog.getOwnerReference() == null, Text.literal("Marked dog owner changed"));
+        context.assertTrue(dog.getOwnerReference() == null, Component.literal("Marked dog owner changed"));
         context.assertFalse(
                 pet.shouldTryTeleportToOwner(),
-                Text.literal("Marked pet requested vanilla owner teleport"));
-        Vec3d beforeTeleportAttempt = pet.getEntityPos();
-        pet.tryTeleportToOwner();
-        context.assertEquals(
+                Component.literal("Marked pet requested vanilla owner teleport"));
+        Vec3 beforeTeleportAttempt = pet.position();
+        pet.tryToTeleportToOwner();
+        context.assertValueEqual(
                 beforeTeleportAttempt,
-                pet.getEntityPos(),
-                Text.literal("Marked pet used vanilla owner teleport"));
-        context.complete();
+                pet.position(),
+                Component.literal("Marked pet used vanilla owner teleport"));
+        context.succeed();
     }
 
     @GameTest
-    public void ordinaryCatsAndWolvesRetainVanillaBehavior(TestContext context) {
-        CatEntity ordinary = context.spawnMob(EntityType.CAT, new Vec3d(2.5, 1.0, 2.5));
-        WolfEntity ordinaryWolf = context.spawnMob(EntityType.WOLF, new Vec3d(4.5, 1.0, 2.5));
+    public void ordinaryCatsAndWolvesRetainVanillaBehavior(GameTestHelper context) {
+        Cat ordinary = context.spawnWithNoFreeWill(EntityTypes.CAT, new Vec3(2.5, 1.0, 2.5));
+        Wolf ordinaryWolf = context.spawnWithNoFreeWill(EntityTypes.WOLF, new Vec3(4.5, 1.0, 2.5));
         PetEntityData data = (PetEntityData) ordinary;
-        context.assertFalse(data.aipets$isPet(), Text.literal("Ordinary cat was marked as a pet"));
+        context.assertFalse(data.aipets$isPet(), Component.literal("Ordinary cat was marked as a pet"));
         context.assertFalse(
                 ((PetEntityData) ordinaryWolf).aipets$isPet(),
-                Text.literal("Ordinary wolf was marked as a pet"));
+                Component.literal("Ordinary wolf was marked as a pet"));
 
-        ordinary.setBreedingAge(-24_000);
-        context.assertEquals(-24_000, ordinary.getBreedingAge(), Text.literal("Ordinary cat age was intercepted"));
-        ordinary.setBreedingAge(0);
-        ordinary.setLoveTicks(100);
-        context.assertEquals(100, ordinary.getLoveTicks(), Text.literal("Ordinary cat love mode was intercepted"));
-        ordinary.setTamed(true, true);
-        context.assertTrue(ordinary.isTamed(), Text.literal("Ordinary cat taming was intercepted"));
+        ordinary.setAge(-24_000);
+        context.assertValueEqual(-24_000, ordinary.getAge(), Component.literal("Ordinary cat age was intercepted"));
+        ordinary.setAge(0);
+        ordinary.setInLoveTime(100);
+        context.assertValueEqual(100, ordinary.getInLoveTime(), Component.literal("Ordinary cat love mode was intercepted"));
+        ordinary.setTame(true, true);
+        context.assertTrue(ordinary.isTame(), Component.literal("Ordinary cat taming was intercepted"));
 
         ordinary.setInvulnerable(false);
         float health = ordinary.getHealth();
-        boolean damaged = ordinary.damage(context.getWorld(), ordinary.getDamageSources().generic(), 1.0F);
-        context.assertTrue(damaged, Text.literal("Ordinary cat damage was intercepted"));
-        context.assertTrue(ordinary.getHealth() < health, Text.literal("Ordinary cat health did not decrease"));
+        boolean damaged = ordinary.hurtServer(context.getLevel(), ordinary.damageSources().generic(), 1.0F);
+        context.assertTrue(damaged, Component.literal("Ordinary cat damage was intercepted"));
+        context.assertTrue(ordinary.getHealth() < health, Component.literal("Ordinary cat health did not decrease"));
 
-        ordinaryWolf.setBreedingAge(-24_000);
-        context.assertEquals(
+        ordinaryWolf.setAge(-24_000);
+        context.assertValueEqual(
                 -24_000,
-                ordinaryWolf.getBreedingAge(),
-                Text.literal("Ordinary wolf age was intercepted"));
-        ordinaryWolf.setBreedingAge(0);
-        ordinaryWolf.setLoveTicks(100);
-        context.assertEquals(
+                ordinaryWolf.getAge(),
+                Component.literal("Ordinary wolf age was intercepted"));
+        ordinaryWolf.setAge(0);
+        ordinaryWolf.setInLoveTime(100);
+        context.assertValueEqual(
                 100,
-                ordinaryWolf.getLoveTicks(),
-                Text.literal("Ordinary wolf love mode was intercepted"));
-        ordinaryWolf.setTamed(true, true);
-        context.assertTrue(ordinaryWolf.isTamed(), Text.literal("Ordinary wolf taming was intercepted"));
+                ordinaryWolf.getInLoveTime(),
+                Component.literal("Ordinary wolf love mode was intercepted"));
+        ordinaryWolf.setTame(true, true);
+        context.assertTrue(ordinaryWolf.isTame(), Component.literal("Ordinary wolf taming was intercepted"));
         ordinaryWolf.setOwner(ordinary);
         context.assertTrue(
                 ordinaryWolf.getOwnerReference() != null,
-                Text.literal("Ordinary wolf ownership was intercepted"));
+                Component.literal("Ordinary wolf ownership was intercepted"));
         ordinaryWolf.setInvulnerable(false);
         float wolfHealth = ordinaryWolf.getHealth();
-        boolean wolfDamaged = ordinaryWolf.damage(
-                context.getWorld(),
-                ordinaryWolf.getDamageSources().generic(),
+        boolean wolfDamaged = ordinaryWolf.hurtServer(
+                context.getLevel(),
+                ordinaryWolf.damageSources().generic(),
                 1.0F);
-        context.assertTrue(wolfDamaged, Text.literal("Ordinary wolf damage was intercepted"));
+        context.assertTrue(wolfDamaged, Component.literal("Ordinary wolf damage was intercepted"));
         context.assertTrue(
                 ordinaryWolf.getHealth() < wolfHealth,
-                Text.literal("Ordinary wolf health did not decrease"));
-        context.complete();
+                Component.literal("Ordinary wolf health did not decrease"));
+        context.succeed();
     }
 
     @GameTest
-    public void removedVariantUsesDeterministicRegistryFallback(TestContext context) {
+    public void removedVariantUsesDeterministicRegistryFallback(GameTestHelper context) {
         Pet missingVariant = pet(
                 UUID.fromString("10000000-0000-0000-0000-000000000005"),
                 PetSpecies.DOG,
@@ -404,41 +403,41 @@ public final class PetPhysicalGameTests {
                 0.60,
                 31L);
         PetEntityFactory factory = new PetEntityFactory();
-        Vec3d absolute = context.getAbsolute(new Vec3d(2.5, 1.0, 2.5));
+        Vec3 absolute = context.absoluteVec(new Vec3(2.5, 1.0, 2.5));
         PreparedPetEntity first = factory.prepare(
-                context.getWorld(),
+                context.getLevel(),
                 missingVariant,
                 UUID.fromString("30000000-0000-0000-0000-000000000005"),
                 position(absolute),
                 false);
         PreparedPetEntity second = factory.prepare(
-                context.getWorld(),
+                context.getLevel(),
                 missingVariant,
                 UUID.fromString("30000000-0000-0000-0000-000000000006"),
                 position(absolute),
                 false);
 
-        context.assertTrue(first.compatibilityRepairRequired(), Text.literal("Missing variant was not detected"));
-        context.assertEquals(
+        context.assertTrue(first.compatibilityRepairRequired(), Component.literal("Missing variant was not detected"));
+        context.assertValueEqual(
                 first.effectiveVariantId(),
                 second.effectiveVariantId(),
-                Text.literal("Compatibility fallback was not deterministic"));
-        Registry<WolfVariant> wolves = context.getWorld()
-                .getRegistryManager()
-                .getOrThrow(RegistryKeys.WOLF_VARIANT);
+                Component.literal("Compatibility fallback was not deterministic"));
+        Registry<WolfVariant> wolves = context.getLevel()
+                .registryAccess()
+                .lookupOrThrow(Registries.WOLF_VARIANT);
         context.assertTrue(
-                wolves.containsId(Identifier.of(first.effectiveVariantId().value())),
-                Text.literal("Compatibility fallback was not a runtime wolf variant"));
-        context.complete();
+                wolves.containsKey(Identifier.parse(first.effectiveVariantId().value())),
+                Component.literal("Compatibility fallback was not a runtime wolf variant"));
+        context.succeed();
     }
 
     @GameTest
-    public void safePlacementRejectsHazardsVoidSolidBlocksAndEntities(TestContext context) {
-        ServerWorld world = context.getWorld();
+    public void safePlacementRejectsHazardsVoidSolidBlocksAndEntities(GameTestHelper context) {
+        ServerLevel world = context.getLevel();
         BlockPos relativeFeet = new BlockPos(3, 1, 3);
-        BlockPos absoluteFeet = context.getAbsolutePos(relativeFeet);
-        Vec3d center = Vec3d.ofBottomCenter(absoluteFeet);
-        TameableEntity prototype = new PetEntityFactory().prepare(
+        BlockPos absoluteFeet = context.absolutePos(relativeFeet);
+        Vec3 center = Vec3.atBottomCenterOf(absoluteFeet);
+        TamableAnimal prototype = new PetEntityFactory().prepare(
                 world,
                 pet(
                         UUID.fromString("10000000-0000-0000-0000-000000000008"),
@@ -450,79 +449,79 @@ public final class PetPhysicalGameTests {
                 position(center),
                 false).entity();
         SafePlacementFinder exact = new SafePlacementFinder(0, 0);
-        Set<Long> forcedChunksBefore = Set.copyOf(world.getForcedChunks());
+        Set<Long> forcedChunksBefore = Set.copyOf(world.getForceLoadedChunks());
 
-        context.setBlockState(3, 0, 3, Blocks.STONE);
-        context.setBlockState(3, 1, 3, Blocks.AIR);
-        context.setBlockState(3, 2, 3, Blocks.AIR);
+        context.setBlock(3, 0, 3, Blocks.STONE);
+        context.setBlock(3, 1, 3, Blocks.AIR);
+        context.setBlock(3, 2, 3, Blocks.AIR);
         context.assertTrue(
                 exact.find(world, prototype, absoluteFeet).isPresent(),
-                Text.literal("Clear supported position was rejected"));
+                Component.literal("Clear supported position was rejected"));
 
-        context.setBlockState(3, 1, 3, Blocks.LAVA);
+        context.setBlock(3, 1, 3, Blocks.LAVA);
         context.assertTrue(
                 exact.find(world, prototype, absoluteFeet).isEmpty(),
-                Text.literal("Lava position was accepted"));
-        context.setBlockState(3, 1, 3, Blocks.STONE);
+                Component.literal("Lava position was accepted"));
+        context.setBlock(3, 1, 3, Blocks.STONE);
         context.assertTrue(
                 exact.find(world, prototype, absoluteFeet).isEmpty(),
-                Text.literal("Solid/suffocating position was accepted"));
-        context.setBlockState(3, 1, 3, Blocks.AIR);
-        context.setBlockState(3, 0, 3, Blocks.AIR);
+                Component.literal("Solid/suffocating position was accepted"));
+        context.setBlock(3, 1, 3, Blocks.AIR);
+        context.setBlock(3, 0, 3, Blocks.AIR);
         context.assertTrue(
                 exact.find(world, prototype, absoluteFeet).isEmpty(),
-                Text.literal("Unsupported void position was accepted"));
+                Component.literal("Unsupported void position was accepted"));
 
-        context.setBlockState(3, 0, 3, Blocks.STONE);
-        CatEntity occupant = context.spawnMob(EntityType.CAT, new Vec3d(3.5, 1.0, 3.5));
+        context.setBlock(3, 0, 3, Blocks.STONE);
+        Cat occupant = context.spawnWithNoFreeWill(EntityTypes.CAT, new Vec3(3.5, 1.0, 3.5));
         context.assertTrue(
                 exact.find(world, prototype, absoluteFeet).isEmpty(),
-                Text.literal("Entity-occupied position was accepted"));
+                Component.literal("Entity-occupied position was accepted"));
 
         for (int x = 2; x <= 4; x++) {
             for (int z = 2; z <= 4; z++) {
-                context.setBlockState(x, 0, z, Blocks.STONE);
-                context.setBlockState(x, 1, z, Blocks.AIR);
-                context.setBlockState(x, 2, z, Blocks.AIR);
+                context.setBlock(x, 0, z, Blocks.STONE);
+                context.setBlock(x, 1, z, Blocks.AIR);
+                context.setBlock(x, 2, z, Blocks.AIR);
             }
         }
         Optional<WorldPosition> nearby = new SafePlacementFinder(1, 0)
                 .find(world, prototype, absoluteFeet);
-        context.assertTrue(nearby.isPresent(), Text.literal("Nearby safe position was not found"));
+        context.assertTrue(nearby.isPresent(), Component.literal("Nearby safe position was not found"));
         context.assertFalse(
                 nearby.orElseThrow().equals(position(center)),
-                Text.literal("Finder reused the entity-occupied origin"));
-        context.assertEquals(
+                Component.literal("Finder reused the entity-occupied origin"));
+        context.assertValueEqual(
                 forcedChunksBefore,
-                Set.copyOf(world.getForcedChunks()),
-                Text.literal("Safe placement search changed forced chunks"));
+                Set.copyOf(world.getForceLoadedChunks()),
+                Component.literal("Safe placement search changed forced chunks"));
         occupant.discard();
-        context.complete();
+        context.succeed();
     }
 
     @GameTest
     @SuppressWarnings("removal")
-    public void placementAndPickupCommitOrderingAndCompensation(TestContext context) {
-        ServerWorld world = context.getWorld();
-        ServerPlayerEntity owner = context.createMockCreativeServerPlayerInWorld();
+    public void placementAndPickupCommitOrderingAndCompensation(GameTestHelper context) {
+        ServerLevel world = context.getLevel();
+        ServerPlayer owner = context.makeMockServerPlayerInLevel();
         try {
             for (int x = 1; x <= 6; x++) {
                 for (int z = 1; z <= 6; z++) {
-                    context.setBlockState(x, 0, z, Blocks.STONE);
-                    context.setBlockState(x, 1, z, Blocks.AIR);
-                    context.setBlockState(x, 2, z, Blocks.AIR);
+                    context.setBlock(x, 0, z, Blocks.STONE);
+                    context.setBlock(x, 1, z, Blocks.AIR);
+                    context.setBlock(x, 2, z, Blocks.AIR);
                 }
             }
-            Vec3d ownerPosition = context.getAbsolute(new Vec3d(3.5, 1.0, 3.5));
-            owner.refreshPositionAndAngles(ownerPosition, 0.0F, 0.0F);
-            world.getChunkManager().updatePosition(owner);
+            Vec3 ownerPosition = context.absoluteVec(new Vec3(3.5, 1.0, 3.5));
+            owner.snapTo(ownerPosition, 0.0F, 0.0F);
+            world.getChunkSource().move(owner);
 
             UUID successfulEntityId = UUID.fromString("30000000-0000-0000-0000-000000000010");
             InMemoryAuthorityGateway successAuthority = new InMemoryAuthorityGateway(
                     world,
                     pet(
                             UUID.fromString("10000000-0000-0000-0000-000000000009"),
-                            owner.getUuid(),
+                            owner.getUUID(),
                             PetSpecies.CAT,
                             "minecraft:tabby",
                             0.66,
@@ -543,25 +542,25 @@ public final class PetPhysicalGameTests {
                     successEntityIds::remove);
 
             CompletableFuture<PetPlacementOutcome> successFuture = successCoordinator.place(owner);
-            context.assertTrue(successFuture.isDone(), Text.literal("Synchronous placement did not complete"));
+            context.assertTrue(successFuture.isDone(), Component.literal("Synchronous placement did not complete"));
             PetPlacementOutcome success = successFuture.getNow(null);
-            context.assertEquals(
+            context.assertValueEqual(
                     PetPlacementStatus.PLACED,
                     success.status(),
-                    Text.literal("Commit-first placement did not succeed"));
+                    Component.literal("Commit-first placement did not succeed"));
             context.assertTrue(
                     successAuthority.entityWasAbsentAtCommit,
-                    Text.literal("Entity existed before authoritative placement commit"));
-            TameableEntity spawned = (TameableEntity) world.getEntityAnyDimension(successfulEntityId);
-            context.assertTrue(spawned != null, Text.literal("Committed physical entity was not spawned"));
-            context.assertEquals(
+                    Component.literal("Entity existed before authoritative placement commit"));
+            TamableAnimal spawned = (TamableAnimal) world.getEntityInAnyDimension(successfulEntityId);
+            context.assertTrue(spawned != null, Component.literal("Committed physical entity was not spawned"));
+            context.assertValueEqual(
                     successAuthority.current.recordVersion(),
                     ((PetEntityData) spawned).aipets$getRecordVersion(),
-                    Text.literal("Spawned entity revision is stale"));
-            context.assertEquals(
+                    Component.literal("Spawned entity revision is stale"));
+            context.assertValueEqual(
                     PlacementState.PLACED,
                     successAuthority.current.placementState(),
-                    Text.literal("Authority is not placed after successful spawn"));
+                    Component.literal("Authority is not placed after successful spawn"));
             successAuthority.sleeping = true;
             ((PetEntityData) spawned).aipets$setSleeping(true);
             PetPickupCoordinator pickupCoordinator = new PetPickupCoordinator(
@@ -571,39 +570,39 @@ public final class PetPhysicalGameTests {
                     Clock.fixed(ADOPTED_AT, ZoneOffset.UTC),
                     () -> UUID.fromString("40000000-0000-0000-0000-000000000004"));
             CompletableFuture<PetPickupOutcome> pickupFuture = pickupCoordinator.pickup(owner);
-            context.assertTrue(pickupFuture.isDone(), Text.literal("Pickup did not complete"));
+            context.assertTrue(pickupFuture.isDone(), Component.literal("Pickup did not complete"));
             PetPickupOutcome pickup = pickupFuture.getNow(null);
-            context.assertEquals(
+            context.assertValueEqual(
                     PetPickupStatus.PICKED_UP,
                     pickup.status(),
-                    Text.literal("Nearby sleeping pet was not picked up"));
-            context.assertTrue(spawned.isRemoved(), Text.literal("Pickup did not discard physical entity"));
-            context.assertEquals(
+                    Component.literal("Nearby sleeping pet was not picked up"));
+            context.assertTrue(spawned.isRemoved(), Component.literal("Pickup did not discard physical entity"));
+            context.assertValueEqual(
                     PlacementState.HELD,
                     successAuthority.current.placementState(),
-                    Text.literal("Pickup did not commit held state"));
-            context.assertEquals(
+                    Component.literal("Pickup did not commit held state"));
+            context.assertValueEqual(
                     2L,
                     successAuthority.current.recordVersion(),
-                    Text.literal("Place plus pickup should advance two revisions"));
+                    Component.literal("Place plus pickup should advance two revisions"));
 
             PetPlacementOutcome repeatedPlacement = successCoordinator.place(owner).getNow(null);
-            context.assertEquals(
+            context.assertValueEqual(
                     PetPlacementStatus.PLACED,
                     repeatedPlacement.status(),
-                    Text.literal("Repeated placement did not succeed"));
-            TameableEntity repeatedEntity =
-                    (TameableEntity) world.getEntityAnyDimension(repeatedEntityId);
-            context.assertTrue(repeatedEntity != null, Text.literal("Repeated entity is missing"));
+                    Component.literal("Repeated placement did not succeed"));
+            TamableAnimal repeatedEntity =
+                    (TamableAnimal) world.getEntityInAnyDimension(repeatedEntityId);
+            context.assertTrue(repeatedEntity != null, Component.literal("Repeated entity is missing"));
             assertPhysicalPet(context, repeatedEntity, successAuthority.current, "minecraft:tabby");
             context.assertTrue(
                     ((PetEntityData) repeatedEntity).aipets$isSleeping(),
-                    Text.literal("Pickup/place reset the authoritative sleeping state"));
+                    Component.literal("Pickup/place reset the authoritative sleeping state"));
 
-            ServerPlayerEntity otherPlayer = context.createMockCreativeServerPlayerInWorld();
+            ServerPlayer otherPlayer = context.makeMockServerPlayerInLevel();
             try {
-                otherPlayer.refreshPositionAndAngles(ownerPosition, 0.0F, 0.0F);
-                world.getChunkManager().updatePosition(otherPlayer);
+                otherPlayer.snapTo(ownerPosition, 0.0F, 0.0F);
+                world.getChunkSource().move(otherPlayer);
                 int mutationsBeforeUnauthorizedPickup = successAuthority.mutationCount;
                 PetPickupOutcome unauthorizedPickup = new PetPickupCoordinator(
                         new BackendId("gametest"),
@@ -612,17 +611,17 @@ public final class PetPhysicalGameTests {
                         Clock.fixed(ADOPTED_AT, ZoneOffset.UTC),
                         () -> UUID.fromString("40000000-0000-0000-0000-000000000008"))
                         .pickup(otherPlayer).getNow(null);
-                context.assertEquals(
+                context.assertValueEqual(
                         PetPickupStatus.NO_PET,
                         unauthorizedPickup.status(),
-                        Text.literal("Another player could resolve the owner's pet for pickup"));
-                context.assertEquals(
+                        Component.literal("Another player could resolve the owner's pet for pickup"));
+                context.assertValueEqual(
                         mutationsBeforeUnauthorizedPickup,
                         successAuthority.mutationCount,
-                        Text.literal("Unauthorized pickup reached the mutation boundary"));
+                        Component.literal("Unauthorized pickup reached the mutation boundary"));
                 context.assertFalse(
                         repeatedEntity.isRemoved(),
-                        Text.literal("Unauthorized pickup removed the owner's entity"));
+                        Component.literal("Unauthorized pickup removed the owner's entity"));
             } finally {
                 removeMockPlayer(world, otherPlayer);
             }
@@ -634,22 +633,22 @@ public final class PetPhysicalGameTests {
                     Clock.fixed(ADOPTED_AT, ZoneOffset.UTC),
                     () -> UUID.fromString("40000000-0000-0000-0000-000000000009"))
                     .pickup(owner).getNow(null);
-            context.assertEquals(
+            context.assertValueEqual(
                     PetPickupStatus.PICKED_UP,
                     repeatedPickup.status(),
-                    Text.literal("Owner could not pick up the repeated placement"));
-            context.assertTrue(repeatedEntity.isRemoved(), Text.literal("Repeated pickup left the entity"));
-            context.assertEquals(
+                    Component.literal("Owner could not pick up the repeated placement"));
+            context.assertTrue(repeatedEntity.isRemoved(), Component.literal("Repeated pickup left the entity"));
+            context.assertValueEqual(
                     4L,
                     successAuthority.current.recordVersion(),
-                    Text.literal("Two place/pickup cycles did not advance exactly four revisions"));
+                    Component.literal("Two place/pickup cycles did not advance exactly four revisions"));
 
             UUID failedEntityId = UUID.fromString("30000000-0000-0000-0000-000000000011");
             InMemoryAuthorityGateway failureAuthority = new InMemoryAuthorityGateway(
                     world,
                     pet(
                             UUID.fromString("10000000-0000-0000-0000-000000000010"),
-                            owner.getUuid(),
+                            owner.getUUID(),
                             PetSpecies.DOG,
                             "minecraft:pale",
                             0.62,
@@ -668,37 +667,37 @@ public final class PetPhysicalGameTests {
                     (ignoredWorld, ignoredEntity) -> false);
 
             CompletableFuture<PetPlacementOutcome> failureFuture = failingCoordinator.place(owner);
-            context.assertTrue(failureFuture.isDone(), Text.literal("Spawn-failure path did not complete"));
+            context.assertTrue(failureFuture.isDone(), Component.literal("Spawn-failure path did not complete"));
             PetPlacementOutcome failure = failureFuture.getNow(null);
-            context.assertEquals(
+            context.assertValueEqual(
                     PetPlacementStatus.SPAWN_FAILED_COMPENSATED,
                     failure.status(),
-                    Text.literal("Spawn failure was not compensated"));
+                    Component.literal("Spawn failure was not compensated"));
             context.assertTrue(
                     failureAuthority.entityWasAbsentAtCommit,
-                    Text.literal("Failed entity existed before authoritative commit"));
-            context.assertEquals(
+                    Component.literal("Failed entity existed before authoritative commit"));
+            context.assertValueEqual(
                     1,
                     failureAuthority.compensationCount,
-                    Text.literal("Expected one exact compensation"));
-            context.assertEquals(
+                    Component.literal("Expected one exact compensation"));
+            context.assertValueEqual(
                     PlacementState.HELD,
                     failureAuthority.current.placementState(),
-                    Text.literal("Failed spawn did not return authority to held"));
-            context.assertEquals(
+                    Component.literal("Failed spawn did not return authority to held"));
+            context.assertValueEqual(
                     2L,
                     failureAuthority.current.recordVersion(),
-                    Text.literal("Place plus compensation should advance two revisions"));
+                    Component.literal("Place plus compensation should advance two revisions"));
             context.assertTrue(
-                    world.getEntityAnyDimension(failedEntityId) == null,
-                    Text.literal("Failed placement left a physical entity"));
+                    world.getEntityInAnyDimension(failedEntityId) == null,
+                    Component.literal("Failed placement left a physical entity"));
 
             UUID farEntityId = UUID.fromString("30000000-0000-0000-0000-000000000012");
             InMemoryAuthorityGateway farAuthority = new InMemoryAuthorityGateway(
                     world,
                     pet(
                             UUID.fromString("10000000-0000-0000-0000-000000000011"),
-                            owner.getUuid(),
+                            owner.getUUID(),
                             PetSpecies.CAT,
                             "minecraft:siamese",
                             0.68,
@@ -712,16 +711,16 @@ public final class PetPhysicalGameTests {
                     () -> UUID.fromString("40000000-0000-0000-0000-000000000005"),
                     () -> farEntityId);
             PetPlacementOutcome farPlacement = farPlacementCoordinator.place(owner).getNow(null);
-            context.assertEquals(
+            context.assertValueEqual(
                     PetPlacementStatus.PLACED,
                     farPlacement.status(),
-                    Text.literal("Far-pickup fixture placement failed"));
-            TameableEntity farEntity = (TameableEntity) world.getEntityAnyDimension(farEntityId);
-            context.assertTrue(farEntity != null, Text.literal("Far-pickup fixture entity is missing"));
+                    Component.literal("Far-pickup fixture placement failed"));
+            TamableAnimal farEntity = (TamableAnimal) world.getEntityInAnyDimension(farEntityId);
+            context.assertTrue(farEntity != null, Component.literal("Far-pickup fixture entity is missing"));
 
-            Vec3d farOwnerPosition = context.getAbsolute(new Vec3d(14.5, 1.0, 3.5));
-            owner.refreshPositionAndAngles(farOwnerPosition, 0.0F, 0.0F);
-            world.getChunkManager().updatePosition(owner);
+            Vec3 farOwnerPosition = context.absoluteVec(new Vec3(14.5, 1.0, 3.5));
+            owner.snapTo(farOwnerPosition, 0.0F, 0.0F);
+            world.getChunkSource().move(owner);
             PetPickupCoordinator farPickupCoordinator = new PetPickupCoordinator(
                     new BackendId("gametest"),
                     farAuthority,
@@ -729,45 +728,45 @@ public final class PetPhysicalGameTests {
                     Clock.fixed(ADOPTED_AT, ZoneOffset.UTC),
                     () -> UUID.fromString("40000000-0000-0000-0000-000000000006"));
             PetPickupOutcome farPickup = farPickupCoordinator.pickup(owner).getNow(null);
-            context.assertEquals(
+            context.assertValueEqual(
                     PetPickupStatus.OUT_OF_RANGE,
                     farPickup.status(),
-                    Text.literal("Pickup beyond four blocks was accepted"));
-            context.assertEquals(
+                    Component.literal("Pickup beyond four blocks was accepted"));
+            context.assertValueEqual(
                     PlacementState.PLACED,
                     farAuthority.current.placementState(),
-                    Text.literal("Rejected far pickup changed authority"));
-            context.assertFalse(farEntity.isRemoved(), Text.literal("Rejected far pickup removed entity"));
+                    Component.literal("Rejected far pickup changed authority"));
+            context.assertFalse(farEntity.isRemoved(), Component.literal("Rejected far pickup removed entity"));
             farEntity.discard();
         } finally {
             removeMockPlayer(world, owner);
         }
-        context.complete();
+        context.succeed();
     }
 
     @GameTest
     @SuppressWarnings("removal")
-    public void concurrentPlacementRequestsCreateOneRepresentation(TestContext context) {
-        ServerWorld world = context.getWorld();
-        ServerPlayerEntity owner = context.createMockCreativeServerPlayerInWorld();
-        TameableEntity spawned = null;
+    public void concurrentPlacementRequestsCreateOneRepresentation(GameTestHelper context) {
+        ServerLevel world = context.getLevel();
+        ServerPlayer owner = context.makeMockServerPlayerInLevel();
+        TamableAnimal spawned = null;
         try {
             for (int x = 1; x <= 6; x++) {
                 for (int z = 1; z <= 6; z++) {
-                    context.setBlockState(x, 0, z, Blocks.STONE);
-                    context.setBlockState(x, 1, z, Blocks.AIR);
-                    context.setBlockState(x, 2, z, Blocks.AIR);
+                    context.setBlock(x, 0, z, Blocks.STONE);
+                    context.setBlock(x, 1, z, Blocks.AIR);
+                    context.setBlock(x, 2, z, Blocks.AIR);
                 }
             }
-            Vec3d ownerPosition = context.getAbsolute(new Vec3d(3.5, 1.0, 3.5));
-            owner.refreshPositionAndAngles(ownerPosition, 0.0F, 0.0F);
-            world.getChunkManager().updatePosition(owner);
+            Vec3 ownerPosition = context.absoluteVec(new Vec3(3.5, 1.0, 3.5));
+            owner.snapTo(ownerPosition, 0.0F, 0.0F);
+            world.getChunkSource().move(owner);
 
             UUID petId = UUID.fromString("10000000-0000-0000-0000-000000000095");
             UUID entityId = UUID.fromString("30000000-0000-0000-0000-000000000095");
             InMemoryAuthorityGateway authority = new InMemoryAuthorityGateway(
                     world,
-                    pet(petId, owner.getUuid(), PetSpecies.CAT,
+                    pet(petId, owner.getUUID(), PetSpecies.CAT,
                             "minecraft:tabby", 0.66, 0L));
             authority.pendingOwnerLookup = new CompletableFuture<>();
             PetPlacementCoordinator coordinator = new PetPlacementCoordinator(
@@ -778,80 +777,80 @@ public final class PetPhysicalGameTests {
 
             CompletableFuture<PetPlacementOutcome> first = coordinator.place(owner);
             CompletableFuture<PetPlacementOutcome> simultaneous = coordinator.place(owner);
-            context.assertFalse(first.isDone(), Text.literal("First placement was not held in flight"));
-            context.assertEquals(
+            context.assertFalse(first.isDone(), Component.literal("First placement was not held in flight"));
+            context.assertValueEqual(
                     PetPlacementStatus.ALREADY_IN_PROGRESS,
                     simultaneous.getNow(null).status(),
-                    Text.literal("Simultaneous placement was not locally deduplicated"));
-            context.assertEquals(
+                    Component.literal("Simultaneous placement was not locally deduplicated"));
+            context.assertValueEqual(
                     1,
                     authority.ownerLookupCount,
-                    Text.literal("Simultaneous placement made a second authority read"));
+                    Component.literal("Simultaneous placement made a second authority read"));
 
             authority.pendingOwnerLookup.complete(Optional.of(
                     new PetAuthoritySnapshot(authority.current, false, true)));
-            context.assertEquals(
+            context.assertValueEqual(
                     PetPlacementStatus.PLACED,
                     first.getNow(null).status(),
-                    Text.literal("Winning placement did not complete"));
-            context.assertEquals(
+                    Component.literal("Winning placement did not complete"));
+            context.assertValueEqual(
                     1,
                     authority.mutationCount,
-                    Text.literal("Concurrent placement reached authority more than once"));
+                    Component.literal("Concurrent placement reached authority more than once"));
 
             int representations = 0;
-            for (net.minecraft.entity.Entity entity : world.iterateEntities()) {
+            for (net.minecraft.world.entity.Entity entity : world.getAllEntities()) {
                 if (entity instanceof PetEntityData data
                         && data.aipets$isPet()
                         && petId.equals(data.aipets$getPetId())
                         && !entity.isRemoved()) {
                     representations++;
-                    spawned = (TameableEntity) entity;
+                    spawned = (TamableAnimal) entity;
                 }
             }
-            context.assertEquals(
+            context.assertValueEqual(
                     1, representations,
-                    Text.literal("Concurrent placement created duplicate representations"));
+                    Component.literal("Concurrent placement created duplicate representations"));
             context.assertTrue(
-                    world.getEntityAnyDimension(entityId) == spawned,
-                    Text.literal("The sole representation has the wrong authoritative UUID"));
+                    world.getEntityInAnyDimension(entityId) == spawned,
+                    Component.literal("The sole representation has the wrong authoritative UUID"));
         } finally {
             if (spawned != null) spawned.discard();
             removeMockPlayer(world, owner);
         }
-        context.complete();
+        context.succeed();
     }
 
     @GameTest
     @SuppressWarnings("removal")
     public void supportedPortalTransferCarriesNearPetOnlyToReservedFinalBackend(
-            TestContext context) {
-        ServerWorld world = context.getWorld();
-        ServerPlayerEntity owner = context.createMockCreativeServerPlayerInWorld();
+            GameTestHelper context) {
+        ServerLevel world = context.getLevel();
+        ServerPlayer owner = context.makeMockServerPlayerInLevel();
         try {
             for (int x = 1; x <= 6; x++) {
                 for (int z = 1; z <= 6; z++) {
-                    context.setBlockState(x, 0, z, Blocks.STONE);
-                    context.setBlockState(x, 1, z, Blocks.AIR);
-                    context.setBlockState(x, 2, z, Blocks.AIR);
+                    context.setBlock(x, 0, z, Blocks.STONE);
+                    context.setBlock(x, 1, z, Blocks.AIR);
+                    context.setBlock(x, 2, z, Blocks.AIR);
                 }
             }
-            Vec3d ownerPosition = context.getAbsolute(new Vec3d(3.5, 1.0, 3.5));
-            owner.refreshPositionAndAngles(ownerPosition, 0.0F, 0.0F);
-            world.getChunkManager().updatePosition(owner);
+            Vec3 ownerPosition = context.absoluteVec(new Vec3(3.5, 1.0, 3.5));
+            owner.snapTo(ownerPosition, 0.0F, 0.0F);
+            world.getChunkSource().move(owner);
             BackendId source = new BackendId("gametest");
             BackendId destination = new BackendId("destination");
             UUID sourceEntityId = UUID.fromString("30000000-0000-0000-0000-000000000081");
             Pet held = pet(
                     UUID.fromString("10000000-0000-0000-0000-000000000081"),
-                    owner.getUuid(), PetSpecies.CAT, "minecraft:tabby", 0.66, 0L);
+                    owner.getUUID(), PetSpecies.CAT, "minecraft:tabby", 0.66, 0L);
             Pet placed = PetTransitions.place(held, new PetTransitions.Place(
-                    owner.getUuid(), 0, source,
-                    DimensionId.parse(world.getRegistryKey().getValue().toString()),
+                    owner.getUUID(), 0, source,
+                    DimensionId.parse(world.dimension().identifier().toString()),
                     position(ownerPosition), sourceEntityId, ADOPTED_AT.plusSeconds(1))).pet();
-            TameableEntity sourceEntity = new PetEntityFactory().prepare(
+            TamableAnimal sourceEntity = new PetEntityFactory().prepare(
                     world, placed, sourceEntityId, position(ownerPosition), false).entity();
-            context.assertTrue(world.spawnEntity(sourceEntity), Text.literal("Source pet spawn failed"));
+            context.assertTrue(world.addFreshEntity(sourceEntity), Component.literal("Source pet spawn failed"));
 
             InMemoryAuthorityGateway authority = new InMemoryAuthorityGateway(world, placed);
             Queue<UUID> transferIds = new ArrayDeque<>(List.of(
@@ -867,14 +866,14 @@ public final class PetPhysicalGameTests {
                     transferIds::remove, operationIds::remove);
 
             var prepared = sourceCoordinator.prepareSource(owner, destination.value()).getNow(null);
-            context.assertEquals(PetTransferStatus.SOURCE_PREPARED, prepared.status(),
-                    Text.literal("Near pet was not reserved for transfer"));
+            context.assertValueEqual(PetTransferStatus.SOURCE_PREPARED, prepared.status(),
+                    Component.literal("Near pet was not reserved for transfer"));
             context.assertTrue(authority.entityWasPresentAtTransferCommit,
-                    Text.literal("Source entity disappeared before TRANSFERRING commit"));
-            context.assertEquals(PlacementState.TRANSFERRING,
-                    authority.current.placementState(), Text.literal("Authority is not transferring"));
+                    Component.literal("Source entity disappeared before TRANSFERRING commit"));
+            context.assertValueEqual(PlacementState.TRANSFERRING,
+                    authority.current.placementState(), Component.literal("Authority is not transferring"));
             context.assertTrue(sourceEntity.isRemoved(),
-                    Text.literal("Source entity survived successful reservation"));
+                    Component.literal("Source entity survived successful reservation"));
 
             int mutationsBeforeLobby = authority.mutationCount;
             PetTransferCoordinator waitingLobby = new PetTransferCoordinator(
@@ -883,10 +882,10 @@ public final class PetPhysicalGameTests {
                     Clock.fixed(ADOPTED_AT.plusSeconds(3), ZoneOffset.UTC),
                     UUID::randomUUID, UUID::randomUUID);
             var lobby = waitingLobby.claimDestination(owner).getNow(null);
-            context.assertEquals(PetTransferStatus.DESTINATION_NOT_RESERVED, lobby.status(),
-                    Text.literal("Waiting lobby attempted to materialize the pet"));
-            context.assertEquals(mutationsBeforeLobby, authority.mutationCount,
-                    Text.literal("Waiting lobby reached transfer mutation authority"));
+            context.assertValueEqual(PetTransferStatus.DESTINATION_NOT_RESERVED, lobby.status(),
+                    Component.literal("Waiting lobby attempted to materialize the pet"));
+            context.assertValueEqual(mutationsBeforeLobby, authority.mutationCount,
+                    Component.literal("Waiting lobby reached transfer mutation authority"));
 
             PetTransferCoordinator destinationCoordinator = new PetTransferCoordinator(
                     destination, authority,
@@ -894,50 +893,50 @@ public final class PetPhysicalGameTests {
                     Clock.fixed(ADOPTED_AT.plusSeconds(3), ZoneOffset.UTC),
                     UUID::randomUUID, operationIds::remove);
             var claimed = destinationCoordinator.claimDestination(owner).getNow(null);
-            context.assertEquals(PetTransferStatus.DESTINATION_PLACED, claimed.status(),
-                    Text.literal("Final backend did not claim reserved transfer"));
-            context.assertEquals(PlacementState.PLACED, authority.current.placementState(),
-                    Text.literal("Destination did not become authoritative"));
+            context.assertValueEqual(PetTransferStatus.DESTINATION_PLACED, claimed.status(),
+                    Component.literal("Final backend did not claim reserved transfer"));
+            context.assertValueEqual(PlacementState.PLACED, authority.current.placementState(),
+                    Component.literal("Destination did not become authoritative"));
             PlacedPlacement destinationPlacement = (PlacedPlacement) authority.current.placement();
-            context.assertEquals(destination, destinationPlacement.backendId(),
-                    Text.literal("Pet was placed on the wrong backend"));
-            TameableEntity destinationEntity = (TameableEntity) world.getEntityAnyDimension(
+            context.assertValueEqual(destination, destinationPlacement.backendId(),
+                    Component.literal("Pet was placed on the wrong backend"));
+            TamableAnimal destinationEntity = (TamableAnimal) world.getEntityInAnyDimension(
                     destinationPlacement.entityUuid().orElseThrow());
             context.assertTrue(destinationEntity != null,
-                    Text.literal("Destination physical pet was not spawned"));
+                    Component.literal("Destination physical pet was not spawned"));
             assertPhysicalPet(context, destinationEntity, authority.current, "minecraft:tabby");
 
             int mutationsAfterClaim = authority.mutationCount;
             var duplicate = destinationCoordinator.claimDestination(owner).getNow(null);
-            context.assertEquals(PetTransferStatus.DESTINATION_NOT_RESERVED, duplicate.status(),
-                    Text.literal("Completed transfer was claimable twice"));
-            context.assertEquals(mutationsAfterClaim, authority.mutationCount,
-                    Text.literal("Duplicate destination join issued another mutation"));
+            context.assertValueEqual(PetTransferStatus.DESTINATION_NOT_RESERVED, duplicate.status(),
+                    Component.literal("Completed transfer was claimable twice"));
+            context.assertValueEqual(mutationsAfterClaim, authority.mutationCount,
+                    Component.literal("Duplicate destination join issued another mutation"));
             destinationEntity.discard();
 
             UUID farEntityId = UUID.fromString("30000000-0000-0000-0000-000000000083");
-            Vec3d farPosition = ownerPosition.add(20.0, 0.0, 0.0);
+            Vec3 farPosition = ownerPosition.add(20.0, 0.0, 0.0);
             Pet farHeld = pet(
                     UUID.fromString("10000000-0000-0000-0000-000000000083"),
-                    owner.getUuid(), PetSpecies.DOG, "minecraft:pale", 0.62, 0L);
+                    owner.getUUID(), PetSpecies.DOG, "minecraft:pale", 0.62, 0L);
             Pet farPlaced = PetTransitions.place(farHeld, new PetTransitions.Place(
-                    owner.getUuid(), 0, source,
-                    DimensionId.parse(world.getRegistryKey().getValue().toString()),
+                    owner.getUUID(), 0, source,
+                    DimensionId.parse(world.dimension().identifier().toString()),
                     position(farPosition), farEntityId, ADOPTED_AT.plusSeconds(1))).pet();
-            TameableEntity farEntity = new PetEntityFactory().prepare(
+            TamableAnimal farEntity = new PetEntityFactory().prepare(
                     world, farPlaced, farEntityId, position(farPosition), false).entity();
-            context.assertTrue(world.spawnEntity(farEntity), Text.literal("Far pet spawn failed"));
+            context.assertTrue(world.addFreshEntity(farEntity), Component.literal("Far pet spawn failed"));
             InMemoryAuthorityGateway farAuthority = new InMemoryAuthorityGateway(world, farPlaced);
             var far = new PetTransferCoordinator(
                     source, farAuthority, new SafePlacementFinder(2, 1), new PetEntityFactory(),
                     transferConfig, Clock.fixed(ADOPTED_AT.plusSeconds(2), ZoneOffset.UTC),
                     UUID::randomUUID, UUID::randomUUID)
                     .prepareSource(owner, destination.value()).getNow(null);
-            context.assertEquals(PetTransferStatus.LEFT_BEHIND, far.status(),
-                    Text.literal("Far pet was automatically carried"));
-            context.assertEquals(PlacementState.PLACED, farAuthority.current.placementState(),
-                    Text.literal("Far pet authority changed"));
-            context.assertFalse(farEntity.isRemoved(), Text.literal("Far pet entity was removed"));
+            context.assertValueEqual(PetTransferStatus.LEFT_BEHIND, far.status(),
+                    Component.literal("Far pet was automatically carried"));
+            context.assertValueEqual(PlacementState.PLACED, farAuthority.current.placementState(),
+                    Component.literal("Far pet authority changed"));
+            context.assertFalse(farEntity.isRemoved(), Component.literal("Far pet entity was removed"));
             farEntity.discard();
 
             InMemoryAuthorityGateway heldAuthority = new InMemoryAuthorityGateway(world, held);
@@ -946,40 +945,40 @@ public final class PetPhysicalGameTests {
                     transferConfig, Clock.fixed(ADOPTED_AT.plusSeconds(2), ZoneOffset.UTC),
                     UUID::randomUUID, UUID::randomUUID)
                     .prepareSource(owner, destination.value()).getNow(null);
-            context.assertEquals(PetTransferStatus.HELD_UNCHANGED, heldResult.status(),
-                    Text.literal("Manually held pet changed during transfer"));
+            context.assertValueEqual(PetTransferStatus.HELD_UNCHANGED, heldResult.status(),
+                    Component.literal("Manually held pet changed during transfer"));
             context.assertTrue(heldAuthority.current.placement() instanceof HeldPlacement,
-                    Text.literal("Held authority was not preserved"));
+                    Component.literal("Held authority was not preserved"));
         } finally {
             removeMockPlayer(world, owner);
         }
-        context.complete();
+        context.succeed();
     }
 
     @GameTest(maxTicks = 240)
     @SuppressWarnings("removal")
-    public void petFollowsRegisteredOwnerWithoutTeleportOrForcedChunks(TestContext context) {
-        ServerWorld world = context.getWorld();
-        ServerPlayerEntity owner = context.createMockCreativeServerPlayerInWorld();
-        TameableEntity spawned = null;
+    public void petFollowsRegisteredOwnerWithoutTeleportOrForcedChunks(GameTestHelper context) {
+        ServerLevel world = context.getLevel();
+        ServerPlayer owner = context.makeMockServerPlayerInLevel();
+        TamableAnimal spawned = null;
         try {
             for (int x = 1; x <= 24; x++) {
-                context.setBlockState(x, 0, 3, Blocks.STONE);
-                context.setBlockState(x, 1, 3, Blocks.AIR);
-                context.setBlockState(x, 2, 3, Blocks.AIR);
+                context.setBlock(x, 0, 3, Blocks.STONE);
+                context.setBlock(x, 1, 3, Blocks.AIR);
+                context.setBlock(x, 2, 3, Blocks.AIR);
             }
 
-            Vec3d ownerPosition = context.getAbsolute(new Vec3d(22.75, 1.0, 3.5));
-            owner.refreshPositionAndAngles(ownerPosition, 0.0F, 0.0F);
-            world.getChunkManager().updatePosition(owner);
+            Vec3 ownerPosition = context.absoluteVec(new Vec3(22.75, 1.0, 3.5));
+            owner.snapTo(ownerPosition, 0.0F, 0.0F);
+            world.getChunkSource().move(owner);
             context.assertTrue(
-                    world.getPlayerAnyDimension(owner.getUuid()) == owner,
-                    Text.literal("Mock owner is not registered"));
+                    world.getPlayerInAnyDimension(owner.getUUID()) == owner,
+                    Component.literal("Mock owner is not registered"));
 
-            Vec3d petPosition = context.getAbsolute(new Vec3d(1.25, 1.0, 3.5));
+            Vec3 petPosition = context.absoluteVec(new Vec3(1.25, 1.0, 3.5));
             Pet aggregate = pet(
                     UUID.fromString("10000000-0000-0000-0000-000000000007"),
-                    owner.getUuid(),
+                    owner.getUUID(),
                     PetSpecies.CAT,
                     "minecraft:black",
                     0.67,
@@ -990,11 +989,11 @@ public final class PetPhysicalGameTests {
                     UUID.fromString("30000000-0000-0000-0000-000000000008"),
                     position(petPosition),
                     false).entity();
-            context.assertTrue(world.spawnEntity(spawned), Text.literal("Following pet spawn failed"));
+            context.assertTrue(world.addFreshEntity(spawned), Component.literal("Following pet spawn failed"));
 
-            TameableEntity pet = spawned;
-            double initialSquaredDistance = pet.squaredDistanceTo(owner);
-            Vec3d[] previousPosition = {pet.getEntityPos()};
+            TamableAnimal pet = spawned;
+            double initialSquaredDistance = pet.distanceToSqr(owner);
+            Vec3[] previousPosition = {pet.position()};
             double[] maximumStepSquared = {0.0};
             double[] farMaximumStepSquared = {0.0};
             double[] nearMaximumStepSquared = {0.0};
@@ -1002,23 +1001,23 @@ public final class PetPhysicalGameTests {
             boolean[] visitedNear = {false};
             boolean[] visitedMedium = {false};
             boolean[] visitedFar = {false};
-            Vec3d[] cagedPosition = {null};
-            Vec3d[] releasedPosition = {null};
+            Vec3[] cagedPosition = {null};
+            Vec3[] releasedPosition = {null};
             java.util.List<BlockPos> cage = new java.util.ArrayList<>();
             PetPhysicalConfig movementConfig = PetPhysicalConfig.defaults();
-            Set<Long> forcedChunksBefore = Set.copyOf(world.getForcedChunks());
-            ChunkPos testChunk = new ChunkPos(context.getAbsolutePos(BlockPos.ORIGIN));
-            ChunkPos remoteSentinel = new ChunkPos(testChunk.x + 128, testChunk.z + 128);
+            Set<Long> forcedChunksBefore = Set.copyOf(world.getForceLoadedChunks());
+            ChunkPos testChunk = ChunkPos.containing(context.absolutePos(BlockPos.ZERO));
+            ChunkPos remoteSentinel = new ChunkPos(testChunk.x() + 128, testChunk.z() + 128);
             context.assertFalse(
-                    world.getChunkManager().isChunkLoaded(remoteSentinel.x, remoteSentinel.z),
-                    Text.literal("Remote sentinel chunk was already loaded"));
+                    world.getChunkSource().hasChunk(remoteSentinel.x(), remoteSentinel.z()),
+                    Component.literal("Remote sentinel chunk was already loaded"));
 
-            context.runAtEveryTick(() -> {
+            context.failIfEver(() -> {
                 if (!pet.isRemoved()) {
-                    double stepSquared = pet.getEntityPos().squaredDistanceTo(previousPosition[0]);
+                    double stepSquared = pet.position().distanceToSqr(previousPosition[0]);
                     maximumStepSquared[0] = Math.max(maximumStepSquared[0], stepSquared);
                     moved[0] |= stepSquared > 0.0025;
-                    double distanceSquared = pet.squaredDistanceTo(owner);
+                    double distanceSquared = pet.distanceToSqr(owner);
                     double selectedSpeed = movementConfig.speedForSquaredDistance(distanceSquared);
                     if (selectedSpeed == movementConfig.farSpeed()) {
                         visitedFar[0] = true;
@@ -1029,73 +1028,73 @@ public final class PetPhysicalGameTests {
                         visitedNear[0] = true;
                         nearMaximumStepSquared[0] = Math.max(nearMaximumStepSquared[0], stepSquared);
                     }
-                    previousPosition[0] = pet.getEntityPos();
+                    previousPosition[0] = pet.position();
                 }
             });
-            context.runAtTick(75, () -> {
+            context.runAtTickTime(75, () -> {
                 context.assertTrue(
-                        pet.squaredDistanceTo(owner) < initialSquaredDistance - 25.0,
-                        Text.literal("Far-speed following did not prevent routine separation"));
-                Vec3d nearOwnerPosition = pet.getEntityPos().add(6.0, 0.0, 0.0);
-                owner.refreshPositionAndAngles(nearOwnerPosition, 0.0F, 0.0F);
-                world.getChunkManager().updatePosition(owner);
+                        pet.distanceToSqr(owner) < initialSquaredDistance - 25.0,
+                        Component.literal("Far-speed following did not prevent routine separation"));
+                Vec3 nearOwnerPosition = pet.position().add(6.0, 0.0, 0.0);
+                owner.snapTo(nearOwnerPosition, 0.0F, 0.0F);
+                world.getChunkSource().move(owner);
             });
-            context.runAtTick(110, () -> {
-                BlockPos center = pet.getBlockPos();
-                cagedPosition[0] = pet.getEntityPos();
+            context.runAtTickTime(110, () -> {
+                BlockPos center = pet.blockPosition();
+                cagedPosition[0] = pet.position();
                 for (int dx = -1; dx <= 1; dx++) {
                     for (int dz = -1; dz <= 1; dz++) {
                         if (dx == 0 && dz == 0) continue;
                         for (int dy = 0; dy <= 2; dy++) {
-                            BlockPos wall = center.add(dx, dy, dz);
-                            world.setBlockState(wall, Blocks.STONE.getDefaultState());
+                            BlockPos wall = center.offset(dx, dy, dz);
+                            world.setBlockAndUpdate(wall, Blocks.STONE.defaultBlockState());
                             cage.add(wall);
                         }
                     }
                 }
-                Vec3d blockedOwnerPosition = pet.getEntityPos().add(6.0, 0.0, 0.0);
-                owner.refreshPositionAndAngles(blockedOwnerPosition, 0.0F, 0.0F);
-                world.getChunkManager().updatePosition(owner);
+                Vec3 blockedOwnerPosition = pet.position().add(6.0, 0.0, 0.0);
+                owner.snapTo(blockedOwnerPosition, 0.0F, 0.0F);
+                world.getChunkSource().move(owner);
             });
-            context.runAtTick(180, () -> {
+            context.runAtTickTime(180, () -> {
                 context.assertTrue(
-                        pet.getEntityPos().squaredDistanceTo(cagedPosition[0]) < 2.25,
-                        Text.literal("Ordinary blockage did not actually hold the pet"));
-                cage.forEach(position -> world.setBlockState(position, Blocks.AIR.getDefaultState()));
-                releasedPosition[0] = pet.getEntityPos();
+                        pet.position().distanceToSqr(cagedPosition[0]) < 2.25,
+                        Component.literal("Ordinary blockage did not actually hold the pet"));
+                cage.forEach(position -> world.setBlockAndUpdate(position, Blocks.AIR.defaultBlockState()));
+                releasedPosition[0] = pet.position();
             });
-            context.runAtTick(225, () -> {
+            context.runAtTickTime(225, () -> {
                 try {
-                    context.assertFalse(pet.isRemoved(), Text.literal("Following pet disappeared"));
-                    context.assertTrue(moved[0], Text.literal("Following pet never moved"));
+                    context.assertFalse(pet.isRemoved(), Component.literal("Following pet disappeared"));
+                    context.assertTrue(moved[0], Component.literal("Following pet never moved"));
                     context.assertTrue(
                             visitedFar[0] && visitedMedium[0] && visitedNear[0],
-                            Text.literal("Follow path did not exercise all distance bands"));
+                            Component.literal("Follow path did not exercise all distance bands"));
                     context.assertTrue(
                             farMaximumStepSquared[0] > 0.0025,
-                            Text.literal("Far-distance acceleration produced no meaningful movement"));
+                            Component.literal("Far-distance acceleration produced no meaningful movement"));
                     context.assertTrue(
                             nearMaximumStepSquared[0] > 0.0,
-                            Text.literal("Near-distance following produced no movement"));
+                            Component.literal("Near-distance following produced no movement"));
                     context.assertTrue(
-                            pet.getEntityPos().squaredDistanceTo(releasedPosition[0]) > 0.25,
-                            Text.literal("Pet did not recalculate and move after blockage removal"));
+                            pet.position().distanceToSqr(releasedPosition[0]) > 0.25,
+                            Component.literal("Pet did not recalculate and move after blockage removal"));
                     context.assertTrue(
                             maximumStepSquared[0] < 2.25,
-                            Text.literal("Following pet made a teleport-like jump"));
-                    context.assertEquals(
+                            Component.literal("Following pet made a teleport-like jump"));
+                    context.assertValueEqual(
                             forcedChunksBefore,
-                            Set.copyOf(world.getForcedChunks()),
-                            Text.literal("Forced-chunk set changed while following"));
+                            Set.copyOf(world.getForceLoadedChunks()),
+                            Component.literal("Forced-chunk set changed while following"));
                     context.assertFalse(
-                            world.getChunkManager().isChunkLoaded(remoteSentinel.x, remoteSentinel.z),
-                            Text.literal("Following loaded a remote sentinel chunk"));
+                            world.getChunkSource().hasChunk(remoteSentinel.x(), remoteSentinel.z()),
+                            Component.literal("Following loaded a remote sentinel chunk"));
                 } finally {
-                    cage.forEach(position -> world.setBlockState(position, Blocks.AIR.getDefaultState()));
+                    cage.forEach(position -> world.setBlockAndUpdate(position, Blocks.AIR.defaultBlockState()));
                     pet.discard();
                     removeMockPlayer(world, owner);
                 }
-                context.complete();
+                context.succeed();
             });
         } catch (RuntimeException | Error failure) {
             if (spawned != null) {
@@ -1108,60 +1107,60 @@ public final class PetPhysicalGameTests {
 
     @GameTest(maxTicks = 150)
     @SuppressWarnings("removal")
-    public void sleepingPetStopsActiveFollowUntilAwake(TestContext context) {
-        ServerWorld world = context.getWorld();
-        ServerPlayerEntity owner = context.createMockCreativeServerPlayerInWorld();
-        TameableEntity pet = null;
+    public void sleepingPetStopsActiveFollowUntilAwake(GameTestHelper context) {
+        ServerLevel world = context.getLevel();
+        ServerPlayer owner = context.makeMockServerPlayerInLevel();
+        TamableAnimal pet = null;
         try {
             for (int x = 1; x <= 24; x++) {
-                context.setBlockState(x, 0, 3, Blocks.STONE);
-                context.setBlockState(x, 1, 3, Blocks.AIR);
-                context.setBlockState(x, 2, 3, Blocks.AIR);
+                context.setBlock(x, 0, 3, Blocks.STONE);
+                context.setBlock(x, 1, 3, Blocks.AIR);
+                context.setBlock(x, 2, 3, Blocks.AIR);
             }
-            Vec3d ownerPosition = context.getAbsolute(new Vec3d(22.75, 1.0, 3.5));
-            owner.refreshPositionAndAngles(ownerPosition, 0.0F, 0.0F);
-            world.getChunkManager().updatePosition(owner);
-            Vec3d initialPosition = context.getAbsolute(new Vec3d(1.25, 1.0, 3.5));
+            Vec3 ownerPosition = context.absoluteVec(new Vec3(22.75, 1.0, 3.5));
+            owner.snapTo(ownerPosition, 0.0F, 0.0F);
+            world.getChunkSource().move(owner);
+            Vec3 initialPosition = context.absoluteVec(new Vec3(1.25, 1.0, 3.5));
             Pet aggregate = pet(
                     UUID.fromString("10000000-0000-0000-0000-000000000087"),
-                    owner.getUuid(), PetSpecies.CAT, "minecraft:black", 0.67, 0L);
+                    owner.getUUID(), PetSpecies.CAT, "minecraft:black", 0.67, 0L);
             pet = new PetEntityFactory().prepare(
                     world, aggregate,
                     UUID.fromString("30000000-0000-0000-0000-000000000087"),
                     position(initialPosition), false).entity();
-            context.assertTrue(world.spawnEntity(pet), Text.literal("Sleeping test pet did not spawn"));
+            context.assertTrue(world.addFreshEntity(pet), Component.literal("Sleeping test pet did not spawn"));
 
-            TameableEntity testedPet = pet;
-            Vec3d[] sleepingPosition = {null};
+            TamableAnimal testedPet = pet;
+            Vec3[] sleepingPosition = {null};
             // The complete GameTest batch runs many pathfinders concurrently; allow
             // the same bounded follow behavior a little more wall-clock tick time
             // before asserting it, without changing the movement contract.
-            context.runAtTick(40, () -> {
+            context.runAtTickTime(40, () -> {
                 context.assertTrue(
-                        testedPet.getEntityPos().squaredDistanceTo(initialPosition) > 0.25,
-                        Text.literal("Pet was not actively following before sleep"));
+                        testedPet.position().distanceToSqr(initialPosition) > 0.25,
+                        Component.literal("Pet was not actively following before sleep"));
                 ((PetEntityData) testedPet).aipets$setSleeping(true);
             });
-            context.runAtTick(45, () -> sleepingPosition[0] = testedPet.getEntityPos());
-            context.runAtTick(80, () -> {
+            context.runAtTickTime(45, () -> sleepingPosition[0] = testedPet.position());
+            context.runAtTickTime(80, () -> {
                 context.assertTrue(
-                        testedPet.getNavigation().isIdle(),
-                        Text.literal("Sleeping pet retained an active navigation path"));
+                        testedPet.getNavigation().isDone(),
+                        Component.literal("Sleeping pet retained an active navigation path"));
                 context.assertTrue(
-                        testedPet.getEntityPos().squaredDistanceTo(sleepingPosition[0]) < 0.04,
-                        Text.literal("Sleeping pet moved while its owner remained distant"));
+                        testedPet.position().distanceToSqr(sleepingPosition[0]) < 0.04,
+                        Component.literal("Sleeping pet moved while its owner remained distant"));
                 ((PetEntityData) testedPet).aipets$setSleeping(false);
             });
-            context.runAtTick(125, () -> {
+            context.runAtTickTime(125, () -> {
                 try {
                     context.assertTrue(
-                            testedPet.getEntityPos().squaredDistanceTo(sleepingPosition[0]) > 0.25,
-                            Text.literal("Awakened pet did not resume owner following"));
+                            testedPet.position().distanceToSqr(sleepingPosition[0]) > 0.25,
+                            Component.literal("Awakened pet did not resume owner following"));
                 } finally {
                     testedPet.discard();
                     removeMockPlayer(world, owner);
                 }
-                context.complete();
+                context.succeed();
             });
         } catch (RuntimeException | Error failure) {
             if (pet != null) pet.discard();
@@ -1171,15 +1170,15 @@ public final class PetPhysicalGameTests {
     }
 
     @GameTest
-    public void entityLoadReconciliationReusesExactAndDiscardsStale(TestContext context) {
-        ServerWorld world = context.getWorld();
+    public void entityLoadReconciliationReusesExactAndDiscardsStale(GameTestHelper context) {
+        ServerLevel world = context.getLevel();
         BackendId backend = new BackendId("gametest");
-        DimensionId dimension = DimensionId.parse(world.getRegistryKey().getValue().toString());
+        DimensionId dimension = DimensionId.parse(world.dimension().identifier().toString());
         UUID petId = UUID.fromString("10000000-0000-0000-0000-000000000013");
         UUID exactEntityId = UUID.fromString("30000000-0000-0000-0000-000000000013");
         UUID staleEntityId = UUID.fromString("30000000-0000-0000-0000-000000000014");
         Pet held = pet(petId, PetSpecies.CAT, "minecraft:tabby", 0.67, 0L);
-        Vec3d exactPosition = context.getAbsolute(new Vec3d(1.5, 1.0, 1.5));
+        Vec3 exactPosition = context.absoluteVec(new Vec3(1.5, 1.0, 1.5));
         TransitionResult placedTransition = PetTransitions.place(
                 held,
                 new PetTransitions.Place(
@@ -1190,14 +1189,14 @@ public final class PetPhysicalGameTests {
                         position(exactPosition),
                         exactEntityId,
                         ADOPTED_AT.plusSeconds(1)));
-        context.assertTrue(placedTransition.applied(), Text.literal("Reconciliation fixture did not place"));
+        context.assertTrue(placedTransition.applied(), Component.literal("Reconciliation fixture did not place"));
         Pet placed = placedTransition.pet();
         InMemoryAuthorityGateway authority = new InMemoryAuthorityGateway(world, placed);
         authority.sleeping = true;
         Runnable uninstallGateway = PetCompanionMod.installAuthorityGateway(backend, authority);
-        Set<Long> forcedChunksBefore = Set.copyOf(world.getForcedChunks());
+        Set<Long> forcedChunksBefore = Set.copyOf(world.getForceLoadedChunks());
 
-        TameableEntity exact = null;
+        TamableAnimal exact = null;
         try {
             exact = new PetEntityFactory().prepare(
                     world,
@@ -1205,30 +1204,30 @@ public final class PetPhysicalGameTests {
                     exactEntityId,
                     position(exactPosition),
                     false).entity();
-            exact.refreshPositionAndAngles(exactPosition, 0.0F, 0.0F);
-            context.assertTrue(world.spawnEntity(exact), Text.literal("Exact reconciliation entity did not spawn"));
-            context.assertFalse(exact.isRemoved(), Text.literal("Exact authority match was discarded"));
+            exact.snapTo(exactPosition, 0.0F, 0.0F);
+            context.assertTrue(world.addFreshEntity(exact), Component.literal("Exact reconciliation entity did not spawn"));
+            context.assertFalse(exact.isRemoved(), Component.literal("Exact authority match was discarded"));
             PetEntityData exactData = (PetEntityData) exact;
-            context.assertEquals(
+            context.assertValueEqual(
                     placed.recordVersion(),
                     exactData.aipets$getRecordVersion(),
-                    Text.literal("Entity-load event did not refresh the older revision"));
+                    Component.literal("Entity-load event did not refresh the older revision"));
             context.assertTrue(
                     exactData.aipets$isSleeping(),
-                    Text.literal("Entity-load event did not refresh sleep state"));
+                    Component.literal("Entity-load event did not refresh sleep state"));
 
-            Vec3d stalePosition = context.getAbsolute(new Vec3d(3.5, 1.0, 1.5));
-            TameableEntity stale = new PetEntityFactory().prepare(
+            Vec3 stalePosition = context.absoluteVec(new Vec3(3.5, 1.0, 1.5));
+            TamableAnimal stale = new PetEntityFactory().prepare(
                     world,
                     placed,
                     staleEntityId,
                     position(stalePosition),
                     false).entity();
-            stale.refreshPositionAndAngles(stalePosition, 0.0F, 0.0F);
-            context.assertTrue(world.spawnEntity(stale), Text.literal("Stale reconciliation entity did not spawn"));
+            stale.snapTo(stalePosition, 0.0F, 0.0F);
+            context.assertTrue(world.addFreshEntity(stale), Component.literal("Stale reconciliation entity did not spawn"));
             context.assertTrue(
                     stale.isRemoved(),
-                    Text.literal("Entity-load event left a wrong-UUID physical entity loaded"));
+                    Component.literal("Entity-load event left a wrong-UUID physical entity loaded"));
             int lookupsBeforePeriodicScan = authority.petIdLookupCount;
             PeriodicPetReconciliation periodic = new PeriodicPetReconciliation(
                     new PetReconciliationConfig(20, 1),
@@ -1240,128 +1239,128 @@ public final class PetPhysicalGameTests {
             // remains bounded by maximumChecksPerTick (one here).
             context.assertTrue(
                     queuedLoadedPets >= 1,
-                    Text.literal("Periodic reconciliation did not queue the loaded pet"));
+                    Component.literal("Periodic reconciliation did not queue the loaded pet"));
             periodic.onEndWorldTick(world);
-            context.assertEquals(
+            context.assertValueEqual(
                     lookupsBeforePeriodicScan + 1,
                     authority.petIdLookupCount,
-                    Text.literal("Periodic reconciliation did not make one bounded lookup"));
+                    Component.literal("Periodic reconciliation did not make one bounded lookup"));
             context.assertTrue(
                     periodic.inFlightEntityIds().isEmpty(),
-                    Text.literal("Completed reconciliation remained in-flight"));
-            context.assertEquals(
+                    Component.literal("Completed reconciliation remained in-flight"));
+            context.assertValueEqual(
                     forcedChunksBefore,
-                    Set.copyOf(world.getForcedChunks()),
-                    Text.literal("Reconciliation changed the forced-chunk set"));
+                    Set.copyOf(world.getForceLoadedChunks()),
+                    Component.literal("Reconciliation changed the forced-chunk set"));
         } finally {
             uninstallGateway.run();
             if (exact != null) {
                 exact.discard();
             }
         }
-        context.complete();
+        context.succeed();
     }
 
     @GameTest
     @SuppressWarnings("removal")
-    public void lazyRestartRecoveryReconstructsOnceAndNeverLoadsRemoteChunk(TestContext context) {
-        ServerWorld world = context.getWorld();
-        ServerPlayerEntity owner = context.createMockCreativeServerPlayerInWorld();
+    public void lazyRestartRecoveryReconstructsOnceAndNeverLoadsRemoteChunk(GameTestHelper context) {
+        ServerLevel world = context.getLevel();
+        ServerPlayer owner = context.makeMockServerPlayerInLevel();
         BackendId backend = new BackendId("gametest");
-        DimensionId dimension = DimensionId.parse(world.getRegistryKey().getValue().toString());
+        DimensionId dimension = DimensionId.parse(world.dimension().identifier().toString());
         UUID petId = UUID.fromString("10000000-0000-0000-0000-000000000093");
         UUID expectedEntityId = UUID.fromString("30000000-0000-0000-0000-000000000093");
         UUID staleEntityId = UUID.fromString("30000000-0000-0000-0000-000000000094");
-        Vec3d location = context.getAbsolute(new Vec3d(2.5, 1.0, 2.5));
+        Vec3 location = context.absoluteVec(new Vec3(2.5, 1.0, 2.5));
         Pet adopted = pet(
-                petId, owner.getUuid(), PetSpecies.CAT, "minecraft:tabby", 0.66, 0L);
+                petId, owner.getUUID(), PetSpecies.CAT, "minecraft:tabby", 0.66, 0L);
         Pet placed = PetTransitions.place(adopted, new PetTransitions.Place(
-                owner.getUuid(), adopted.recordVersion(), backend, dimension,
+                owner.getUUID(), adopted.recordVersion(), backend, dimension,
                 position(location), expectedEntityId, ADOPTED_AT.plusSeconds(1))).pet();
         InMemoryAuthorityGateway authority = new InMemoryAuthorityGateway(world, placed);
 
         PetEntityRecoveryCoordinator firstProcess = new PetEntityRecoveryCoordinator(
                 backend, authority, new PetEntityReconciler(backend, authority),
                 new PetEntityFactory());
-        context.assertEquals(
+        context.assertValueEqual(
                 PetRecoveryStatus.RECONSTRUCTED,
-                firstProcess.recoverOwner(world.getServer(), owner.getUuid())
+                firstProcess.recoverOwner(world.getServer(), owner.getUUID())
                         .toCompletableFuture().join(),
-                Text.literal("Restart recovery did not reconstruct the missing entity"));
-        TameableEntity exact = (TameableEntity) world.getEntityAnyDimension(expectedEntityId);
-        context.assertTrue(exact != null, Text.literal("Expected entity UUID was not reconstructed"));
+                Component.literal("Restart recovery did not reconstruct the missing entity"));
+        TamableAnimal exact = (TamableAnimal) world.getEntityInAnyDimension(expectedEntityId);
+        context.assertTrue(exact != null, Component.literal("Expected entity UUID was not reconstructed"));
         assertPhysicalPet(context, exact, placed, "minecraft:tabby");
 
-        TameableEntity stale = new PetEntityFactory().prepare(
+        TamableAnimal stale = new PetEntityFactory().prepare(
                 world, placed, staleEntityId, position(location.add(1, 0, 0)), false).entity();
-        context.assertTrue(world.spawnEntity(stale), Text.literal("Old saved entity did not load"));
+        context.assertTrue(world.addFreshEntity(stale), Component.literal("Old saved entity did not load"));
         PetEntityRecoveryCoordinator secondProcess = new PetEntityRecoveryCoordinator(
                 backend, authority, new PetEntityReconciler(backend, authority),
                 new PetEntityFactory());
-        context.assertEquals(
+        context.assertValueEqual(
                 PetRecoveryStatus.AUTHORITATIVE_ENTITY_PRESENT,
-                secondProcess.recoverOwner(world.getServer(), owner.getUuid())
+                secondProcess.recoverOwner(world.getServer(), owner.getUUID())
                         .toCompletableFuture().join(),
-                Text.literal("Second process did not reuse the authoritative entity"));
-        context.assertTrue(stale.isRemoved(), Text.literal("Old saved entity was not discarded"));
+                Component.literal("Second process did not reuse the authoritative entity"));
+        context.assertTrue(stale.isRemoved(), Component.literal("Old saved entity was not discarded"));
         context.assertTrue(
-                world.getEntityAnyDimension(expectedEntityId) == exact,
-                Text.literal("Second process duplicated the authoritative entity"));
+                world.getEntityInAnyDimension(expectedEntityId) == exact,
+                Component.literal("Second process duplicated the authoritative entity"));
 
         exact.discard();
         PetEntityRecoveryCoordinator thirdProcess = new PetEntityRecoveryCoordinator(
                 backend, authority, new PetEntityReconciler(backend, authority),
                 new PetEntityFactory());
-        context.assertEquals(
+        context.assertValueEqual(
                 PetRecoveryStatus.RECONSTRUCTED,
-                thirdProcess.recoverOwner(world.getServer(), owner.getUuid())
+                thirdProcess.recoverOwner(world.getServer(), owner.getUUID())
                         .toCompletableFuture().join(),
-                Text.literal("Deleted entity was not reconstructed from persisted authority"));
-        TameableEntity reconstructed = (TameableEntity) world.getEntityAnyDimension(expectedEntityId);
+                Component.literal("Deleted entity was not reconstructed from persisted authority"));
+        TamableAnimal reconstructed = (TamableAnimal) world.getEntityInAnyDimension(expectedEntityId);
         assertPhysicalPet(context, reconstructed, placed, "minecraft:tabby");
 
-        ChunkPos testChunk = new ChunkPos(context.getAbsolutePos(BlockPos.ORIGIN));
-        ChunkPos remoteChunk = new ChunkPos(testChunk.x + 128, testChunk.z + 128);
+        ChunkPos testChunk = ChunkPos.containing(context.absolutePos(BlockPos.ZERO));
+        ChunkPos remoteChunk = new ChunkPos(testChunk.x() + 128, testChunk.z() + 128);
         context.assertFalse(
-                world.getChunkManager().isChunkLoaded(remoteChunk.x, remoteChunk.z),
-                Text.literal("Remote recovery sentinel started loaded"));
+                world.getChunkSource().hasChunk(remoteChunk.x(), remoteChunk.z()),
+                Component.literal("Remote recovery sentinel started loaded"));
         reconstructed.discard();
         authority.current = withPlacement(placed, PlacedPlacement.materialized(
                 backend, dimension,
-                new WorldPosition(remoteChunk.getStartX() + 0.5, 70, remoteChunk.getStartZ() + 0.5),
+                new WorldPosition(remoteChunk.getMinBlockX() + 0.5, 70, remoteChunk.getMinBlockZ() + 0.5),
                 expectedEntityId));
-        context.assertEquals(
+        context.assertValueEqual(
                 PetRecoveryStatus.DEFERRED_UNLOADED_CHUNK,
                 new PetEntityRecoveryCoordinator(
                         backend, authority, new PetEntityReconciler(backend, authority),
                         new PetEntityFactory())
-                        .recoverOwner(world.getServer(), owner.getUuid()).toCompletableFuture().join(),
-                Text.literal("Unloaded recovery was not deferred"));
+                        .recoverOwner(world.getServer(), owner.getUUID()).toCompletableFuture().join(),
+                Component.literal("Unloaded recovery was not deferred"));
         context.assertFalse(
-                world.getChunkManager().isChunkLoaded(remoteChunk.x, remoteChunk.z),
-                Text.literal("Recovery force-loaded the remote chunk"));
+                world.getChunkSource().hasChunk(remoteChunk.x(), remoteChunk.z()),
+                Component.literal("Recovery force-loaded the remote chunk"));
 
         removeMockPlayer(world, owner);
-        context.complete();
+        context.succeed();
     }
 
     @GameTest
     @SuppressWarnings("removal")
-    public void markedPetInteractionIsOwnerOnlyAndOrdinaryMobsPassThrough(TestContext context) {
-        ServerWorld world = context.getWorld();
-        ServerPlayerEntity owner = context.createMockCreativeServerPlayerInWorld();
-        ServerPlayerEntity intruder = context.createMockCreativeServerPlayerInWorld();
-        TameableEntity pet = null;
-        CatEntity ordinary = null;
+    public void markedPetInteractionIsOwnerOnlyAndOrdinaryMobsPassThrough(GameTestHelper context) {
+        ServerLevel world = context.getLevel();
+        ServerPlayer owner = context.makeMockServerPlayerInLevel();
+        ServerPlayer intruder = context.makeMockServerPlayerInLevel();
+        TamableAnimal pet = null;
+        Cat ordinary = null;
         Runnable uninstallHandler = () -> { };
         try {
             context.assertFalse(
-                    owner.getUuid().equals(intruder.getUuid()),
-                    Text.literal("Interaction test players share an identity"));
-            Vec3d petPosition = context.getAbsolute(new Vec3d(1.5, 1.0, 1.5));
+                    owner.getUUID().equals(intruder.getUUID()),
+                    Component.literal("Interaction test players share an identity"));
+            Vec3 petPosition = context.absoluteVec(new Vec3(1.5, 1.0, 1.5));
             Pet aggregate = pet(
                     UUID.fromString("10000000-0000-0000-0000-000000000015"),
-                    owner.getUuid(),
+                    owner.getUUID(),
                     PetSpecies.CAT,
                     "minecraft:tabby",
                     0.67,
@@ -1372,104 +1371,104 @@ public final class PetPhysicalGameTests {
                     UUID.fromString("30000000-0000-0000-0000-000000000015"),
                     position(petPosition),
                     false).entity();
-            pet.refreshPositionAndAngles(petPosition, 0.0F, 0.0F);
-            context.assertTrue(world.spawnEntity(pet), Text.literal("Interaction pet did not spawn"));
+            pet.snapTo(petPosition, 0.0F, 0.0F);
+            context.assertTrue(world.addFreshEntity(pet), Component.literal("Interaction pet did not spawn"));
 
             AtomicInteger opens = new AtomicInteger();
-            TameableEntity expectedPet = pet;
+            TamableAnimal expectedPet = pet;
             uninstallHandler = PetInteractionRouter.installHandler((actualOwner, actualPet) -> {
-                context.assertTrue(actualOwner == owner, Text.literal("Wrong owner reached handler"));
-                context.assertTrue(actualPet == expectedPet, Text.literal("Wrong pet reached handler"));
+                context.assertTrue(actualOwner == owner, Component.literal("Wrong owner reached handler"));
+                context.assertTrue(actualPet == expectedPet, Component.literal("Wrong pet reached handler"));
                 opens.incrementAndGet();
             });
-            ActionResult ownerResult = UseEntityCallback.EVENT.invoker().interact(
+            InteractionResult ownerResult = UseEntityCallback.EVENT.invoker().interact(
                     owner,
                     world,
-                    Hand.MAIN_HAND,
+                    InteractionHand.MAIN_HAND,
                     pet,
                     new EntityHitResult(pet));
-            context.assertEquals(
-                    ActionResult.SUCCESS_SERVER,
+            context.assertValueEqual(
+                    InteractionResult.SUCCESS_SERVER,
                     ownerResult,
-                    Text.literal("Owner interaction was not consumed"));
-            context.assertEquals(1, opens.get(), Text.literal("Owner interaction did not open once"));
+                    Component.literal("Owner interaction was not consumed"));
+            context.assertValueEqual(1, opens.get(), Component.literal("Owner interaction did not open once"));
 
             Runnable restoreChatPermission = PetPermissions.install(
                     (ignored, node, defaultLevel) -> !node.equals(PetPermission.CHAT.node()));
             try {
-                ActionResult deniedChatResult = UseEntityCallback.EVENT.invoker().interact(
+                InteractionResult deniedChatResult = UseEntityCallback.EVENT.invoker().interact(
                         owner,
                         world,
-                        Hand.MAIN_HAND,
+                        InteractionHand.MAIN_HAND,
                         pet,
                         new EntityHitResult(pet));
-                context.assertEquals(
-                        ActionResult.FAIL,
+                context.assertValueEqual(
+                        InteractionResult.FAIL,
                         deniedChatResult,
-                        Text.literal("Denied aipets.chat interaction was not blocked"));
-                context.assertEquals(
+                        Component.literal("Denied aipets.chat interaction was not blocked"));
+                context.assertValueEqual(
                         1,
                         opens.get(),
-                        Text.literal("Denied aipets.chat reached interaction handler"));
+                        Component.literal("Denied aipets.chat reached interaction handler"));
             } finally {
                 restoreChatPermission.run();
             }
 
             ((PetEntityData) pet).aipets$setSleeping(true);
-            ActionResult sleepingResult = UseEntityCallback.EVENT.invoker().interact(
+            InteractionResult sleepingResult = UseEntityCallback.EVENT.invoker().interact(
                     owner,
                     world,
-                    Hand.MAIN_HAND,
+                    InteractionHand.MAIN_HAND,
                     pet,
                     new EntityHitResult(pet));
-            context.assertEquals(
-                    ActionResult.SUCCESS_SERVER,
+            context.assertValueEqual(
+                    InteractionResult.SUCCESS_SERVER,
                     sleepingResult,
-                    Text.literal("Sleeping interaction was not consumed with feedback"));
-            context.assertEquals(
+                    Component.literal("Sleeping interaction was not consumed with feedback"));
+            context.assertValueEqual(
                     1,
                     opens.get(),
-                    Text.literal("Sleeping pet reached the interaction handler"));
-            ActionResult duplicateSleepingResult = UseEntityCallback.EVENT.invoker().interact(
+                    Component.literal("Sleeping pet reached the interaction handler"));
+            InteractionResult duplicateSleepingResult = UseEntityCallback.EVENT.invoker().interact(
                     owner,
                     world,
-                    Hand.MAIN_HAND,
+                    InteractionHand.MAIN_HAND,
                     pet,
                     new EntityHitResult(pet));
-            context.assertEquals(
-                    ActionResult.SUCCESS_SERVER,
+            context.assertValueEqual(
+                    InteractionResult.SUCCESS_SERVER,
                     duplicateSleepingResult,
-                    Text.literal("Duplicate sleeping interaction was not consumed"));
-            context.assertEquals(
+                    Component.literal("Duplicate sleeping interaction was not consumed"));
+            context.assertValueEqual(
                     1,
                     opens.get(),
-                    Text.literal("Duplicate sleeping interaction reached the handler"));
+                    Component.literal("Duplicate sleeping interaction reached the handler"));
             ((PetEntityData) pet).aipets$setSleeping(false);
 
-            ActionResult intruderResult = UseEntityCallback.EVENT.invoker().interact(
+            InteractionResult intruderResult = UseEntityCallback.EVENT.invoker().interact(
                     intruder,
                     world,
-                    Hand.MAIN_HAND,
+                    InteractionHand.MAIN_HAND,
                     pet,
                     new EntityHitResult(pet));
-            context.assertEquals(
-                    ActionResult.FAIL,
+            context.assertValueEqual(
+                    InteractionResult.FAIL,
                     intruderResult,
-                    Text.literal("Non-owner interaction was not blocked"));
-            context.assertEquals(1, opens.get(), Text.literal("Non-owner reached interaction handler"));
+                    Component.literal("Non-owner interaction was not blocked"));
+            context.assertValueEqual(1, opens.get(), Component.literal("Non-owner reached interaction handler"));
 
-            ordinary = context.spawnEntity(EntityType.CAT, new BlockPos(3, 1, 1));
-            ActionResult ordinaryResult = UseEntityCallback.EVENT.invoker().interact(
+            ordinary = context.spawn(EntityTypes.CAT, new BlockPos(3, 1, 1));
+            InteractionResult ordinaryResult = UseEntityCallback.EVENT.invoker().interact(
                     owner,
                     world,
-                    Hand.MAIN_HAND,
+                    InteractionHand.MAIN_HAND,
                     ordinary,
                     new EntityHitResult(ordinary));
-            context.assertEquals(
-                    ActionResult.PASS,
+            context.assertValueEqual(
+                    InteractionResult.PASS,
                     ordinaryResult,
-                    Text.literal("Ordinary cat interaction was intercepted"));
-            context.assertEquals(1, opens.get(), Text.literal("Ordinary cat reached pet handler"));
+                    Component.literal("Ordinary cat interaction was intercepted"));
+            context.assertValueEqual(1, opens.get(), Component.literal("Ordinary cat reached pet handler"));
         } finally {
             uninstallHandler.run();
             if (pet != null) {
@@ -1481,17 +1480,17 @@ public final class PetPhysicalGameTests {
             removeMockPlayer(world, intruder);
             removeMockPlayer(world, owner);
         }
-        context.complete();
+        context.succeed();
     }
 
     @GameTest
     @SuppressWarnings("removal")
-    public void petRootHelpAndStatusUseAsyncAuthority(TestContext context) {
-        ServerWorld world = context.getWorld();
-        ServerPlayerEntity owner = context.createMockCreativeServerPlayerInWorld();
+    public void petRootHelpAndStatusUseAsyncAuthority(GameTestHelper context) {
+        ServerLevel world = context.getLevel();
+        ServerPlayer owner = context.makeMockServerPlayerInLevel();
         Pet aggregate = pet(
                 UUID.fromString("10000000-0000-0000-0000-000000000022"),
-                owner.getUuid(),
+                owner.getUUID(),
                 PetSpecies.DOG,
                 "minecraft:ashen",
                 0.63,
@@ -1502,21 +1501,21 @@ public final class PetPhysicalGameTests {
         Runnable uninstallGateway = PetCompanionMod.installAuthorityGateway(
                 new BackendId("gametest"), authority);
         CapturingCommandOutput output = new CapturingCommandOutput();
-        ServerCommandSource source = owner.getCommandSource().withOutput(output);
+        CommandSourceStack source = owner.createCommandSourceStack().withSource(output);
         try {
-            int helpResult = world.getServer().getCommandManager().getDispatcher()
+            int helpResult = world.getServer().getCommands().getDispatcher()
                     .execute("pet", source);
-            int statusResult = world.getServer().getCommandManager().getDispatcher()
+            int statusResult = world.getServer().getCommands().getDispatcher()
                     .execute("pet status", source);
-            context.assertEquals(1, helpResult, Text.literal("/pet help failed"));
-            context.assertEquals(1, statusResult, Text.literal("/pet status failed"));
-            context.assertEquals(
+            context.assertValueEqual(1, helpResult, Component.literal("/pet help failed"));
+            context.assertValueEqual(1, statusResult, Component.literal("/pet status failed"));
+            context.assertValueEqual(
                     1,
                     authority.ownerLookupCount,
-                    Text.literal("/pet status did not make exactly one owner lookup"));
+                    Component.literal("/pet status did not make exactly one owner lookup"));
             context.assertTrue(
                     output.messages.stream().anyMatch(message -> message.contains("/pet status")),
-                    Text.literal("Root help omitted /pet status"));
+                    Component.literal("Root help omitted /pet status"));
             context.assertTrue(
                     output.messages.stream().anyMatch(message ->
                             message.contains("Pepper")
@@ -1524,68 +1523,68 @@ public final class PetPhysicalGameTests {
                                     && message.contains("HELD")
                                     && message.contains("sleeping")
                                     && (message.contains("hibernating") || message.contains("quiet"))),
-                    Text.literal("Status omitted authoritative held/sleep state"));
+                    Component.literal("Status omitted authoritative held/sleep state"));
         } catch (CommandSyntaxException failure) {
-            throw context.createError("Pet command execution failed: %s", failure.getMessage());
+            throw context.assertionException("Pet command execution failed: %s", failure.getMessage());
         } finally {
             uninstallGateway.run();
             removeMockPlayer(world, owner);
         }
-        context.complete();
+        context.succeed();
     }
 
     @GameTest
     @SuppressWarnings("removal")
-    public void externalServiceFailuresStayInsidePetCommands(TestContext context) {
-        ServerWorld world = context.getWorld();
-        ServerPlayerEntity owner = context.createMockCreativeServerPlayerInWorld();
+    public void externalServiceFailuresStayInsidePetCommands(GameTestHelper context) {
+        ServerLevel world = context.getLevel();
+        ServerPlayer owner = context.makeMockServerPlayerInLevel();
         Pet aggregate = pet(
                 UUID.fromString("10000000-0000-0000-0000-000000000044"),
-                owner.getUuid(), PetSpecies.CAT, "minecraft:tabby", 0.66, 0L);
+                owner.getUUID(), PetSpecies.CAT, "minecraft:tabby", 0.66, 0L);
         InMemoryAuthorityGateway authority = new InMemoryAuthorityGateway(world, aggregate);
         authority.failAllRequests = true;
         Runnable uninstallGateway = PetCompanionMod.installAuthorityGateway(
                 new BackendId("gametest"), authority);
         CapturingCommandOutput output = new CapturingCommandOutput();
-        ServerCommandSource source = owner.getCommandSource().withOutput(output);
+        CommandSourceStack source = owner.createCommandSourceStack().withSource(output);
         try {
             List<String> commands = List.of(
                     "pet link", "pet portal", "pet status", "pet adopt cat Safe",
                     "pet place", "pet pickup", "pet recall", "pet compass");
             for (String command : commands) {
-                context.assertEquals(
+                context.assertValueEqual(
                         1,
-                        world.getServer().getCommandManager().getDispatcher().execute(command, source),
-                        Text.literal(command + " did not contain its service failure"));
+                        world.getServer().getCommands().getDispatcher().execute(command, source),
+                        Component.literal(command + " did not contain its service failure"));
             }
-            context.waitAndRun(2, () -> {
+            context.runAfterDelay(2, () -> {
                 try {
                     try {
-                        context.assertEquals(
+                        context.assertValueEqual(
                                 1,
-                                world.getServer().getCommandManager().getDispatcher().execute("pet", source),
-                                Text.literal("Command dispatcher did not remain usable after failures"));
+                                world.getServer().getCommands().getDispatcher().execute("pet", source),
+                                Component.literal("Command dispatcher did not remain usable after failures"));
                     } catch (CommandSyntaxException failure) {
-                        throw context.createError(
+                        throw context.assertionException(
                                 "Root command failed after contained outages: %s", failure.getMessage());
                     }
-                    context.assertEquals(0, authority.mutationCount,
-                            Text.literal("Failed service calls reached a physical mutation"));
-                    context.assertEquals(aggregate, authority.current,
-                            Text.literal("Failed service calls changed authoritative state"));
+                    context.assertValueEqual(0, authority.mutationCount,
+                            Component.literal("Failed service calls reached a physical mutation"));
+                    context.assertValueEqual(aggregate, authority.current,
+                            Component.literal("Failed service calls changed authoritative state"));
                     context.assertTrue(
                             output.messages.stream().anyMatch(message -> message.startsWith("Pet Companion:")),
-                            Text.literal("Root help feedback was unavailable after contained failures"));
+                            Component.literal("Root help feedback was unavailable after contained failures"));
                 } finally {
                     uninstallGateway.run();
                     removeMockPlayer(world, owner);
                 }
-                context.complete();
+                context.succeed();
             });
         } catch (CommandSyntaxException failure) {
             uninstallGateway.run();
             removeMockPlayer(world, owner);
-            throw context.createError("Failure-isolation command execution failed: %s", failure.getMessage());
+            throw context.assertionException("Failure-isolation command execution failed: %s", failure.getMessage());
         } catch (RuntimeException | Error failure) {
             uninstallGateway.run();
             removeMockPlayer(world, owner);
@@ -1595,22 +1594,22 @@ public final class PetPhysicalGameTests {
 
     @GameTest
     @SuppressWarnings("removal")
-    public void petPlaceAndPickupCommandsUseCommitSafeCoordinators(TestContext context) {
-        ServerWorld world = context.getWorld();
-        ServerPlayerEntity owner = context.createMockCreativeServerPlayerInWorld();
+    public void petPlaceAndPickupCommandsUseCommitSafeCoordinators(GameTestHelper context) {
+        ServerLevel world = context.getLevel();
+        ServerPlayer owner = context.makeMockServerPlayerInLevel();
         for (int x = 1; x <= 6; x++) {
             for (int z = 1; z <= 6; z++) {
-                context.setBlockState(x, 0, z, Blocks.STONE);
-                context.setBlockState(x, 1, z, Blocks.AIR);
-                context.setBlockState(x, 2, z, Blocks.AIR);
+                context.setBlock(x, 0, z, Blocks.STONE);
+                context.setBlock(x, 1, z, Blocks.AIR);
+                context.setBlock(x, 2, z, Blocks.AIR);
             }
         }
-        Vec3d ownerPosition = context.getAbsolute(new Vec3d(3.5, 1.0, 3.5));
-        owner.refreshPositionAndAngles(ownerPosition, 0.0F, 0.0F);
-        world.getChunkManager().updatePosition(owner);
+        Vec3 ownerPosition = context.absoluteVec(new Vec3(3.5, 1.0, 3.5));
+        owner.snapTo(ownerPosition, 0.0F, 0.0F);
+        world.getChunkSource().move(owner);
         Pet aggregate = pet(
                 UUID.fromString("10000000-0000-0000-0000-000000000023"),
-                owner.getUuid(),
+                owner.getUUID(),
                 PetSpecies.CAT,
                 "minecraft:tabby",
                 0.66,
@@ -1620,205 +1619,205 @@ public final class PetPhysicalGameTests {
         Runnable uninstallGateway = PetCompanionMod.installAuthorityGateway(
                 new BackendId("gametest"), authority);
         CapturingCommandOutput output = new CapturingCommandOutput();
-        ServerCommandSource source = owner.getCommandSource().withOutput(output);
+        CommandSourceStack source = owner.createCommandSourceStack().withSource(output);
         try {
-            int placeResult = world.getServer().getCommandManager().getDispatcher()
+            int placeResult = world.getServer().getCommands().getDispatcher()
                     .execute("pet place", source);
-            context.assertEquals(1, placeResult, Text.literal("/pet place did not schedule"));
-            context.assertEquals(
+            context.assertValueEqual(1, placeResult, Component.literal("/pet place did not schedule"));
+            context.assertValueEqual(
                     PlacementState.PLACED,
                     authority.current.placementState(),
-                    Text.literal("/pet place did not commit placement"));
+                    Component.literal("/pet place did not commit placement"));
             PlacedPlacement placed = (PlacedPlacement) authority.current.placement();
             context.assertTrue(
                     placed.entityUuid().isPresent()
-                            && world.getEntityAnyDimension(placed.entityUuid().orElseThrow()) != null,
-                    Text.literal("/pet place did not spawn its committed entity"));
+                            && world.getEntityInAnyDimension(placed.entityUuid().orElseThrow()) != null,
+                    Component.literal("/pet place did not spawn its committed entity"));
 
             UUID firstPlacedEntity = placed.entityUuid().orElseThrow();
-            int duplicatePlaceResult = world.getServer().getCommandManager().getDispatcher()
+            int duplicatePlaceResult = world.getServer().getCommands().getDispatcher()
                     .execute("pet place", source);
-            context.assertEquals(1, duplicatePlaceResult, Text.literal("Second /pet place did not schedule"));
-            context.assertEquals(
+            context.assertValueEqual(1, duplicatePlaceResult, Component.literal("Second /pet place did not schedule"));
+            context.assertValueEqual(
                     1L,
                     authority.current.recordVersion(),
-                    Text.literal("Second /pet place mutated authoritative state"));
-            context.assertEquals(
+                    Component.literal("Second /pet place mutated authoritative state"));
+            context.assertValueEqual(
                     firstPlacedEntity,
                     ((PlacedPlacement) authority.current.placement()).entityUuid().orElseThrow(),
-                    Text.literal("Second /pet place replaced the authoritative entity"));
-            context.assertEquals(
+                    Component.literal("Second /pet place replaced the authoritative entity"));
+            context.assertValueEqual(
                     1,
                     authority.mutationCount,
-                    Text.literal("Second /pet place reached the mutation endpoint"));
+                    Component.literal("Second /pet place reached the mutation endpoint"));
 
-            int pickupResult = world.getServer().getCommandManager().getDispatcher()
+            int pickupResult = world.getServer().getCommands().getDispatcher()
                     .execute("pet pickup", source);
-            context.assertEquals(1, pickupResult, Text.literal("/pet pickup did not schedule"));
-            context.assertEquals(
+            context.assertValueEqual(1, pickupResult, Component.literal("/pet pickup did not schedule"));
+            context.assertValueEqual(
                     PlacementState.HELD,
                     authority.current.placementState(),
-                    Text.literal("/pet pickup did not commit held state"));
-            context.assertEquals(
+                    Component.literal("/pet pickup did not commit held state"));
+            context.assertValueEqual(
                     2L,
                     authority.current.recordVersion(),
-                    Text.literal("Command place/pickup did not advance exactly two revisions"));
+                    Component.literal("Command place/pickup did not advance exactly two revisions"));
             context.assertTrue(
                     output.messages.stream().anyMatch(message -> message.contains("placed safely")),
-                    Text.literal("/pet place omitted success feedback"));
+                    Component.literal("/pet place omitted success feedback"));
             context.assertTrue(
                     output.messages.stream().anyMatch(message -> message.contains("now held")),
-                    Text.literal("/pet pickup omitted success feedback"));
+                    Component.literal("/pet pickup omitted success feedback"));
         } catch (CommandSyntaxException failure) {
-            throw context.createError("Pet mutation command execution failed: %s", failure.getMessage());
+            throw context.assertionException("Pet mutation command execution failed: %s", failure.getMessage());
         } finally {
             uninstallGateway.run();
             removeMockPlayer(world, owner);
         }
-        context.complete();
+        context.succeed();
     }
 
     @GameTest
     @SuppressWarnings("removal")
-    public void petRecallCommandInvalidatesOldEntityAndReportsMonthlyAvailability(TestContext context) {
-        ServerWorld world = context.getWorld();
-        ServerPlayerEntity owner = context.createMockCreativeServerPlayerInWorld();
+    public void petRecallCommandInvalidatesOldEntityAndReportsMonthlyAvailability(GameTestHelper context) {
+        ServerLevel world = context.getLevel();
+        ServerPlayer owner = context.makeMockServerPlayerInLevel();
         for (int x = 1; x <= 6; x++) {
             for (int z = 1; z <= 6; z++) {
-                context.setBlockState(x, 0, z, Blocks.STONE);
-                context.setBlockState(x, 1, z, Blocks.AIR);
-                context.setBlockState(x, 2, z, Blocks.AIR);
+                context.setBlock(x, 0, z, Blocks.STONE);
+                context.setBlock(x, 1, z, Blocks.AIR);
+                context.setBlock(x, 2, z, Blocks.AIR);
             }
         }
-        Vec3d ownerPosition = context.getAbsolute(new Vec3d(3.5, 1.0, 3.5));
-        owner.refreshPositionAndAngles(ownerPosition, 0.0F, 0.0F);
-        world.getChunkManager().updatePosition(owner);
+        Vec3 ownerPosition = context.absoluteVec(new Vec3(3.5, 1.0, 3.5));
+        owner.snapTo(ownerPosition, 0.0F, 0.0F);
+        world.getChunkSource().move(owner);
         UUID petId = UUID.fromString("10000000-0000-0000-0000-000000000026");
         UUID oldEntityId = UUID.fromString("30000000-0000-0000-0000-000000000026");
-        DimensionId dimension = DimensionId.parse(world.getRegistryKey().getValue().toString());
+        DimensionId dimension = DimensionId.parse(world.dimension().identifier().toString());
         BackendId backend = new BackendId("gametest");
-        Pet base = pet(petId, owner.getUuid(), PetSpecies.CAT, "minecraft:tabby", 0.66, 1L);
+        Pet base = pet(petId, owner.getUUID(), PetSpecies.CAT, "minecraft:tabby", 0.66, 1L);
         Pet placed = withPlacement(base, PlacedPlacement.materialized(
                 backend,
                 dimension,
-                position(context.getAbsolute(new Vec3d(1.5, 1.0, 1.5))),
+                position(context.absoluteVec(new Vec3(1.5, 1.0, 1.5))),
                 oldEntityId));
-        TameableEntity oldEntity = new PetEntityFactory().prepare(
+        TamableAnimal oldEntity = new PetEntityFactory().prepare(
                 world, placed, oldEntityId,
-                position(context.getAbsolute(new Vec3d(1.5, 1.0, 1.5))), false).entity();
-        context.assertTrue(world.spawnEntity(oldEntity), Text.literal("Old recall entity did not spawn"));
+                position(context.absoluteVec(new Vec3(1.5, 1.0, 1.5))), false).entity();
+        context.assertTrue(world.addFreshEntity(oldEntity), Component.literal("Old recall entity did not spawn"));
         InMemoryAuthorityGateway authority = new InMemoryAuthorityGateway(world, placed);
         authority.aiAccessEnabled = false;
         Runnable uninstallGateway = PetCompanionMod.installAuthorityGateway(backend, authority);
         CapturingCommandOutput output = new CapturingCommandOutput();
-        ServerCommandSource source = owner.getCommandSource().withOutput(output);
+        CommandSourceStack source = owner.createCommandSourceStack().withSource(output);
         try {
-            context.assertEquals(
+            context.assertValueEqual(
                     1,
-                    world.getServer().getCommandManager().getDispatcher().execute("pet recall", source),
-                    Text.literal("/pet recall did not schedule"));
-            context.assertTrue(oldEntity.isRemoved(), Text.literal("Recall did not discard old loaded entity"));
+                    world.getServer().getCommands().getDispatcher().execute("pet recall", source),
+                    Component.literal("/pet recall did not schedule"));
+            context.assertTrue(oldEntity.isRemoved(), Component.literal("Recall did not discard old loaded entity"));
             PlacedPlacement recalled = (PlacedPlacement) authority.current.placement();
             context.assertTrue(
                     !oldEntityId.equals(recalled.entityUuid().orElseThrow()),
-                    Text.literal("Recall reused the stale entity UUID"));
+                    Component.literal("Recall reused the stale entity UUID"));
             context.assertTrue(
-                    world.getEntityAnyDimension(recalled.entityUuid().orElseThrow()) != null,
-                    Text.literal("Recall did not spawn the committed destination entity"));
-            context.assertEquals(
+                    world.getEntityInAnyDimension(recalled.entityUuid().orElseThrow()) != null,
+                    Component.literal("Recall did not spawn the committed destination entity"));
+            context.assertValueEqual(
                     1,
-                    world.getServer().getCommandManager().getDispatcher().execute("pet recall", source),
-                    Text.literal("Second /pet recall did not schedule"));
+                    world.getServer().getCommands().getDispatcher().execute("pet recall", source),
+                    Component.literal("Second /pet recall did not schedule"));
             context.assertTrue(
                     output.messages.stream().anyMatch(message ->
                             message.contains("recalled safely") && message.contains("Next recall:")),
-                    Text.literal("Recall success omitted next availability"));
+                    Component.literal("Recall success omitted next availability"));
             context.assertTrue(
                     output.messages.stream().anyMatch(message ->
                             message.contains("already used") && message.contains("Next recall:")),
-                    Text.literal("Second recall omitted monthly availability feedback"));
+                    Component.literal("Second recall omitted monthly availability feedback"));
         } catch (CommandSyntaxException failure) {
-            throw context.createError("Pet recall command execution failed: %s", failure.getMessage());
+            throw context.assertionException("Pet recall command execution failed: %s", failure.getMessage());
         } finally {
             if (authority.current.placement() instanceof PlacedPlacement finalPlacement) {
                 finalPlacement.entityUuid().ifPresent(id -> {
-                    net.minecraft.entity.Entity entity = world.getEntityAnyDimension(id);
+                    net.minecraft.world.entity.Entity entity = world.getEntityInAnyDimension(id);
                     if (entity != null) entity.discard();
                 });
             }
             uninstallGateway.run();
             removeMockPlayer(world, owner);
         }
-        context.complete();
+        context.succeed();
     }
 
     @GameTest
     @SuppressWarnings("removal")
-    public void offlineRecallSourceDiscardsSavedEntityWhenItReturns(TestContext context) {
-        ServerWorld world = context.getWorld();
-        ServerPlayerEntity owner = context.createMockCreativeServerPlayerInWorld();
+    public void offlineRecallSourceDiscardsSavedEntityWhenItReturns(GameTestHelper context) {
+        ServerLevel world = context.getLevel();
+        ServerPlayer owner = context.makeMockServerPlayerInLevel();
         BackendId sourceBackend = new BackendId("offline-source");
         BackendId destinationBackend = new BackendId("gametest");
-        DimensionId dimension = DimensionId.parse(world.getRegistryKey().getValue().toString());
+        DimensionId dimension = DimensionId.parse(world.dimension().identifier().toString());
         UUID petId = UUID.fromString("10000000-0000-0000-0000-000000000096");
         UUID oldEntityId = UUID.fromString("30000000-0000-0000-0000-000000000096");
         UUID recalledEntityId = UUID.fromString("30000000-0000-0000-0000-000000000097");
-        Vec3d oldLocation = context.getAbsolute(new Vec3d(1.5, 1.0, 1.5));
-        Vec3d destination = context.getAbsolute(new Vec3d(4.5, 1.0, 4.5));
-        TameableEntity destinationEntity = null;
+        Vec3 oldLocation = context.absoluteVec(new Vec3(1.5, 1.0, 1.5));
+        Vec3 destination = context.absoluteVec(new Vec3(4.5, 1.0, 4.5));
+        TamableAnimal destinationEntity = null;
         try {
             Pet adopted = pet(
-                    petId, owner.getUuid(), PetSpecies.CAT, "minecraft:tabby", 0.66, 0L);
+                    petId, owner.getUUID(), PetSpecies.CAT, "minecraft:tabby", 0.66, 0L);
             Pet sourcePlaced = PetTransitions.place(adopted, new PetTransitions.Place(
-                    owner.getUuid(), adopted.recordVersion(), sourceBackend, dimension,
+                    owner.getUUID(), adopted.recordVersion(), sourceBackend, dimension,
                     position(oldLocation), oldEntityId, ADOPTED_AT.plusSeconds(1))).pet();
             context.assertTrue(
-                    world.getEntityAnyDimension(oldEntityId) == null,
-                    Text.literal("Offline source entity was unexpectedly loaded during recall"));
+                    world.getEntityInAnyDimension(oldEntityId) == null,
+                    Component.literal("Offline source entity was unexpectedly loaded during recall"));
             Pet recalled = PetTransitions.recall(sourcePlaced, new PetTransitions.Recall(
-                    owner.getUuid(), sourcePlaced.recordVersion(), destinationBackend, dimension,
+                    owner.getUUID(), sourcePlaced.recordVersion(), destinationBackend, dimension,
                     position(destination), recalledEntityId, ADOPTED_AT.plusSeconds(2))).pet();
             InMemoryAuthorityGateway authority = new InMemoryAuthorityGateway(world, recalled);
 
             destinationEntity = new PetEntityFactory().prepare(
                     world, recalled, recalledEntityId, position(destination), false).entity();
             context.assertTrue(
-                    world.spawnEntity(destinationEntity),
-                    Text.literal("Recalled destination entity did not spawn"));
+                    world.addFreshEntity(destinationEntity),
+                    Component.literal("Recalled destination entity did not spawn"));
 
             PetEntityReconciler restartedSource = new PetEntityReconciler(sourceBackend, authority);
-            TameableEntity oldSaved = new PetEntityFactory().prepare(
+            TamableAnimal oldSaved = new PetEntityFactory().prepare(
                     world, sourcePlaced, oldEntityId, position(oldLocation), false).entity();
-            context.assertTrue(world.spawnEntity(oldSaved), Text.literal("Saved source entity did not load"));
-            context.assertEquals(
+            context.assertTrue(world.addFreshEntity(oldSaved), Component.literal("Saved source entity did not load"));
+            context.assertValueEqual(
                     PetEntityReconciliationStatus.STALE_DISCARDED,
                     restartedSource.reconcileLoaded(oldSaved, world).join().status(),
-                    Text.literal("Returned offline source entity was not classified stale"));
+                    Component.literal("Returned offline source entity was not classified stale"));
             context.assertTrue(
                     oldSaved.isRemoved(),
-                    Text.literal("Returned offline source entity survived reconciliation"));
+                    Component.literal("Returned offline source entity survived reconciliation"));
 
-            TameableEntity replayedSave = new PetEntityFactory().prepare(
+            TamableAnimal replayedSave = new PetEntityFactory().prepare(
                     world, sourcePlaced, oldEntityId, position(oldLocation), false).entity();
-            context.assertTrue(world.spawnEntity(replayedSave), Text.literal("Replayed old save did not load"));
-            context.assertEquals(
+            context.assertTrue(world.addFreshEntity(replayedSave), Component.literal("Replayed old save did not load"));
+            context.assertValueEqual(
                     PetEntityReconciliationStatus.STALE_DISCARDED,
                     new PetEntityReconciler(sourceBackend, authority)
                             .reconcileLoaded(replayedSave, world).join().status(),
-                    Text.literal("Fresh source process did not reject the replayed save"));
-            context.assertTrue(replayedSave.isRemoved(), Text.literal("Replayed save survived"));
+                    Component.literal("Fresh source process did not reject the replayed save"));
+            context.assertTrue(replayedSave.isRemoved(), Component.literal("Replayed save survived"));
 
             PetEntityRecoveryCoordinator destinationProcess = new PetEntityRecoveryCoordinator(
                     destinationBackend, authority,
                     new PetEntityReconciler(destinationBackend, authority),
                     new PetEntityFactory());
-            context.assertEquals(
+            context.assertValueEqual(
                     PetRecoveryStatus.AUTHORITATIVE_ENTITY_PRESENT,
-                    destinationProcess.recoverOwner(world.getServer(), owner.getUuid())
+                    destinationProcess.recoverOwner(world.getServer(), owner.getUUID())
                             .toCompletableFuture().join(),
-                    Text.literal("Destination did not retain its sole authoritative entity"));
+                    Component.literal("Destination did not retain its sole authoritative entity"));
             int liveRepresentations = 0;
-            for (net.minecraft.entity.Entity entity : world.iterateEntities()) {
+            for (net.minecraft.world.entity.Entity entity : world.getAllEntities()) {
                 if (entity instanceof PetEntityData data
                         && data.aipets$isPet()
                         && petId.equals(data.aipets$getPetId())
@@ -1826,33 +1825,33 @@ public final class PetPhysicalGameTests {
                     liveRepresentations++;
                 }
             }
-            context.assertEquals(
+            context.assertValueEqual(
                     1, liveRepresentations,
-                    Text.literal("Offline recall produced more than one live representation"));
+                    Component.literal("Offline recall produced more than one live representation"));
             context.assertTrue(
-                    world.getEntityAnyDimension(recalledEntityId) == destinationEntity,
-                    Text.literal("Recall destination identity changed during reconciliation"));
+                    world.getEntityInAnyDimension(recalledEntityId) == destinationEntity,
+                    Component.literal("Recall destination identity changed during reconciliation"));
         } finally {
             if (destinationEntity != null) destinationEntity.discard();
             removeMockPlayer(world, owner);
         }
-        context.complete();
+        context.succeed();
     }
 
     @GameTest
     @SuppressWarnings("removal")
-    public void petCompassLifecycleIsSignedBoundAndLocationAware(TestContext context) {
-        ServerWorld world = context.getWorld();
-        ServerPlayerEntity owner = context.createMockCreativeServerPlayerInWorld();
-        ServerPlayerEntity intruder = context.createMockCreativeServerPlayerInWorld();
+    public void petCompassLifecycleIsSignedBoundAndLocationAware(GameTestHelper context) {
+        ServerLevel world = context.getLevel();
+        ServerPlayer owner = context.makeMockServerPlayerInLevel();
+        ServerPlayer intruder = context.makeMockServerPlayerInLevel();
         BackendId localBackend = new BackendId("gametest");
         BackendId remoteBackend = new BackendId("survival");
         DimensionId localDimension = DimensionId.parse(
-                world.getRegistryKey().getValue().toString());
+                world.dimension().identifier().toString());
         UUID petId = UUID.fromString("10000000-0000-0000-0000-000000000024");
         Pet held = pet(
                 petId,
-                owner.getUuid(),
+                owner.getUUID(),
                 PetSpecies.CAT,
                 "minecraft:tabby",
                 0.66,
@@ -1866,46 +1865,46 @@ public final class PetPhysicalGameTests {
                         localBackend, "Game Test",
                         remoteBackend, "Survival Realm"));
         CapturingCommandOutput output = new CapturingCommandOutput();
-        ServerCommandSource source = owner.getCommandSource().withOutput(output);
-        TameableEntity liveEntity = null;
+        CommandSourceStack source = owner.createCommandSourceStack().withSource(output);
+        TamableAnimal liveEntity = null;
         ItemEntity dropped = null;
         try {
-            int issueResult = world.getServer().getCommandManager().getDispatcher()
+            int issueResult = world.getServer().getCommands().getDispatcher()
                     .execute("pet compass", source);
-            context.assertEquals(1, issueResult, Text.literal("/pet compass did not schedule"));
+            context.assertValueEqual(1, issueResult, Component.literal("/pet compass did not schedule"));
             PetCompassManager manager = PetCompanionMod.petCompassManager().orElseThrow();
             ItemStack compass = findCompass(owner);
             context.assertTrue(
-                    manager.isAllowedInPlayerInventory(compass, owner.getUuid()),
-                    Text.literal("Issued compass did not have a valid owner/pet signature"));
-            context.assertEquals(
+                    manager.isAllowedInPlayerInventory(compass, owner.getUUID()),
+                    Component.literal("Issued compass did not have a valid owner/pet signature"));
+            context.assertValueEqual(
                     "Held by you",
-                    compass.get(DataComponentTypes.LORE).lines().getFirst().getString(),
-                    Text.literal("Held compass status was incorrect"));
+                    compass.get(DataComponents.LORE).lines().getFirst().getString(),
+                    Component.literal("Held compass status was incorrect"));
 
-            owner.getInventory().setStack(owner.getInventory().getEmptySlot(), compass.copy());
+            owner.getInventory().setItem(owner.getInventory().getFreeSlot(), compass.copy());
             ItemStack forged = compass.copy();
-            NbtCompound forgedCustom = forged.get(DataComponentTypes.CUSTOM_DATA).copyNbt();
-            NbtCompound forgedRoot = forgedCustom.getCompound("pet_companion_compass").orElseThrow();
+            CompoundTag forgedCustom = forged.get(DataComponents.CUSTOM_DATA).copyTag();
+            CompoundTag forgedRoot = forgedCustom.getCompound("pet_companion_compass").orElseThrow();
             forgedRoot.putString("signature", "0".repeat(64));
             forgedCustom.put("pet_companion_compass", forgedRoot);
-            forged.set(DataComponentTypes.CUSTOM_DATA, NbtComponent.of(forgedCustom));
+            forged.set(DataComponents.CUSTOM_DATA, CustomData.of(forgedCustom));
             context.assertFalse(
-                    manager.isAllowedInPlayerInventory(forged, owner.getUuid()),
-                    Text.literal("Tampered compass signature was trusted"));
-            owner.getInventory().setStack(owner.getInventory().getEmptySlot(), forged);
+                    manager.isAllowedInPlayerInventory(forged, owner.getUUID()),
+                    Component.literal("Tampered compass signature was trusted"));
+            owner.getInventory().setItem(owner.getInventory().getFreeSlot(), forged);
             PetCompassIssueResult deduplicated = manager.issueOrRefresh(
                     owner,
                     new PetAuthoritySnapshot(held, false));
-            context.assertEquals(
+            context.assertValueEqual(
                     PetCompassIssueStatus.REFRESHED,
                     deduplicated.status(),
-                    Text.literal("Existing compass was not refreshed"));
-            context.assertEquals(
+                    Component.literal("Existing compass was not refreshed"));
+            context.assertValueEqual(
                     2,
                     deduplicated.removedInvalidOrDuplicate(),
-                    Text.literal("Duplicate/tampered compass was not removed"));
-            context.assertEquals(1, countCompasses(owner), Text.literal("More than one compass remains"));
+                    Component.literal("Duplicate/tampered compass was not removed"));
+            context.assertValueEqual(1, countCompasses(owner), Component.literal("More than one compass remains"));
 
             Pet remote = withPlacement(
                     held,
@@ -1915,13 +1914,13 @@ public final class PetPhysicalGameTests {
                             new WorldPosition(100.0, 70.0, 100.0)));
             manager.issueOrRefresh(owner, new PetAuthoritySnapshot(remote, false));
             compass = findCompass(owner);
-            context.assertEquals(
+            context.assertValueEqual(
                     "On Survival Realm",
-                    compass.get(DataComponentTypes.LORE).lines().getFirst().getString(),
-                    Text.literal("Remote backend friendly name was missing"));
+                    compass.get(DataComponents.LORE).lines().getFirst().getString(),
+                    Component.literal("Remote backend friendly name was missing"));
             context.assertTrue(
-                    compass.get(DataComponentTypes.LODESTONE_TRACKER) == null,
-                    Text.literal("Remote compass retained a misleading direction"));
+                    compass.get(DataComponents.LODESTONE_TRACKER) == null,
+                    Component.literal("Remote compass retained a misleading direction"));
 
             Pet otherDimension = withPlacement(
                     held,
@@ -1931,15 +1930,15 @@ public final class PetPhysicalGameTests {
                             new WorldPosition(3.0, 65.0, 3.0)));
             manager.issueOrRefresh(owner, new PetAuthoritySnapshot(otherDimension, false));
             compass = findCompass(owner);
-            context.assertEquals(
+            context.assertValueEqual(
                     "In minecraft:the_nether",
-                    compass.get(DataComponentTypes.LORE).lines().getFirst().getString(),
-                    Text.literal("Different-dimension status was incorrect"));
+                    compass.get(DataComponents.LORE).lines().getFirst().getString(),
+                    Component.literal("Different-dimension status was incorrect"));
             context.assertTrue(
-                    compass.get(DataComponentTypes.LODESTONE_TRACKER) == null,
-                    Text.literal("Different-dimension compass retained a direction"));
+                    compass.get(DataComponents.LODESTONE_TRACKER) == null,
+                    Component.literal("Different-dimension compass retained a direction"));
 
-            BlockPos lastKnown = context.getAbsolutePos(new BlockPos(1, 1, 1));
+            BlockPos lastKnown = context.absolutePos(new BlockPos(1, 1, 1));
             Pet virtualized = withPlacement(
                     held,
                     PlacedPlacement.virtualized(
@@ -1948,15 +1947,15 @@ public final class PetPhysicalGameTests {
                             new WorldPosition(lastKnown.getX(), lastKnown.getY(), lastKnown.getZ())));
             manager.issueOrRefresh(owner, new PetAuthoritySnapshot(virtualized, false));
             compass = findCompass(owner);
-            LodestoneTrackerComponent lastKnownTracker = compass.get(DataComponentTypes.LODESTONE_TRACKER);
-            context.assertEquals(
+            LodestoneTracker lastKnownTracker = compass.get(DataComponents.LODESTONE_TRACKER);
+            context.assertValueEqual(
                     lastKnown,
                     lastKnownTracker.target().orElseThrow().pos(),
-                    Text.literal("Compass did not point to last authoritative coordinates"));
+                    Component.literal("Compass did not point to last authoritative coordinates"));
 
             UUID entityId = UUID.fromString("30000000-0000-0000-0000-000000000024");
-            BlockPos authoritativePosition = context.getAbsolutePos(new BlockPos(2, 1, 2));
-            BlockPos livePosition = context.getAbsolutePos(new BlockPos(4, 1, 4));
+            BlockPos authoritativePosition = context.absolutePos(new BlockPos(2, 1, 2));
+            BlockPos livePosition = context.absolutePos(new BlockPos(4, 1, 4));
             Pet materialized = withPlacement(
                     held,
                     PlacedPlacement.materialized(
@@ -1974,79 +1973,79 @@ public final class PetPhysicalGameTests {
                     entityId,
                     new WorldPosition(livePosition.getX(), livePosition.getY(), livePosition.getZ()),
                     false).entity();
-            liveEntity.refreshPositionAndAngles(Vec3d.ofCenter(livePosition), 0.0F, 0.0F);
-            context.assertTrue(world.spawnEntity(liveEntity), Text.literal("Live compass fixture did not spawn"));
+            liveEntity.snapTo(Vec3.atCenterOf(livePosition), 0.0F, 0.0F);
+            context.assertTrue(world.addFreshEntity(liveEntity), Component.literal("Live compass fixture did not spawn"));
             manager.issueOrRefresh(owner, new PetAuthoritySnapshot(materialized, false));
             compass = findCompass(owner);
-            context.assertEquals(
-                    liveEntity.getBlockPos(),
-                    compass.get(DataComponentTypes.LODESTONE_TRACKER).target().orElseThrow().pos(),
-                    Text.literal("Compass did not prefer the loaded live entity position"));
+            context.assertValueEqual(
+                    liveEntity.blockPosition(),
+                    compass.get(DataComponents.LODESTONE_TRACKER).target().orElseThrow().pos(),
+                    Component.literal("Compass did not prefer the loaded live entity position"));
             PetCompassIssueResult inactiveAccess = manager.issueOrRefresh(
                     owner,
                     new PetAuthoritySnapshot(materialized, false, false));
-            context.assertEquals(
+            context.assertValueEqual(
                     PetCompassIssueStatus.REFRESHED,
                     inactiveAccess.status(),
-                    Text.literal("Inactive AI access disabled physical compass refresh"));
+                    Component.literal("Inactive AI access disabled physical compass refresh"));
 
             ItemStack enforcementCopy = compass.copy();
             context.assertFalse(
-                    new Slot(new SimpleInventory(1), 0, 0, 0).canInsert(enforcementCopy),
-                    Text.literal("Container slot accepted a pet compass"));
+                    new Slot(new SimpleContainer(1), 0, 0, 0).mayPlace(enforcementCopy),
+                    Component.literal("Container slot accepted a pet compass"));
             context.assertFalse(
-                    new Slot(intruder.getInventory(), 0, 0, 0).canInsert(enforcementCopy),
-                    Text.literal("Another player's inventory accepted the pet compass"));
-            SimpleInventory hopperSource = new SimpleInventory(enforcementCopy.copy());
-            SimpleInventory hopperTarget = new SimpleInventory(1);
-            ItemStack hopperRemainder = HopperBlockEntity.transfer(
+                    new Slot(intruder.getInventory(), 0, 0, 0).mayPlace(enforcementCopy),
+                    Component.literal("Another player's inventory accepted the pet compass"));
+            SimpleContainer hopperSource = new SimpleContainer(enforcementCopy.copy());
+            SimpleContainer hopperTarget = new SimpleContainer(1);
+            ItemStack hopperRemainder = HopperBlockEntity.addItem(
                     hopperSource,
                     hopperTarget,
                     enforcementCopy.copy(),
                     Direction.DOWN);
-            context.assertFalse(hopperRemainder.isEmpty(), Text.literal("Hopper consumed pet compass"));
-            context.assertTrue(hopperTarget.isEmpty(), Text.literal("Hopper transferred pet compass"));
+            context.assertFalse(hopperRemainder.isEmpty(), Component.literal("Hopper consumed pet compass"));
+            context.assertTrue(hopperTarget.isEmpty(), Component.literal("Hopper transferred pet compass"));
 
-            owner.getInventory().clear();
-            for (int slot = 0; slot < owner.getInventory().size(); slot++) {
-                owner.getInventory().setStack(slot, new ItemStack(Items.STONE, 64));
+            owner.getInventory().clearContent();
+            for (int slot = 0; slot < owner.getInventory().getContainerSize(); slot++) {
+                owner.getInventory().setItem(slot, new ItemStack(Items.STONE, 64));
             }
             authority.current = held;
-            int fullResult = world.getServer().getCommandManager().getDispatcher()
+            int fullResult = world.getServer().getCommands().getDispatcher()
                     .execute("pet compass", source);
-            context.assertEquals(1, fullResult, Text.literal("Full-inventory compass command did not schedule"));
+            context.assertValueEqual(1, fullResult, Component.literal("Full-inventory compass command did not schedule"));
             context.assertTrue(
                     output.messages.stream().anyMatch(message -> message.contains("inventory is full")),
-                    Text.literal("Full inventory did not produce clear feedback"));
-            context.assertEquals(0, countCompasses(owner), Text.literal("Full inventory received a compass"));
-            context.assertEquals(2, authority.ownerLookupCount, Text.literal("Compass command lookup count changed"));
-            context.assertEquals(0, authority.mutationCount, Text.literal("Compass behavior wrote authority state"));
+                    Component.literal("Full inventory did not produce clear feedback"));
+            context.assertValueEqual(0, countCompasses(owner), Component.literal("Full inventory received a compass"));
+            context.assertValueEqual(2, authority.ownerLookupCount, Component.literal("Compass command lookup count changed"));
+            context.assertValueEqual(0, authority.mutationCount, Component.literal("Compass behavior wrote authority state"));
 
-            Vec3d dropPosition = context.getAbsolute(new Vec3d(3.5, 2.0, 3.5));
+            Vec3 dropPosition = context.absoluteVec(new Vec3(3.5, 2.0, 3.5));
             dropped = new ItemEntity(
                     world,
                     dropPosition.x,
                     dropPosition.y,
                     dropPosition.z,
                     enforcementCopy);
-            context.assertTrue(world.spawnEntity(dropped), Text.literal("Dropped compass fixture did not spawn"));
+            context.assertTrue(world.addFreshEntity(dropped), Component.literal("Dropped compass fixture did not spawn"));
             ItemEntity droppedReference = dropped;
-            TameableEntity liveReference = liveEntity;
-            context.waitAndRun(2, () -> {
+            TamableAnimal liveReference = liveEntity;
+            context.runAfterDelay(2, () -> {
                 try {
                     context.assertTrue(
                             droppedReference.isRemoved(),
-                            Text.literal("Dropped pet compass item entity was not removed"));
+                            Component.literal("Dropped pet compass item entity was not removed"));
                 } finally {
                     liveReference.discard();
                     uninstallGateway.run();
                     removeMockPlayer(world, intruder);
                     removeMockPlayer(world, owner);
                 }
-                context.complete();
+                context.succeed();
             });
         } catch (CommandSyntaxException failure) {
-            throw context.createError("Pet compass command execution failed: %s", failure.getMessage());
+            throw context.assertionException("Pet compass command execution failed: %s", failure.getMessage());
         } catch (RuntimeException | Error failure) {
             if (dropped != null) {
                 dropped.discard();
@@ -2063,119 +2062,119 @@ public final class PetPhysicalGameTests {
 
     @GameTest
     @SuppressWarnings("removal")
-    public void petAdoptCommandRequiresAccessAndNeverRerollsExistingPet(TestContext context) {
-        ServerWorld world = context.getWorld();
-        ServerPlayerEntity owner = context.createMockCreativeServerPlayerInWorld();
+    public void petAdoptCommandRequiresAccessAndNeverRerollsExistingPet(GameTestHelper context) {
+        ServerLevel world = context.getLevel();
+        ServerPlayer owner = context.makeMockServerPlayerInLevel();
         InMemoryAuthorityGateway authority = new InMemoryAuthorityGateway(world, null);
         authority.adoptionAccess = false;
         Runnable uninstallGateway = PetCompanionMod.installAuthorityGateway(
                 new BackendId("gametest"), authority);
         CapturingCommandOutput output = new CapturingCommandOutput();
-        ServerCommandSource source = owner.getCommandSource().withOutput(output);
+        CommandSourceStack source = owner.createCommandSourceStack().withSource(output);
         try {
-            var dispatcher = world.getServer().getCommandManager().getDispatcher();
-            context.assertEquals(1, dispatcher.execute("pet adopt", source),
-                    Text.literal("Adoption menu did not open"));
-            context.assertEquals(1, dispatcher.execute("pet adopt cat", source),
-                    Text.literal("Cat name entry did not open"));
-            context.assertEquals(1, dispatcher.execute("pet adopt dog", source),
-                    Text.literal("Dog name entry did not open"));
-            context.assertEquals(0, authority.adoptionRequestCount,
-                    Text.literal("Opening adoption UI submitted an adoption"));
-            context.assertTrue(output.components.stream().flatMap(text -> text.getWithStyle(
-                    net.minecraft.text.Style.EMPTY).stream()).anyMatch(text ->
-                    text.getStyle().getClickEvent() instanceof net.minecraft.text.ClickEvent.SuggestCommand click
+            var dispatcher = world.getServer().getCommands().getDispatcher();
+            context.assertValueEqual(1, dispatcher.execute("pet adopt", source),
+                    Component.literal("Adoption menu did not open"));
+            context.assertValueEqual(1, dispatcher.execute("pet adopt cat", source),
+                    Component.literal("Cat name entry did not open"));
+            context.assertValueEqual(1, dispatcher.execute("pet adopt dog", source),
+                    Component.literal("Dog name entry did not open"));
+            context.assertValueEqual(0, authority.adoptionRequestCount,
+                    Component.literal("Opening adoption UI submitted an adoption"));
+            context.assertTrue(output.components.stream().flatMap(text -> text.toFlatList(
+                    net.minecraft.network.chat.Style.EMPTY).stream()).anyMatch(text ->
+                    text.getStyle().getClickEvent() instanceof net.minecraft.network.chat.ClickEvent.SuggestCommand click
                             && click.command().equals("/pet adopt dog ")),
-                    Text.literal("Dog name action did not populate a private slash command"));
-            context.assertEquals(
+                    Component.literal("Dog name action did not populate a private slash command"));
+            context.assertValueEqual(
                     1,
-                    world.getServer().getCommandManager().getDispatcher()
+                    world.getServer().getCommands().getDispatcher()
                             .execute("pet adopt cat Luna", source),
-                    Text.literal("Denied adoption command did not schedule"));
-            context.assertTrue(authority.current == null, Text.literal("Denied adoption created a pet"));
+                    Component.literal("Denied adoption command did not schedule"));
+            context.assertTrue(authority.current == null, Component.literal("Denied adoption created a pet"));
             context.assertTrue(
                     output.messages.stream().anyMatch(message -> message.contains("active subscription")),
-                    Text.literal("Denied adoption omitted subscription feedback"));
+                    Component.literal("Denied adoption omitted subscription feedback"));
 
             authority.adoptionAccess = true;
-            context.assertEquals(
+            context.assertValueEqual(
                     1,
-                    world.getServer().getCommandManager().getDispatcher()
+                    world.getServer().getCommands().getDispatcher()
                             .execute("pet adopt dog Pepper", source),
-                    Text.literal("Allowed adoption command did not schedule"));
+                    Component.literal("Allowed adoption command did not schedule"));
             Pet created = authority.current;
-            context.assertEquals("Pepper", created.name(), Text.literal("Adoption name changed"));
-            context.assertEquals(
+            context.assertValueEqual("Pepper", created.name(), Component.literal("Adoption name changed"));
+            context.assertValueEqual(
                     PetSpecies.DOG,
                     created.appearance().species(),
-                    Text.literal("Adoption species changed"));
+                    Component.literal("Adoption species changed"));
 
-            context.assertEquals(
+            context.assertValueEqual(
                     1,
-                    world.getServer().getCommandManager().getDispatcher()
+                    world.getServer().getCommands().getDispatcher()
                             .execute("pet adopt cat Reroll", source),
-                    Text.literal("Repeat adoption command did not schedule"));
-            context.assertTrue(authority.current == created, Text.literal("Repeat adoption rerolled the pet"));
-            context.assertEquals(3, authority.adoptionRequestCount, Text.literal("Adoption request count changed"));
+                    Component.literal("Repeat adoption command did not schedule"));
+            context.assertTrue(authority.current == created, Component.literal("Repeat adoption rerolled the pet"));
+            context.assertValueEqual(3, authority.adoptionRequestCount, Component.literal("Adoption request count changed"));
             context.assertTrue(
                     output.messages.stream().anyMatch(message -> message.contains("Adopted Pepper the dog")),
-                    Text.literal("Successful adoption feedback was missing"));
+                    Component.literal("Successful adoption feedback was missing"));
             context.assertTrue(
                     output.messages.stream().anyMatch(message -> message.contains("already own Pepper")),
-                    Text.literal("Existing-pet feedback was missing"));
+                    Component.literal("Existing-pet feedback was missing"));
         } catch (CommandSyntaxException failure) {
-            throw context.createError("Pet adoption command execution failed: %s", failure.getMessage());
+            throw context.assertionException("Pet adoption command execution failed: %s", failure.getMessage());
         } finally {
             uninstallGateway.run();
             removeMockPlayer(world, owner);
         }
-        context.complete();
+        context.succeed();
     }
 
     @GameTest
     @SuppressWarnings("removal")
-    public void petCommandsEnforceExplicitPermissionNodes(TestContext context) {
-        ServerWorld world = context.getWorld();
-        ServerPlayerEntity owner = context.createMockCreativeServerPlayerInWorld();
+    public void petCommandsEnforceExplicitPermissionNodes(GameTestHelper context) {
+        ServerLevel world = context.getLevel();
+        ServerPlayer owner = context.makeMockServerPlayerInLevel();
         Pet aggregate = pet(
                 UUID.fromString("10000000-0000-0000-0000-000000000027"),
-                owner.getUuid(), PetSpecies.CAT, "minecraft:tabby", 0.66, 0L);
+                owner.getUUID(), PetSpecies.CAT, "minecraft:tabby", 0.66, 0L);
         InMemoryAuthorityGateway authority = new InMemoryAuthorityGateway(world, aggregate);
         Runnable uninstallGateway = PetCompanionMod.installAuthorityGateway(
                 new BackendId("gametest"), authority);
         CapturingCommandOutput output = new CapturingCommandOutput();
-        ServerCommandSource source = owner.getCommandSource().withOutput(output);
+        CommandSourceStack source = owner.createCommandSourceStack().withSource(output);
         Runnable restoreFeaturePermissions = PetPermissions.install(
                 (ignored, node, defaultLevel) ->
                         !node.equals(PetPermission.ADOPT.node())
                                 && !node.equals(PetPermission.RECALL.node()));
         try {
-            context.assertEquals(
+            context.assertValueEqual(
                     1,
-                    world.getServer().getCommandManager().getDispatcher()
+                    world.getServer().getCommands().getDispatcher()
                             .execute("pet status", source),
-                    Text.literal("Allowed aipets.use command failed"));
-            context.assertEquals(
+                    Component.literal("Allowed aipets.use command failed"));
+            context.assertValueEqual(
                     1,
-                    world.getServer().getCommandManager().getDispatcher().execute("pet", source),
-                    Text.literal("Permission-filtered /pet help failed"));
+                    world.getServer().getCommands().getDispatcher().execute("pet", source),
+                    Component.literal("Permission-filtered /pet help failed"));
             String help = output.messages.stream()
                     .filter(message -> message.startsWith("Pet Companion:"))
                     .findFirst()
-                    .orElseThrow(() -> context.createError("Permission-filtered help was missing"));
-            context.assertFalse(help.contains("/pet adopt"), Text.literal("Help exposed denied adopt"));
-            context.assertFalse(help.contains("/pet recall"), Text.literal("Help exposed denied recall"));
-            context.assertTrue(help.contains("/pet compass"), Text.literal("Help omitted allowed compass"));
+                    .orElseThrow(() -> context.assertionException("Permission-filtered help was missing"));
+            context.assertFalse(help.contains("/pet adopt"), Component.literal("Help exposed denied adopt"));
+            context.assertFalse(help.contains("/pet recall"), Component.literal("Help exposed denied recall"));
+            context.assertTrue(help.contains("/pet compass"), Component.literal("Help omitted allowed compass"));
             assertCommandDenied(context, world, source, "pet adopt cat Blocked");
             assertCommandDenied(context, world, source, "pet recall");
-            context.assertEquals(
+            context.assertValueEqual(
                     0,
                     authority.adoptionRequestCount,
-                    Text.literal("Denied aipets.adopt reached adoption authority"));
-            context.assertEquals(
+                    Component.literal("Denied aipets.adopt reached adoption authority"));
+            context.assertValueEqual(
                     0,
                     authority.mutationCount,
-                    Text.literal("Denied aipets.recall reached mutation authority"));
+                    Component.literal("Denied aipets.recall reached mutation authority"));
             restoreFeaturePermissions.run();
 
             Runnable restoreUse = PetPermissions.install(
@@ -2186,23 +2185,23 @@ public final class PetPhysicalGameTests {
                 restoreUse.run();
             }
         } catch (CommandSyntaxException failure) {
-            throw context.createError("Allowed permission command failed: %s", failure.getMessage());
+            throw context.assertionException("Allowed permission command failed: %s", failure.getMessage());
         } finally {
             restoreFeaturePermissions.run();
             uninstallGateway.run();
             removeMockPlayer(world, owner);
         }
-        context.complete();
+        context.succeed();
     }
 
     private static void assertCommandDenied(
-            TestContext context,
-            ServerWorld world,
-            ServerCommandSource source,
+            GameTestHelper context,
+            ServerLevel world,
+            CommandSourceStack source,
             String command) {
         try {
-            world.getServer().getCommandManager().getDispatcher().execute(command, source);
-            throw context.createError("Permission gate allowed command: %s", command);
+            world.getServer().getCommands().getDispatcher().execute(command, source);
+            throw context.assertionException("Permission gate allowed command: %s", command);
         } catch (CommandSyntaxException expected) {
             // Brigadier hides nodes whose requirement predicate denies the source.
         }
@@ -2258,9 +2257,9 @@ public final class PetPhysicalGameTests {
                 pet.updatedAt());
     }
 
-    private static ItemStack findCompass(ServerPlayerEntity player) {
-        for (int slot = 0; slot < player.getInventory().size(); slot++) {
-            ItemStack stack = player.getInventory().getStack(slot);
+    private static ItemStack findCompass(ServerPlayer player) {
+        for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
+            ItemStack stack = player.getInventory().getItem(slot);
             if (PetCompassItem.isCandidate(stack)) {
                 return stack;
             }
@@ -2268,10 +2267,10 @@ public final class PetPhysicalGameTests {
         throw new IllegalStateException("No pet compass in player inventory");
     }
 
-    private static int countCompasses(ServerPlayerEntity player) {
+    private static int countCompasses(ServerPlayer player) {
         int count = 0;
-        for (int slot = 0; slot < player.getInventory().size(); slot++) {
-            if (PetCompassItem.isCandidate(player.getInventory().getStack(slot))) {
+        for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
+            if (PetCompassItem.isCandidate(player.getInventory().getItem(slot))) {
                 count++;
             }
         }
@@ -2279,74 +2278,74 @@ public final class PetPhysicalGameTests {
     }
 
     private static void assertPhysicalPet(
-            TestContext context,
-            TameableEntity entity,
+            GameTestHelper context,
+            TamableAnimal entity,
             Pet pet,
             String expectedVariantId) {
         PetEntityData data = (PetEntityData) entity;
-        context.assertTrue(data.aipets$isPet(), Text.literal("Physical entity is not marked"));
-        context.assertEquals(pet.petId(), data.aipets$getPetId(), Text.literal("Pet ID mismatch"));
-        context.assertEquals(pet.ownerUuid(), data.aipets$getOwnerUuid(), Text.literal("Owner ID mismatch"));
-        context.assertEquals(pet.recordVersion(), data.aipets$getRecordVersion(), Text.literal("Revision mismatch"));
-        context.assertTrue(entity.isInvulnerable(), Text.literal("Physical entity is not invulnerable"));
-        context.assertTrue(entity.isPersistent(), Text.literal("Physical entity is not persistent"));
+        context.assertTrue(data.aipets$isPet(), Component.literal("Physical entity is not marked"));
+        context.assertValueEqual(pet.petId(), data.aipets$getPetId(), Component.literal("Pet ID mismatch"));
+        context.assertValueEqual(pet.ownerUuid(), data.aipets$getOwnerUuid(), Component.literal("Owner ID mismatch"));
+        context.assertValueEqual(pet.recordVersion(), data.aipets$getRecordVersion(), Component.literal("Revision mismatch"));
+        context.assertTrue(entity.isInvulnerable(), Component.literal("Physical entity is not invulnerable"));
+        context.assertTrue(entity.isPersistenceRequired(), Component.literal("Physical entity is not persistent"));
         context.assertTrue(
-                entity.getCommandTags().contains(PetEntityController.NO_DESPAWN_TAG),
-                Text.literal("Physical entity lacks no_despawn tag"));
+                entity.entityTags().contains(PetEntityController.NO_DESPAWN_TAG),
+                Component.literal("Physical entity lacks no_despawn tag"));
         context.assertTrue(
-                Math.abs(entity.getAttributeBaseValue(EntityAttributes.SCALE) - pet.appearance().scale()) < 1.0E-9,
-                Text.literal("Scale attribute base value mismatch"));
+                Math.abs(entity.getAttributeBaseValue(Attributes.SCALE) - pet.appearance().scale()) < 1.0E-9,
+                Component.literal("Scale attribute base value mismatch"));
         context.assertTrue(
                 Math.abs(entity.getScale() - pet.appearance().scale()) < 1.0E-6,
-                Text.literal("Effective entity scale mismatch"));
+                Component.literal("Effective entity scale mismatch"));
 
         Identifier materializedVariant;
-        if (entity instanceof CatEntity cat) {
-            Registry<CatVariant> registry = context.getWorld()
-                    .getRegistryManager()
-                    .getOrThrow(RegistryKeys.CAT_VARIANT);
-            materializedVariant = registry.getId(cat.getVariant().value());
-        } else if (entity instanceof WolfEntity wolf) {
-            Registry<WolfVariant> registry = context.getWorld()
-                    .getRegistryManager()
-                    .getOrThrow(RegistryKeys.WOLF_VARIANT);
-            materializedVariant = registry.getId(
+        if (entity instanceof Cat cat) {
+            Registry<CatVariant> registry = context.getLevel()
+                    .registryAccess()
+                    .lookupOrThrow(Registries.CAT_VARIANT);
+            materializedVariant = registry.getKey(cat.getVariant().value());
+        } else if (entity instanceof Wolf wolf) {
+            Registry<WolfVariant> registry = context.getLevel()
+                    .registryAccess()
+                    .lookupOrThrow(Registries.WOLF_VARIANT);
+            materializedVariant = registry.getKey(
                     ((WolfEntityVariantInvoker) wolf).aipets$getVariant().value());
         } else {
-            throw context.createError("Unexpected physical entity type: %s", entity.getType());
+            throw context.assertionException("Unexpected physical entity type: %s", entity.getType());
         }
-        context.assertEquals(
+        context.assertValueEqual(
                 expectedVariantId,
                 materializedVariant.toString(),
-                Text.literal("Materialized variant mismatch"));
+                Component.literal("Materialized variant mismatch"));
     }
 
-    private static void setScale(TameableEntity entity, double scale) {
-        entity.getAttributeInstance(EntityAttributes.SCALE).setBaseValue(scale);
+    private static void setScale(TamableAnimal entity, double scale) {
+        entity.getAttribute(Attributes.SCALE).setBaseValue(scale);
     }
 
     private static <T> void assertRegistryContains(
-            TestContext context,
+            GameTestHelper context,
             Registry<T> registry,
             ResourceId variant) {
         context.assertTrue(
-                registry.containsId(Identifier.of(variant.value())),
-                Text.literal("Configured variant missing at runtime: " + variant));
+                registry.containsKey(Identifier.parse(variant.value())),
+                Component.literal("Configured variant missing at runtime: " + variant));
     }
 
-    private static WorldPosition position(Vec3d position) {
+    private static WorldPosition position(Vec3 position) {
         return new WorldPosition(position.x, position.y, position.z);
     }
 
-    private static void removeMockPlayer(ServerWorld world, ServerPlayerEntity player) {
-        PlayerManager playerManager = world.getServer().getPlayerManager();
-        if (playerManager.getPlayer(player.getUuid()) == player) {
+    private static void removeMockPlayer(ServerLevel world, ServerPlayer player) {
+        PlayerList playerManager = world.getServer().getPlayerList();
+        if (playerManager.getPlayer(player.getUUID()) == player) {
             playerManager.remove(player);
         }
     }
 
     private static final class InMemoryAuthorityGateway implements PetAuthorityGateway {
-        private final ServerWorld world;
+        private final ServerLevel world;
         private Pet current;
         private boolean entityWasAbsentAtCommit;
         private int compensationCount;
@@ -2363,7 +2362,7 @@ public final class PetPhysicalGameTests {
         private boolean entityWasPresentAtTransferCommit;
         private boolean failAllRequests;
 
-        private InMemoryAuthorityGateway(ServerWorld world, Pet initial) {
+        private InMemoryAuthorityGateway(ServerLevel world, Pet initial) {
             this.world = world;
             this.current = initial;
         }
@@ -2441,7 +2440,7 @@ public final class PetPhysicalGameTests {
                 UUID petId,
                 PetTransitions.Place command) {
             mutationCount++;
-            entityWasAbsentAtCommit = world.getEntityAnyDimension(command.entityUuid()) == null;
+            entityWasAbsentAtCommit = world.getEntityInAnyDimension(command.entityUuid()) == null;
             return CompletableFuture.completedFuture(apply(
                     petId,
                     PetTransitions.place(current, command)));
@@ -2476,7 +2475,7 @@ public final class PetPhysicalGameTests {
                 UUID petId,
                 PetTransitions.PrepareTransfer command) {
             mutationCount++;
-            entityWasPresentAtTransferCommit = world.getEntityAnyDimension(
+            entityWasPresentAtTransferCommit = world.getEntityInAnyDimension(
                     command.transfer().sourceEntityUuid()) != null;
             return CompletableFuture.completedFuture(apply(
                     petId, PetTransitions.prepareTransfer(current, command)));
@@ -2566,28 +2565,28 @@ public final class PetPhysicalGameTests {
         }
     }
 
-    private static final class CapturingCommandOutput implements CommandOutput {
+    private static final class CapturingCommandOutput implements CommandSource {
         private final List<String> messages = new ArrayList<>();
-        private final List<Text> components = new ArrayList<>();
+        private final List<Component> components = new ArrayList<>();
 
         @Override
-        public void sendMessage(Text message) {
+        public void sendSystemMessage(Component message) {
             messages.add(message.getString());
             components.add(message.copy());
         }
 
         @Override
-        public boolean shouldReceiveFeedback() {
+        public boolean acceptsSuccess() {
             return true;
         }
 
         @Override
-        public boolean shouldTrackOutput() {
+        public boolean acceptsFailure() {
             return false;
         }
 
         @Override
-        public boolean shouldBroadcastConsoleToOps() {
+        public boolean shouldInformAdmins() {
             return false;
         }
     }

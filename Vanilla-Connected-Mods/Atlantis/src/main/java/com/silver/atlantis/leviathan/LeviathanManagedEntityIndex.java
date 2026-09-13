@@ -2,9 +2,8 @@ package com.silver.atlantis.leviathan;
 
 import com.silver.atlantis.AtlantisMod;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
-import net.minecraft.entity.Entity;
-import net.minecraft.server.world.ServerWorld;
-
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.Entity;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -38,7 +37,7 @@ final class LeviathanManagedEntityIndex {
         bootstrapped = false;
     }
 
-    static Map<UUID, Entity> snapshot(ServerWorld world) {
+    static Map<UUID, Entity> snapshot(ServerLevel world) {
         if (!bootstrapped) {
             bootstrap(world);
         }
@@ -48,28 +47,28 @@ final class LeviathanManagedEntityIndex {
         for (Map.Entry<UUID, Entity> entry : managedLoadedByIdIndex.entrySet()) {
             UUID id = entry.getKey();
             Entity entity = entry.getValue();
-            if (entity == null || !entity.isAlive() || entity.getEntityWorld() != world || !isManaged(entity)) {
+            if (entity == null || !entity.isAlive() || entity.level() != world || !isManaged(entity)) {
                 staleIds.add(id);
                 continue;
             }
             loaded.put(id, entity);
-            managedEntityUuidToIdIndex.put(entity.getUuid(), id);
+            managedEntityUuidToIdIndex.put(entity.getUUID(), id);
         }
 
         for (UUID staleId : staleIds) {
             Entity removed = managedLoadedByIdIndex.remove(staleId);
             if (removed != null) {
-                managedEntityUuidToIdIndex.remove(removed.getUuid());
+                managedEntityUuidToIdIndex.remove(removed.getUUID());
             }
         }
 
         return loaded;
     }
 
-    private static void bootstrap(ServerWorld world) {
+    private static void bootstrap(ServerLevel world) {
         managedLoadedByIdIndex.clear();
         managedEntityUuidToIdIndex.clear();
-        for (Entity entity : world.iterateEntities()) {
+        for (Entity entity : world.getAllEntities()) {
             indexManagedEntity(entity, true);
         }
         bootstrapped = true;
@@ -85,7 +84,7 @@ final class LeviathanManagedEntityIndex {
             return;
         }
 
-        UUID managedId = managedEntityUuidToIdIndex.remove(entity.getUuid());
+        UUID managedId = managedEntityUuidToIdIndex.remove(entity.getUUID());
         if (managedId != null) {
             managedLoadedByIdIndex.remove(managedId);
             return;
@@ -109,20 +108,20 @@ final class LeviathanManagedEntityIndex {
                 return;
             }
             UUID assigned = UUID.randomUUID();
-            entity.addCommandTag(LeviathanIdTags.toTag(assigned));
+            entity.addTag(LeviathanIdTags.toTag(assigned));
             id = Optional.of(assigned);
             AtlantisMod.LOGGER.warn("[Atlantis][leviathan] managed entity missing id tag; assigned id={} uuid={}",
                 shortId(assigned),
-                entity.getUuidAsString());
+                entity.getStringUUID());
         }
 
         UUID managedId = id.get();
         managedLoadedByIdIndex.put(managedId, entity);
-        managedEntityUuidToIdIndex.put(entity.getUuid(), managedId);
+        managedEntityUuidToIdIndex.put(entity.getUUID(), managedId);
     }
 
     private static boolean isManaged(Entity entity) {
-        return entity.getCommandTags().contains(LeviathanManager.MANAGED_TAG);
+        return entity.entityTags().contains(LeviathanManager.MANAGED_TAG);
     }
 
     private static String shortId(UUID id) {

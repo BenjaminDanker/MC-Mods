@@ -4,9 +4,9 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.silver.skyislands.enderdragons.EnderDragonManager;
 import com.silver.skyislands.giantmobs.GiantMobManager;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
-import net.minecraft.server.command.CommandManager;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.text.Text;
+import net.minecraft.commands.Commands;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.network.chat.Component;
 
 public final class SkyIslandsCommands {
     private SkyIslandsCommands() {
@@ -18,31 +18,31 @@ public final class SkyIslandsCommands {
         );
     }
 
-    private static void registerCommands(CommandDispatcher<ServerCommandSource> dispatcher) {
-        dispatcher.register(CommandManager.literal("skyislands")
-                .requires(source -> source.hasPermissionLevel(4))
+    private static void registerCommands(CommandDispatcher<CommandSourceStack> dispatcher) {
+        dispatcher.register(Commands.literal("skyislands")
+                .requires(Commands.hasPermission(Commands.LEVEL_ADMINS))
                 .executes(ctx -> {
-                                        ctx.getSource().sendFeedback(() -> Text.literal("Usage: /skyislands dragons [all|virtual|loaded] | /skyislands giants [all|virtual|loaded|projectiles]"), false);
+                                        ctx.getSource().sendSuccess(() -> Component.literal("Usage: /skyislands dragons [all|virtual|loaded] | /skyislands giants [all|virtual|loaded|projectiles]"), false);
                     return 1;
                 })
-                .then(CommandManager.literal("dragons")
+                .then(Commands.literal("dragons")
                         .executes(ctx -> EnderDragonManager.dumpDragons(ctx.getSource(), true, true))
-                        .then(CommandManager.literal("all")
+                        .then(Commands.literal("all")
                                 .executes(ctx -> EnderDragonManager.dumpDragons(ctx.getSource(), true, true)))
-                        .then(CommandManager.literal("virtual")
+                        .then(Commands.literal("virtual")
                                 .executes(ctx -> EnderDragonManager.dumpDragons(ctx.getSource(), true, false)))
-                        .then(CommandManager.literal("loaded")
+                        .then(Commands.literal("loaded")
                                 .executes(ctx -> EnderDragonManager.dumpDragons(ctx.getSource(), false, true)))
                 )
-                .then(CommandManager.literal("giants")
+                .then(Commands.literal("giants")
                         .executes(ctx -> GiantMobManager.dumpGiants(ctx.getSource(), true, true, true))
-                        .then(CommandManager.literal("all")
+                        .then(Commands.literal("all")
                                 .executes(ctx -> GiantMobManager.dumpGiants(ctx.getSource(), true, true, true)))
-                        .then(CommandManager.literal("virtual")
+                        .then(Commands.literal("virtual")
                                 .executes(ctx -> GiantMobManager.dumpGiants(ctx.getSource(), true, false, false)))
-                        .then(CommandManager.literal("loaded")
+                        .then(Commands.literal("loaded")
                                 .executes(ctx -> GiantMobManager.dumpGiants(ctx.getSource(), false, true, true)))
-                        .then(CommandManager.literal("projectiles")
+                        .then(Commands.literal("projectiles")
                                 .executes(ctx -> GiantMobManager.dumpGiants(ctx.getSource(), false, false, true)))
                 ));
     }

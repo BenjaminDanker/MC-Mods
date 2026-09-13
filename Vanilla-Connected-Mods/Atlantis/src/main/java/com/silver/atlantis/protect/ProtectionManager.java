@@ -2,11 +2,10 @@ package com.silver.atlantis.protect;
 
 import com.silver.atlantis.AtlantisMod;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.BlockPos;
-
 import java.util.UUID;
+import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 
 /**
  * Holds the single active protected structure.
@@ -51,15 +50,15 @@ public final class ProtectionManager {
         return true;
     }
 
-    public synchronized boolean isBreakProtected(ServerWorld world, BlockPos pos) {
+    public synchronized boolean isBreakProtected(ServerLevel world, BlockPos pos) {
         return isAnyProtected(world, pos);
     }
 
-    public synchronized boolean isPlaceProtected(ServerWorld world, BlockPos pos) {
+    public synchronized boolean isPlaceProtected(ServerLevel world, BlockPos pos) {
         return isAnyProtected(world, pos);
     }
 
-    public synchronized boolean isInteriorProtected(ServerWorld world, BlockPos pos) {
+    public synchronized boolean isInteriorProtected(ServerLevel world, BlockPos pos) {
         if (world == null || pos == null || active == null) {
             return false;
         }
@@ -71,7 +70,7 @@ public final class ProtectionManager {
         return mask != null && mask.contains(pos);
     }
 
-    public synchronized boolean isAnyProtected(ServerWorld world, BlockPos pos) {
+    public synchronized boolean isAnyProtected(ServerLevel world, BlockPos pos) {
         if (world == null || pos == null || active == null) {
             return false;
         }
@@ -87,13 +86,13 @@ public final class ProtectionManager {
         return mask != null && mask.contains(pos);
     }
 
-    public boolean shouldBlockBreak(ServerPlayerEntity player, BlockPos pos) {
+    public boolean shouldBlockBreak(ServerPlayer player, BlockPos pos) {
         if (player == null || pos == null) {
             return false;
         }
 
         if (!isAllowedBypass(player)) {
-            ServerWorld serverWorld = player.getEntityWorld();
+            ServerLevel serverWorld = player.level();
             boolean blocked = isBreakProtected(serverWorld, pos);
             if (blocked) {
                 maybeLogBlocked(player, "break", pos);
@@ -104,13 +103,13 @@ public final class ProtectionManager {
         return false;
     }
 
-    public boolean shouldBlockPlace(ServerPlayerEntity player, BlockPos pos) {
+    public boolean shouldBlockPlace(ServerPlayer player, BlockPos pos) {
         if (player == null || pos == null) {
             return false;
         }
 
         if (!isAllowedBypass(player)) {
-            ServerWorld serverWorld = player.getEntityWorld();
+            ServerLevel serverWorld = player.level();
             boolean blocked = isPlaceProtected(serverWorld, pos);
             if (blocked) {
                 maybeLogBlocked(player, "place", pos);
@@ -121,8 +120,8 @@ public final class ProtectionManager {
         return false;
     }
 
-    private void maybeLogBlocked(ServerPlayerEntity player, String action, BlockPos pos) {
-        UUID id = player.getUuid();
+    private void maybeLogBlocked(ServerPlayer player, String action, BlockPos pos) {
+        UUID id = player.getUUID();
         long now = System.nanoTime();
         long last = lastWarnNanosByPlayer.getOrDefault(id, 0L);
         if (last != 0L && (now - last) < WARN_COOLDOWN_NANOS) {
@@ -133,20 +132,22 @@ public final class ProtectionManager {
         AtlantisMod.LOGGER.info(
             "Protection blocked {} by {} at {} (dim={})",
             action,
-            player.getUuid(),
+            player.getUUID(),
             pos.toShortString(),
-            player.getEntityWorld().getRegistryKey().getValue()
+            player.level().dimension().identifier()
         );
     }
 
-    private static String dimensionId(ServerWorld world) {
-        return world.getRegistryKey().getValue().toString();
+    private static String dimensionId(ServerLevel world) {
+        return world.dimension().identifier().toString();
     }
 
     /**
      * Only ops in creative can bypass protections.
      */
-    private static boolean isAllowedBypass(ServerPlayerEntity player) {
-        return player.hasPermissionLevel(2) && player.getAbilities().creativeMode;
+    private static boolean isAllowedBypass(ServerPlayer player) {
+        return player.createCommandSourceStack().permissions() instanceof net.minecraft.server.permissions.LevelBasedPermissionSet levels
+            && levels.level().isEqualOrHigherThan(net.minecraft.server.permissions.PermissionLevel.byId(2))
+            && player.isCreative();
     }
 }

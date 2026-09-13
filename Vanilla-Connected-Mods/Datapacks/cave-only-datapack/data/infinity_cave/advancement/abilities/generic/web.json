@@ -11,7 +11,7 @@
         ],
         "damage": {
           "source_entity": {
-            "type": "minecraft:spider",
+            "minecraft:entity_type": "minecraft:spider",
             "team": "ic.mob_team"
           }
         }

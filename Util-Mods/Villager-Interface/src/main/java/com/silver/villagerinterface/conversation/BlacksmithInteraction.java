@@ -2,12 +2,12 @@ package com.silver.villagerinterface.conversation;
 
 import com.silver.villagerinterface.config.VillagerConfigEntry;
 import com.silver.villagerinterface.soulbound.MpdsSoulboundApi;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.NbtComponent;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.Text;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.item.component.CustomData;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.network.chat.Component;
 
 import java.util.Locale;
 
@@ -41,7 +41,7 @@ public final class BlacksmithInteraction {
         );
     }
 
-    public static boolean handleCommand(ConversationManager manager, ServerPlayerEntity player, ConversationSession session, String rawMessage) {
+    public static boolean handleCommand(ConversationManager manager, ServerPlayer player, ConversationSession session, String rawMessage) {
         String trimmed = rawMessage != null ? rawMessage.trim() : "";
         if (trimmed.isEmpty() || !trimmed.startsWith("!")) {
             return false;
@@ -59,7 +59,7 @@ public final class BlacksmithInteraction {
         return false;
     }
 
-    private static boolean handleModify(ConversationManager manager, ServerPlayerEntity player, ConversationSession session, String message) {
+    private static boolean handleModify(ConversationManager manager, ServerPlayer player, ConversationSession session, String message) {
         // Any new modify attempt invalidates any previously-quoted modification.
         session.setPendingModification(null);
 
@@ -69,7 +69,7 @@ public final class BlacksmithInteraction {
             return true;
         }
 
-        ItemStack main = player.getMainHandStack();
+        ItemStack main = player.getInventory().getSelectedItem();
         if (main == null || main.isEmpty()) {
             manager.sendDeterministicReply(player, session, "Hold exactly one item in your main hand, then use !modify Soulbound.");
             return true;
@@ -89,7 +89,7 @@ public final class BlacksmithInteraction {
 
         int soulboundMax;
         try {
-            soulboundMax = MpdsSoulboundApi.getSoulboundMax(player.getName().getString(), player.getUuidAsString());
+            soulboundMax = MpdsSoulboundApi.getSoulboundMax(player.getName().getString(), player.getUUID().toString());
         } catch (Exception e) {
             manager.sendDeterministicReply(player, session, "The Soulbound capacity system is unavailable. Try again later.");
             return true;
@@ -109,14 +109,14 @@ public final class BlacksmithInteraction {
         return true;
     }
 
-    private static boolean handleConfirm(ConversationManager manager, ServerPlayerEntity player, ConversationSession session) {
+    private static boolean handleConfirm(ConversationManager manager, ServerPlayer player, ConversationSession session) {
         PendingModification pending = session.getPendingModification();
         if (pending == null) {
             // Ignore stray confirmations unless a prior !modify created a pending quote.
             return true;
         }
 
-        ItemStack main = player.getMainHandStack();
+        ItemStack main = player.getInventory().getSelectedItem();
         if (main == null || main.isEmpty() || main.getItem() != pending.item()) {
             session.setPendingModification(null);
             manager.sendDeterministicReply(player, session, "The pending quote was cancelled because you are not holding the expected item. Retry with !modify Soulbound.");
@@ -139,7 +139,7 @@ public final class BlacksmithInteraction {
 
         int soulboundMax;
         try {
-            soulboundMax = MpdsSoulboundApi.getSoulboundMax(player.getName().getString(), player.getUuidAsString());
+            soulboundMax = MpdsSoulboundApi.getSoulboundMax(player.getName().getString(), player.getUUID().toString());
         } catch (Exception e) {
             session.setPendingModification(null);
             manager.sendDeterministicReply(player, session, "The Soulbound capacity system is unavailable. Try !modify Soulbound again later.");
@@ -154,24 +154,24 @@ public final class BlacksmithInteraction {
         }
 
         // Consume payment item.
-        ItemStack payment = player.getInventory().getStack(paymentSlot);
-        payment.decrement(1);
+        ItemStack payment = player.getInventory().getItem(paymentSlot);
+        payment.shrink(1);
         if (payment.isEmpty()) {
-            player.getInventory().setStack(paymentSlot, ItemStack.EMPTY);
+            player.getInventory().setItem(paymentSlot, ItemStack.EMPTY);
         }
 
         // Replace main-hand item with a Soulbound-tagged copy.
         ItemStack modified = main.copy();
         modified.setCount(1);
 
-        NbtComponent.set(DataComponentTypes.CUSTOM_DATA, modified, nbt -> {
+        CustomData.update(DataComponents.CUSTOM_DATA, modified, nbt -> {
             nbt.putString(KEY_ID_TYPE, MOD_SOULBOUND_CRAFTED);
         });
 
-        modified.set(DataComponentTypes.CUSTOM_NAME, Text.literal(ensureSoulboundPrefix(modified.getName().getString())));
+        modified.set(DataComponents.CUSTOM_NAME, Component.literal(ensureSoulboundPrefix(modified.getHoverName().getString())));
 
-        player.getInventory().setSelectedStack(modified);
-        player.getInventory().markDirty();
+        player.getInventory().setSelectedItem(modified);
+        player.getInventory().setChanged();
 
         session.setPendingModification(null);
         String itemName = safeItemName(modified);
@@ -179,14 +179,14 @@ public final class BlacksmithInteraction {
         return true;
     }
 
-    private static int findPaymentSlot(ServerPlayerEntity player, Item item) {
+    private static int findPaymentSlot(ServerPlayer player, Item item) {
         int selected = player.getInventory().getSelectedSlot();
-        int limit = Math.min(36, player.getInventory().size());
+        int limit = Math.min(36, player.getInventory().getContainerSize());
         for (int i = 0; i < limit; i++) {
             if (i == selected) {
                 continue;
             }
-            ItemStack stack = player.getInventory().getStack(i);
+            ItemStack stack = player.getInventory().getItem(i);
             if (stack == null || stack.isEmpty()) {
                 continue;
             }
@@ -197,11 +197,11 @@ public final class BlacksmithInteraction {
         return -1;
     }
 
-    private static int countSoulboundItems(ServerPlayerEntity player) {
+    private static int countSoulboundItems(ServerPlayer player) {
         int count = 0;
-        int size = player.getInventory().size();
+        int size = player.getInventory().getContainerSize();
         for (int i = 0; i < size; i++) {
-            ItemStack stack = player.getInventory().getStack(i);
+            ItemStack stack = player.getInventory().getItem(i);
             if (isSoulboundTagged(stack)) {
                 count += stack.getCount();
             }
@@ -214,18 +214,18 @@ public final class BlacksmithInteraction {
             return false;
         }
 
-        NbtComponent customData = stack.get(DataComponentTypes.CUSTOM_DATA);
+        CustomData customData = stack.get(DataComponents.CUSTOM_DATA);
         if (customData == null) {
             return false;
         }
 
-        String idType = customData.copyNbt().getString(KEY_ID_TYPE).orElse("");
+        String idType = customData.copyTag().getString(KEY_ID_TYPE).orElse("");
         return MOD_SOULBOUND_CRAFTED.equals(idType);
     }
 
     private static String safeItemName(ItemStack stack) {
         try {
-            return stack.getName().getString();
+            return stack.getHoverName().getString();
         } catch (Exception ignored) {
             return "item";
         }

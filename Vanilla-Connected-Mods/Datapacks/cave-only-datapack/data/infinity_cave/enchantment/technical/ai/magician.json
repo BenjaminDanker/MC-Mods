@@ -71,7 +71,7 @@
             "condition": "minecraft:entity_properties",
             "entity": "this",
             "predicate": {
-              "type": "#infinity_cave:aggro",
+              "minecraft:entity_type": "#infinity_cave:aggro",
               "periodic_tick": 50,
               "targeted_entity": {
                 "distance": {
@@ -105,7 +105,7 @@
             "condition": "minecraft:entity_properties",
             "entity": "this",
             "predicate": {
-              "type": "#infinity_cave:aggro",
+              "minecraft:entity_type": "#infinity_cave:aggro",
               "periodic_tick": 60,
               "targeted_entity": {}
             }
@@ -133,7 +133,7 @@
             "condition": "minecraft:entity_properties",
             "entity": "this",
             "predicate": {
-              "type": "#infinity_cave:aggro",
+              "minecraft:entity_type": "#infinity_cave:aggro",
               "periodic_tick": 100,
               "targeted_entity": {}
             }

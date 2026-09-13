@@ -29,9 +29,9 @@
               "entity": "this",
               "predicate": {
                 "vehicle": {
-                  "type": "minecraft:frog",
+                  "minecraft:entity_type": "minecraft:frog",
                   "passenger": {
-                    "type": "minecraft:player"
+                    "minecraft:entity_type": "minecraft:player"
                   }
                 }
               }
@@ -41,9 +41,9 @@
             "condition": "minecraft:entity_properties",
             "entity": "this",
             "predicate": {
-              "type": "minecraft:interaction",
+              "minecraft:entity_type": "minecraft:interaction",
               "vehicle": {
-                "type": "minecraft:frog"
+                "minecraft:entity_type": "minecraft:frog"
               }
             }
           }

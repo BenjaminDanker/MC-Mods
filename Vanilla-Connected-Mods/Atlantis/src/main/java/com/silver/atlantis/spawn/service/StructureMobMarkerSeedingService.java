@@ -10,18 +10,17 @@ import com.silver.atlantis.spawn.marker.AtlantisMobMarker;
 import com.silver.atlantis.spawn.marker.AtlantisMobMarkerState;
 import com.silver.atlantis.spawn.mob.MobCustomization;
 import com.silver.atlantis.spawn.mob.MobSpawner;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.mob.MobEntity;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.registry.Registries;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.Identifier;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Random;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 
 final class StructureMobMarkerSeedingService {
 
@@ -31,7 +30,7 @@ final class StructureMobMarkerSeedingService {
     private record BuiltCustomization(MobCustomization customization, int positionDifficulty) {
     }
 
-    SeedResult seedMarker(ServerWorld world,
+    SeedResult seedMarker(ServerLevel world,
                           ActiveConstructBounds bounds,
                           Random random,
                           ProximitySpawnService.SpawnMarker marker) {
@@ -46,7 +45,7 @@ final class StructureMobMarkerSeedingService {
 
         BuiltCustomization built = builtOpt.get();
         Optional<Entity> entityOpt = MobSpawner.createConfiguredEntity(world, built.customization());
-        if (entityOpt.isEmpty() || !(entityOpt.get() instanceof MobEntity mob)) {
+        if (entityOpt.isEmpty() || !(entityOpt.get() instanceof Mob mob)) {
             return new SeedResult(false, false, false, 0, true);
         }
 
@@ -64,7 +63,7 @@ final class StructureMobMarkerSeedingService {
 
         AtlantisMobMarkerState state = AtlantisMobMarkerState.get(world);
         boolean replaced = state.getMarker(marker.pos()) != null;
-        state.putMarker(marker.pos().toImmutable(), markerData);
+        state.putMarker(marker.pos().immutable(), markerData);
 
         return new SeedResult(true, replaced, specialTagged, specialAmount, false);
     }
@@ -124,8 +123,8 @@ final class StructureMobMarkerSeedingService {
             return ItemStack.EMPTY;
         }
 
-        Item item = Registries.ITEM.get(id);
-        if (item == null || item == net.minecraft.item.Items.AIR) {
+        Item item = BuiltInRegistries.ITEM.getValue(id);
+        if (item == null || item == net.minecraft.world.item.Items.AIR) {
             AtlantisMod.LOGGER.warn("Unknown equipment item: {}", equip.itemId());
             return ItemStack.EMPTY;
         }
@@ -171,7 +170,7 @@ final class StructureMobMarkerSeedingService {
         return Math.max(1, Math.min(maxAmount, amount));
     }
 
-    private double computeNormalizedDifficulty(net.minecraft.util.math.BlockPos spawnPos, ActiveConstructBounds bounds) {
+    private double computeNormalizedDifficulty(net.minecraft.core.BlockPos spawnPos, ActiveConstructBounds bounds) {
         double centerX = (bounds.minX() + bounds.maxX()) / 2.0;
         double centerZ = (bounds.minZ() + bounds.maxZ()) / 2.0;
 

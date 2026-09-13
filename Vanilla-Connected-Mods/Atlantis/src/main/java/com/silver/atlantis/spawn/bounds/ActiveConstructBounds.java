@@ -1,6 +1,6 @@
 package com.silver.atlantis.spawn.bounds;
 
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.core.BlockPos;
 
 /**
  * World-space bounds of the most recent construct run.

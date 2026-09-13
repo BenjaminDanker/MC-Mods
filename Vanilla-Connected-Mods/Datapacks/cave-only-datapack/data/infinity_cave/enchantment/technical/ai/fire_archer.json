@@ -47,7 +47,7 @@
           "condition": "minecraft:entity_properties",
           "entity": "this",
           "predicate": {
-            "type": "arrow"
+            "minecraft:entity_type": "arrow"
           }
         }
       },
@@ -82,7 +82,7 @@
           "condition": "minecraft:entity_properties",
           "entity": "this",
           "predicate": {
-            "type": "spectral_arrow"
+            "minecraft:entity_type": "spectral_arrow"
           }
         }
       }
@@ -120,7 +120,7 @@
           "condition": "minecraft:entity_properties",
           "entity": "direct_attacker",
           "predicate": {
-            "type": "arrow"
+            "minecraft:entity_type": "arrow"
           }
         }
       },
@@ -157,7 +157,7 @@
           "condition": "minecraft:entity_properties",
           "entity": "direct_attacker",
           "predicate": {
-            "type": "spectral_arrow"
+            "minecraft:entity_type": "spectral_arrow"
           }
         }
       }

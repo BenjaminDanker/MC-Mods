@@ -20,16 +20,14 @@
   "effects": {
     "minecraft:projectile_spawned": [
       {
-        "requirements": [
-        ],
+        "requirements": [],
         "effect": {
           "type": "minecraft:run_function",
           "function": "infinity_cave:mechanics/weapons/nimbus_nunchucks/origin"
         }
       },
       {
-        "requirements": [
-        ],
+        "requirements": [],
         "effect": {
           "type": "minecraft:run_function",
           "function": "infinity_cave:mechanics/weapons/nimbus_nunchucks/cooldown/get_data"

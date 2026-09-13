@@ -19,12 +19,11 @@ import com.silver.aipets.fabric.entity.PreparedPetEntity;
 import com.silver.aipets.fabric.metrics.PetMetricsReporter;
 import com.silver.aipets.fabric.metrics.PetMetricsClassifier;
 import com.silver.aipets.fabric.placement.SafePlacementFinder;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.passive.TameableEntity;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.TamableAnimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
@@ -60,7 +59,7 @@ public final class PetTransferCoordinator {
             Supplier<UUID> transferIds,
             Supplier<UUID> operationIds) {
         this(backendId, authority, safePlacementFinder, entityFactory, config, clock,
-                transferIds, operationIds, ServerWorld::spawnEntity, PetMetricsReporter.noop());
+                transferIds, operationIds, ServerLevel::addFreshEntity, PetMetricsReporter.noop());
     }
 
     public PetTransferCoordinator(
@@ -74,7 +73,7 @@ public final class PetTransferCoordinator {
             Supplier<UUID> operationIds,
             PetMetricsReporter metrics) {
         this(backendId, authority, safePlacementFinder, entityFactory, config, clock,
-                transferIds, operationIds, ServerWorld::spawnEntity, metrics);
+                transferIds, operationIds, ServerLevel::addFreshEntity, metrics);
     }
 
     PetTransferCoordinator(
@@ -116,11 +115,11 @@ public final class PetTransferCoordinator {
 
     /** Called by the portal pre-transfer hook; it always completes without blocking server I/O. */
     public CompletableFuture<PetTransferOutcome> prepareSource(
-            ServerPlayerEntity initiatingPlayer, String destinationBackend) {
+            ServerPlayer initiatingPlayer, String destinationBackend) {
         Objects.requireNonNull(initiatingPlayer, "initiatingPlayer");
         BackendId destination = new BackendId(destinationBackend);
-        MinecraftServer server = initiatingPlayer.getEntityWorld().getServer();
-        UUID ownerUuid = initiatingPlayer.getUuid();
+        MinecraftServer server = initiatingPlayer.level().getServer();
+        UUID ownerUuid = initiatingPlayer.getUUID();
         CompletableFuture<PetTransferOutcome> outcome = new CompletableFuture<>();
         observe(outcome, true);
         try {
@@ -144,10 +143,10 @@ public final class PetTransferCoordinator {
 
     /** Called after a player joins any backend; only the reserved final backend can materialize. */
     public CompletableFuture<PetTransferOutcome> claimDestination(
-            ServerPlayerEntity joiningPlayer) {
+            ServerPlayer joiningPlayer) {
         Objects.requireNonNull(joiningPlayer, "joiningPlayer");
-        MinecraftServer server = joiningPlayer.getEntityWorld().getServer();
-        UUID ownerUuid = joiningPlayer.getUuid();
+        MinecraftServer server = joiningPlayer.level().getServer();
+        UUID ownerUuid = joiningPlayer.getUUID();
         CompletableFuture<PetTransferOutcome> outcome = new CompletableFuture<>();
         observe(outcome, false);
         try {
@@ -211,14 +210,14 @@ public final class PetTransferCoordinator {
             return;
         }
 
-        ServerPlayerEntity player = currentPlayer(server, ownerUuid);
+        ServerPlayer player = currentPlayer(server, ownerUuid);
         if (player == null) {
             outcome.complete(PetTransferOutcome.of(
                     PetTransferStatus.PLAYER_CONTEXT_CHANGED, pet,
                     "Owner left before source transfer preparation"));
             return;
         }
-        ServerWorld world = player.getEntityWorld();
+        ServerLevel world = player.level();
         DimensionId dimension = dimension(world);
         if (!placed.dimensionId().equals(dimension)) {
             outcome.complete(PetTransferOutcome.of(
@@ -322,19 +321,19 @@ public final class PetTransferCoordinator {
             expireAtDestination(pet, transfer, outcome);
             return;
         }
-        ServerPlayerEntity player = currentPlayer(server, ownerUuid);
+        ServerPlayer player = currentPlayer(server, ownerUuid);
         if (player == null) {
             outcome.complete(PetTransferOutcome.of(
                     PetTransferStatus.PLAYER_CONTEXT_CHANGED, pet,
                     "Owner left before destination claim"));
             return;
         }
-        ServerWorld world = player.getEntityWorld();
+        ServerLevel world = player.level();
         UUID newEntityId = destinationEntityId(transfer.transferId());
         PreparedPetEntity prepared = entityFactory.prepare(
                 world, pet, newEntityId, position(player), authoritySnapshot.sleeping());
         Optional<WorldPosition> safe = safePlacementFinder.find(
-                world, prepared.entity(), player.getBlockPos());
+                world, prepared.entity(), player.blockPosition());
         if (safe.isEmpty()) {
             prepared.entity().discard();
             outcome.complete(PetTransferOutcome.of(
@@ -343,8 +342,8 @@ public final class PetTransferCoordinator {
             return;
         }
         WorldPosition target = safe.orElseThrow();
-        prepared.entity().refreshPositionAndAngles(
-                target.x(), target.y(), target.z(), player.getYaw(), 0.0F);
+        prepared.entity().snapTo(
+                target.x(), target.y(), target.z(), player.getYRot(), 0.0F);
         PetTransitions.CompleteTransfer command = new PetTransitions.CompleteTransfer(
                 pet.recordVersion(), transfer.transferId(), backendId, dimension(world), target,
                 newEntityId, now);
@@ -368,7 +367,7 @@ public final class PetTransferCoordinator {
             MinecraftServer server,
             UUID ownerUuid,
             Pet preCommitPet,
-            TameableEntity entity,
+            TamableAnimal entity,
             UUID entityId,
             WorldPosition target,
             AuthorityMutationResult commit,
@@ -389,10 +388,10 @@ public final class PetTransferCoordinator {
             return;
         }
         Pet committed = commit.pet().orElseThrow();
-        ServerPlayerEntity player = currentPlayer(server, ownerUuid);
+        ServerPlayer player = currentPlayer(server, ownerUuid);
         if (!matchesDestination(committed, entityId, target)
                 || player == null
-                || player.getEntityWorld() != entity.getEntityWorld()) {
+                || player.level() != entity.level()) {
             entity.discard();
             compensateDestination(committed, entityId, outcome,
                     "Destination context changed after authority commit");
@@ -401,7 +400,7 @@ public final class PetTransferCoordinator {
         ((PetEntityData) entity).aipets$setRecordVersion(committed.recordVersion());
         boolean spawned;
         try {
-            spawned = entitySpawner.spawn((ServerWorld) entity.getEntityWorld(), entity);
+            spawned = entitySpawner.spawn((ServerLevel) entity.level(), entity);
         } catch (RuntimeException spawnFailure) {
             spawned = false;
         }
@@ -476,7 +475,7 @@ public final class PetTransferCoordinator {
     }
 
     private void discardExactSource(MinecraftServer server, Pet pet, UUID sourceEntityId) {
-        for (ServerWorld world : server.getWorlds()) {
+        for (ServerLevel world : server.getAllLevels()) {
             Entity entity = world.getEntity(sourceEntityId);
             if (isExactEntity(entity, pet)) {
                 entity.discard();
@@ -504,13 +503,13 @@ public final class PetTransferCoordinator {
                 && placed.position().equals(position);
     }
 
-    private static ServerPlayerEntity currentPlayer(MinecraftServer server, UUID ownerUuid) {
-        ServerPlayerEntity player = server.getPlayerManager().getPlayer(ownerUuid);
+    private static ServerPlayer currentPlayer(MinecraftServer server, UUID ownerUuid) {
+        ServerPlayer player = server.getPlayerList().getPlayer(ownerUuid);
         return player != null && player.isAlive() ? player : null;
     }
 
-    private static DimensionId dimension(ServerWorld world) {
-        return DimensionId.parse(world.getRegistryKey().getValue().toString());
+    private static DimensionId dimension(ServerLevel world) {
+        return DimensionId.parse(world.dimension().identifier().toString());
     }
 
     private static WorldPosition position(Entity entity) {
@@ -527,7 +526,7 @@ public final class PetTransferCoordinator {
     }
 
     private static void onServer(MinecraftServer server, Runnable action) {
-        if (server.isOnThread()) action.run(); else server.execute(action);
+        if (server.isSameThread()) action.run(); else server.execute(action);
     }
 
     private void observe(CompletableFuture<PetTransferOutcome> outcome, boolean source) {
@@ -546,6 +545,6 @@ public final class PetTransferCoordinator {
 
     @FunctionalInterface
     interface EntitySpawner {
-        boolean spawn(ServerWorld world, TameableEntity entity);
+        boolean spawn(ServerLevel world, TamableAnimal entity);
     }
 }

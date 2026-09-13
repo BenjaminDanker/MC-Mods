@@ -8,18 +8,18 @@ import com.silver.portalprotocol.PortalRequestSigner;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.NbtComponent;
-import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.particle.ParticleTypes;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.item.component.CustomData;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.network.chat.Component;
+import net.minecraft.ChatFormatting;
+import net.minecraft.core.BlockPos;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -68,60 +68,60 @@ public final class BabylonMod implements ModInitializer {
             return;
         }
 
-        ServerWorld overworld = server.getOverworld();
+        ServerLevel overworld = server.overworld();
         if (overworld == null) {
             return;
         }
 
-        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             if (player == null) {
                 continue;
             }
 
-            if (!(player.getEntityWorld() instanceof ServerWorld world)) {
+            if (!(player.level() instanceof ServerLevel world)) {
                 continue;
             }
 
-            BlockPos pos = player.getBlockPos();
+            BlockPos pos = player.blockPosition();
             boolean inRegion = config.region.contains(pos.getX(), pos.getY(), pos.getZ());
 
             if (!inRegion) {
-                ZoneState previous = zone.remove(player.getUuid());
+                ZoneState previous = zone.remove(player.getUUID());
                 if (previous != null) {
-                    LOGGER.info("{} left region at {}", player.getNameForScoreboard(), pos);
+                    LOGGER.info("{} left region at {}", player.getScoreboardName(), pos);
                 }
 
-                if (player.getCommandTags().contains(TAG_STAGE1_PROCESSING)) {
+                if (player.entityTags().contains(TAG_STAGE1_PROCESSING)) {
                     handleLeftRegionWhileProcessing(server, world, player);
                 } else {
-                    stage1.remove(player.getUuid());
+                    stage1.remove(player.getUUID());
                 }
                 continue;
             }
 
-            if (!zone.containsKey(player.getUuid())) {
-                LOGGER.info("{} entered region at {} (entryDelaySeconds={})", player.getNameForScoreboard(), pos, config.entryDelaySeconds);
+            if (!zone.containsKey(player.getUUID())) {
+                LOGGER.info("{} entered region at {} (entryDelaySeconds={})", player.getScoreboardName(), pos, config.entryDelaySeconds);
             }
 
-            if (player.getCommandTags().contains(TAG_STAGE1_PROCESSING)) {
-                Stage1State state = stage1.get(player.getUuid());
+            if (player.entityTags().contains(TAG_STAGE1_PROCESSING)) {
+                Stage1State state = stage1.get(player.getUUID());
                 if (state == null) {
                     cancelProcessing(player);
-                    zone.put(player.getUuid(), new ZoneState(world.getTime(), false, 0));
+                    zone.put(player.getUUID(), new ZoneState(world.getGameTime(), false, 0));
                     continue;
                 }
 
                 runParticles(world, player);
-                if (world.getTime() >= state.teleportAtTick) {
+                if (world.getGameTime() >= state.teleportAtTick) {
                     finishAndTeleport(server, player);
                 }
                 continue;
             }
 
-            ZoneState zoneState = zone.computeIfAbsent(player.getUuid(),
-                u -> new ZoneState(world.getTime(), false, 0));
+            ZoneState zoneState = zone.computeIfAbsent(player.getUUID(),
+                u -> new ZoneState(world.getGameTime(), false, 0));
 
-            long nowTick = world.getTime();
+            long nowTick = world.getGameTime();
             long entryDelayTicks = Math.max(0, config.entryDelaySeconds) * 20L;
             if (nowTick - zoneState.enteredAtTick < entryDelayTicks) {
                 continue;
@@ -132,20 +132,20 @@ public final class BabylonMod implements ModInitializer {
                 continue;
             }
             zoneState = new ZoneState(zoneState.enteredAtTick, zoneState.notWorthyShown, nowTick);
-            zone.put(player.getUuid(), zoneState);
+            zone.put(player.getUUID(), zoneState);
 
             if (hasAllFour(player)) {
-                LOGGER.info("{} is worthy; starting processing", player.getNameForScoreboard());
+                LOGGER.info("{} is worthy; starting processing", player.getScoreboardName());
                 startProcessing(world, player);
             } else if (!zoneState.notWorthyShown) {
-                LOGGER.info("{} is not worthy; sending message", player.getNameForScoreboard());
-                player.sendMessage(Text.literal(config.notWorthyMessage).formatted(Formatting.RED), true);
-                zone.put(player.getUuid(), new ZoneState(zoneState.enteredAtTick, true, zoneState.lastEligibilityCheckTick));
+                LOGGER.info("{} is not worthy; sending message", player.getScoreboardName());
+                player.sendSystemMessage(Component.literal(config.notWorthyMessage).withStyle(ChatFormatting.RED));
+                zone.put(player.getUUID(), new ZoneState(zoneState.enteredAtTick, true, zoneState.lastEligibilityCheckTick));
             }
         }
     }
 
-    private void startProcessing(ServerWorld world, ServerPlayerEntity player) {
+    private void startProcessing(ServerLevel world, ServerPlayer player) {
         if (world == null || player == null) {
             return;
         }
@@ -155,15 +155,15 @@ public final class BabylonMod implements ModInitializer {
             return;
         }
 
-        player.addCommandTag(TAG_STAGE1_PROCESSING);
-        long nowTick = world.getTime();
+        player.addTag(TAG_STAGE1_PROCESSING);
+        long nowTick = world.getGameTime();
         long delayTicks = Math.max(1, config.particleSeconds) * 20L;
-        stage1.put(player.getUuid(), new Stage1State(nowTick + delayTicks, consumed));
-        LOGGER.info("{} processing started; teleport in {}s", player.getNameForScoreboard(), Math.max(1, config.particleSeconds));
+        stage1.put(player.getUUID(), new Stage1State(nowTick + delayTicks, consumed));
+        LOGGER.info("{} processing started; teleport in {}s", player.getScoreboardName(), Math.max(1, config.particleSeconds));
         runParticles(world, player);
     }
 
-    private ConsumedItems consumeFour(ServerPlayerEntity player) {
+    private ConsumedItems consumeFour(ServerPlayer player) {
         ItemStack ocean = removeOneByCustomId(player, ID_OCEAN);
         ItemStack sky = removeOneByCustomId(player, ID_SKY);
         ItemStack desert = removeOneByCustomId(player, ID_DESERT);
@@ -189,53 +189,53 @@ public final class BabylonMod implements ModInitializer {
         return new ConsumedItems(ocean, sky, desert, cave);
     }
 
-    private ItemStack removeOneByCustomId(ServerPlayerEntity player, String requiredId) {
+    private ItemStack removeOneByCustomId(ServerPlayer player, String requiredId) {
         if (player == null || requiredId == null) {
             return ItemStack.EMPTY;
         }
 
-        for (int slot = 0; slot < player.getInventory().size(); slot++) {
-            ItemStack st = player.getInventory().getStack(slot);
+        for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
+            ItemStack st = player.getInventory().getItem(slot);
             if (matchesId(st, requiredId)) {
                 ItemStack taken = st.copy();
-                player.getInventory().setStack(slot, ItemStack.EMPTY);
+                player.getInventory().setItem(slot, ItemStack.EMPTY);
                 return taken;
             }
         }
 
-        ItemStack off = player.getOffHandStack();
+        ItemStack off = player.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.OFFHAND);
         if (matchesId(off, requiredId)) {
             ItemStack taken = off.copy();
-            player.setStackInHand(net.minecraft.util.Hand.OFF_HAND, ItemStack.EMPTY);
+            player.setItemSlot(net.minecraft.world.entity.EquipmentSlot.OFFHAND, ItemStack.EMPTY);
             return taken;
         }
 
         return ItemStack.EMPTY;
     }
 
-    private boolean tryRestore(ServerPlayerEntity player, ItemStack stack) {
+    private boolean tryRestore(ServerPlayer player, ItemStack stack) {
         if (player == null || stack == null || stack.isEmpty()) {
             return true;
         }
 
         // Only restore into inventory; if full, treat as failure so we can still teleport.
-        return player.getInventory().insertStack(stack);
+        return player.getInventory().add(stack);
     }
 
-    private void cancelProcessing(ServerPlayerEntity player) {
+    private void cancelProcessing(ServerPlayer player) {
         if (player == null) {
             return;
         }
-        player.removeCommandTag(TAG_STAGE1_PROCESSING);
-        stage1.remove(player.getUuid());
+        player.removeTag(TAG_STAGE1_PROCESSING);
+        stage1.remove(player.getUUID());
     }
 
-    private void handleLeftRegionWhileProcessing(MinecraftServer server, ServerWorld world, ServerPlayerEntity player) {
+    private void handleLeftRegionWhileProcessing(MinecraftServer server, ServerLevel world, ServerPlayer player) {
         if (server == null || world == null || player == null) {
             return;
         }
 
-        Stage1State state = stage1.get(player.getUuid());
+        Stage1State state = stage1.get(player.getUUID());
         if (state == null) {
             cancelProcessing(player);
             return;
@@ -253,12 +253,12 @@ public final class BabylonMod implements ModInitializer {
         }
 
         // If we couldn't restore (inventory full etc.), keep going and still teleport at expiry.
-        if (world.getTime() >= state.teleportAtTick) {
+        if (world.getGameTime() >= state.teleportAtTick) {
             finishAndTeleport(server, player);
         }
     }
 
-    private void runParticles(ServerWorld world, ServerPlayerEntity player) {
+    private void runParticles(ServerLevel world, ServerPlayer player) {
         if (world == null || player == null) {
             return;
         }
@@ -267,20 +267,20 @@ public final class BabylonMod implements ModInitializer {
         double y = player.getY() + 1.0;
         double z = player.getZ();
 
-        world.spawnParticles(player, ParticleTypes.PORTAL, true, false, x, y, z, 30, 0.6, 0.8, 0.6, 0.02);
+        world.sendParticles(player, ParticleTypes.PORTAL, true, false, x, y, z, 30, 0.6, 0.8, 0.6, 0.02);
     }
 
-    private void finishAndTeleport(MinecraftServer server, ServerPlayerEntity player) {
+    private void finishAndTeleport(MinecraftServer server, ServerPlayer player) {
         if (server == null || player == null) {
             return;
         }
 
-        player.removeCommandTag(TAG_STAGE1_PROCESSING);
-        stage1.remove(player.getUuid());
-        zone.remove(player.getUuid());
+        player.removeTag(TAG_STAGE1_PROCESSING);
+        stage1.remove(player.getUUID());
+        zone.remove(player.getUUID());
 
-        String playerName = player.getNameForScoreboard();
-        ServerCommandSource source = server.getCommandSource();
+        String playerName = player.getScoreboardName();
+        CommandSourceStack source = server.createCommandSourceStack();
 
         final String targetServer = config.portalRedirectTargetServer;
         final String secret = config.portalRequestSecret;
@@ -296,11 +296,11 @@ public final class BabylonMod implements ModInitializer {
                 String c5 = "mpdsremovecustomid " + playerName + " id " + ID_CAVE;
 
                 LOGGER.info("Running stage1 commands for {}: '{}', '{}', '{}', '{}', '{}'", playerName, c1, c2, c3, c4, c5);
-                server.getCommandManager().executeWithPrefix(source, c1);
-                server.getCommandManager().executeWithPrefix(source, c2);
-                server.getCommandManager().executeWithPrefix(source, c3);
-                server.getCommandManager().executeWithPrefix(source, c4);
-                server.getCommandManager().executeWithPrefix(source, c5);
+                server.getCommands().performPrefixedCommand(source, c1);
+                server.getCommands().performPrefixedCommand(source, c2);
+                server.getCommands().performPrefixedCommand(source, c3);
+                server.getCommands().performPrefixedCommand(source, c4);
+                server.getCommands().performPrefixedCommand(source, c5);
 
                 if (targetServer == null || targetServer.isBlank()) {
                     LOGGER.warn("Target server is blank; skipping redirect for {}", playerName);
@@ -309,9 +309,9 @@ public final class BabylonMod implements ModInitializer {
                 } else {
                     long issuedAtMs = System.currentTimeMillis();
                     String nonce = PortalRequestPayloadCodec.generateNonce();
-                    byte[] unsigned = PortalRequestPayloadCodec.encodeUnsigned(player.getUuid(), targetServer, destinationPortal, issuedAtMs, nonce);
+                    byte[] unsigned = PortalRequestPayloadCodec.encodeUnsigned(player.getUUID(), targetServer, destinationPortal, issuedAtMs, nonce);
                     byte[] signature = PortalRequestSigner.hmacSha256(secret, unsigned);
-                    byte[] signed = PortalRequestPayloadCodec.encodeSigned(player.getUuid(), targetServer, destinationPortal, issuedAtMs, nonce, signature);
+                    byte[] signed = PortalRequestPayloadCodec.encodeSigned(player.getUUID(), targetServer, destinationPortal, issuedAtMs, nonce, signature);
                     ServerPlayNetworking.send(player, new PortalRequestPayload(signed));
                     LOGGER.info("Sent Babylon portal request for {} -> {}", playerName, targetServer);
                 }
@@ -323,26 +323,26 @@ public final class BabylonMod implements ModInitializer {
         });
     }
 
-    private boolean hasAllFour(ServerPlayerEntity player) {
+    private boolean hasAllFour(ServerPlayer player) {
         return hasCustomId(player, ID_OCEAN)
             && hasCustomId(player, ID_SKY)
             && hasCustomId(player, ID_DESERT)
             && hasCustomId(player, ID_CAVE);
     }
 
-    private boolean hasCustomId(ServerPlayerEntity player, String requiredId) {
+    private boolean hasCustomId(ServerPlayer player, String requiredId) {
         if (player == null || requiredId == null) {
             return false;
         }
 
-        for (int slot = 0; slot < player.getInventory().size(); slot++) {
-            ItemStack st = player.getInventory().getStack(slot);
+        for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
+            ItemStack st = player.getInventory().getItem(slot);
             if (matchesId(st, requiredId)) {
                 return true;
             }
         }
 
-        ItemStack off = player.getOffHandStack();
+        ItemStack off = player.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.OFFHAND);
         return matchesId(off, requiredId);
     }
 
@@ -351,13 +351,13 @@ public final class BabylonMod implements ModInitializer {
             return false;
         }
 
-        NbtComponent custom = stack.get(DataComponentTypes.CUSTOM_DATA);
+        CustomData custom = stack.get(DataComponents.CUSTOM_DATA);
         if (custom == null) {
             return false;
         }
 
-        NbtCompound nbt = custom.copyNbt();
-        String id = nbt.getString(KEY_ID).orElse("");
+        CompoundTag nbt = custom.copyTag();
+        String id = nbt.getStringOr(KEY_ID, "");
         return requiredId.equals(id);
     }
 

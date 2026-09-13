@@ -6,11 +6,11 @@ import com.silver.entitypruner.EntityPruner;
 import com.silver.entitypruner.EntityPrunerConfig;
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntIterator;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.ItemEntity;
-import net.minecraft.entity.mob.MobEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.ChunkPos;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.ChunkPos;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -21,7 +21,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import java.util.Iterator;
 import java.util.function.BooleanSupplier;
 
-@Mixin(ServerWorld.class)
+@Mixin(ServerLevel.class)
 public class ServerWorldMixin implements EntityCountAccessor {
     @Unique
     private Long2IntOpenHashMap mobCountsByChunk = new Long2IntOpenHashMap();
@@ -140,8 +140,7 @@ public class ServerWorldMixin implements EntityCountAccessor {
 
     @Unique
     private static long getChunkKey(Entity entity) {
-        ChunkPos pos = new ChunkPos(entity.getBlockPos());
-        return pos.toLong();
+        return ChunkPos.pack(entity.blockPosition());
     }
 
     @Unique
@@ -164,8 +163,8 @@ public class ServerWorldMixin implements EntityCountAccessor {
     }
 
     @Unique
-    private void beginResync(ServerWorld world) {
-        this.resyncIterator = world.iterateEntities().iterator();
+    private void beginResync(ServerLevel world) {
+        this.resyncIterator = world.getAllEntities().iterator();
         this.resyncMobCountsByChunk = new Long2IntOpenHashMap();
         this.resyncItemCountsByChunk = new Long2IntOpenHashMap();
         this.resyncMobDeltaByChunk = new Long2IntOpenHashMap();
@@ -186,7 +185,7 @@ public class ServerWorldMixin implements EntityCountAccessor {
         while (processed < maxPerTick && this.resyncIterator.hasNext()) {
             Entity entity = this.resyncIterator.next();
             long chunkKey = getChunkKey(entity);
-            if (entity instanceof MobEntity) {
+            if (entity instanceof Mob) {
                 if (!EntityProtection.isProtectedMob(entity)) {
                     this.resyncMobCountsByChunk.addTo(chunkKey, 1);
                 }
@@ -231,13 +230,13 @@ public class ServerWorldMixin implements EntityCountAccessor {
     }
 
     @Unique
-    private void beginPrune(ServerWorld world) {
-        this.pruneIterator = world.iterateEntities().iterator();
+    private void beginPrune(ServerLevel world) {
+        this.pruneIterator = world.getAllEntities().iterator();
         this.pruneInProgress = true;
     }
 
     @Unique
-    private void continuePrune(ServerWorld world, EntityPrunerConfig cfg) {
+    private void continuePrune(ServerLevel world, EntityPrunerConfig cfg) {
         if (!this.pruneInProgress || this.pruneIterator == null) {
             return;
         }
@@ -263,12 +262,12 @@ public class ServerWorldMixin implements EntityCountAccessor {
                 continue;
             }
 
-            if (delayTicks > 0 && itemEntity.getItemAge() < delayTicks) {
+            if (delayTicks > 0 && itemEntity.getAge() < delayTicks) {
                 continue;
             }
 
-            net.minecraft.item.ItemStack stack = itemEntity.getStack();
-            net.minecraft.component.type.NbtComponent customData = stack.getOrDefault(net.minecraft.component.DataComponentTypes.CUSTOM_DATA, net.minecraft.component.type.NbtComponent.DEFAULT);
+            net.minecraft.world.item.ItemStack stack = itemEntity.getItem();
+            net.minecraft.world.item.component.CustomData customData = stack.getOrDefault(net.minecraft.core.component.DataComponents.CUSTOM_DATA, net.minecraft.world.item.component.CustomData.EMPTY);
             if (customData != null && !customData.isEmpty()) {
                 continue;
             }
@@ -294,7 +293,7 @@ public class ServerWorldMixin implements EntityCountAccessor {
         EntityPrunerConfig cfg = EntityPrunerConfig.getInstance();
         if (!cfg.enablePruning) return;
 
-        ServerWorld world = (ServerWorld) (Object) this;
+        ServerLevel world = (ServerLevel) (Object) this;
         int intervalTicks = 20 * Math.max(5, cfg.resyncIntervalSeconds);
 
         if (!this.countersInitialized) {
@@ -323,7 +322,7 @@ public class ServerWorldMixin implements EntityCountAccessor {
         }
 
         if (this.countersInitialized && cfg.enablePruneLogging) {
-            long now = world.getTime();
+            long now = world.getGameTime();
             if (this.nextPruneLogTime <= 0) {
                 this.nextPruneLogTime = now + 20L * Math.max(1, cfg.pruneLogIntervalSeconds);
             } else if (now >= this.nextPruneLogTime) {
@@ -333,7 +332,7 @@ public class ServerWorldMixin implements EntityCountAccessor {
                         this.blockedMobSpawnsSinceLog,
                         this.prunedItemsSinceLog,
                         Math.max(1, cfg.pruneLogIntervalSeconds),
-                        world.getRegistryKey().getValue()
+                        world.dimension().identifier()
                     );
                 }
                 this.blockedMobSpawnsSinceLog = 0;
@@ -343,7 +342,7 @@ public class ServerWorldMixin implements EntityCountAccessor {
         }
     }
     
-    @Inject(method = "spawnEntity", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "addFreshEntity", at = @At("HEAD"), cancellable = true)
     private void onSpawnEntity(Entity entity, CallbackInfoReturnable<Boolean> cir) {
         EntityPrunerConfig cfg = EntityPrunerConfig.getInstance();
         if (!cfg.enablePruning) return;
@@ -352,7 +351,7 @@ public class ServerWorldMixin implements EntityCountAccessor {
             return;
         }
         
-        if (entity instanceof MobEntity) {
+        if (entity instanceof Mob) {
             if (EntityProtection.isProtectedMob(entity)) {
                 return;
             }
@@ -363,8 +362,8 @@ public class ServerWorldMixin implements EntityCountAccessor {
                 return;
             }
         } else if (entity instanceof ItemEntity itemEntity) {
-            net.minecraft.item.ItemStack stack = itemEntity.getStack();
-            net.minecraft.component.type.NbtComponent customData = stack.getOrDefault(net.minecraft.component.DataComponentTypes.CUSTOM_DATA, net.minecraft.component.type.NbtComponent.DEFAULT);
+            net.minecraft.world.item.ItemStack stack = itemEntity.getItem();
+            net.minecraft.world.item.component.CustomData customData = stack.getOrDefault(net.minecraft.core.component.DataComponents.CUSTOM_DATA, net.minecraft.world.item.component.CustomData.EMPTY);
             if (customData != null && !customData.isEmpty()) {
                 return;
             }

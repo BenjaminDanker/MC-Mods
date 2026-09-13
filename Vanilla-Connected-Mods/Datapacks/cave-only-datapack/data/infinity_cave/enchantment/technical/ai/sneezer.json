@@ -118,7 +118,7 @@
             "predicate": {
               "periodic_tick": 50,
               "targeted_entity": {
-                "type": "minecraft:player"
+                "minecraft:entity_type": "minecraft:player"
               }
             }
           }

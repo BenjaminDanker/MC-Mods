@@ -3,15 +3,15 @@ package com.silver.enderfight.dragon;
 import com.silver.enderfight.EnderFightMod;
 import com.silver.enderfight.config.ConfigManager;
 import com.silver.enderfight.config.EndControlConfig;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.NbtComponent;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.Text;
-import net.minecraft.world.World;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.CustomData;
+import net.minecraft.world.level.Level;
 
 /**
  * Decorates dragon breath collection with a custom item payload. The interception happens via the
@@ -39,7 +39,7 @@ public final class DragonBreathModifier {
      * Creates the bespoke dragon breath item once the vanilla interaction completes. Tie custom NBT or
      * component data together here so the rest of the mod can query a single flag.
      */
-    public static boolean markAsSpecialDragonBreath(ItemStack stack, World world) {
+    public static boolean markAsSpecialDragonBreath(ItemStack stack, Level world) {
         if (stack == null) {
             EnderFightMod.LOGGER.info("Dragon breath tagging skipped: stack was null");
             return false;
@@ -55,7 +55,7 @@ public final class DragonBreathModifier {
             return false;
         }
 
-        if (!stack.isOf(Items.DRAGON_BREATH)) {
+        if (!stack.is(Items.DRAGON_BREATH)) {
             EnderFightMod.LOGGER.info("Dragon breath tagging skipped: stack {} is not dragon breath", stack);
             return false;
         }
@@ -65,35 +65,35 @@ public final class DragonBreathModifier {
             return false;
         }
 
-        EnderFightMod.LOGGER.info("Tagging dragon breath stack {} at tick {} in world {}", stack, world.getTime(),
-            world.getRegistryKey().getValue());
+        EnderFightMod.LOGGER.info("Tagging dragon breath stack {} at tick {} in world {}", stack, world.getGameTime(),
+            world.dimension().identifier());
 
         final int usesDefault = getTrackingUsesDefault();
         final String specialId = getSpecialBreathId();
 
-        NbtComponent.set(DataComponentTypes.CUSTOM_DATA, stack, tag -> {
+        CustomData.update(DataComponents.CUSTOM_DATA, stack, tag -> {
             tag.putString(KEY_SPECIAL_ID, specialId);
             tag.putString(KEY_ID_TYPE, "Soulbound");
             tag.putInt(KEY_USES_LEFT, usesDefault);
             tag.putInt(KEY_USES_MAX, usesDefault);
-            tag.putLong("CapturedTick", world.getTime());
+            tag.putLong("CapturedTick", world.getGameTime());
         });
-        stack.set(DataComponentTypes.CUSTOM_NAME, Text.literal(buildDisplayName(usesDefault, usesDefault)));
-        EnderFightMod.LOGGER.info("Tagged dragon breath bottle with custom metadata at tick {}", world.getTime());
+        stack.set(DataComponents.CUSTOM_NAME, Component.literal(buildDisplayName(usesDefault, usesDefault)));
+        EnderFightMod.LOGGER.info("Tagged dragon breath bottle with custom metadata at tick {}", world.getGameTime());
         return true;
     }
 
     public static boolean isSpecialDragonBreath(ItemStack stack) {
-        if (stack == null || stack.isEmpty() || !stack.isOf(Items.DRAGON_BREATH)) {
+        if (stack == null || stack.isEmpty() || !stack.is(Items.DRAGON_BREATH)) {
             return false;
         }
 
-        NbtComponent custom = stack.get(DataComponentTypes.CUSTOM_DATA);
+        CustomData custom = stack.get(DataComponents.CUSTOM_DATA);
         if (custom == null) {
             return false;
         }
 
-        NbtCompound nbt = custom.copyNbt();
+        CompoundTag nbt = custom.copyTag();
         if (nbt == null) {
             return false;
         }
@@ -113,14 +113,14 @@ public final class DragonBreathModifier {
     }
 
     public static int getTrackingUsesLeft(ItemStack stack) {
-        if (stack == null || stack.isEmpty() || !stack.isOf(Items.DRAGON_BREATH)) {
+        if (stack == null || stack.isEmpty() || !stack.is(Items.DRAGON_BREATH)) {
             return 0;
         }
-        NbtComponent custom = stack.get(DataComponentTypes.CUSTOM_DATA);
+        CustomData custom = stack.get(DataComponents.CUSTOM_DATA);
         if (custom == null) {
             return 0;
         }
-        NbtCompound nbt = custom.copyNbt();
+        CompoundTag nbt = custom.copyTag();
         if (nbt == null) {
             return 0;
         }
@@ -128,28 +128,28 @@ public final class DragonBreathModifier {
     }
 
     public static int getTrackingUsesMax(ItemStack stack) {
-        if (stack == null || stack.isEmpty() || !stack.isOf(Items.DRAGON_BREATH)) {
+        if (stack == null || stack.isEmpty() || !stack.is(Items.DRAGON_BREATH)) {
             return 0;
         }
-        NbtComponent custom = stack.get(DataComponentTypes.CUSTOM_DATA);
+        CustomData custom = stack.get(DataComponents.CUSTOM_DATA);
         if (custom == null) {
             return 0;
         }
-        NbtCompound nbt = custom.copyNbt();
+        CompoundTag nbt = custom.copyTag();
         if (nbt == null) {
             return 0;
         }
         return nbt.getInt(KEY_USES_MAX).orElse(0);
     }
 
-    public static int countSpecialDragonBreath(PlayerInventory inventory) {
+    public static int countSpecialDragonBreath(Inventory inventory) {
         if (inventory == null) {
             return 0;
         }
 
         int total = 0;
-        for (int slot = 0; slot < inventory.size(); slot++) {
-            ItemStack stack = inventory.getStack(slot);
+        for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
+            ItemStack stack = inventory.getItem(slot);
             if (isSpecialDragonBreath(stack)) {
                 total += stack.getCount();
             }
@@ -157,7 +157,7 @@ public final class DragonBreathModifier {
         return total;
     }
 
-    public static boolean hasReachedSpecialDragonBreathLimit(PlayerInventory inventory) {
+    public static boolean hasReachedSpecialDragonBreathLimit(Inventory inventory) {
         return countSpecialDragonBreath(inventory) >= MAX_SPECIAL_DRAGON_BREATH_BOTTLES;
     }
 
@@ -165,12 +165,12 @@ public final class DragonBreathModifier {
      * Removes any additional special dragon breath bottles from the player so they can only carry up to three.
      * Returns the number of bottles deleted for logging/metrics.
      */
-    public static int purgeExtraSpecialDragonBreath(ServerPlayerEntity player, String context) {
+    public static int purgeExtraSpecialDragonBreath(ServerPlayer player, String context) {
         if (player == null) {
             return 0;
         }
 
-        PlayerInventory inventory = player.getInventory();
+        Inventory inventory = player.getInventory();
         if (inventory == null) {
             EnderFightMod.LOGGER.info("Skipping dragon breath cleanup for {}: inventory unavailable (context={})",
                 player.getName().getString(), context);
@@ -179,8 +179,8 @@ public final class DragonBreathModifier {
 
         int keptCount = 0;
         int removed = 0;
-        for (int slot = 0; slot < inventory.size(); slot++) {
-            ItemStack stack = inventory.getStack(slot);
+        for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
+            ItemStack stack = inventory.getItem(slot);
             if (!isSpecialDragonBreath(stack)) {
                 continue;
             }
@@ -202,7 +202,7 @@ public final class DragonBreathModifier {
             if (keepFromThisStack > 0) {
                 stack.setCount(keepFromThisStack);
             } else {
-                inventory.setStack(slot, ItemStack.EMPTY);
+                inventory.setItem(slot, ItemStack.EMPTY);
             }
         }
 

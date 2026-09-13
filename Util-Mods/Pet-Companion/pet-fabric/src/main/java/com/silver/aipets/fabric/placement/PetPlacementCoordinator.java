@@ -14,11 +14,10 @@ import com.silver.aipets.fabric.authority.PetAuthoritySnapshot;
 import com.silver.aipets.fabric.entity.PetEntityData;
 import com.silver.aipets.fabric.entity.PetEntityFactory;
 import com.silver.aipets.fabric.entity.PreparedPetEntity;
-import net.minecraft.entity.passive.TameableEntity;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.TamableAnimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
@@ -60,7 +59,7 @@ public final class PetPlacementCoordinator {
                 clock,
                 operationIds,
                 entityIds,
-                (world, entity) -> world.spawnEntity(entity));
+                (world, entity) -> world.addFreshEntity(entity));
     }
 
     public PetPlacementCoordinator(
@@ -82,10 +81,10 @@ public final class PetPlacementCoordinator {
         this.entitySpawner = Objects.requireNonNull(entitySpawner, "entitySpawner");
     }
 
-    public CompletableFuture<PetPlacementOutcome> place(ServerPlayerEntity initiatingPlayer) {
+    public CompletableFuture<PetPlacementOutcome> place(ServerPlayer initiatingPlayer) {
         Objects.requireNonNull(initiatingPlayer, "initiatingPlayer");
-        MinecraftServer server = initiatingPlayer.getEntityWorld().getServer();
-        UUID ownerUuid = initiatingPlayer.getUuid();
+        MinecraftServer server = initiatingPlayer.level().getServer();
+        UUID ownerUuid = initiatingPlayer.getUUID();
         if (!ownersInFlight.add(ownerUuid)) {
             return CompletableFuture.completedFuture(PetPlacementOutcome.of(
                     PetPlacementStatus.ALREADY_IN_PROGRESS,
@@ -150,7 +149,7 @@ public final class PetPlacementCoordinator {
             return;
         }
 
-        ServerPlayerEntity player = server.getPlayerManager().getPlayer(ownerUuid);
+        ServerPlayer player = server.getPlayerList().getPlayer(ownerUuid);
         if (player == null || !player.isAlive()) {
             outcome.complete(PetPlacementOutcome.of(
                     PetPlacementStatus.PLAYER_CONTEXT_CHANGED,
@@ -158,8 +157,8 @@ public final class PetPlacementCoordinator {
                     "Owner left before placement"));
             return;
         }
-        ServerWorld world = player.getEntityWorld();
-        DimensionId dimensionId = DimensionId.parse(world.getRegistryKey().getValue().toString());
+        ServerLevel world = player.level();
+        DimensionId dimensionId = DimensionId.parse(world.dimension().identifier().toString());
         UUID entityUuid = requireUuid(entityIds, "entity ID");
         WorldPosition playerPosition = position(player);
         PreparedPetEntity prepared = entityFactory.prepare(
@@ -169,7 +168,7 @@ public final class PetPlacementCoordinator {
                 playerPosition,
                 authoritySnapshot.sleeping());
         Optional<WorldPosition> safePosition = safePlacementFinder.find(
-                world, prepared.entity(), player.getBlockPos());
+                world, prepared.entity(), player.blockPosition());
         if (safePosition.isEmpty()) {
             prepared.entity().discard();
             outcome.complete(PetPlacementOutcome.of(
@@ -180,8 +179,8 @@ public final class PetPlacementCoordinator {
         }
 
         WorldPosition target = safePosition.orElseThrow();
-        prepared.entity().refreshPositionAndAngles(
-                target.x(), target.y(), target.z(), player.getYaw(), 0.0F);
+        prepared.entity().snapTo(
+                target.x(), target.y(), target.z(), player.getYRot(), 0.0F);
         UUID operationId = requireUuid(operationIds, "operation ID");
         Instant occurredAt = clock.instant();
         PetTransitions.Place command = new PetTransitions.Place(
@@ -273,10 +272,10 @@ public final class PetPlacementCoordinator {
         }
 
         ((PetEntityData) placement.entity()).aipets$setRecordVersion(committed.recordVersion());
-        ServerPlayerEntity currentPlayer = server.getPlayerManager().getPlayer(ownerUuid);
+        ServerPlayer currentPlayer = server.getPlayerList().getPlayer(ownerUuid);
         if (currentPlayer == null
                 || !currentPlayer.isAlive()
-                || currentPlayer.getEntityWorld() != placement.world()) {
+                || currentPlayer.level() != placement.world()) {
             placement.entity().discard();
             compensate(placement, committed, outcome, "Owner context changed after commit");
             return;
@@ -352,7 +351,7 @@ public final class PetPlacementCoordinator {
     }
 
     private static void onServer(MinecraftServer server, Runnable action) {
-        if (server.isOnThread()) {
+        if (server.isSameThread()) {
             action.run();
         } else {
             server.execute(action);
@@ -363,19 +362,19 @@ public final class PetPlacementCoordinator {
         return Objects.requireNonNull(supplier.get(), name + " supplier returned null");
     }
 
-    private static WorldPosition position(ServerPlayerEntity player) {
+    private static WorldPosition position(ServerPlayer player) {
         return new WorldPosition(player.getX(), player.getY(), player.getZ());
     }
 
     @FunctionalInterface
     public interface EntitySpawner {
-        boolean spawn(ServerWorld world, TameableEntity entity);
+        boolean spawn(ServerLevel world, TamableAnimal entity);
     }
 
     private record PreparedPlacement(
-            ServerWorld world,
+            ServerLevel world,
             DimensionId dimensionId,
-            TameableEntity entity,
+            TamableAnimal entity,
             Pet preCommitPet,
             UUID entityUuid,
             WorldPosition targetPosition) {

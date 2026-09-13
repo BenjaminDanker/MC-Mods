@@ -1,33 +1,33 @@
 package com.silver.enderfight.mixin;
 
-import net.minecraft.server.world.ServerChunkLoadingManager;
-import net.minecraft.world.chunk.ChunkGenerationContext;
-import net.minecraft.world.gen.chunk.placement.StructurePlacementCalculator;
-import net.minecraft.world.gen.noise.NoiseConfig;
+import net.minecraft.server.level.ChunkMap;
+import net.minecraft.world.level.chunk.ChunkGeneratorStructureState;
+import net.minecraft.world.level.chunk.status.WorldGenContext;
+import net.minecraft.world.level.levelgen.RandomState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Mutable;
 import org.spongepowered.asm.mixin.gen.Accessor;
 
-@Mixin(ServerChunkLoadingManager.class)
+@Mixin(ChunkMap.class)
 public interface ServerChunkLoadingManagerAccessor {
-    @Accessor("generationContext")
-    ChunkGenerationContext getGenerationContext();
+    @Accessor("worldGenContext")
+    WorldGenContext getGenerationContext();
 
-    @Accessor("generationContext")
+    @Accessor("worldGenContext")
     @Mutable
-    void setGenerationContext(ChunkGenerationContext context);
+    void setGenerationContext(WorldGenContext context);
 
-    @Accessor("noiseConfig")
-    NoiseConfig getNoiseConfig();
+    @Accessor("randomState")
+    RandomState getNoiseConfig();
 
-    @Accessor("noiseConfig")
+    @Accessor("randomState")
     @Mutable
-    void setNoiseConfig(NoiseConfig noiseConfig);
+    void setNoiseConfig(RandomState noiseConfig);
 
-    @Accessor("structurePlacementCalculator")
-    StructurePlacementCalculator getStructurePlacementCalculator();
+    @Accessor("chunkGeneratorState")
+    ChunkGeneratorStructureState getStructurePlacementCalculator();
 
-    @Accessor("structurePlacementCalculator")
+    @Accessor("chunkGeneratorState")
     @Mutable
-    void setStructurePlacementCalculator(StructurePlacementCalculator calculator);
+    void setStructurePlacementCalculator(ChunkGeneratorStructureState calculator);
 }

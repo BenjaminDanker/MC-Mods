@@ -35,7 +35,7 @@
           "condition": "minecraft:entity_properties",
           "entity": "attacker",
           "predicate": {
-            "type": "#infinity_cave:all_living",
+            "minecraft:entity_type": "#infinity_cave:all_living",
             "distance": {
               "absolute": {
                 "min": 3.5
@@ -55,7 +55,7 @@
           "condition": "minecraft:entity_properties",
           "entity": "attacker",
           "predicate": {
-            "type": "#infinity_cave:all_living",
+            "minecraft:entity_type": "#infinity_cave:all_living",
             "distance": {
               "absolute": {
                 "min": 3.5

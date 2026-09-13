@@ -38,12 +38,6 @@ import com.silver.aipets.fabric.recall.PetRecallOutcome;
 import com.silver.aipets.fabric.recall.PetRecallStatus;
 import com.silver.aipets.fabric.permission.PetPermission;
 import com.silver.aipets.fabric.permission.PetPermissions;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.Text;
-import net.minecraft.text.ClickEvent;
-import net.minecraft.util.Formatting;
-
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
@@ -56,9 +50,14 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import net.minecraft.ChatFormatting;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerPlayer;
 
-import static net.minecraft.server.command.CommandManager.literal;
-import static net.minecraft.server.command.CommandManager.argument;
+import static net.minecraft.commands.Commands.literal;
+import static net.minecraft.commands.Commands.argument;
 
 /** Player command surface; physical mutations delegate to commit-safe async coordinators. */
 public final class PetCommands {
@@ -68,31 +67,26 @@ public final class PetCommands {
     private PetCommands() {
     }
 
-    public static void register(CommandDispatcher<ServerCommandSource> dispatcher) {
+    public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(literal("pet")
                 .executes(PetCommands::help)
                 .then(literal("help")
-                        .requires(PetCommands::hasPetAccess)
+                        .requires(source -> PetPermissions.check(source, PetPermission.USE))
                         .executes(PetCommands::help))
                 .then(literal("status")
-                        .requires(source -> hasPetAccess(source)
-                                && PetPermissions.check(source, PetPermission.USE))
+                        .requires(source -> PetPermissions.check(source, PetPermission.USE))
                         .executes(PetCommands::status))
                 .then(literal("link")
-                        .requires(source -> hasPetAccess(source)
-                                && PetPermissions.check(source, PetPermission.USE))
+                        .requires(source -> PetPermissions.check(source, PetPermission.USE))
                         .executes(PetCommands::link))
                 .then(literal("portal")
-                        .requires(source -> hasPetAccess(source)
-                                && PetPermissions.check(source, PetPermission.USE))
+                        .requires(source -> PetPermissions.check(source, PetPermission.USE))
                         .executes(PetCommands::portal))
                 .then(literal("billing")
-                        .requires(source -> hasPetAccess(source)
-                                && PetPermissions.check(source, PetPermission.USE))
+                        .requires(source -> PetPermissions.check(source, PetPermission.USE))
                         .executes(PetCommands::billing))
                 .then(literal("adopt")
-                        .requires(source -> !hasPetAccess(source)
-                                && PetPermissions.check(source, PetPermission.ADOPT))
+                        .requires(source -> PetPermissions.check(source, PetPermission.ADOPT))
                         .executes(context -> adoptionMenu(context, null))
                         .then(literal("cat")
                                 .executes(context -> adoptionMenu(context, PetSpecies.CAT))
@@ -105,20 +99,16 @@ public final class PetCommands {
                         .then(literal("subscribe")
                                 .executes(PetCommands::link)))
                 .then(literal("place")
-                        .requires(source -> hasPetAccess(source)
-                                && PetPermissions.check(source, PetPermission.USE))
+                        .requires(source -> PetPermissions.check(source, PetPermission.USE))
                         .executes(PetCommands::place))
                 .then(literal("pickup")
-                        .requires(source -> hasPetAccess(source)
-                                && PetPermissions.check(source, PetPermission.USE))
+                        .requires(source -> PetPermissions.check(source, PetPermission.USE))
                         .executes(PetCommands::pickup))
                 .then(literal("recall")
-                        .requires(source -> hasPetAccess(source)
-                                && PetPermissions.check(source, PetPermission.RECALL))
+                        .requires(source -> PetPermissions.check(source, PetPermission.RECALL))
                         .executes(PetCommands::recall))
                 .then(literal("compass")
-                        .requires(source -> hasPetAccess(source)
-                                && PetPermissions.check(source, PetPermission.COMPASS))
+                        .requires(source -> PetPermissions.check(source, PetPermission.COMPASS))
                         .executes(PetCommands::compass))
                 .then(literal("admin")
                         .requires(PetCommands::hasAdminAccess)
@@ -152,10 +142,13 @@ public final class PetCommands {
                                 .executes(PetCommands::adminReconcile))));
     }
 
-    private static int help(CommandContext<ServerCommandSource> context) {
-        ServerCommandSource source = context.getSource();
+    private static int help(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
         boolean ownsPet = hasPetAccess(source);
-        boolean canUse = ownsPet && PetPermissions.check(source, PetPermission.USE);
+        boolean ownershipKnown = source.getPlayer() == null
+                || HAS_PET.containsKey(source.getPlayer().getUUID());
+        boolean canUse = PetPermissions.check(source, PetPermission.USE)
+                && (ownsPet || !ownershipKnown);
         StringBuilder index = new StringBuilder("Pet Companion:");
         if (canUse) {
             index.append(" /pet status, /pet billing, /pet place, /pet pickup");
@@ -172,105 +165,105 @@ public final class PetCommands {
         if (hasAdminAccess(source)) {
             index.append(", /pet admin …");
         }
-        source.sendFeedback(
-                () -> Text.literal(index.toString())
-                        .formatted(Formatting.AQUA),
+        source.sendSuccess(
+                () -> Component.literal(index.toString())
+                        .withStyle(ChatFormatting.AQUA),
                 false);
         if (canUse) {
-            source.sendFeedback(() -> Text.empty()
-                    .append(Text.literal("VIEW     ").formatted(Formatting.YELLOW, Formatting.BOLD))
+            source.sendSuccess(() -> Component.empty()
+                    .append(Component.literal("VIEW     ").withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD))
                     .append(commandAction("[STATUS]", "/pet status")), false);
-            source.sendFeedback(() -> Text.empty()
-                    .append(Text.literal("BILLING  ").formatted(Formatting.YELLOW, Formatting.BOLD))
+            source.sendSuccess(() -> Component.empty()
+                    .append(Component.literal("BILLING  ").withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD))
                     .append(commandAction("[OPEN BILLING MENU]", "/pet billing")), false);
-            source.sendFeedback(() -> Text.empty()
-                    .append(Text.literal("PET      ").formatted(Formatting.YELLOW, Formatting.BOLD))
+            source.sendSuccess(() -> Component.empty()
+                    .append(Component.literal("PET      ").withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD))
                     .append(commandAction("[PLACE]", "/pet place"))
-                    .append(Text.literal("  "))
+                    .append(Component.literal("  "))
                     .append(commandAction("[PICKUP]", "/pet pickup")), false);
-            source.sendFeedback(() -> Text.literal(
+            source.sendSuccess(() -> Component.literal(
                     "Tip: hold Shift and right-click your pet to pick them up quickly.")
-                    .formatted(Formatting.GRAY), false);
+                    .withStyle(ChatFormatting.GRAY), false);
         }
         if (!ownsPet && PetPermissions.check(source, PetPermission.ADOPT)) {
-            source.sendFeedback(() -> Text.empty()
-                    .append(Text.literal("ADOPTION ").formatted(Formatting.YELLOW, Formatting.BOLD))
+            source.sendSuccess(() -> Component.empty()
+                    .append(Component.literal("ADOPTION ").withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD))
                     .append(commandAction("[OPEN MENU]", "/pet adopt"))
-                    .append(Text.literal("  Choose a species, then name it.")), false);
+                    .append(Component.literal("  Choose a species, then name it.")), false);
         }
         if (PetPermissions.check(source, PetPermission.RECALL)
                 || PetPermissions.check(source, PetPermission.COMPASS)) {
-            source.sendFeedback(() -> Text.empty()
-                    .append(Text.literal("TOOLS    ").formatted(Formatting.YELLOW, Formatting.BOLD))
+            source.sendSuccess(() -> Component.empty()
+                    .append(Component.literal("TOOLS    ").withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD))
                     .append(PetPermissions.check(source, PetPermission.RECALL)
                             ? commandAction("[RECALL]", "/pet recall")
-                            : Text.empty())
+                            : Component.empty())
                     .append(PetPermissions.check(source, PetPermission.RECALL)
                             && PetPermissions.check(source, PetPermission.COMPASS)
-                            ? Text.literal("  ")
-                            : Text.empty())
+                            ? Component.literal("  ")
+                            : Component.empty())
                     .append(PetPermissions.check(source, PetPermission.COMPASS)
                             ? commandAction("[COMPASS]", "/pet compass")
-                            : Text.empty()), false);
+                            : Component.empty()), false);
         }
         if (hasAdminAccess(source)) {
-            source.sendFeedback(() -> Text.literal(
+            source.sendSuccess(() -> Component.literal(
                     "ADMIN    /pet admin inspect|recover|recall-reset|history|reconcile (permission-gated; UUID defaults to you)")
-                    .formatted(Formatting.DARK_GRAY), false);
+                    .withStyle(ChatFormatting.DARK_GRAY), false);
         }
         return 1;
     }
 
-    private static int link(CommandContext<ServerCommandSource> context) {
-        ServerCommandSource source = context.getSource();
-        ServerPlayerEntity player = source.getPlayer();
+    private static int link(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendError(Text.literal("This command is available only to players."));
+            source.sendFailure(Component.literal("This command is available only to players."));
             return 0;
         }
         Optional<PetAuthorityGateway> gateway = PetCompanionMod.authorityGateway();
         if (gateway.isEmpty()) {
-            source.sendError(Text.literal("Pet Companion is temporarily unavailable."));
+            source.sendFailure(Component.literal("Pet Companion is temporarily unavailable."));
             return 0;
         }
-        UUID ownerUuid = player.getUuid();
-        source.sendFeedback(
-                () -> Text.literal("Checking your subscription status…")
-                        .formatted(Formatting.GRAY),
+        UUID ownerUuid = player.getUUID();
+        source.sendSuccess(
+                () -> Component.literal("Checking your subscription status…")
+                        .withStyle(ChatFormatting.GRAY),
                 false);
         try {
             gateway.orElseThrow().findSubscriptionDetails(ownerUuid).whenComplete((details, statusFailure) ->
                     onServer(source, () -> {
                         if (statusFailure != null || details == null) {
-                            source.sendError(Text.literal(
+                            source.sendFailure(Component.literal(
                                     "Subscription status is temporarily unavailable; no checkout link was created."));
                             return;
                         }
                         if (details.aiAccessEnabled()) {
-                            source.sendFeedback(() -> Text.literal("SUBSCRIPTION ALREADY ACTIVE")
-                                    .formatted(Formatting.YELLOW, Formatting.BOLD), false);
-                            source.sendFeedback(() -> Text.empty()
-                                    .append(Text.literal(
+                            source.sendSuccess(() -> Component.literal("SUBSCRIPTION ALREADY ACTIVE")
+                                    .withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD), false);
+                            source.sendSuccess(() -> Component.empty()
+                                    .append(Component.literal(
                                             "No new checkout was created. " + billingStateText(details)
                                                     + " Manage it in ")
-                                            .formatted(Formatting.GRAY))
+                                            .withStyle(ChatFormatting.GRAY))
                                     .append(commandAction("[STRIPE BILLING PORTAL]", "/pet portal"))
-                                    .append(Text.literal(".")), false);
+                                    .append(Component.literal(".")), false);
                             return;
                         }
-                        source.sendFeedback(() -> Text.literal("Creating your secure pet checkout link…")
-                                .formatted(Formatting.GRAY), false);
+                        source.sendSuccess(() -> Component.literal("Creating your secure pet checkout link…")
+                                .withStyle(ChatFormatting.GRAY), false);
                         try {
                             gateway.orElseThrow().createAccountLink(ownerUuid).whenComplete((result, failure) ->
                                     onServer(source, () -> completeLink(
                                             source, ownerUuid, gateway.orElseThrow(), details,
                                             result, failure)));
                         } catch (RuntimeException failure) {
-                            source.sendError(Text.literal("Account linking is temporarily unavailable."));
+                            source.sendFailure(Component.literal("Account linking is temporarily unavailable."));
                         }
                     }));
         } catch (RuntimeException failure) {
-            source.sendError(Text.literal(
+            source.sendFailure(Component.literal(
                     "Subscription status is temporarily unavailable; no checkout link was created."));
             return 0;
         }
@@ -278,60 +271,60 @@ public final class PetCommands {
     }
 
     private static void completeLink(
-            ServerCommandSource source,
+            CommandSourceStack source,
             UUID ownerUuid,
             PetAuthorityGateway gateway,
             SubscriptionAccessWireResult baseline,
             AccountLinkWireResult result,
             Throwable failure) {
-        if (source.getServer().getPlayerManager().getPlayer(ownerUuid) == null) return;
+        if (source.getServer().getPlayerList().getPlayer(ownerUuid) == null) return;
         if (failure != null || result == null) {
-            source.sendError(Text.literal("Account linking is temporarily unavailable."));
+            source.sendFailure(Component.literal("Account linking is temporarily unavailable."));
             return;
         }
         if (result.status() == AccountLinkWireStatus.RATE_LIMITED) {
-            source.sendFeedback(
-                    () -> Text.literal("Too many checkout links were requested; wait a few minutes.")
-                            .formatted(Formatting.YELLOW),
+            source.sendSuccess(
+                    () -> Component.literal("Too many checkout links were requested; wait a few minutes.")
+                            .withStyle(ChatFormatting.YELLOW),
                     false);
             return;
         }
         URI checkoutUrl = URI.create(result.checkoutUrl().orElseThrow());
-        source.sendFeedback(() -> Text.literal("STRIPE CHECKOUT")
-                .formatted(Formatting.GREEN, Formatting.BOLD), false);
-        source.sendFeedback(() -> Text.empty()
-                        .append(Text.literal("Open the one checkout link below, finish payment in your browser, then return to Minecraft. ")
-                                .formatted(Formatting.GRAY))
-                        .append(Text.literal("[OPEN STRIPE CHECKOUT]")
-                                .formatted(Formatting.AQUA, Formatting.UNDERLINE)
-                                .styled(style -> style.withClickEvent(
+        source.sendSuccess(() -> Component.literal("STRIPE CHECKOUT")
+                .withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD), false);
+        source.sendSuccess(() -> Component.empty()
+                        .append(Component.literal("Open the one checkout link below, finish payment in your browser, then return to Minecraft. ")
+                                .withStyle(ChatFormatting.GRAY))
+                        .append(Component.literal("[OPEN STRIPE CHECKOUT]")
+                                .withStyle(ChatFormatting.AQUA, ChatFormatting.UNDERLINE)
+                                .withStyle(style -> style.withClickEvent(
                                         new ClickEvent.OpenUrl(checkoutUrl))))
-                        .append(Text.literal(" (expires "
+                        .append(Component.literal(" (expires "
                                 + formatUtc(result.expiresAt().orElseThrow()) + ")")
-                                .formatted(Formatting.GRAY)), false);
+                                .withStyle(ChatFormatting.GRAY)), false);
         watchBilling(source, ownerUuid, gateway, baseline);
     }
 
-    private static int portal(CommandContext<ServerCommandSource> context) {
-        ServerCommandSource source = context.getSource();
-        ServerPlayerEntity player = source.getPlayer();
+    private static int portal(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendError(Text.literal("This command is available only to players."));
+            source.sendFailure(Component.literal("This command is available only to players."));
             return 0;
         }
         Optional<PetAuthorityGateway> gateway = PetCompanionMod.authorityGateway();
         if (gateway.isEmpty()) {
-            source.sendError(Text.literal("Pet Companion is temporarily unavailable."));
+            source.sendFailure(Component.literal("Pet Companion is temporarily unavailable."));
             return 0;
         }
-        UUID ownerUuid = player.getUuid();
-        source.sendFeedback(() -> Text.literal("Preparing your secure billing page…")
-                .formatted(Formatting.GRAY), false);
+        UUID ownerUuid = player.getUUID();
+        source.sendSuccess(() -> Component.literal("Preparing your secure billing page…")
+                .withStyle(ChatFormatting.GRAY), false);
         try {
             gateway.orElseThrow().findSubscriptionDetails(ownerUuid).whenComplete((baseline, statusFailure) ->
                     onServer(source, () -> {
                         if (statusFailure != null || baseline == null) {
-                            source.sendError(Text.literal("Billing is temporarily unavailable; please retry."));
+                            source.sendFailure(Component.literal("Billing is temporarily unavailable; please retry."));
                             return;
                         }
                         gateway.orElseThrow().createCustomerPortal(ownerUuid).whenComplete((result, failure) ->
@@ -340,72 +333,72 @@ public final class PetCommands {
                                         result, failure)));
                     }));
         } catch (RuntimeException failure) {
-            source.sendError(Text.literal("Billing management is temporarily unavailable."));
+            source.sendFailure(Component.literal("Billing management is temporarily unavailable."));
             return 0;
         }
         return 1;
     }
 
-    private static int billing(CommandContext<ServerCommandSource> context) {
-        ServerCommandSource source = context.getSource();
-        ServerPlayerEntity player = source.getPlayer();
+    private static int billing(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendError(Text.literal("This command is available only to players."));
+            source.sendFailure(Component.literal("This command is available only to players."));
             return 0;
         }
         Optional<PetAuthorityGateway> gateway = PetCompanionMod.authorityGateway();
         if (gateway.isEmpty()) {
-            source.sendError(Text.literal("Pet Companion is temporarily unavailable."));
+            source.sendFailure(Component.literal("Pet Companion is temporarily unavailable."));
             return 0;
         }
-        UUID ownerUuid = player.getUuid();
-        source.sendFeedback(() -> Text.literal("BILLING — checking your subscription…")
-                .formatted(Formatting.GRAY), false);
+        UUID ownerUuid = player.getUUID();
+        source.sendSuccess(() -> Component.literal("BILLING — checking your subscription…")
+                .withStyle(ChatFormatting.GRAY), false);
         try {
             gateway.orElseThrow().findSubscriptionDetails(ownerUuid).whenComplete((details, failure) ->
                     onServer(source, () -> completeBilling(source, ownerUuid, details, failure)));
         } catch (RuntimeException failure) {
-            source.sendError(Text.literal("Subscription status is temporarily unavailable; please retry."));
+            source.sendFailure(Component.literal("Subscription status is temporarily unavailable; please retry."));
             return 0;
         }
         return 1;
     }
 
     private static void completeBilling(
-            ServerCommandSource source,
+            CommandSourceStack source,
             UUID ownerUuid,
             SubscriptionAccessWireResult details,
             Throwable failure) {
-        if (source.getServer().getPlayerManager().getPlayer(ownerUuid) == null) return;
+        if (source.getServer().getPlayerList().getPlayer(ownerUuid) == null) return;
         if (failure != null || details == null) {
-            source.sendError(Text.literal("Subscription status is temporarily unavailable; please retry."));
+            source.sendFailure(Component.literal("Subscription status is temporarily unavailable; please retry."));
             return;
         }
-        source.sendFeedback(() -> Text.literal("BILLING")
-                .formatted(Formatting.AQUA, Formatting.BOLD), false);
+        source.sendSuccess(() -> Component.literal("BILLING")
+                .withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD), false);
         if (hasAdminAccess(source)
                 && details.budgetUsd() != null
                 && details.remainingUsd() != null) {
-            source.sendFeedback(() -> Text.literal(
+            source.sendSuccess(() -> Component.literal(
                     "Admin quota: " + usd(details.budgetUsd())
                             + " total • " + usd(details.remainingUsd()) + " remaining"
                             + (details.consumedUsd() == null
                             ? "" : " • " + usd(details.consumedUsd()) + " consumed"))
-                    .formatted(Formatting.LIGHT_PURPLE), false);
+                    .withStyle(ChatFormatting.LIGHT_PURPLE), false);
         }
         if (details.aiAccessEnabled()) {
-            source.sendFeedback(() -> Text.literal(
+            source.sendSuccess(() -> Component.literal(
                     "Your subscription is active. " + billingStateText(details))
-                    .formatted(Formatting.GRAY), false);
-            source.sendFeedback(() -> Text.empty()
-                    .append(Text.literal("Next action: ").formatted(Formatting.GRAY))
+                    .withStyle(ChatFormatting.GRAY), false);
+            source.sendSuccess(() -> Component.empty()
+                    .append(Component.literal("Next action: ").withStyle(ChatFormatting.GRAY))
                     .append(commandAction("[MANAGE / CANCEL IN STRIPE]", "/pet portal")), false);
         } else {
-            source.sendFeedback(() -> Text.literal(
+            source.sendSuccess(() -> Component.literal(
                     "No active subscription is linked to this Minecraft account.")
-                    .formatted(Formatting.GRAY), false);
-            source.sendFeedback(() -> Text.empty()
-                    .append(Text.literal("Next action: ").formatted(Formatting.GRAY))
+                    .withStyle(ChatFormatting.GRAY), false);
+            source.sendSuccess(() -> Component.empty()
+                    .append(Component.literal("Next action: ").withStyle(ChatFormatting.GRAY))
                     .append(commandAction("[START SUBSCRIPTION]", "/pet link")), false);
         }
     }
@@ -415,58 +408,58 @@ public final class PetCommands {
     }
 
     private static void completePortal(
-            ServerCommandSource source,
+            CommandSourceStack source,
             UUID ownerUuid,
             PetAuthorityGateway gateway,
             SubscriptionAccessWireResult baseline,
             CustomerPortalWireResult result,
             Throwable failure) {
-        if (source.getServer().getPlayerManager().getPlayer(ownerUuid) == null) return;
+        if (source.getServer().getPlayerList().getPlayer(ownerUuid) == null) return;
         if (failure != null || result == null) {
-            source.sendError(Text.literal("Billing management is temporarily unavailable."));
+            source.sendFailure(Component.literal("Billing management is temporarily unavailable."));
             return;
         }
         if (result.status() == CustomerPortalWireStatus.NOT_LINKED) {
-            source.sendFeedback(() -> Text.literal("NO BILLING ACCOUNT LINKED")
-                    .formatted(Formatting.YELLOW, Formatting.BOLD), false);
-            source.sendFeedback(() -> Text.empty()
-                    .append(Text.literal("Start checkout first: ").formatted(Formatting.GRAY))
+            source.sendSuccess(() -> Component.literal("NO BILLING ACCOUNT LINKED")
+                    .withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD), false);
+            source.sendSuccess(() -> Component.empty()
+                    .append(Component.literal("Start checkout first: ").withStyle(ChatFormatting.GRAY))
                     .append(commandAction("[SUBSCRIBE]", "/pet link")), false);
             return;
         }
         if (result.status() == CustomerPortalWireStatus.RATE_LIMITED) {
-            source.sendFeedback(
-                    () -> Text.literal("Too many portal links were requested; wait a few minutes.")
-                            .formatted(Formatting.YELLOW),
+            source.sendSuccess(
+                    () -> Component.literal("Too many portal links were requested; wait a few minutes.")
+                            .withStyle(ChatFormatting.YELLOW),
                     false);
             return;
         }
         URI portalUrl = URI.create(result.portalUrl().orElseThrow());
-        source.sendFeedback(() -> Text.literal("BILLING PORTAL READY")
-                .formatted(Formatting.GREEN, Formatting.BOLD), false);
+        source.sendSuccess(() -> Component.literal("BILLING PORTAL READY")
+                .withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD), false);
 
-        source.sendFeedback(() -> Text.empty()
-                .append(Text.literal("[OPEN STRIPE BILLING PORTAL]")
-                        .formatted(Formatting.AQUA, Formatting.UNDERLINE)
-                        .styled(style -> style.withClickEvent(
+        source.sendSuccess(() -> Component.empty()
+                .append(Component.literal("[OPEN STRIPE BILLING PORTAL]")
+                        .withStyle(ChatFormatting.AQUA, ChatFormatting.UNDERLINE)
+                        .withStyle(style -> style.withClickEvent(
                                 new ClickEvent.OpenUrl(portalUrl)))), false);
         watchBilling(source, ownerUuid, gateway, baseline);
     }
 
     /** Refreshes the command tree after the authoritative ownership read completes. */
-    public static void refreshVisibility(ServerPlayerEntity player) {
+    public static void refreshVisibility(ServerPlayer player) {
         Objects.requireNonNull(player, "player");
         Optional<PetAuthorityGateway> gateway = PetCompanionMod.authorityGateway();
         if (gateway.isEmpty()) return;
-        UUID ownerUuid = player.getUuid();
+        UUID ownerUuid = player.getUUID();
         gateway.orElseThrow().findByOwner(ownerUuid).whenComplete((snapshot, failure) -> {
             if (failure != null || snapshot == null) return;
-            player.getEntityWorld().getServer().execute(() -> {
-                ServerPlayerEntity current = player.getEntityWorld().getServer()
-                        .getPlayerManager().getPlayer(ownerUuid);
+            player.level().getServer().execute(() -> {
+                ServerPlayer current = player.level().getServer()
+                        .getPlayerList().getPlayer(ownerUuid);
                 if (current == null) return;
                 HAS_PET.put(ownerUuid, snapshot.isPresent());
-                current.getEntityWorld().getServer().getCommandManager().sendCommandTree(current);
+                current.level().getServer().getCommands().sendCommands(current);
             });
         });
     }
@@ -476,12 +469,12 @@ public final class PetCommands {
         BILLING_WATCHES.remove(ownerUuid);
     }
 
-    private static boolean hasPetAccess(ServerCommandSource source) {
-        ServerPlayerEntity player = source.getPlayer();
-        return player == null || Boolean.TRUE.equals(HAS_PET.get(player.getUuid()));
+    private static boolean hasPetAccess(CommandSourceStack source) {
+        ServerPlayer player = source.getPlayer();
+        return player == null || Boolean.TRUE.equals(HAS_PET.get(player.getUUID()));
     }
 
-    private static boolean hasAdminAccess(ServerCommandSource source) {
+    private static boolean hasAdminAccess(CommandSourceStack source) {
         return PetPermissions.check(source, PetPermission.ADMIN_INSPECT)
                 || PetPermissions.check(source, PetPermission.ADMIN_RECOVER)
                 || PetPermissions.check(source, PetPermission.ADMIN_RECONCILE)
@@ -490,14 +483,14 @@ public final class PetCommands {
     }
 
     private static void rememberOwnership(
-            ServerCommandSource source, UUID ownerUuid, boolean hasPet) {
+            CommandSourceStack source, UUID ownerUuid, boolean hasPet) {
         HAS_PET.put(ownerUuid, hasPet);
-        ServerPlayerEntity player = source.getServer().getPlayerManager().getPlayer(ownerUuid);
-        if (player != null) source.getServer().getCommandManager().sendCommandTree(player);
+        ServerPlayer player = source.getServer().getPlayerList().getPlayer(ownerUuid);
+        if (player != null) source.getServer().getCommands().sendCommands(player);
     }
 
     private static void watchBilling(
-            ServerCommandSource source,
+            CommandSourceStack source,
             UUID ownerUuid,
             PetAuthorityGateway gateway,
             SubscriptionAccessWireResult baseline) {
@@ -507,7 +500,7 @@ public final class PetCommands {
     }
 
     private static void pollBilling(
-            ServerCommandSource source,
+            CommandSourceStack source,
             UUID ownerUuid,
             PetAuthorityGateway gateway,
             SubscriptionAccessWireResult baseline,
@@ -522,7 +515,7 @@ public final class PetCommands {
             try {
                 gateway.findSubscriptionDetails(ownerUuid).whenComplete((current, failure) ->
                         onServer(source, () -> {
-                            ServerPlayerEntity player = source.getServer().getPlayerManager()
+                            ServerPlayer player = source.getServer().getPlayerList()
                                     .getPlayer(ownerUuid);
                             if (player == null) {
                                 BILLING_WATCHES.remove(ownerUuid, watchId);
@@ -551,31 +544,31 @@ public final class PetCommands {
     }
 
     private static void announceBillingChange(
-            ServerCommandSource source,
+            CommandSourceStack source,
             SubscriptionAccessWireResult before,
             SubscriptionAccessWireResult after) {
         if (!before.aiAccessEnabled() && after.aiAccessEnabled()) {
-            source.sendFeedback(() -> Text.empty()
-                    .append(Text.literal("Your membership is active! ")
-                            .formatted(Formatting.GREEN))
+            source.sendSuccess(() -> Component.empty()
+                    .append(Component.literal("Your membership is active! ")
+                            .withStyle(ChatFormatting.GREEN))
                     .append(commandAction("[CONTINUE TO ADOPTION]", "/pet adopt")), false);
             return;
         }
         if (after.cancelAtPeriodEnd()) {
-            source.sendFeedback(() -> Text.literal("Cancellation scheduled. "
-                    + billingStateText(after)).formatted(Formatting.YELLOW), false);
+            source.sendSuccess(() -> Component.literal("Cancellation scheduled. "
+                    + billingStateText(after)).withStyle(ChatFormatting.YELLOW), false);
             return;
         }
         if (!after.aiAccessEnabled() || "CANCELED".equals(after.status())) {
-            source.sendFeedback(() -> Text.literal("Your subscription has been cancelled.")
-                    .formatted(Formatting.YELLOW), false);
+            source.sendSuccess(() -> Component.literal("Your subscription has been cancelled.")
+                    .withStyle(ChatFormatting.YELLOW), false);
         }
     }
 
-    private static Text commandAction(String label, String command) {
-        return Text.literal(label)
-                .formatted(Formatting.GREEN, Formatting.UNDERLINE)
-                .styled(style -> style.withClickEvent(new ClickEvent.RunCommand(command)));
+    private static Component commandAction(String label, String command) {
+        return Component.literal(label)
+                .withStyle(ChatFormatting.GREEN, ChatFormatting.UNDERLINE)
+                .withStyle(style -> style.withClickEvent(new ClickEvent.RunCommand(command)));
     }
 
     private static String billingStateText(SubscriptionAccessWireResult details) {
@@ -596,53 +589,53 @@ public final class PetCommands {
         };
     }
 
-    private static int recall(CommandContext<ServerCommandSource> context) {
-        ServerCommandSource source = context.getSource();
-        ServerPlayerEntity player = source.getPlayer();
+    private static int recall(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendError(Text.literal("This command is available only to players."));
+            source.sendFailure(Component.literal("This command is available only to players."));
             return 0;
         }
         Optional<PetRecallCoordinator> configured = PetCompanionMod.recallCoordinator();
         if (configured.isEmpty()) {
-            source.sendError(Text.literal("Pet Companion is temporarily unavailable."));
+            source.sendFailure(Component.literal("Pet Companion is temporarily unavailable."));
             return 0;
         }
-        UUID ownerUuid = player.getUuid();
-        source.sendFeedback(() -> Text.literal("Recalling your pet…").formatted(Formatting.GRAY), false);
+        UUID ownerUuid = player.getUUID();
+        source.sendSuccess(() -> Component.literal("Recalling your pet…").withStyle(ChatFormatting.GRAY), false);
         try {
             configured.orElseThrow().recall(player).whenComplete((outcome, failure) ->
                     onServer(source, () -> completeRecall(source, ownerUuid, outcome, failure)));
         } catch (RuntimeException failure) {
-            source.sendError(Text.literal("Pet recall is temporarily unavailable."));
+            source.sendFailure(Component.literal("Pet recall is temporarily unavailable."));
             return 0;
         }
         return 1;
     }
 
     private static void completeRecall(
-            ServerCommandSource source,
+            CommandSourceStack source,
             UUID ownerUuid,
             PetRecallOutcome outcome,
             Throwable failure) {
-        if (source.getServer().getPlayerManager().getPlayer(ownerUuid) == null) return;
+        if (source.getServer().getPlayerList().getPlayer(ownerUuid) == null) return;
         if (failure != null || outcome == null) {
-            source.sendError(Text.literal("Pet recall is temporarily unavailable."));
+            source.sendFailure(Component.literal("Pet recall is temporarily unavailable."));
             return;
         }
         if (outcome.status() == PetRecallStatus.RECALLED) {
-            source.sendFeedback(
-                    () -> Text.literal("Your pet was recalled safely. Next recall: "
+            source.sendSuccess(
+                    () -> Component.literal("Your pet was recalled safely. Next recall: "
                                     + formatUtc(outcome.nextAvailableAt().orElseThrow()))
-                            .formatted(Formatting.GREEN),
+                            .withStyle(ChatFormatting.GREEN),
                     false);
             return;
         }
         if (outcome.status() == PetRecallStatus.UNAVAILABLE) {
-            source.sendFeedback(
-                    () -> Text.literal("This month's recall is already used. Next recall: "
+            source.sendSuccess(
+                    () -> Component.literal("This month's recall is already used. Next recall: "
                                     + formatUtc(outcome.nextAvailableAt().orElseThrow()))
-                            .formatted(Formatting.YELLOW),
+                            .withStyle(ChatFormatting.YELLOW),
                     false);
             return;
         }
@@ -658,7 +651,7 @@ public final class PetCommands {
             case SERVICE_FAILURE -> "Pet recall is temporarily unavailable.";
             case RECALLED, UNAVAILABLE -> throw new IllegalStateException("Handled above");
         };
-        source.sendError(Text.literal(message));
+        source.sendFailure(Component.literal(message));
     }
 
     private static String formatUtc(java.time.Instant value) {
@@ -667,69 +660,69 @@ public final class PetCommands {
                 .format(value);
     }
 
-    private static int adopt(CommandContext<ServerCommandSource> context, PetSpecies species) {
-        ServerCommandSource source = context.getSource();
-        ServerPlayerEntity player = source.getPlayer();
+    private static int adopt(CommandContext<CommandSourceStack> context, PetSpecies species) {
+        CommandSourceStack source = context.getSource();
+        ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendError(Text.literal("This command is available only to players."));
+            source.sendFailure(Component.literal("This command is available only to players."));
             return 0;
         }
         Optional<PetAuthorityGateway> gateway = PetCompanionMod.authorityGateway();
         if (gateway.isEmpty()) {
-            source.sendError(Text.literal("Pet Companion is temporarily unavailable."));
+            source.sendFailure(Component.literal("Pet Companion is temporarily unavailable."));
             return 0;
         }
         PetAdoptionWireRequest request;
         try {
             request = new PetAdoptionWireRequest(
-                    player.getUuid(),
+                    player.getUUID(),
                     species,
                     StringArgumentType.getString(context, "name"));
         } catch (IllegalArgumentException invalidName) {
-            source.sendError(Text.literal(invalidName.getMessage()));
+            source.sendFailure(Component.literal(invalidName.getMessage()));
             return 0;
         }
 
-        UUID ownerUuid = player.getUuid();
-        source.sendFeedback(() -> Text.literal("Preparing your adoption…").formatted(Formatting.GRAY), false);
+        UUID ownerUuid = player.getUUID();
+        source.sendSuccess(() -> Component.literal("Preparing your adoption…").withStyle(ChatFormatting.GRAY), false);
         try {
             gateway.orElseThrow().adopt(request).whenComplete((result, failure) ->
                     onServer(source, () -> completeAdoption(source, ownerUuid, result, failure)));
         } catch (RuntimeException failure) {
-            source.sendError(Text.literal("Pet adoption is temporarily unavailable."));
+            source.sendFailure(Component.literal("Pet adoption is temporarily unavailable."));
             return 0;
         }
         return 1;
     }
 
-    private static int adoptionMenu(CommandContext<ServerCommandSource> context, PetSpecies species) {
-        ServerCommandSource source = context.getSource();
+    private static int adoptionMenu(CommandContext<CommandSourceStack> context, PetSpecies species) {
+        CommandSourceStack source = context.getSource();
         if (source.getPlayer() == null) {
-            source.sendError(Text.literal("This command is available only to players."));
+            source.sendFailure(Component.literal("This command is available only to players."));
             return 0;
         }
         if (species == null) {
             Optional<PetAuthorityGateway> gateway = PetCompanionMod.authorityGateway();
             if (gateway.isEmpty()) {
-                source.sendError(Text.literal("Pet Companion is temporarily unavailable."));
+                source.sendFailure(Component.literal("Pet Companion is temporarily unavailable."));
                 return 0;
             }
-            UUID ownerUuid = source.getPlayer().getUuid();
-            source.sendFeedback(() -> Text.literal("Opening the adoption center…")
-                    .formatted(Formatting.GRAY), false);
+            UUID ownerUuid = source.getPlayer().getUUID();
+            source.sendSuccess(() -> Component.literal("Opening the adoption center…")
+                    .withStyle(ChatFormatting.GRAY), false);
             try {
                 gateway.orElseThrow().findSubscriptionDetails(ownerUuid).whenComplete((details, failure) ->
                         onServer(source, () -> {
-                            if (source.getServer().getPlayerManager().getPlayer(ownerUuid) == null) return;
+                            if (source.getServer().getPlayerList().getPlayer(ownerUuid) == null) return;
                             if (failure != null || details == null) {
-                                source.sendError(Text.literal(
+                                source.sendFailure(Component.literal(
                                         "Subscription status is temporarily unavailable; please retry."));
                                 return;
                             }
                             PetAdoptionMenu.open(source, details.aiAccessEnabled());
                         }));
             } catch (RuntimeException failure) {
-                source.sendError(Text.literal("Subscription status is temporarily unavailable; please retry."));
+                source.sendFailure(Component.literal("Subscription status is temporarily unavailable; please retry."));
                 return 0;
             }
         } else {
@@ -739,73 +732,73 @@ public final class PetCommands {
     }
 
     private static void completeAdoption(
-            ServerCommandSource source,
+            CommandSourceStack source,
             UUID ownerUuid,
             PetAdoptionWireResult result,
             Throwable failure) {
-        if (source.getServer().getPlayerManager().getPlayer(ownerUuid) == null) {
+        if (source.getServer().getPlayerList().getPlayer(ownerUuid) == null) {
             return;
         }
         if (failure != null || result == null) {
-            source.sendError(Text.literal("Pet adoption is temporarily unavailable."));
+            source.sendFailure(Component.literal("Pet adoption is temporarily unavailable."));
             return;
         }
         if (result.status() == PetAdoptionWireStatus.SUBSCRIPTION_REQUIRED) {
-            source.sendFeedback(
-                    () -> Text.empty()
-                            .append(Text.literal("A pet membership is needed first. "))
+            source.sendSuccess(
+                    () -> Component.empty()
+                            .append(Component.literal("An active subscription is needed first. "))
                             .append(commandAction("[CONTINUE TO SUBSCRIPTION]", "/pet adopt subscribe"))
-                            .formatted(Formatting.YELLOW),
+                            .withStyle(ChatFormatting.YELLOW),
                     false);
             return;
         }
         if (result.status() == PetAdoptionWireStatus.SPECIES_UNAVAILABLE) {
-            source.sendFeedback(
-                    () -> Text.literal("That kind of pet isn't available right now.")
-                            .formatted(Formatting.YELLOW),
+            source.sendSuccess(
+                    () -> Component.literal("That kind of pet isn't available right now.")
+                            .withStyle(ChatFormatting.YELLOW),
                     false);
             return;
         }
         Pet pet = result.pet().orElseThrow();
         if (result.status() == PetAdoptionWireStatus.EXISTING) {
             rememberOwnership(source, ownerUuid, true);
-            source.sendFeedback(
-                    () -> Text.literal("You already own " + pet.name() + "; adoption did not reroll it.")
-                            .formatted(Formatting.YELLOW),
+            source.sendSuccess(
+                    () -> Component.literal("You already own " + pet.name() + "; adoption did not reroll it.")
+                            .withStyle(ChatFormatting.YELLOW),
                     false);
             return;
         }
-        source.sendFeedback(
-                () -> Text.literal("Adopted " + pet.name() + " the "
+        source.sendSuccess(
+                () -> Component.literal("Adopted " + pet.name() + " the "
                                 + pet.appearance().species().name().toLowerCase(Locale.ROOT) + ".")
-                        .formatted(Formatting.GREEN),
+                        .withStyle(ChatFormatting.GREEN),
                 false);
         rememberOwnership(source, ownerUuid, true);
-        source.sendFeedback(() -> Text.literal(
+        source.sendSuccess(() -> Component.literal(
                 "Use /pet place to bring your new friend into the world. To pick them up before leaving, "
                         + "hold Shift and right-click them (or use /pet pickup).")
-                .formatted(Formatting.GRAY), false);
-        source.sendFeedback(() -> Text.literal(
+                .withStyle(ChatFormatting.GRAY), false);
+        source.sendSuccess(() -> Component.literal(
                 "Run /pet help whenever you want to see everything you can do together.")
-                .formatted(Formatting.GRAY), false);
+                .withStyle(ChatFormatting.GRAY), false);
     }
 
-    private static int compass(CommandContext<ServerCommandSource> context) {
-        ServerCommandSource source = context.getSource();
-        ServerPlayerEntity player = source.getPlayer();
+    private static int compass(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendError(Text.literal("This command is available only to players."));
+            source.sendFailure(Component.literal("This command is available only to players."));
             return 0;
         }
         Optional<PetAuthorityGateway> gateway = PetCompanionMod.authorityGateway();
         Optional<PetCompassManager> manager = PetCompanionMod.petCompassManager();
         if (gateway.isEmpty() || manager.isEmpty()) {
-            source.sendError(Text.literal("Pet Companion is temporarily unavailable."));
+            source.sendFailure(Component.literal("Pet Companion is temporarily unavailable."));
             return 0;
         }
 
-        UUID ownerUuid = player.getUuid();
-        source.sendFeedback(() -> Text.literal("Checking your pet compass…").formatted(Formatting.GRAY), false);
+        UUID ownerUuid = player.getUUID();
+        source.sendSuccess(() -> Component.literal("Checking your pet compass…").withStyle(ChatFormatting.GRAY), false);
         try {
             gateway.orElseThrow().findByOwner(ownerUuid).whenComplete((snapshot, failure) ->
                     onServer(source, () -> completeCompass(
@@ -815,38 +808,38 @@ public final class PetCommands {
                             snapshot,
                             failure)));
         } catch (RuntimeException failure) {
-            source.sendError(Text.literal("Pet compass is temporarily unavailable."));
+            source.sendFailure(Component.literal("Pet compass is temporarily unavailable."));
             return 0;
         }
         return 1;
     }
 
     private static void completeCompass(
-            ServerCommandSource source,
+            CommandSourceStack source,
             UUID ownerUuid,
             PetCompassManager manager,
             Optional<PetAuthoritySnapshot> snapshot,
             Throwable failure) {
-        ServerPlayerEntity player = source.getServer().getPlayerManager().getPlayer(ownerUuid);
+        ServerPlayer player = source.getServer().getPlayerList().getPlayer(ownerUuid);
         if (player == null) {
             return;
         }
         if (failure != null || snapshot == null) {
-            source.sendError(Text.literal("Pet compass is temporarily unavailable."));
+            source.sendFailure(Component.literal("Pet compass is temporarily unavailable."));
             return;
         }
         if (snapshot.isEmpty()) {
-            source.sendFeedback(
-                    () -> Text.literal("You have not adopted a pet yet.").formatted(Formatting.YELLOW),
+            source.sendSuccess(
+                    () -> Component.literal("You have not adopted a pet yet.").withStyle(ChatFormatting.YELLOW),
                     false);
             return;
         }
 
         PetCompassIssueResult result = manager.issueOrRefresh(player, snapshot.orElseThrow());
         if (result.status() == com.silver.aipets.fabric.compass.PetCompassIssueStatus.INVENTORY_FULL) {
-            source.sendFeedback(
-                    () -> Text.literal("Your inventory is full; no pet compass was dropped.")
-                            .formatted(Formatting.RED),
+            source.sendSuccess(
+                    () -> Component.literal("Your inventory is full; no pet compass was dropped.")
+                            .withStyle(ChatFormatting.RED),
                     false);
             return;
         }
@@ -856,54 +849,54 @@ public final class PetCommands {
         String cleanup = result.removedInvalidOrDuplicate() == 0
                 ? ""
                 : " (removed " + result.removedInvalidOrDuplicate() + " invalid/duplicate)";
-        source.sendFeedback(
-                () -> Text.literal("Pet compass " + verb + ": " + result.presentation() + cleanup)
-                        .formatted(Formatting.GREEN),
+        source.sendSuccess(
+                () -> Component.literal("Pet compass " + verb + ": " + result.presentation() + cleanup)
+                        .withStyle(ChatFormatting.GREEN),
                 false);
-        source.sendFeedback(() -> Text.literal(
+        source.sendSuccess(() -> Component.literal(
                 "Drop the pet compass whenever you no longer want it.")
-                .formatted(Formatting.GRAY), false);
+                .withStyle(ChatFormatting.GRAY), false);
     }
 
-    private static int place(CommandContext<ServerCommandSource> context) {
-        ServerCommandSource source = context.getSource();
-        ServerPlayerEntity player = source.getPlayer();
+    private static int place(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendError(Text.literal("This command is available only to players."));
+            source.sendFailure(Component.literal("This command is available only to players."));
             return 0;
         }
         Optional<PetPlacementCoordinator> configured = PetCompanionMod.placementCoordinator();
         if (configured.isEmpty()) {
-            source.sendError(Text.literal("Pet Companion is temporarily unavailable."));
+            source.sendFailure(Component.literal("Pet Companion is temporarily unavailable."));
             return 0;
         }
-        UUID ownerUuid = player.getUuid();
-        source.sendFeedback(() -> Text.literal("Placing your pet…").formatted(Formatting.GRAY), false);
+        UUID ownerUuid = player.getUUID();
+        source.sendSuccess(() -> Component.literal("Placing your pet…").withStyle(ChatFormatting.GRAY), false);
         try {
             configured.orElseThrow().place(player).whenComplete((outcome, failure) ->
                     onServer(source, () -> completePlace(source, ownerUuid, outcome, failure)));
         } catch (RuntimeException failure) {
-            source.sendError(Text.literal("Pet placement is temporarily unavailable."));
+            source.sendFailure(Component.literal("Pet placement is temporarily unavailable."));
             return 0;
         }
         return 1;
     }
 
     private static void completePlace(
-            ServerCommandSource source,
+            CommandSourceStack source,
             UUID ownerUuid,
             PetPlacementOutcome outcome,
             Throwable failure) {
-        if (source.getServer().getPlayerManager().getPlayer(ownerUuid) == null) {
+        if (source.getServer().getPlayerList().getPlayer(ownerUuid) == null) {
             return;
         }
         if (failure != null || outcome == null) {
-            source.sendError(Text.literal("Pet placement is temporarily unavailable."));
+            source.sendFailure(Component.literal("Pet placement is temporarily unavailable."));
             return;
         }
         if (outcome.status() == PetPlacementStatus.PLACED) {
-            source.sendFeedback(
-                    () -> Text.literal("Your pet has been placed safely.").formatted(Formatting.GREEN),
+            source.sendSuccess(
+                    () -> Component.literal("Your pet has been placed safely.").withStyle(ChatFormatting.GREEN),
                     false);
             return;
         }
@@ -919,48 +912,48 @@ public final class PetCommands {
             case SERVICE_FAILURE -> "Pet placement is temporarily unavailable.";
             case PLACED -> throw new IllegalStateException("Handled above");
         };
-        source.sendError(Text.literal(message));
+        source.sendFailure(Component.literal(message));
     }
 
-    private static int pickup(CommandContext<ServerCommandSource> context) {
-        ServerCommandSource source = context.getSource();
-        ServerPlayerEntity player = source.getPlayer();
+    private static int pickup(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendError(Text.literal("This command is available only to players."));
+            source.sendFailure(Component.literal("This command is available only to players."));
             return 0;
         }
         Optional<PetPickupCoordinator> configured = PetCompanionMod.pickupCoordinator();
         if (configured.isEmpty()) {
-            source.sendError(Text.literal("Pet Companion is temporarily unavailable."));
+            source.sendFailure(Component.literal("Pet Companion is temporarily unavailable."));
             return 0;
         }
-        UUID ownerUuid = player.getUuid();
-        source.sendFeedback(() -> Text.literal("Picking up your pet…").formatted(Formatting.GRAY), false);
+        UUID ownerUuid = player.getUUID();
+        source.sendSuccess(() -> Component.literal("Picking up your pet…").withStyle(ChatFormatting.GRAY), false);
         try {
             configured.orElseThrow().pickup(player).whenComplete((outcome, failure) ->
                     onServer(source, () -> completePickup(source, ownerUuid, outcome, failure)));
         } catch (RuntimeException failure) {
-            source.sendError(Text.literal("Pet pickup is temporarily unavailable."));
+            source.sendFailure(Component.literal("Pet pickup is temporarily unavailable."));
             return 0;
         }
         return 1;
     }
 
     private static void completePickup(
-            ServerCommandSource source,
+            CommandSourceStack source,
             UUID ownerUuid,
             PetPickupOutcome outcome,
             Throwable failure) {
-        if (source.getServer().getPlayerManager().getPlayer(ownerUuid) == null) {
+        if (source.getServer().getPlayerList().getPlayer(ownerUuid) == null) {
             return;
         }
         if (failure != null || outcome == null) {
-            source.sendError(Text.literal("Pet pickup is temporarily unavailable."));
+            source.sendFailure(Component.literal("Pet pickup is temporarily unavailable."));
             return;
         }
         if (outcome.status() == PetPickupStatus.PICKED_UP) {
-            source.sendFeedback(
-                    () -> Text.literal("Your pet is now held.").formatted(Formatting.GREEN),
+            source.sendSuccess(
+                    () -> Component.literal("Your pet is now held.").withStyle(ChatFormatting.GREEN),
                     false);
             return;
         }
@@ -973,63 +966,62 @@ public final class PetCommands {
             case SERVICE_FAILURE -> "Pet pickup is temporarily unavailable.";
             case PICKED_UP -> throw new IllegalStateException("Handled above");
         };
-        source.sendError(Text.literal(message));
+        source.sendFailure(Component.literal(message));
     }
 
-    private static int status(CommandContext<ServerCommandSource> context) {
-        ServerCommandSource source = context.getSource();
-        ServerPlayerEntity player = source.getPlayer();
+    private static int status(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendError(Text.literal("This command is available only to players."));
+            source.sendFailure(Component.literal("This command is available only to players."));
             return 0;
         }
         Optional<PetAuthorityGateway> configured = PetCompanionMod.authorityGateway();
         if (configured.isEmpty()) {
-            source.sendError(Text.literal("Pet Companion is temporarily unavailable."));
+            source.sendFailure(Component.literal("Pet Companion is temporarily unavailable."));
             return 0;
         }
 
-        UUID ownerUuid = player.getUuid();
-        source.sendFeedback(() -> Text.literal("Checking pet status…").formatted(Formatting.GRAY), false);
+        UUID ownerUuid = player.getUUID();
+        source.sendSuccess(() -> Component.literal("Checking pet status…").withStyle(ChatFormatting.GRAY), false);
         try {
             configured.orElseThrow().findByOwner(ownerUuid).whenComplete((snapshot, failure) ->
                     onServer(source, () -> completeStatus(source, ownerUuid, snapshot, failure)));
         } catch (RuntimeException failure) {
-            source.sendError(Text.literal("Pet status is temporarily unavailable."));
+            source.sendFailure(Component.literal("Pet status is temporarily unavailable."));
             return 0;
         }
         return 1;
     }
 
     private static void completeStatus(
-            ServerCommandSource source,
+            CommandSourceStack source,
             UUID ownerUuid,
             Optional<PetAuthoritySnapshot> snapshot,
             Throwable failure) {
-        ServerPlayerEntity current = source.getServer().getPlayerManager().getPlayer(ownerUuid);
+        ServerPlayer current = source.getServer().getPlayerList().getPlayer(ownerUuid);
         if (current == null) {
             return;
         }
         if (failure != null || snapshot == null) {
-            source.sendError(Text.literal("Pet status is temporarily unavailable."));
+            source.sendFailure(Component.literal("Pet status is temporarily unavailable."));
             return;
         }
         if (snapshot.isEmpty()) {
             rememberOwnership(source, ownerUuid, false);
-            source.sendFeedback(
-                    () -> Text.literal("You have not adopted a pet yet.").formatted(Formatting.YELLOW),
+            source.sendSuccess(
+                    () -> Component.literal("You have not adopted a pet yet.").withStyle(ChatFormatting.YELLOW),
                     false);
             return;
         }
         PetAuthoritySnapshot authority = snapshot.orElseThrow();
         rememberOwnership(source, ownerUuid, true);
-        source.sendFeedback(
-                () -> statusText(
-                        authority.pet(), authority.sleeping(), authority.aiAccessEnabled()),
+        source.sendSuccess(
+                () -> statusText(authority.pet(), authority.sleeping(), authority.aiAccessEnabled()),
                 false);
     }
 
-    static Text statusText(Pet pet, boolean sleeping, boolean aiAccessEnabled) {
+    static Component statusText(Pet pet, boolean sleeping, boolean aiAccessEnabled) {
         String location = switch (pet.placement()) {
             case PlacedPlacement placed -> "PLACED on " + placed.backendId()
                     + " in " + placed.dimensionId()
@@ -1042,14 +1034,14 @@ public final class PetCommands {
         };
         String sleep = sleeping ? " • sleeping" : " • awake";
         String membership = sleeping
-                ? " • resting until they wake up"
+                ? " • quiet for now"
                 : aiAccessEnabled ? " • ready to chat" : " • quiet for now";
-        return Text.literal(pet.name() + " (" + pet.appearance().species() + ") — "
+        return Component.literal(pet.name() + " (" + pet.appearance().species() + ") — "
                         + location + sleep + membership)
-                .formatted(Formatting.AQUA);
+                .withStyle(ChatFormatting.AQUA);
     }
 
-    private static int adminInspect(CommandContext<ServerCommandSource> context) {
+    private static int adminInspect(CommandContext<CommandSourceStack> context) {
         UUID ownerUuid = ownerArgument(context);
         if (ownerUuid == null) return 0;
         Optional<PetAuthorityGateway> gateway = requireAdminGateway(context.getSource());
@@ -1059,35 +1051,35 @@ public final class PetCommands {
                     onServer(context.getSource(), () -> completeAdminInspect(
                             context.getSource(), ownerUuid, snapshot, failure)));
         } catch (RuntimeException failure) {
-            context.getSource().sendError(Text.literal("Pet inspection is temporarily unavailable."));
+            context.getSource().sendFailure(Component.literal("Pet inspection is temporarily unavailable."));
             return 0;
         }
         return 1;
     }
 
     private static void completeAdminInspect(
-            ServerCommandSource source,
+            CommandSourceStack source,
             UUID ownerUuid,
             Optional<PetAuthoritySnapshot> snapshot,
             Throwable failure) {
         if (failure != null || snapshot == null) {
-            source.sendError(Text.literal("Pet inspection is temporarily unavailable."));
+            source.sendFailure(Component.literal("Pet inspection is temporarily unavailable."));
             return;
         }
         if (snapshot.isEmpty()) {
-            source.sendFeedback(() -> Text.literal("No pet exists for owner " + ownerUuid)
-                    .formatted(Formatting.YELLOW), false);
+            source.sendSuccess(() -> Component.literal("No pet exists for owner " + ownerUuid)
+                    .withStyle(ChatFormatting.YELLOW), false);
             return;
         }
         PetAuthoritySnapshot found = snapshot.orElseThrow();
         Pet pet = found.pet();
-        source.sendFeedback(() -> Text.literal(
+        source.sendSuccess(() -> Component.literal(
                 "Owner=" + ownerUuid + " Pet=" + pet.petId() + " Revision=" + pet.recordVersion())
-                .formatted(Formatting.GRAY), false);
-        source.sendFeedback(() -> statusText(pet, found.sleeping(), found.aiAccessEnabled()), false);
+                .withStyle(ChatFormatting.GRAY), false);
+        source.sendSuccess(() -> statusText(pet, found.sleeping(), found.aiAccessEnabled()), false);
     }
 
-    private static int adminRecover(CommandContext<ServerCommandSource> context) {
+    private static int adminRecover(CommandContext<CommandSourceStack> context) {
         UUID ownerUuid = ownerArgument(context);
         if (ownerUuid == null) return 0;
         Optional<PetAuthorityGateway> gateway = requireAdminGateway(context.getSource());
@@ -1097,29 +1089,29 @@ public final class PetCommands {
                     onServer(context.getSource(), () -> beginAdminRecovery(
                             context.getSource(), gateway.orElseThrow(), snapshot, failure)));
         } catch (RuntimeException failure) {
-            context.getSource().sendError(Text.literal("Pet recovery is temporarily unavailable."));
+            context.getSource().sendFailure(Component.literal("Pet recovery is temporarily unavailable."));
             return 0;
         }
         return 1;
     }
 
     private static void beginAdminRecovery(
-            ServerCommandSource source,
+            CommandSourceStack source,
             PetAuthorityGateway gateway,
             Optional<PetAuthoritySnapshot> snapshot,
             Throwable failure) {
         if (failure != null || snapshot == null) {
-            source.sendError(Text.literal("Pet recovery is temporarily unavailable."));
+            source.sendFailure(Component.literal("Pet recovery is temporarily unavailable."));
             return;
         }
         if (snapshot.isEmpty()) {
-            source.sendError(Text.literal("No pet exists for that owner."));
+            source.sendFailure(Component.literal("No pet exists for that owner."));
             return;
         }
         Pet pet = snapshot.orElseThrow().pet();
         if (pet.placementState() == com.silver.aipets.common.domain.PlacementState.HELD) {
-            source.sendFeedback(() -> Text.literal("Pet is already safely held; no recovery needed.")
-                    .formatted(Formatting.YELLOW), false);
+            source.sendSuccess(() -> Component.literal("Pet is already safely held; no recovery needed.")
+                    .withStyle(ChatFormatting.YELLOW), false);
             return;
         }
         Instant now = Instant.now();
@@ -1130,29 +1122,29 @@ public final class PetCommands {
                             pet.recordVersion(), occurredAt)).whenComplete((result, mutationFailure) ->
                     onServer(source, () -> completeAdminRecovery(source, result, mutationFailure)));
         } catch (RuntimeException mutationFailure) {
-            source.sendError(Text.literal("Pet recovery is temporarily unavailable."));
+            source.sendFailure(Component.literal("Pet recovery is temporarily unavailable."));
         }
     }
 
     private static void completeAdminRecovery(
-            ServerCommandSource source, AuthorityMutationResult result, Throwable failure) {
+            CommandSourceStack source, AuthorityMutationResult result, Throwable failure) {
         if (failure != null || result == null) {
-            source.sendError(Text.literal("Pet recovery is temporarily unavailable."));
+            source.sendFailure(Component.literal("Pet recovery is temporarily unavailable."));
             return;
         }
         if (result.status() != AuthorityMutationStatus.APPLIED) {
-            source.sendError(Text.literal(
+            source.sendFailure(Component.literal(
                     "Recovery did not apply because authoritative state changed; inspect and retry."));
             return;
         }
         int queued = PetCompanionMod.queueLoadedReconciliation(source.getServer());
-        source.sendFeedback(() -> Text.literal(
+        source.sendSuccess(() -> Component.literal(
                 "Pet recovered to HELD without changing identity or appearance; queued "
                         + queued + " loaded representation(s) for reconciliation.")
-                .formatted(Formatting.GREEN), false);
+                .withStyle(ChatFormatting.GREEN), false);
     }
 
-    private static int adminRecallReset(CommandContext<ServerCommandSource> context) {
+    private static int adminRecallReset(CommandContext<CommandSourceStack> context) {
         UUID ownerUuid = ownerArgument(context);
         if (ownerUuid == null) return 0;
         Optional<PetAuthorityGateway> gateway = requireAdminGateway(context.getSource());
@@ -1162,23 +1154,23 @@ public final class PetCommands {
                     onServer(context.getSource(), () -> beginRecallReset(
                             context.getSource(), gateway.orElseThrow(), snapshot, failure)));
         } catch (RuntimeException failure) {
-            context.getSource().sendError(Text.literal("Recall reset is temporarily unavailable."));
+            context.getSource().sendFailure(Component.literal("Recall reset is temporarily unavailable."));
             return 0;
         }
         return 1;
     }
 
     private static void beginRecallReset(
-            ServerCommandSource source,
+            CommandSourceStack source,
             PetAuthorityGateway gateway,
             Optional<PetAuthoritySnapshot> snapshot,
             Throwable failure) {
         if (failure != null || snapshot == null) {
-            source.sendError(Text.literal("Recall reset is temporarily unavailable."));
+            source.sendFailure(Component.literal("Recall reset is temporarily unavailable."));
             return;
         }
         if (snapshot.isEmpty()) {
-            source.sendError(Text.literal("No pet exists for that owner."));
+            source.sendFailure(Component.literal("No pet exists for that owner."));
             return;
         }
         try {
@@ -1186,14 +1178,14 @@ public final class PetCommands {
                     .whenComplete((result, resetFailure) -> onServer(
                             source, () -> completeRecallReset(source, result, resetFailure)));
         } catch (RuntimeException resetFailure) {
-            source.sendError(Text.literal("Recall reset is temporarily unavailable."));
+            source.sendFailure(Component.literal("Recall reset is temporarily unavailable."));
         }
     }
 
     private static void completeRecallReset(
-            ServerCommandSource source, RecallResetWireResult result, Throwable failure) {
+            CommandSourceStack source, RecallResetWireResult result, Throwable failure) {
         if (failure != null || result == null) {
-            source.sendError(Text.literal("Recall reset is temporarily unavailable."));
+            source.sendFailure(Component.literal("Recall reset is temporarily unavailable."));
             return;
         }
         String message = switch (result.status()) {
@@ -1201,88 +1193,88 @@ public final class PetCommands {
             case NOT_USED -> "Recall was not consumed for UTC period " + result.periodKey() + ".";
             case RATE_LIMITED -> "Too many reset requests; wait a few minutes.";
         };
-        Formatting color = result.status() == RecallResetWireStatus.RESET
-                ? Formatting.GREEN : Formatting.YELLOW;
-        source.sendFeedback(() -> Text.literal(message).formatted(color), false);
+        ChatFormatting color = result.status() == RecallResetWireStatus.RESET
+                ? ChatFormatting.GREEN : ChatFormatting.YELLOW;
+        source.sendSuccess(() -> Component.literal(message).withStyle(color), false);
     }
 
-    private static int adminReconcile(CommandContext<ServerCommandSource> context) {
+    private static int adminReconcile(CommandContext<CommandSourceStack> context) {
         int queued = PetCompanionMod.queueLoadedReconciliation(context.getSource().getServer());
-        context.getSource().sendFeedback(() -> Text.literal(
+        context.getSource().sendSuccess(() -> Component.literal(
                 "Queued " + queued + " loaded pet representation(s) for authority reconciliation.")
-                .formatted(Formatting.GREEN), false);
+                .withStyle(ChatFormatting.GREEN), false);
         return 1;
     }
 
-    private static int adminHistory(CommandContext<ServerCommandSource> context) {
-        ServerCommandSource source = context.getSource();
+    private static int adminHistory(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
         UUID ownerUuid = ownerArgument(context);
         if (ownerUuid == null) return 0;
         Optional<PetAuthorityGateway> gateway = requireAdminGateway(source);
         if (gateway.isEmpty()) return 0;
-        source.sendFeedback(() -> Text.literal(
+        source.sendSuccess(() -> Component.literal(
                 "Loading recent conversation history for " + ownerUuid + "…")
-                .formatted(Formatting.GRAY), false);
+                .withStyle(ChatFormatting.GRAY), false);
         try {
             gateway.orElseThrow().findDialogueHistory(ownerUuid).whenComplete((history, failure) ->
                     onServer(source, () -> completeAdminHistory(source, history, failure)));
         } catch (RuntimeException failure) {
-            source.sendError(Text.literal("Conversation history is temporarily unavailable."));
+            source.sendFailure(Component.literal("Conversation history is temporarily unavailable."));
             return 0;
         }
         return 1;
     }
 
     private static void completeAdminHistory(
-            ServerCommandSource source,
+            CommandSourceStack source,
             DialogueHistoryWireResult history,
             Throwable failure) {
         if (failure != null || history == null) {
-            source.sendError(Text.literal("Conversation history is temporarily unavailable."));
+            source.sendFailure(Component.literal("Conversation history is temporarily unavailable."));
             return;
         }
-        source.sendFeedback(() -> Text.literal(
+        source.sendSuccess(() -> Component.literal(
                 "DIALOGUE HISTORY — " + history.petName() + " (owner " + history.ownerUuid() + ")")
-                .formatted(Formatting.AQUA, Formatting.BOLD), false);
+                .withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD), false);
         if (history.conversations().isEmpty()) {
-            source.sendFeedback(() -> Text.literal("No retained conversation entries.")
-                    .formatted(Formatting.GRAY), false);
+            source.sendSuccess(() -> Component.literal("No retained conversation entries.")
+                    .withStyle(ChatFormatting.GRAY), false);
         } else {
             history.conversations().forEach(entry -> {
-                source.sendFeedback(() -> Text.literal(
+                source.sendSuccess(() -> Component.literal(
                         formatUtc(entry.occurredAt()) + " [" + entry.importance() + "] "
                                 + "owner: " + (entry.ownerText() == null ? "(expired)" : entry.ownerText()))
-                        .formatted(Formatting.GRAY), false);
+                        .withStyle(ChatFormatting.GRAY), false);
                 if (entry.petReply() != null) {
-                    source.sendFeedback(() -> Text.literal("  pet: " + entry.petReply())
-                            .formatted(Formatting.WHITE), false);
+                    source.sendSuccess(() -> Component.literal("  pet: " + entry.petReply())
+                            .withStyle(ChatFormatting.WHITE), false);
                 }
             });
         }
-        source.sendFeedback(() -> Text.literal("PROVIDER USAGE")
-                .formatted(Formatting.LIGHT_PURPLE, Formatting.BOLD), false);
+        source.sendSuccess(() -> Component.literal("PROVIDER USAGE")
+                .withStyle(ChatFormatting.LIGHT_PURPLE, ChatFormatting.BOLD), false);
         if (history.usage().isEmpty()) {
-            source.sendFeedback(() -> Text.literal("No provider usage recorded.")
-                    .formatted(Formatting.GRAY), false);
+            source.sendSuccess(() -> Component.literal("No provider usage recorded.")
+                    .withStyle(ChatFormatting.GRAY), false);
             return;
         }
         history.usage().forEach(entry -> {
-            source.sendFeedback(() -> Text.literal(
+            source.sendSuccess(() -> Component.literal(
                     formatUtc(entry.createdAt()) + " " + entry.operation() + " " + entry.model()
                             + " — input=" + entry.inputTokens()
                             + " cached=" + entry.cachedInputTokens()
                             + " output=" + entry.outputTokens()
                             + " cost=" + usd(entry.estimatedCost())
                     + " status=" + entry.status())
-                    .formatted(Formatting.GRAY), false);
+                    .withStyle(ChatFormatting.GRAY), false);
             if (entry.context().isPresent()) {
-                source.sendFeedback(() -> Text.literal(
+                source.sendSuccess(() -> Component.literal(
                         "  prompt parts: " + formatContext(entry.context().orElseThrow()))
-                        .formatted(Formatting.DARK_GRAY), false);
+                        .withStyle(ChatFormatting.DARK_GRAY), false);
             } else {
-                source.sendFeedback(() -> Text.literal(
+                source.sendSuccess(() -> Component.literal(
                         "  prompt parts: not captured for this older/provider-only usage record")
-                        .formatted(Formatting.DARK_GRAY), false);
+                        .withStyle(ChatFormatting.DARK_GRAY), false);
             }
         });
     }
@@ -1300,33 +1292,33 @@ public final class PetCommands {
                 + ", instructions " + context.instructionTokens() + "]";
     }
 
-    private static UUID ownerArgument(CommandContext<ServerCommandSource> context) {
+    private static UUID ownerArgument(CommandContext<CommandSourceStack> context) {
         String value;
         try {
             value = StringArgumentType.getString(context, "ownerUuid");
         } catch (IllegalArgumentException missing) {
-            ServerPlayerEntity player = context.getSource().getPlayer();
+            ServerPlayer player = context.getSource().getPlayer();
             if (player == null) {
-                context.getSource().sendError(Text.literal(
+                context.getSource().sendFailure(Component.literal(
                         "ownerUuid is required when running this command from the console."));
                 return null;
             }
-            return player.getUuid();
+            return player.getUUID();
         }
         try {
             UUID parsed = UUID.fromString(value);
             if (!parsed.toString().equals(value)) throw new IllegalArgumentException();
             return parsed;
         } catch (IllegalArgumentException malformed) {
-            context.getSource().sendError(Text.literal("ownerUuid must be a canonical UUID."));
+            context.getSource().sendFailure(Component.literal("ownerUuid must be a canonical UUID."));
             return null;
         }
     }
 
-    private static Optional<PetAuthorityGateway> requireAdminGateway(ServerCommandSource source) {
+    private static Optional<PetAuthorityGateway> requireAdminGateway(CommandSourceStack source) {
         Optional<PetAuthorityGateway> gateway = PetCompanionMod.authorityGateway();
         if (gateway.isEmpty()) {
-            source.sendError(Text.literal("Pet Companion is temporarily unavailable."));
+            source.sendFailure(Component.literal("Pet Companion is temporarily unavailable."));
         }
         return gateway;
     }
@@ -1335,7 +1327,7 @@ public final class PetCommands {
         return String.format(Locale.ROOT, "%.1f", value);
     }
 
-    private static void onServer(ServerCommandSource source, Runnable action) {
+    private static void onServer(CommandSourceStack source, Runnable action) {
         Runnable guarded = () -> {
             try {
                 action.run();
@@ -1345,10 +1337,10 @@ public final class PetCommands {
                         .failure(failure)
                         .outcome("contained")
                         .toJson());
-                source.sendError(Text.literal("Pet operation failed safely; please retry."));
+                source.sendFailure(Component.literal("Pet operation failed safely; please retry."));
             }
         };
-        if (source.getServer().isOnThread()) {
+        if (source.getServer().isSameThread()) {
             guarded.run();
         } else {
             try {

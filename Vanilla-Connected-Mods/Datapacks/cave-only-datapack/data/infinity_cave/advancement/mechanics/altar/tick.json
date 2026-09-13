@@ -1,11 +1,10 @@
 {
-    "criteria": {
-      "requirement": {
-        "trigger": "minecraft:tick"
-      }
-    },
-    "rewards": {
-      "function": "infinity_cave:mechanics/altar/tick"
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:tick"
     }
+  },
+  "rewards": {
+    "function": "infinity_cave:mechanics/altar/tick"
   }
-  
+}

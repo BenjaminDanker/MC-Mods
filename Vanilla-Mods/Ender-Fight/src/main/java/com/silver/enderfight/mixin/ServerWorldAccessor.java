@@ -3,7 +3,7 @@ package com.silver.enderfight.mixin;
 import com.silver.enderfight.EnderFightMod;
 import com.silver.enderfight.duck.ServerWorldDuck;
 import com.silver.enderfight.util.WorldSeedOverrides;
-import net.minecraft.server.world.ServerWorld;
+import net.minecraft.server.level.ServerLevel;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -13,7 +13,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 /**
  * Mixin to override ServerWorld seed at runtime for custom End dimensions.
  */
-@Mixin(ServerWorld.class)
+@Mixin(ServerLevel.class)
 public abstract class ServerWorldAccessor implements ServerWorldDuck {
     @Unique
     private Long enderfight$overriddenSeed = null;
@@ -29,11 +29,11 @@ public abstract class ServerWorldAccessor implements ServerWorldDuck {
         
         // Fallback to registry-based override
         @SuppressWarnings("resource")
-        ServerWorld self = (ServerWorld)(Object)this;
-        Long overrideSeed = WorldSeedOverrides.getSeedOverride(self.getRegistryKey());
+        ServerLevel self = (ServerLevel)(Object)this;
+        Long overrideSeed = WorldSeedOverrides.getSeedOverride(self.dimension());
         if (overrideSeed != null) {
             EnderFightMod.LOGGER.debug("Returning registry-level seed override for {}: {}", 
-                self.getRegistryKey().getValue(), overrideSeed);
+                self.dimension().identifier(), overrideSeed);
             cir.setReturnValue(overrideSeed);
         }
     }

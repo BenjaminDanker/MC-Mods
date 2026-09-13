@@ -6,7 +6,7 @@
         "player": [
           {
             "condition": "minecraft:inverted",
-            "term":           {
+            "term": {
               "condition": "minecraft:entity_properties",
               "entity": "this",
               "predicate": {

@@ -7,7 +7,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.phys.Vec3;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -162,7 +162,7 @@ public final class VirtualDragonStore {
                 double hz = getDouble(obj, "hz", 0);
                 long tick = getLong(obj, "tick", 0);
 
-                byId.put(id, new VirtualDragonState(id, new Vec3d(x, y, z), hx, hz, tick));
+                byId.put(id, new VirtualDragonState(id, new Vec3(x, y, z), hx, hz, tick));
             }
 
             dragons.clear();
@@ -229,7 +229,7 @@ public final class VirtualDragonStore {
         }
     }
 
-    public record VirtualDragonState(UUID id, Vec3d pos, double headingX, double headingZ, long lastTick) {
+    public record VirtualDragonState(UUID id, Vec3 pos, double headingX, double headingZ, long lastTick) {
         public VirtualDragonState {
             double len = Math.sqrt(headingX * headingX + headingZ * headingZ);
             if (len < 1.0e-6) {
@@ -241,7 +241,7 @@ public final class VirtualDragonStore {
             headingZ /= len;
         }
 
-        public VirtualDragonState withPos(Vec3d newPos, long tick) {
+        public VirtualDragonState withPos(Vec3 newPos, long tick) {
             return new VirtualDragonState(this.id, newPos, this.headingX, this.headingZ, tick);
         }
 

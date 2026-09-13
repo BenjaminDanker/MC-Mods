@@ -28,16 +28,14 @@ import com.silver.aipets.fabric.entity.PetEntityFactory;
 import com.silver.aipets.fabric.speech.PetSpeechDisplayManager;
 import com.silver.aipets.fabric.speech.PetSpeechPolicy;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
-import net.minecraft.entity.decoration.DisplayEntity;
-import net.minecraft.entity.passive.TameableEntity;
-import net.minecraft.server.PlayerManager;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.test.TestContext;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-
+import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.players.PlayerList;
+import net.minecraft.world.entity.Display;
+import net.minecraft.world.entity.TamableAnimal;
+import net.minecraft.world.phys.Vec3;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -56,19 +54,19 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class PetConversationGameTests {
     @GameTest(maxTicks = 150)
     @SuppressWarnings("removal")
-    public void privateInputAsyncReplyAndSpeechLifecycle(TestContext context) {
-        ServerWorld world = context.getWorld();
-        ServerPlayerEntity owner = context.createMockCreativeServerPlayerInWorld();
+    public void privateInputAsyncReplyAndSpeechLifecycle(GameTestHelper context) {
+        ServerLevel world = context.getLevel();
+        ServerPlayer owner = context.makeMockServerPlayerInLevel();
         BackendId backend = new BackendId("survival");
         UUID petId = UUID.fromString("10000000-0000-0000-0000-0000000000f2");
         UUID entityId = UUID.fromString("30000000-0000-0000-0000-0000000000f2");
         Instant now = Instant.parse("2026-08-31T12:00:00Z");
-        Vec3d near = context.getAbsolute(new Vec3d(1.5, 1.0, 1.5));
-        owner.refreshPositionAndAngles(near.x + 1, near.y, near.z, 0, 0);
+        Vec3 near = context.absoluteVec(new Vec3(1.5, 1.0, 1.5));
+        owner.snapTo(near.x + 1, near.y, near.z, 0, 0);
 
         Pet held = new Pet(
                 petId,
-                owner.getUuid(),
+                owner.getUUID(),
                 "Mochi",
                 PetAppearance.create(
                         PetSpecies.CAT, ResourceId.parse("minecraft:tabby"), 0.67,
@@ -79,16 +77,16 @@ public final class PetConversationGameTests {
                 0,
                 now,
                 now);
-        String dimension = world.getRegistryKey().getValue().toString();
+        String dimension = world.dimension().identifier().toString();
         Pet placed = new Pet(
                 held.petId(), held.ownerUuid(), held.name(), held.appearance(), held.traits(), held.mood(),
                 PlacedPlacement.materialized(
                         backend, DimensionId.parse(dimension), new WorldPosition(near.x, near.y, near.z), entityId),
                 held.recordVersion(), held.createdAt(), held.updatedAt());
-        TameableEntity pet = new PetEntityFactory().prepare(
+        TamableAnimal pet = new PetEntityFactory().prepare(
                 world, placed, entityId, new WorldPosition(near.x, near.y, near.z), false).entity();
-        pet.refreshPositionAndAngles(near, 30.0F, 0.0F);
-        context.assertTrue(world.spawnEntity(pet), Text.literal("Conversation pet did not spawn"));
+        pet.snapTo(near, 30.0F, 0.0F);
+        context.assertTrue(world.addFreshEntity(pet), Component.literal("Conversation pet did not spawn"));
 
         MutableClock clock = new MutableClock(now);
         PrivateChatPetTextInputUi input = new PrivateChatPetTextInputUi(clock);
@@ -125,7 +123,7 @@ public final class PetConversationGameTests {
                 requestIds::remove,
                 Runnable::run);
 
-        context.addInstantFinalTask(() -> {
+        context.succeedWhen(() -> {
             input.clear();
             coordinator.clear();
             displays.clear();
@@ -135,111 +133,111 @@ public final class PetConversationGameTests {
 
         // Inactive access gives deterministic feedback without a text session/model call.
         coordinator.open(owner, pet);
-        context.runAtTick(2, () -> {
-            context.assertFalse(input.isActive(owner.getUuid()),
-                    Text.literal("Inactive access opened private input"));
-            context.assertEquals(0, dialogueCalls.get(),
-                    Text.literal("Inactive interaction invoked dialogue"));
+        context.runAtTickTime(2, () -> {
+            context.assertFalse(input.isActive(owner.getUUID()),
+                    Component.literal("Inactive access opened private input"));
+            context.assertValueEqual(0, dialogueCalls.get(),
+                    Component.literal("Inactive interaction invoked dialogue"));
             authority.setSnapshot(new PetAuthoritySnapshot(placed, false, true));
 
             // Opening while too far never creates a text session or a dialogue request.
-            owner.refreshPositionAndAngles(near.x + 8, near.y, near.z, 0, 0);
+            owner.snapTo(near.x + 8, near.y, near.z, 0, 0);
             coordinator.open(owner, pet);
         });
-        context.runAtTick(4, () -> {
-            context.assertFalse(input.isActive(owner.getUuid()),
-                    Text.literal("Far-away interaction opened private input"));
-            context.assertEquals(0, dialogueCalls.get(),
-                    Text.literal("Opening interaction invoked dialogue"));
-            owner.refreshPositionAndAngles(near.x + 1, near.y, near.z, 0, 0);
+        context.runAtTickTime(4, () -> {
+            context.assertFalse(input.isActive(owner.getUUID()),
+                    Component.literal("Far-away interaction opened private input"));
+            context.assertValueEqual(0, dialogueCalls.get(),
+                    Component.literal("Opening interaction invoked dialogue"));
+            owner.snapTo(near.x + 1, near.y, near.z, 0, 0);
             coordinator.open(owner, pet);
         });
-        context.runAtTick(6, () -> {
-            context.assertTrue(input.isActive(owner.getUuid()),
-                    Text.literal("Valid interaction did not open private input"));
-            context.assertEquals(0, dialogueCalls.get(),
-                    Text.literal("Opening private input invoked dialogue"));
+        context.runAtTickTime(6, () -> {
+            context.assertTrue(input.isActive(owner.getUUID()),
+                    Component.literal("Valid interaction did not open private input"));
+            context.assertValueEqual(0, dialogueCalls.get(),
+                    Component.literal("Opening private input invoked dialogue"));
 
             // Submission is revalidated: moving away consumes the private message but calls no AI.
-            owner.refreshPositionAndAngles(near.x + 8, near.y, near.z, 0, 0);
+            owner.snapTo(near.x + 8, near.y, near.z, 0, 0);
             context.assertTrue(input.handleChatMessage(owner, "too far"),
-                    Text.literal("Private input did not capture message"));
+                    Component.literal("Private input did not capture message"));
             context.assertTrue(input.shouldSuppressBroadcast(owner),
-                    Text.literal("Captured private message was not marked for suppression"));
+                    Component.literal("Captured private message was not marked for suppression"));
         });
-        context.runAtTick(9, () -> {
-            context.assertEquals(0, dialogueCalls.get(),
-                    Text.literal("Invalid-distance submission reached dialogue"));
+        context.runAtTickTime(9, () -> {
+            context.assertValueEqual(0, dialogueCalls.get(),
+                    Component.literal("Invalid-distance submission reached dialogue"));
             clock.advance(Duration.ofSeconds(6));
-            owner.refreshPositionAndAngles(near.x + 1, near.y, near.z, 0, 0);
+            owner.snapTo(near.x + 1, near.y, near.z, 0, 0);
             coordinator.open(owner, pet);
         });
-        context.runAtTick(11, () -> {
-            context.assertTrue(input.isActive(owner.getUuid()),
-                    Text.literal("Reopened private input is not active"));
+        context.runAtTickTime(11, () -> {
+            context.assertTrue(input.isActive(owner.getUUID()),
+                    Component.literal("Reopened private input is not active"));
             context.assertTrue(input.handleChatMessage(owner, "Hello, Mochi"),
-                    Text.literal("Valid message was not privately captured"));
+                    Component.literal("Valid message was not privately captured"));
             context.assertTrue(input.shouldSuppressBroadcast(owner),
-                    Text.literal("Valid private message was not suppressed"));
+                    Component.literal("Valid private message was not suppressed"));
         });
-        context.runAtTick(14, () -> {
-            context.assertEquals(1, dialogueCalls.get(),
-                    Text.literal("Valid submit did not make exactly one async request"));
+        context.runAtTickTime(14, () -> {
+            context.assertValueEqual(1, dialogueCalls.get(),
+                    Component.literal("Valid submit did not make exactly one async request"));
             PetDialogueRequest request = capturedRequest.get();
-            context.assertTrue(request != null, Text.literal("Dialogue request was not captured"));
-            context.assertEquals(owner.getUuid(), request.ownerUuid(), Text.literal("Request owner mismatch"));
-            context.assertEquals(petId, request.petId(), Text.literal("Request pet mismatch"));
-            context.assertEquals(backend, request.backendId(), Text.literal("Request backend mismatch"));
-            context.assertEquals(dimension, request.dimensionId(), Text.literal("Request dimension mismatch"));
+            context.assertTrue(request != null, Component.literal("Dialogue request was not captured"));
+            context.assertValueEqual(owner.getUUID(), request.ownerUuid(), Component.literal("Request owner mismatch"));
+            context.assertValueEqual(petId, request.petId(), Component.literal("Request pet mismatch"));
+            context.assertValueEqual(backend, request.backendId(), Component.literal("Request backend mismatch"));
+            context.assertValueEqual(dimension, request.dimensionId(), Component.literal("Request dimension mismatch"));
             pendingReply.complete(new PetDialogueResponse(
                     request.requestId(), request.sessionId(), request.petId(),
                     PetDialogueResponse.Status.SUCCEEDED,
                     "I am happy to see you. Let's explore together! Third sentence is removed."));
         });
-        context.runAtTick(18, () -> {
-            DisplayEntity.TextDisplayEntity first = displays.active(petId).orElseThrow(() ->
-                    context.createError("Valid correlated reply did not create a Text Display"));
-            context.assertEquals(1, displays.activeCount(),
-                    Text.literal("Reply created more than one active display"));
-            context.assertEquals(DisplayEntity.BillboardMode.CENTER, first.getBillboardMode(),
-                    Text.literal("Speech display is not client-side camera-facing"));
-            context.assertTrue(Math.abs(first.getY() - (pet.getY() + pet.getHeight() + 0.65F)) < 0.01,
-                    Text.literal("Speech display is not above the scaled pet"));
-            context.assertTrue(Math.abs(first.getYaw()) < 0.01F,
-                    Text.literal("Speech display retained server-side viewer rotation"));
+        context.runAtTickTime(18, () -> {
+            Display.TextDisplay first = displays.active(petId).orElseThrow(() ->
+                    context.assertionException("Valid correlated reply did not create a Text Display"));
+            context.assertValueEqual(1, displays.activeCount(),
+                    Component.literal("Reply created more than one active display"));
+            context.assertValueEqual(Display.BillboardConstraints.CENTER, first.getBillboardConstraints(),
+                    Component.literal("Speech display is not client-side camera-facing"));
+            context.assertTrue(Math.abs(first.getY() - (pet.getY() + pet.getBbHeight() + 0.65F)) < 0.01,
+                    Component.literal("Speech display is not above the scaled pet"));
+            context.assertTrue(Math.abs(first.getYRot()) < 0.01F,
+                    Component.literal("Speech display retained server-side viewer rotation"));
 
-            pet.refreshPositionAndAngles(near.x + 2, near.y, near.z + 1, 75.0F, 0.0F);
+            pet.snapTo(near.x + 2, near.y, near.z + 1, 75.0F, 0.0F);
             displays.tick(world.getServer());
             context.assertTrue(Math.abs(first.getX() - pet.getX()) < 0.01
                             && Math.abs(first.getZ() - pet.getZ()) < 0.01,
-                    Text.literal("Visible speech display did not follow pet position"));
-            context.assertTrue(Math.abs(first.getYaw()) < 0.01F,
-                    Text.literal("Visible speech display should not rotate on the server"));
+                    Component.literal("Visible speech display did not follow pet position"));
+            context.assertTrue(Math.abs(first.getYRot()) < 0.01F,
+                    Component.literal("Visible speech display should not rotate on the server"));
 
-            DisplayEntity.TextDisplayEntity replacement = displays.show(pet, "A newer reply replaces it.");
-            context.assertTrue(first.isRemoved(), Text.literal("New reply left old display alive"));
+            Display.TextDisplay replacement = displays.show(pet, "A newer reply replaces it.");
+            context.assertTrue(first.isRemoved(), Component.literal("New reply left old display alive"));
             context.assertTrue(replacement != first && displays.activeCount() == 1,
-                    Text.literal("New reply did not replace with exactly one display"));
+                    Component.literal("New reply did not replace with exactly one display"));
         });
-        context.runAtTick(127, () -> {
+        context.runAtTickTime(127, () -> {
             displays.tick(world.getServer());
             context.assertTrue(displays.active(petId).isEmpty(),
-                    Text.literal("Speech display did not expire at its bounded timeout"));
-            DisplayEntity.TextDisplayEntity unloadDisplay = displays.show(pet, "Goodbye for now.");
+                    Component.literal("Speech display did not expire at its bounded timeout"));
+            Display.TextDisplay unloadDisplay = displays.show(pet, "Goodbye for now.");
             displays.onPetUnloaded(pet);
             context.assertTrue(unloadDisplay.isRemoved() && displays.active(petId).isEmpty(),
-                    Text.literal("Pet unload did not remove speech display"));
-            DisplayEntity.TextDisplayEntity shutdownDisplay = displays.show(pet, "Server is stopping.");
+                    Component.literal("Pet unload did not remove speech display"));
+            Display.TextDisplay shutdownDisplay = displays.show(pet, "Server is stopping.");
             displays.clear();
             context.assertTrue(shutdownDisplay.isRemoved() && displays.activeCount() == 0,
-                    Text.literal("Shutdown clear did not remove speech display"));
-            context.complete();
+                    Component.literal("Shutdown clear did not remove speech display"));
+            context.succeed();
         });
     }
 
-    private static void removeMockPlayer(ServerWorld world, ServerPlayerEntity player) {
-        PlayerManager manager = world.getServer().getPlayerManager();
-        if (manager.getPlayer(player.getUuid()) == player) manager.remove(player);
+    private static void removeMockPlayer(ServerLevel world, ServerPlayer player) {
+        PlayerList manager = world.getServer().getPlayerList();
+        if (manager.getPlayer(player.getUUID()) == player) manager.remove(player);
     }
 
     private static final class MutableClock extends Clock {

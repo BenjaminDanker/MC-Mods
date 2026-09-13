@@ -1,13 +1,13 @@
 package com.silver.aipets.fabric.mixin;
 
-import net.minecraft.entity.passive.CatEntity;
-import net.minecraft.entity.passive.CatVariant;
-import net.minecraft.registry.entry.RegistryEntry;
+import net.minecraft.core.Holder;
+import net.minecraft.world.entity.animal.feline.Cat;
+import net.minecraft.world.entity.animal.feline.CatVariant;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Invoker;
 
-@Mixin(CatEntity.class)
+@Mixin(Cat.class)
 public interface CatEntityVariantInvoker {
     @Invoker("setVariant")
-    void aipets$setVariant(RegistryEntry<CatVariant> variant);
+    void aipets$setVariant(Holder<CatVariant> variant);
 }

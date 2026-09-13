@@ -1,20 +1,19 @@
 package com.silver.aipets.fabric.compass;
 
 import com.silver.aipets.common.domain.Pet;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.LodestoneTrackerComponent;
-import net.minecraft.component.type.LoreComponent;
-import net.minecraft.component.type.NbtComponent;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
-import net.minecraft.util.math.GlobalPos;
-
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import net.minecraft.ChatFormatting;
+import net.minecraft.core.GlobalPos;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.CustomData;
+import net.minecraft.world.item.component.ItemLore;
+import net.minecraft.world.item.component.LodestoneTracker;
 
 /** Construction and strict parsing for the otherwise ordinary compass item. */
 public final class PetCompassItem {
@@ -30,28 +29,28 @@ public final class PetCompassItem {
 
     public static ItemStack create(Pet pet, PetCompassSigner signer) {
         ItemStack stack = new ItemStack(Items.COMPASS);
-        stack.set(DataComponentTypes.MAX_STACK_SIZE, 1);
+        stack.set(DataComponents.MAX_STACK_SIZE, 1);
         stack.set(
-                DataComponentTypes.CUSTOM_NAME,
-                Text.literal(pet.name() + "'s Compass").formatted(Formatting.AQUA));
+                DataComponents.CUSTOM_NAME,
+                Component.literal(pet.name() + "'s Compass").withStyle(ChatFormatting.AQUA));
 
-        NbtCompound root = new NbtCompound();
+        CompoundTag root = new CompoundTag();
         root.putInt(MARKER_KEY, MARKER_VERSION);
         root.putString(OWNER_KEY, pet.ownerUuid().toString());
         root.putString(PET_KEY, pet.petId().toString());
         root.putString(SIGNATURE_KEY, signer.sign(pet.ownerUuid(), pet.petId()));
-        NbtCompound custom = new NbtCompound();
+        CompoundTag custom = new CompoundTag();
         custom.put(ROOT_KEY, root);
-        stack.set(DataComponentTypes.CUSTOM_DATA, NbtComponent.of(custom));
+        stack.set(DataComponents.CUSTOM_DATA, CustomData.of(custom));
         return stack;
     }
 
     public static boolean isCandidate(ItemStack stack) {
-        if (!stack.isOf(Items.COMPASS)) {
+        if (!stack.is(Items.COMPASS)) {
             return false;
         }
-        NbtComponent custom = stack.get(DataComponentTypes.CUSTOM_DATA);
-        return custom != null && custom.copyNbt().contains(ROOT_KEY);
+        CustomData custom = stack.get(DataComponents.CUSTOM_DATA);
+        return custom != null && custom.copyTag().contains(ROOT_KEY);
     }
 
     public static Optional<PetCompassMarker> trustedMarker(
@@ -61,8 +60,8 @@ public final class PetCompassItem {
             return Optional.empty();
         }
         try {
-            NbtCompound custom = stack.get(DataComponentTypes.CUSTOM_DATA).copyNbt();
-            NbtCompound root = custom.getCompound(ROOT_KEY).orElse(null);
+            CompoundTag custom = stack.get(DataComponents.CUSTOM_DATA).copyTag();
+            CompoundTag root = custom.getCompound(ROOT_KEY).orElse(null);
             if (root == null || root.getInt(MARKER_KEY).orElse(-1) != MARKER_VERSION) {
                 return Optional.empty();
             }
@@ -79,14 +78,14 @@ public final class PetCompassItem {
 
     public static void showStatus(ItemStack stack, String status, Optional<GlobalPos> target) {
         stack.set(
-                DataComponentTypes.LORE,
-                new LoreComponent(List.of(Text.literal(status).formatted(Formatting.GRAY))));
+                DataComponents.LORE,
+                new ItemLore(List.of(Component.literal(status).withStyle(ChatFormatting.GRAY))));
         if (target.isPresent()) {
             stack.set(
-                    DataComponentTypes.LODESTONE_TRACKER,
-                    new LodestoneTrackerComponent(target, false));
+                    DataComponents.LODESTONE_TRACKER,
+                    new LodestoneTracker(target, false));
         } else {
-            stack.remove(DataComponentTypes.LODESTONE_TRACKER);
+            stack.remove(DataComponents.LODESTONE_TRACKER);
         }
     }
 }

@@ -31,7 +31,7 @@
           "condition": "minecraft:entity_properties",
           "entity": "this",
           "predicate": {
-            "type": [
+            "minecraft:entity_type": [
               "arrow",
               "spectral_arrow"
             ]
@@ -65,7 +65,7 @@
           "condition": "minecraft:entity_properties",
           "entity": "this",
           "predicate": {
-            "type": [
+            "minecraft:entity_type": [
               "arrow",
               "spectral_arrow"
             ]
@@ -94,7 +94,7 @@
           "condition": "minecraft:entity_properties",
           "entity": "direct_attacker",
           "predicate": {
-            "type": [
+            "minecraft:entity_type": [
               "arrow",
               "minecraft:spectral_arrow"
             ]

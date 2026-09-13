@@ -4,12 +4,6 @@ import com.silver.aipets.common.observability.StructuredPetEvent;
 import com.silver.aipets.fabric.PetCompanionMod;
 import com.silver.aipets.fabric.entity.PetEntityController;
 import com.silver.aipets.fabric.entity.PetEntityData;
-import net.minecraft.entity.LazyEntityReference;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.passive.TameableEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.storage.ReadView;
-import net.minecraft.storage.WriteView;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -18,8 +12,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.UUID;
+import net.minecraft.world.entity.EntityReference;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.TamableAnimal;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 
-@Mixin(TameableEntity.class)
+@Mixin(TamableAnimal.class)
 public abstract class TameableEntityMixin implements PetEntityData {
     @Unique private static final String MARKER_KEY = "pet_companion:marked";
     @Unique private static final String PET_ID_KEY = "pet_companion:pet_id";
@@ -32,8 +32,8 @@ public abstract class TameableEntityMixin implements PetEntityData {
     @Unique private long aipets$recordVersion;
     @Unique private boolean aipets$sleeping;
 
-    @Inject(method = "writeCustomData(Lnet/minecraft/storage/WriteView;)V", at = @At("TAIL"))
-    private void aipets$writeIdentity(WriteView view, CallbackInfo ci) {
+    @Inject(method = "addAdditionalSaveData(Lnet/minecraft/world/level/storage/ValueOutput;)V", at = @At("TAIL"))
+    private void aipets$writeIdentity(ValueOutput view, CallbackInfo ci) {
         if (!aipets$isPet()) {
             return;
         }
@@ -44,24 +44,24 @@ public abstract class TameableEntityMixin implements PetEntityData {
         view.putBoolean(SLEEPING_KEY, aipets$sleeping);
     }
 
-    @Inject(method = "readCustomData(Lnet/minecraft/storage/ReadView;)V", at = @At("TAIL"))
-    private void aipets$readIdentity(ReadView view, CallbackInfo ci) {
+    @Inject(method = "readAdditionalSaveData(Lnet/minecraft/world/level/storage/ValueInput;)V", at = @At("TAIL"))
+    private void aipets$readIdentity(ValueInput view, CallbackInfo ci) {
         clearIdentity();
-        if (!view.getBoolean(MARKER_KEY, false)) {
+        if (!view.getBooleanOr(MARKER_KEY, false)) {
             return;
         }
         try {
-            UUID petId = UUID.fromString(view.getString(PET_ID_KEY, ""));
-            UUID ownerId = UUID.fromString(view.getString(OWNER_ID_KEY, ""));
-            long version = view.getLong(RECORD_VERSION_KEY, -1L);
+            UUID petId = UUID.fromString(view.getStringOr(PET_ID_KEY, ""));
+            UUID ownerId = UUID.fromString(view.getStringOr(OWNER_ID_KEY, ""));
+            long version = view.getLongOr(RECORD_VERSION_KEY, -1L);
             if (version < 0) {
                 throw new IllegalArgumentException("negative record version");
             }
             aipets$petId = petId;
             aipets$ownerUuid = ownerId;
             aipets$recordVersion = version;
-            aipets$sleeping = view.getBoolean(SLEEPING_KEY, false);
-            PetEntityController.configure((TameableEntity) (Object) this);
+            aipets$sleeping = view.getBooleanOr(SLEEPING_KEY, false);
+            PetEntityController.configure((TamableAnimal) (Object) this);
         } catch (IllegalArgumentException malformed) {
             clearIdentity();
             PetCompanionMod.LOGGER.warn(StructuredPetEvent
@@ -77,7 +77,7 @@ public abstract class TameableEntityMixin implements PetEntityData {
         }
     }
 
-    @Inject(method = "tryTeleportToOwner()V", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "tryToTeleportToOwner()V", at = @At("HEAD"), cancellable = true)
     private void aipets$preventOwnerTeleport(CallbackInfo ci) {
         if (aipets$isPet()) {
             ci.cancel();
@@ -92,7 +92,7 @@ public abstract class TameableEntityMixin implements PetEntityData {
     }
 
     @Inject(
-            method = "setOwner(Lnet/minecraft/entity/LivingEntity;)V",
+            method = "setOwner(Lnet/minecraft/world/entity/LivingEntity;)V",
             at = @At("HEAD"),
             cancellable = true)
     private void aipets$preventOwnerMutation(LivingEntity owner, CallbackInfo ci) {
@@ -102,31 +102,24 @@ public abstract class TameableEntityMixin implements PetEntityData {
     }
 
     @Inject(
-            method = "setOwner(Lnet/minecraft/entity/LazyEntityReference;)V",
+            method = "setOwnerReference(Lnet/minecraft/world/entity/EntityReference;)V",
             at = @At("HEAD"),
             cancellable = true)
     private void aipets$preventOwnerReferenceMutation(
-            LazyEntityReference<LivingEntity> owner, CallbackInfo ci) {
+            EntityReference<LivingEntity> owner, CallbackInfo ci) {
         if (aipets$isPet() && owner != null) {
             ci.cancel();
         }
     }
 
-    @Inject(method = "setTamedBy", at = @At("HEAD"), cancellable = true)
-    private void aipets$preventTaming(PlayerEntity player, CallbackInfo ci) {
-        if (aipets$isPet()) {
-            ci.cancel();
-        }
-    }
-
-    @Inject(method = "setTamed", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "setTame", at = @At("HEAD"), cancellable = true)
     private void aipets$preventTamedState(boolean tamed, boolean updateAttributes, CallbackInfo ci) {
         if (aipets$isPet() && tamed) {
             ci.cancel();
         }
     }
 
-    @Inject(method = "canTarget(Lnet/minecraft/entity/LivingEntity;)Z", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "canAttack(Lnet/minecraft/world/entity/LivingEntity;)Z", at = @At("HEAD"), cancellable = true)
     private void aipets$preventLivingTarget(LivingEntity target, CallbackInfoReturnable<Boolean> cir) {
         if (aipets$isPet()) {
             cir.setReturnValue(false);
@@ -184,7 +177,7 @@ public abstract class TameableEntityMixin implements PetEntityData {
         }
         aipets$sleeping = sleeping;
         if (sleeping) {
-            ((TameableEntity) (Object) this).getNavigation().stop();
+            ((TamableAnimal) (Object) this).getNavigation().stop();
         }
     }
 

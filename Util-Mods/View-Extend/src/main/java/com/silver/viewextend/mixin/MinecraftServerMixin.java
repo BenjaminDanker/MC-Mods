@@ -10,14 +10,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(MinecraftServer.class)
 public abstract class MinecraftServerMixin {
-    @Inject(method = "tick", at = @At("HEAD"))
+    @Inject(method = "tickServer", at = @At("HEAD"))
     private void viewextend$onServerTick(BooleanSupplier shouldKeepTicking, CallbackInfo ci) {
         if (ViewExtendMod.getService() != null) {
             ViewExtendMod.getService().tick((MinecraftServer) (Object) this);
         }
     }
 
-    @Inject(method = "shutdown", at = @At("HEAD"))
+    @Inject(method = "stopServer", at = @At("HEAD"))
     private void viewextend$onServerShutdown(CallbackInfo ci) {
         if (ViewExtendMod.getService() != null) {
             ViewExtendMod.getService().shutdown();

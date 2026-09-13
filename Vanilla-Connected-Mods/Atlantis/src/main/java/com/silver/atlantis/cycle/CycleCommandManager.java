@@ -6,10 +6,9 @@ import com.mojang.brigadier.suggestion.SuggestionProvider;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
-import net.minecraft.server.command.CommandManager;
-import net.minecraft.server.command.ServerCommandSource;
-
 import java.util.concurrent.CompletableFuture;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.Commands;
 
 public final class CycleCommandManager {
 
@@ -19,32 +18,32 @@ public final class CycleCommandManager {
         this.cycleService = cycleService;
     }
 
-    public LiteralArgumentBuilder<ServerCommandSource> buildSubcommand() {
-        return CommandManager.literal("cycle")
+    public LiteralArgumentBuilder<CommandSourceStack> buildSubcommand() {
+        return Commands.literal("cycle")
             .executes(ctx -> {
                 cycleService.toggle(ctx.getSource());
                 return 1;
             })
-            .then(CommandManager.literal("status")
+            .then(Commands.literal("status")
                 .executes(ctx -> {
                     cycleService.sendStatus(ctx.getSource());
                     return 1;
                 }))
-            .then(CommandManager.literal("step")
+            .then(Commands.literal("step")
                 .executes(ctx -> {
                     cycleService.stepOnceNow(ctx.getSource());
                     return 1;
                 }))
-            .then(CommandManager.literal("set")
-                .then(CommandManager.argument("stage", StringArgumentType.word())
+            .then(Commands.literal("set")
+                .then(Commands.argument("stage", StringArgumentType.word())
                     .suggests(CycleCommandManager::suggestStages)
                     .executes(ctx -> {
                         String stage = StringArgumentType.getString(ctx, "stage");
                         cycleService.setStage(ctx.getSource(), stage);
                         return 1;
                     })))
-            .then(CommandManager.literal("run")
-                .then(CommandManager.argument("stage", StringArgumentType.word())
+            .then(Commands.literal("run")
+                .then(Commands.argument("stage", StringArgumentType.word())
                     .suggests(CycleCommandManager::suggestStages)
                     .executes(ctx -> {
                         String stage = StringArgumentType.getString(ctx, "stage");
@@ -53,7 +52,7 @@ public final class CycleCommandManager {
                     })));
     }
 
-    private static CompletableFuture<Suggestions> suggestStages(CommandContext<ServerCommandSource> ctx, SuggestionsBuilder builder) {
+    private static CompletableFuture<Suggestions> suggestStages(CommandContext<CommandSourceStack> ctx, SuggestionsBuilder builder) {
         for (CycleState.Stage s : CycleState.Stage.values()) {
             builder.suggest(s.name());
         }

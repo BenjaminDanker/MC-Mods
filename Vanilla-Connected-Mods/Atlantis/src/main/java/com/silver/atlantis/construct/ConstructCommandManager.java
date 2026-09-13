@@ -3,13 +3,13 @@ package com.silver.atlantis.construct;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.silver.atlantis.find.FlatAreaSearchService;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.Commands;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.Level;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
-import net.minecraft.server.command.CommandManager;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.World;
 
 /**
  * Op-only command that starts constructing from the last /findflat result center.
@@ -24,46 +24,46 @@ public final class ConstructCommandManager {
         this.constructService = constructService;
     }
 
-    public LiteralArgumentBuilder<ServerCommandSource> buildSubcommand() {
+    public LiteralArgumentBuilder<CommandSourceStack> buildSubcommand() {
         // Note: permission gating is done at the /atlantis root.
-        return CommandManager.literal("construct")
-            .then(CommandManager.literal("undo")
+        return Commands.literal("construct")
+            .then(Commands.literal("undo")
                 .executes(context -> executeUndo(context.getSource(), null))
-                .then(CommandManager.argument("runId", StringArgumentType.word())
+                .then(Commands.argument("runId", StringArgumentType.word())
                     .executes(context -> executeUndo(context.getSource(), StringArgumentType.getString(context, "runId")))
                 )
             )
             .executes(context -> execute(context.getSource(), null))
-            .then(CommandManager.argument("yOffset", IntegerArgumentType.integer(-512, 512))
+            .then(Commands.argument("yOffset", IntegerArgumentType.integer(-512, 512))
                 .executes(context -> execute(context.getSource(), IntegerArgumentType.getInteger(context, "yOffset")))
             );
     }
 
-    private int executeUndo(ServerCommandSource source, String runIdOrNull) {
+    private int executeUndo(CommandSourceStack source, String runIdOrNull) {
         ConstructConfig config = ConstructConfig.defaults();
         boolean started = constructService.startUndo(source, config, source.getServer(), runIdOrNull);
         if (!started) {
-            source.sendFeedback(() -> Text.literal("A construct/undo job is already running."), false);
+            source.sendSuccess(() -> Component.literal("A construct/undo job is already running."), false);
             return 0;
         }
 
         if (runIdOrNull == null) {
-            source.sendFeedback(() -> Text.literal("Undo job started (latest run)."), false);
+            source.sendSuccess(() -> Component.literal("Undo job started (latest run)."), false);
         } else {
-            source.sendFeedback(() -> Text.literal("Undo job started for run: " + runIdOrNull), false);
+            source.sendSuccess(() -> Component.literal("Undo job started for run: " + runIdOrNull), false);
         }
         return 1;
     }
 
-    private int execute(ServerCommandSource source, Integer yOffsetOverride) {
+    private int execute(CommandSourceStack source, Integer yOffsetOverride) {
         if (searchService.isRunning()) {
-            source.sendFeedback(() -> Text.literal("A /findflat search is still running. Wait for it to finish before running /construct."), false);
+            source.sendSuccess(() -> Component.literal("A /findflat search is still running. Wait for it to finish before running /construct."), false);
             return 0;
         }
 
-        ServerWorld world = source.getServer().getWorld(World.OVERWORLD);
+        ServerLevel world = source.getServer().getLevel(Level.OVERWORLD);
         if (world == null) {
-            source.sendFeedback(() -> Text.literal("Overworld missing."), false);
+            source.sendSuccess(() -> Component.literal("Overworld missing."), false);
             return 0;
         }
 
@@ -71,11 +71,11 @@ public final class ConstructCommandManager {
         if (center == null) {
             boolean resumed = constructService.resumeLatest(source, ConstructConfig.defaults(), world);
             if (!resumed) {
-                source.sendFeedback(() -> Text.literal("No last /findflat result found, and no resumable construct run was found."), false);
+                source.sendSuccess(() -> Component.literal("No last /findflat result found, and no resumable construct run was found."), false);
                 return 0;
             }
 
-            source.sendFeedback(() -> Text.literal("Resumed previous construct run."), false);
+            source.sendSuccess(() -> Component.literal("Resumed previous construct run."), false);
             return 1;
         }
 
@@ -85,11 +85,11 @@ public final class ConstructCommandManager {
             : defaults.withYOffsetBlocks(yOffsetOverride);
         boolean started = constructService.start(source, config, world, center);
         if (!started) {
-            source.sendFeedback(() -> Text.literal("A construct job is already running."), false);
+            source.sendSuccess(() -> Component.literal("A construct job is already running."), false);
             return 0;
         }
 
-        source.sendFeedback(() -> Text.literal("Construct job started. Using /findflat center: " + center + " (yOffset=" + config.yOffsetBlocks() + ")"), false);
+        source.sendSuccess(() -> Component.literal("Construct job started. Using /findflat center: " + center + " (yOffset=" + config.yOffsetBlocks() + ")"), false);
         return 1;
     }
 }

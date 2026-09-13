@@ -17,21 +17,20 @@
             }
           }
         ],
-          "item": {
-            "predicates": {
-              "minecraft:custom_data": {
-                "infinity_cave": {
-                  "item": "enchantlet",
-                  "tier": 3
-                }
+        "item": {
+          "predicates": {
+            "minecraft:custom_data": {
+              "infinity_cave": {
+                "item": "enchantlet",
+                "tier": 3
               }
             }
           }
         }
       }
-    },
-    "rewards": {
-      "function": "infinity_cave:mechanics/rc/enchant/tier_3/check"
     }
+  },
+  "rewards": {
+    "function": "infinity_cave:mechanics/rc/enchant/tier_3/check"
   }
-  
+}

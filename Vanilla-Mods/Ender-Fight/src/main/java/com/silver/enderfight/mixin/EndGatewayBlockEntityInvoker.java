@@ -1,21 +1,21 @@
 package com.silver.enderfight.mixin;
 
-import net.minecraft.block.entity.EndGatewayBlockEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.gen.feature.EndGatewayFeatureConfig;
+import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.block.entity.TheEndGatewayBlockEntity;
+import net.minecraft.world.level.levelgen.feature.configurations.EndGatewayConfiguration;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Invoker;
 
-@Mixin(EndGatewayBlockEntity.class)
+@Mixin(TheEndGatewayBlockEntity.class)
 public interface EndGatewayBlockEntityInvoker {
-    @Invoker("setupExitPortalLocation")
-    static BlockPos enderfight$setupExitPortalLocation(ServerWorld world, BlockPos pos) {
+    @Invoker("findOrCreateValidTeleportPos")
+    static BlockPos enderfight$setupExitPortalLocation(ServerLevel world, BlockPos pos) {
         throw new AssertionError("Mixin failed to apply");
     }
 
-    @Invoker("createPortal")
-    static void enderfight$createPortal(ServerWorld world, BlockPos pos, EndGatewayFeatureConfig config) {
+    @Invoker("spawnGatewayPortal")
+    static void enderfight$createPortal(ServerLevel world, BlockPos pos, EndGatewayConfiguration config) {
         throw new AssertionError("Mixin failed to apply");
     }
 }

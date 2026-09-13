@@ -14,7 +14,9 @@
     "per_level_above_first": 0
   },
   "anvil_cost": 9999,
-  "slots": ["armor"],
+  "slots": [
+    "armor"
+  ],
   "effects": {
     "minecraft:tick": [
       {
@@ -38,11 +40,15 @@
             "condition": "minecraft:entity_properties",
             "entity": "this",
             "predicate": {
-              "type": "#infinity_cave:aggro",
+              "minecraft:entity_type": "#infinity_cave:aggro",
               "periodic_tick": 50,
               "targeted_entity": {
-                "type": "minecraft:player",
-                "distance": { "horizontal": { "min": 15 } }
+                "minecraft:entity_type": "minecraft:player",
+                "distance": {
+                  "horizontal": {
+                    "min": 15
+                  }
+                }
               }
             }
           }
@@ -69,12 +75,15 @@
             "condition": "minecraft:entity_properties",
             "entity": "this",
             "predicate": {
-              "type": "#infinity_cave:aggro",
+              "minecraft:entity_type": "#infinity_cave:aggro",
               "periodic_tick": 50,
               "targeted_entity": {
-                "type": "minecraft:player",
+                "minecraft:entity_type": "minecraft:player",
                 "distance": {
-                  "horizontal": { "min": 5, "max": 14.999 }
+                  "horizontal": {
+                    "min": 5,
+                    "max": 14.999
+                  }
                 }
               }
             }
@@ -87,12 +96,22 @@
             "condition": "minecraft:entity_properties",
             "entity": "this",
             "predicate": {
-              "flags": { "is_on_ground": false
-            },
-              "targeted_entity": {
-                "distance": { "absolute": { "max": 3 } }
+              "flags": {
+                "is_on_ground": false
               },
-              "movement": { "horizontal_speed": { "min": 8, "max": 9 } }
+              "targeted_entity": {
+                "distance": {
+                  "absolute": {
+                    "max": 3
+                  }
+                }
+              },
+              "movement": {
+                "horizontal_speed": {
+                  "min": 8,
+                  "max": 9
+                }
+              }
             }
           }
         ],
@@ -107,12 +126,22 @@
             "condition": "minecraft:entity_properties",
             "entity": "this",
             "predicate": {
-              "flags": { "is_on_ground": false
-            },
-              "targeted_entity": {
-                "distance": { "absolute": { "max": 3 } }
+              "flags": {
+                "is_on_ground": false
               },
-              "movement": { "horizontal_speed": { "min": 9.0001, "max": 10 } }
+              "targeted_entity": {
+                "distance": {
+                  "absolute": {
+                    "max": 3
+                  }
+                }
+              },
+              "movement": {
+                "horizontal_speed": {
+                  "min": 9.0001,
+                  "max": 10
+                }
+              }
             }
           }
         ],
@@ -127,12 +156,22 @@
             "condition": "minecraft:entity_properties",
             "entity": "this",
             "predicate": {
-              "flags": { "is_on_ground": false
-            },
-              "targeted_entity": {
-                "distance": { "absolute": { "max": 3 } }
+              "flags": {
+                "is_on_ground": false
               },
-              "movement": { "horizontal_speed": { "min": 10.0001, "max": 11 } }
+              "targeted_entity": {
+                "distance": {
+                  "absolute": {
+                    "max": 3
+                  }
+                }
+              },
+              "movement": {
+                "horizontal_speed": {
+                  "min": 10.0001,
+                  "max": 11
+                }
+              }
             }
           }
         ],
@@ -147,12 +186,22 @@
             "condition": "minecraft:entity_properties",
             "entity": "this",
             "predicate": {
-              "flags": { "is_on_ground": false
-            },
-              "targeted_entity": {
-                "distance": { "absolute": { "max": 3 } }
+              "flags": {
+                "is_on_ground": false
               },
-              "movement": { "horizontal_speed": { "min": 11.0001, "max": 12 } }
+              "targeted_entity": {
+                "distance": {
+                  "absolute": {
+                    "max": 3
+                  }
+                }
+              },
+              "movement": {
+                "horizontal_speed": {
+                  "min": 11.0001,
+                  "max": 12
+                }
+              }
             }
           }
         ],
@@ -167,12 +216,21 @@
             "condition": "minecraft:entity_properties",
             "entity": "this",
             "predicate": {
-              "flags": { "is_on_ground": false
-            },
-              "targeted_entity": {
-                "distance": { "absolute": { "max": 3 } }
+              "flags": {
+                "is_on_ground": false
               },
-              "movement": { "horizontal_speed": { "min": 12.0001 } }
+              "targeted_entity": {
+                "distance": {
+                  "absolute": {
+                    "max": 3
+                  }
+                }
+              },
+              "movement": {
+                "horizontal_speed": {
+                  "min": 12.0001
+                }
+              }
             }
           }
         ],

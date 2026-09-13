@@ -1,11 +1,10 @@
 package com.silver.atlantis.construct;
 
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.ChunkPos;
-
 import java.util.Optional;
+import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.ChunkPos;
 
 /**
  * Lightweight read-only helper to query block strings from unloaded chunk NBT.
@@ -15,12 +14,12 @@ public final class OfflineChunkBlockReader {
     private OfflineChunkBlockReader() {
     }
 
-    public static Optional<ChunkSnapshot> load(ServerWorld world, ChunkPos chunkPos) {
+    public static Optional<ChunkSnapshot> load(ServerLevel world, ChunkPos chunkPos) {
         if (world == null || chunkPos == null) {
             return Optional.empty();
         }
 
-        Optional<NbtCompound> chunkNbt = UnloadedChunkNbtEditor.loadChunkNbt(world, chunkPos);
+        Optional<CompoundTag> chunkNbt = UnloadedChunkNbtEditor.loadChunkNbt(world, chunkPos);
         if (chunkNbt.isEmpty()) {
             return Optional.empty();
         }

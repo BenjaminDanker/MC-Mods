@@ -8,10 +8,10 @@ import com.silver.portalprotocol.PortalRequestPayloadCodec;
 import com.silver.portalprotocol.PortalRequestSigner;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.network.chat.Component;
+import net.minecraft.core.BlockPos;
 
 import java.util.List;
 import java.util.function.Predicate;
@@ -23,7 +23,7 @@ public final class WardenRedirector {
     private WardenRedirector() {
     }
 
-    public static void handleWardenDeath(ServerWorld world, BlockPos deathPos) {
+    public static void handleWardenDeath(ServerLevel world, BlockPos deathPos) {
         ConfigManager manager = WardenFightMod.getConfigManager();
         if (manager == null) {
             WardenFightMod.LOGGER.warn("Warden death redirect skipped because config manager was not initialised");
@@ -37,9 +37,9 @@ public final class WardenRedirector {
         }
 
         int range = Math.max(1, config.portalRedirectRange());
-        WardenFightMod.LOGGER.info("Warden died at {} in world {}; evaluating nearby players", deathPos, world.getRegistryKey().getValue());
+        WardenFightMod.LOGGER.info("Warden died at {} in world {}; evaluating nearby players", deathPos, world.dimension().identifier());
 
-        List<ServerPlayerEntity> targets = world.getPlayers(isWithinSquare(deathPos, range));
+        List<ServerPlayer> targets = world.getPlayers(isWithinSquare(deathPos, range));
         WardenFightMod.LOGGER.info("Found {} eligible players within {} blocks of {}", targets.size(), range, deathPos);
         if (targets.isEmpty()) {
             WardenFightMod.LOGGER.info("No players within {} blocks of {} when Warden died", range, deathPos);
@@ -66,20 +66,20 @@ public final class WardenRedirector {
         String destinationPortalCandidate = config.portalRedirectTargetPortal();
         final String destinationPortal = destinationPortalCandidate != null ? destinationPortalCandidate : "";
 
-        for (ServerPlayerEntity player : targets) {
+        for (ServerPlayer player : targets) {
             if (player.isRemoved()) {
                 continue;
             }
 
-            player.sendMessage(Text.literal("Warden defeated! Redirecting you to " + targetServer + "..."), false);
-            ServerPlayerEntity requestPlayer = player;
+            player.sendSystemMessage(Component.literal("Warden defeated! Redirecting you to " + targetServer + "..."));
+            ServerPlayer requestPlayer = player;
             server.execute(() -> {
                 try {
                     long issuedAtMs = System.currentTimeMillis();
                     String nonce = PortalRequestPayloadCodec.generateNonce();
-                    byte[] unsigned = PortalRequestPayloadCodec.encodeUnsigned(requestPlayer.getUuid(), targetServer, destinationPortal, issuedAtMs, nonce);
+                    byte[] unsigned = PortalRequestPayloadCodec.encodeUnsigned(requestPlayer.getUUID(), targetServer, destinationPortal, issuedAtMs, nonce);
                     byte[] signature = PortalRequestSigner.hmacSha256(secret, unsigned);
-                    byte[] signed = PortalRequestPayloadCodec.encodeSigned(requestPlayer.getUuid(), targetServer, destinationPortal, issuedAtMs, nonce, signature);
+                    byte[] signed = PortalRequestPayloadCodec.encodeSigned(requestPlayer.getUUID(), targetServer, destinationPortal, issuedAtMs, nonce, signature);
                     ServerPlayNetworking.send(requestPlayer, new PortalRequestPayload(signed));
                     WardenFightMod.LOGGER.info("Sent warden redirect portal request for {} -> {}", requestPlayer.getName().getString(), targetServer);
                 } catch (Exception ex) {
@@ -89,7 +89,7 @@ public final class WardenRedirector {
         }
     }
 
-    private static Predicate<ServerPlayerEntity> isWithinSquare(BlockPos center, int range) {
+    private static Predicate<ServerPlayer> isWithinSquare(BlockPos center, int range) {
         return player -> {
             if (player.isSpectator()) {
                 return false;

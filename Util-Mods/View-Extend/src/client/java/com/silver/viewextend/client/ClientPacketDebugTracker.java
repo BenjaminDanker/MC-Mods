@@ -3,10 +3,10 @@ package com.silver.viewextend.client;
 import com.silver.viewextend.ViewExtendMod;
 import java.util.HashMap;
 import java.util.Map;
-import net.minecraft.network.packet.s2c.play.ChunkDataS2CPacket;
-import net.minecraft.network.packet.s2c.play.LightData;
-import net.minecraft.network.packet.s2c.play.LightUpdateS2CPacket;
-import net.minecraft.util.math.ChunkPos;
+import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
+import net.minecraft.network.protocol.game.ClientboundLightUpdatePacketData;
+import net.minecraft.network.protocol.game.ClientboundLightUpdatePacket;
+import net.minecraft.world.level.ChunkPos;
 
 public final class ClientPacketDebugTracker {
     private static final boolean ENABLED = !"false".equalsIgnoreCase(System.getProperty("viewextend.clientDebug", "true"));
@@ -36,21 +36,21 @@ public final class ClientPacketDebugTracker {
         return ENABLED;
     }
 
-    public static void onChunkData(ChunkDataS2CPacket packet) {
+    public static void onChunkData(ClientboundLevelChunkWithLightPacket packet) {
         if (!ENABLED) {
             return;
         }
 
-        long packed = new ChunkPos(packet.getChunkX(), packet.getChunkZ()).toLong();
+        long packed = new ChunkPos(packet.getX(), packet.getZ()).pack();
         ChunkDebugState state = STATES.computeIfAbsent(packed, ignored -> new ChunkDebugState());
         state.chunkDataCount++;
         state.lastChunkDataMillis = System.currentTimeMillis();
 
-        LightData light = packet.getLightData();
-        int skyBits = light.getInitedSky().cardinality();
-        int blockBits = light.getInitedBlock().cardinality();
-        int skyNibbleCount = light.getSkyNibbles().size();
-        int blockNibbleCount = light.getBlockNibbles().size();
+        ClientboundLightUpdatePacketData light = packet.getLightData();
+        int skyBits = light.getSkyYMask().cardinality();
+        int blockBits = light.getBlockYMask().cardinality();
+        int skyNibbleCount = light.getSkyUpdates().size();
+        int blockNibbleCount = light.getBlockUpdates().size();
         if (skyBits > 0 || blockBits > 0 || skyNibbleCount > 0 || blockNibbleCount > 0) {
             state.chunkDataIncludedLight = true;
         }
@@ -64,20 +64,20 @@ public final class ClientPacketDebugTracker {
         windowChunkDataBlockNibbles += blockNibbleCount;
     }
 
-    public static void onLightUpdate(LightUpdateS2CPacket packet) {
+    public static void onLightUpdate(ClientboundLightUpdatePacket packet) {
         if (!ENABLED) {
             return;
         }
 
-        long packed = new ChunkPos(packet.getChunkX(), packet.getChunkZ()).toLong();
+        long packed = new ChunkPos(packet.getX(), packet.getZ()).pack();
         ChunkDebugState state = STATES.computeIfAbsent(packed, ignored -> new ChunkDebugState());
         state.lightUpdateCount++;
 
-        LightData light = packet.getData();
-        int skyBits = light.getInitedSky().cardinality();
-        int blockBits = light.getInitedBlock().cardinality();
-        int skyNibbleCount = light.getSkyNibbles().size();
-        int blockNibbleCount = light.getBlockNibbles().size();
+        ClientboundLightUpdatePacketData light = packet.getLightData();
+        int skyBits = light.getSkyYMask().cardinality();
+        int blockBits = light.getBlockYMask().cardinality();
+        int skyNibbleCount = light.getSkyUpdates().size();
+        int blockNibbleCount = light.getBlockUpdates().size();
 
         totalLightUpdatePackets++;
 

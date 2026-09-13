@@ -1,11 +1,11 @@
 package com.silver.enderfight.mixin;
 
-import net.minecraft.util.math.random.RandomSequencesState;
+import net.minecraft.world.RandomSequences;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Mutable;
 import org.spongepowered.asm.mixin.gen.Accessor;
 
-@Mixin(RandomSequencesState.class)
+@Mixin(RandomSequences.class)
 public interface RandomSequencesStateAccessor {
     @Accessor("seed")
     long getSeed();

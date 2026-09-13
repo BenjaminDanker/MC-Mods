@@ -1,5 +1,5 @@
 plugins {
-    id 'fabric-loom' version '1.11.8' apply false
+    id 'net.fabricmc.fabric-loom' version '1.17-SNAPSHOT' apply false
 }
 
 allprojects {
@@ -14,7 +14,7 @@ allprojects {
 
 subprojects {
     tasks.withType(JavaCompile).configureEach {
-        options.release = 21
+        options.release = 25
         options.encoding = 'UTF-8'
     }
 
