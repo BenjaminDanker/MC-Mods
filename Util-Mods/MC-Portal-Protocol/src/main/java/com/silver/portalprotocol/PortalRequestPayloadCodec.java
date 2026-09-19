@@ -14,12 +14,12 @@ public final class PortalRequestPayloadCodec {
 
     public static byte[] encodeUnsigned(UUID playerId,
                                         String targetServer,
-                                        String sourcePortal,
+                                        String arrivalPortal,
                                         long issuedAtMs,
                                         String nonce) {
         Objects.requireNonNull(playerId, "playerId");
         Objects.requireNonNull(targetServer, "targetServer");
-        Objects.requireNonNull(sourcePortal, "sourcePortal");
+        Objects.requireNonNull(arrivalPortal, "arrivalPortal");
         Objects.requireNonNull(nonce, "nonce");
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -28,20 +28,20 @@ public final class PortalRequestPayloadCodec {
         writeLong(out, playerId.getMostSignificantBits());
         writeLong(out, playerId.getLeastSignificantBits());
         writeString(out, targetServer);
-        writeString(out, sourcePortal);
+        writeString(out, arrivalPortal);
         writeString(out, nonce);
         return out.toByteArray();
     }
 
     public static byte[] encodeSigned(UUID playerId,
                                       String targetServer,
-                                      String sourcePortal,
+                                      String arrivalPortal,
                                       long issuedAtMs,
                                       String nonce,
                                       byte[] signature) {
         Objects.requireNonNull(signature, "signature");
 
-        byte[] unsigned = encodeUnsigned(playerId, targetServer, sourcePortal, issuedAtMs, nonce);
+        byte[] unsigned = encodeUnsigned(playerId, targetServer, arrivalPortal, issuedAtMs, nonce);
         ByteArrayOutputStream out = new ByteArrayOutputStream(unsigned.length + 64);
         out.writeBytes(unsigned);
         writeBytes(out, signature);

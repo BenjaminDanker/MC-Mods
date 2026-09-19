@@ -20,45 +20,45 @@ public abstract class PistonHandlerMixin {
 
     @Shadow
     @Final
-    private Level world;
+    private Level level;
 
     @Shadow
     @Final
-    private Direction motionDirection;
+    private Direction pushDirection;
 
     @Shadow
     @Final
-    private List<BlockPos> movedBlocks;
+    private List<BlockPos> toPush;
 
     @Shadow
     @Final
-    private List<BlockPos> brokenBlocks;
+    private List<BlockPos> toDestroy;
 
-    @Inject(method = "calculatePush", at = @At("RETURN"), cancellable = true)
+    @Inject(method = "resolve", at = @At("RETURN"), cancellable = true)
     private void atlantis$blockProtectedPush(CallbackInfoReturnable<Boolean> cir) {
         if (!cir.getReturnValueZ()) {
             return;
         }
 
-        if (!(world instanceof ServerLevel serverWorld)) {
+        if (!(level instanceof ServerLevel serverWorld)) {
             return;
         }
 
         // If any moved/broken block is protected, or if any moved block would land in protected interior, cancel.
-        for (BlockPos pos : movedBlocks) {
+        for (BlockPos pos : toPush) {
             if (ProtectionManager.INSTANCE.isAnyProtected(serverWorld, pos)) {
                 cir.setReturnValue(false);
                 return;
             }
 
-            BlockPos to = pos.relative(motionDirection);
+            BlockPos to = pos.relative(pushDirection);
             if (ProtectionManager.INSTANCE.isPlaceProtected(serverWorld, to)) {
                 cir.setReturnValue(false);
                 return;
             }
         }
 
-        for (BlockPos pos : brokenBlocks) {
+        for (BlockPos pos : toDestroy) {
             if (ProtectionManager.INSTANCE.isAnyProtected(serverWorld, pos)) {
                 cir.setReturnValue(false);
                 return;
