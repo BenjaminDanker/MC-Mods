@@ -23,6 +23,7 @@ public abstract class PhaseManagerMixin {
 
     @ModifyVariable(method = "setPhase", at = @At("HEAD"), argsOnly = true)
     private EnderDragonPhase<?> skyIslands$blockAggroPhasesUntilProvoked(EnderDragonPhase<?> type) {
+        if (!this.dragon.entityTags().contains(SKY_ISLANDS_MANAGED_TAG)) return type;
         EnderDragonPhase<?> original = type;
 
         // Never interfere with the death sequence.

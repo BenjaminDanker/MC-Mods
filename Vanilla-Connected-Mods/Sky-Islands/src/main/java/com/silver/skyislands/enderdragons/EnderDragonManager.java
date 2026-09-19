@@ -78,9 +78,8 @@ public final class EnderDragonManager {
     private static final Map<UUID, Long> loadedSpawnGraceUntilTick = new HashMap<>();
     private static final Map<UUID, Long> loadedPendingTakeoffKickTick = new HashMap<>();
 
-    private static final Map<UUID, BlockPos> fearedHeadPos = new HashMap<>();
+    private static final Map<UUID, List<BlockPos>> fearedHeadNearby = new HashMap<>();
     private static final Map<UUID, Vec3> fearedHeadAvoidTarget = new HashMap<>();
-    private static final Map<UUID, Long> fearedHeadLockUntilTick = new HashMap<>();
     private static final Map<UUID, Long> fearedHeadNextScanTick = new HashMap<>();
 
     private EnderDragonManager() {
@@ -111,7 +110,19 @@ public final class EnderDragonManager {
                     config.headFearEnabled);
         }
 
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents.CHUNK_LOAD.register((world, chunk, generated) -> {
+            if (headTracker != null) {
+                long before = headTracker.revision();
+                headTracker.onChunkLoaded(world, chunk);
+                if (before != headTracker.revision()) fearedHeadNextScanTick.clear();
+            }
+        });
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents.ENTITY_UNLOAD.register((entity, world) -> {
+            if (entity instanceof DragonProvokedAccess access) access.skyIslands$stopCombat();
+        });
         ServerTickEvents.END_SERVER_TICK.register(EnderDragonManager::tick);
+        ServerTickEvents.END_SERVER_TICK.register(DragonWakeService::tick);
+        ServerLifecycleEvents.SERVER_STOPPED.register(server -> DragonWakeService.clear());
 
         PlayerBlockBreakEvents.AFTER.register((world, player, pos, state, blockEntity) -> {
             if (world == null || world.isClientSide()) {
@@ -159,6 +170,31 @@ public final class EnderDragonManager {
             }
             headTracker.onPossiblePlaced(serverWorld, pos);
         }
+    }
+
+    public static void onDragonHeadChanged(ServerLevel world, BlockPos pos, BlockState old, boolean placed) {
+        if (headTracker == null) return;
+        if (placed) headTracker.onPossiblePlaced(world,pos); else headTracker.onPossibleBroken(world,pos,old);
+        fearedHeadNextScanTick.clear();
+    }
+
+    public static boolean isSheltered(ServerLevel world, Vec3 pos) {
+        return config != null && config.headFearEnabled && isInHeadExclusionZone(world,pos);
+    }
+
+    public static boolean applyHeadAvoidance(EnderDragon dragon) {
+        if (dragon instanceof DragonProvokedAccess access && access.skyIslands$isProvoked()) {
+            DragonIdTags.getId(dragon).ifPresent(id -> {
+                fearedHeadAvoidTarget.remove(id);
+                fearedHeadNearby.remove(id);
+                fearedHeadNextScanTick.remove(id);
+            });
+            return false;
+        }
+        if (config == null || !config.headFearEnabled || !(dragon.level() instanceof ServerLevel world)) return false;
+        var id = DragonIdTags.getId(dragon);
+        var state = id.isPresent() ? getVirtualState(id.get()) : null;
+        return state != null && updateHeadAvoidance(world,id.get(),dragon,state);
     }
 
     public static boolean isManaged(EnderDragon dragon) {
@@ -219,10 +255,9 @@ public final class EnderDragonManager {
             lastLoadedEntityPos.remove(id);
             loadedStuckTicks.remove(id);
             loadedSpawnGraceUntilTick.remove(id);
-            fearedHeadPos.remove(id);
             fearedHeadAvoidTarget.remove(id);
-            fearedHeadLockUntilTick.remove(id);
             fearedHeadNextScanTick.remove(id);
+            fearedHeadNearby.remove(id);
 
             inactiveChunkReleaseDone.remove(id);
             // Chunk tickets are also released on despawn/inactive; keep death cleanup minimal.
@@ -881,10 +916,9 @@ public final class EnderDragonManager {
                         loadedStuckTicks.remove(updated.id());
                         loadedSpawnGraceUntilTick.remove(updated.id());
 
-                        fearedHeadPos.remove(updated.id());
                         fearedHeadAvoidTarget.remove(updated.id());
-                        fearedHeadLockUntilTick.remove(updated.id());
                         fearedHeadNextScanTick.remove(updated.id());
+                        fearedHeadNearby.remove(updated.id());
 
                         LOGGER.info("[Sky-Islands] Despawned managed dragon id={} (no nearby players). virtualPos=({}, {}, {})",
                                 shortId(updated.id()),
@@ -903,7 +937,7 @@ public final class EnderDragonManager {
                 if (dragon instanceof DragonProvokedAccess access && !access.skyIslands$isProvoked()) {
                     boolean didHeadFear = false;
                     if (config.headFearEnabled) {
-                        didHeadFear = applyHeadFearOrbit(world, updated.id(), dragon, updated);
+                        didHeadFear = isHeadAvoidActive(updated.id());
                     }
 
                     if (didHeadFear) {
@@ -1561,312 +1595,36 @@ public final class EnderDragonManager {
         return new BlockPos(x, y, z);
     }
 
-    private static boolean applyHeadFearOrbit(ServerLevel world, UUID id, EnderDragon dragon, VirtualDragonStore.VirtualDragonState state) {
-        final boolean debug = LOGGER.isDebugEnabled();
-        BlockPos currentHead = fearedHeadPos.get(id);
-        Vec3 currentTarget = fearedHeadAvoidTarget.get(id);
-
-        if (currentHead != null && (headTracker == null || !headTracker.isStillHead(world, currentHead))) {
-            currentHead = null;
-            fearedHeadPos.remove(id);
-            fearedHeadAvoidTarget.remove(id);
-            currentTarget = null;
+    private static boolean updateHeadAvoidance(ServerLevel world, UUID id, EnderDragon dragon, VirtualDragonStore.VirtualDragonState state) {
+        double exclusion = config.headOrbitRadiusBlocks + config.headAvoidSpawnBufferBlocks + 12.0; // Dragon body + turn margin.
+        double ahead = Math.max(32, config.headScanAheadBlocks);
+        if (serverTicks >= fearedHeadNextScanTick.getOrDefault(id,0L)) {
+            // A continuous corridor covers the gap between the old near/ahead search circles.
+            var scan = scanDragonHeadsAround(world, dragon.blockPosition(), (int)Math.ceil(ahead + exclusion),
+                    world.getHeight(),96);
+            fearedHeadNearby.put(id, scan.heads);
+            fearedHeadNextScanTick.put(id, serverTicks + Math.min(10,config.headScanIntervalTicks));
         }
-
-        long nextScan = fearedHeadNextScanTick.getOrDefault(id, 0L);
-        boolean canRescan = serverTicks >= nextScan;
-
-        if (canRescan) {
-            BlockPos nearCenter = dragon.blockPosition();
-            BlockPos aheadCenter = nearCenter;
-            if (config.headScanAheadBlocks > 0) {
-                int sx = (int) Math.floor(dragon.getX() + state.headingX() * (double) config.headScanAheadBlocks);
-                int sz = (int) Math.floor(dragon.getZ() + state.headingZ() * (double) config.headScanAheadBlocks);
-                aheadCenter = new BlockPos(sx, dragon.getBlockY(), sz);
-            }
-
-            HeadScan near = scanDragonHeadsAround(world, nearCenter, config.headSearchRadiusBlocks, config.headSearchRadiusBlocks, 64);
-            HeadScan ahead = aheadCenter.equals(nearCenter)
-                    ? new HeadScan(null, List.of())
-                    : scanDragonHeadsAround(world, aheadCenter, config.headSearchRadiusBlocks, config.headSearchRadiusBlocks, 64);
-
-            List<BlockPos> merged = mergeHeadLists(near.heads, ahead.heads, 96);
-            fearedHeadNextScanTick.put(id, serverTicks + config.headScanIntervalTicks);
-
-            if (debug) {
-                LOGGER.debug("[Sky-Islands][dragons][manager] id={} headScan nearCenter={} aheadCenter={} nearHeads={} aheadHeads={} mergedHeads={}",
-                        shortId(id),
-                        nearCenter,
-                        aheadCenter,
-                        near.heads.size(),
-                        ahead.heads.size(),
-                        merged.size());
-            }
-
-            Vec3 dragonPos = new Vec3(dragon.getX(), dragon.getY(), dragon.getZ());
-            Vec3 heading = new Vec3(state.headingX(), 0.0, state.headingZ());
-            BlockPos threat = chooseThreatHead(dragonPos, heading, merged);
-
-            if (debug) {
-                LOGGER.debug("[Sky-Islands][dragons][manager] id={} headScan threat={} currentHead={}",
-                        shortId(id),
-                        threat,
-                        currentHead);
-            }
-
-            if (threat != null) {
-                boolean same = threat.equals(currentHead);
-                long lockUntil = fearedHeadLockUntilTick.getOrDefault(id, 0L);
-                if (currentHead == null || (serverTicks >= lockUntil && !same)) {
-                    Vec3 target = computeBypassTarget(world, threat, heading, merged);
-                    if (target != null) {
-                        fearedHeadPos.put(id, threat);
-                        fearedHeadAvoidTarget.put(id, target);
-                        fearedHeadLockUntilTick.put(id, serverTicks + config.headOrbitSwitchCooldownTicks);
-                        currentHead = threat;
-                        currentTarget = target;
-
-                        if (debug) {
-                            LOGGER.debug("[Sky-Islands][dragons][manager] id={} headAvoid set head={} target=({}, {}) lockUntil={}",
-                                    shortId(id),
-                                    threat,
-                                    round1(target.x), round1(target.z),
-                                    fearedHeadLockUntilTick.get(id));
-                        }
-                    }
-                }
-            }
+        List<BlockPos> known = fearedHeadNearby.getOrDefault(id,List.of());
+        List<Vec3> heads = new java.util.ArrayList<>(known.size());
+        for (BlockPos pos : known) if (headTracker.isStillHead(world,pos)) heads.add(Vec3.atCenterOf(pos));
+        Vec3 heading = new Vec3(state.headingX(),0,state.headingZ());
+        Vec3 direction=DragonAvoidance.steer(dragon.position(),heading,heads,exclusion,ahead,(id.hashCode()&1)==0?1:-1);
+        Vec3 normal=heading.lengthSqr()<1e-9?new Vec3(1,0,0):heading.normalize();
+        boolean inside = heads.stream().anyMatch(head -> DragonAvoidance.segmentDistanceSquared(dragon.position(),dragon.position(),head)<exclusion*exclusion);
+        if (!inside && direction.dot(normal)>.9999) {
+            fearedHeadAvoidTarget.remove(id); return false;
         }
-
-        if (currentHead == null) {
-            return false;
-        }
-
-        // If we have an active bypass target, steer to it until we've passed the head.
-        if (currentTarget == null) {
-            // Should be rare; clear and fall back to normal roaming.
-            fearedHeadPos.remove(id);
-            return false;
-        }
-
-        Vec3 heading = new Vec3(state.headingX(), 0.0, state.headingZ());
-        Vec3 dragonPos = new Vec3(dragon.getX(), dragon.getY(), dragon.getZ());
-        double exclusion = (double) config.headOrbitRadiusBlocks + (double) config.headAvoidSpawnBufferBlocks;
-
-        if (hasPassedHead(dragonPos, heading, currentHead, exclusion)) {
-            if (debug) {
-                LOGGER.debug("[Sky-Islands][dragons][manager] id={} headAvoid done passedHead={} exclusion={}",
-                        shortId(id), currentHead, round1(exclusion));
-            }
-            fearedHeadPos.remove(id);
-            fearedHeadAvoidTarget.remove(id);
-            return false;
-        }
-
-        double oy = Math.max(state.pos().y, (double) currentHead.getY() + (double) config.headOrbitYAboveHeadBlocks);
-        BlockPos origin = BlockPos.containing(currentTarget.x, oy, currentTarget.z);
-        dragon.setFightOrigin(origin);
-        nextHeadingNudgeTick.put(id, serverTicks + 10);
-
-        if (debug && (serverTicks % 20L) == 0L) {
-            LOGGER.debug("[Sky-Islands][dragons][manager] id={} headAvoid origin=({}, {}, {}) head={} target=({}, {})",
-                    shortId(id),
-                    origin.getX(), origin.getY(), origin.getZ(),
-                    currentHead,
-                    round1(currentTarget.x), round1(currentTarget.z));
-        }
+        Vec3 target=dragon.position().add(direction.scale(ahead));
+        fearedHeadAvoidTarget.put(id,target);
+        dragon.setFightOrigin(BlockPos.containing(target));
+        nextHeadingNudgeTick.put(id,serverTicks+10);
         return true;
-    }
-
-    private static boolean hasPassedHead(Vec3 dragonPos, Vec3 heading, BlockPos head, double exclusionRadius) {
-        final boolean trace = LOGGER.isTraceEnabled();
-        Vec3 h = new Vec3(heading.x, 0.0, heading.z);
-        double hLen = Math.sqrt(h.x * h.x + h.z * h.z);
-        if (hLen < 1.0e-6) {
-            return false;
-        }
-        h = new Vec3(h.x / hLen, 0.0, h.z / hLen);
-
-        double cx = head.getX() + 0.5;
-        double cz = head.getZ() + 0.5;
-        double dx = dragonPos.x - cx;
-        double dz = dragonPos.z - cz;
-        double distSq = dx * dx + dz * dz;
-        if (distSq < (exclusionRadius * exclusionRadius)) {
-            return false;
-        }
-
-        double along = dx * h.x + dz * h.z;
-        // Consider it "passed" once it's well ahead of the head along the roaming heading.
-        boolean passed = along > (exclusionRadius * 0.75);
-        if (trace && passed) {
-            LOGGER.trace("[Sky-Islands][dragons][manager] headAvoid passed head={} along={} threshold={} distSq={}",
-                    head,
-                    round1(along),
-                    round1(exclusionRadius * 0.75),
-                    round1(distSq));
-        }
-        return passed;
-    }
-
-    private static BlockPos chooseThreatHead(Vec3 dragonPos, Vec3 heading, List<BlockPos> heads) {
-        final boolean debug = LOGGER.isDebugEnabled();
-        if (heads.isEmpty()) {
-            return null;
-        }
-
-        Vec3 h = new Vec3(heading.x, 0.0, heading.z);
-        double hLen = Math.sqrt(h.x * h.x + h.z * h.z);
-        if (hLen < 1.0e-6) {
-            return chooseNearestHead(dragonPos, heads);
-        }
-        h = new Vec3(h.x / hLen, 0.0, h.z / hLen);
-
-        double exclusion = (double) config.headOrbitRadiusBlocks + (double) config.headAvoidSpawnBufferBlocks;
-        double exclusionSq = exclusion * exclusion;
-
-        BlockPos best = null;
-        double bestScore = Double.POSITIVE_INFINITY;
-
-        for (BlockPos p : heads) {
-            double cx = p.getX() + 0.5;
-            double cz = p.getZ() + 0.5;
-            double rx = cx - dragonPos.x;
-            double rz = cz - dragonPos.z;
-
-            double along = rx * h.x + rz * h.z;
-            double lateralX = rx - along * h.x;
-            double lateralZ = rz - along * h.z;
-            double lateralSq = lateralX * lateralX + lateralZ * lateralZ;
-
-            // Threat if it's close to our forward path corridor, or we're already inside its exclusion.
-            double distSq = rx * rx + rz * rz;
-            boolean inside = distSq < exclusionSq;
-            boolean nearPath = lateralSq < (exclusionSq * 1.05);
-            if (!inside && (!nearPath || along < -exclusion)) {
-                continue;
-            }
-
-            // Score: prioritize heads in front of us, closest along the path.
-            double score = (along >= 0.0 ? along : (exclusion + Math.abs(along))) + Math.sqrt(lateralSq) * 0.25;
-            if (score < bestScore) {
-                bestScore = score;
-                best = p;
-            }
-        }
-
-        if (debug && best != null) {
-            LOGGER.debug("[Sky-Islands][dragons][manager] headAvoid chooseThreat best={} score={} totalHeads={}",
-                    best,
-                    round1(bestScore),
-                    heads.size());
-        }
-        return best;
-    }
-
-    private static Vec3 computeBypassTarget(ServerLevel world, BlockPos head, Vec3 heading, List<BlockPos> nearbyHeads) {
-        final boolean debug = LOGGER.isDebugEnabled();
-        Vec3 h = new Vec3(heading.x, 0.0, heading.z);
-        double hLen = Math.sqrt(h.x * h.x + h.z * h.z);
-        if (hLen < 1.0e-6) {
-            h = new Vec3(1, 0, 0);
-            hLen = 1;
-        }
-        h = new Vec3(h.x / hLen, 0.0, h.z / hLen);
-
-        double cx = head.getX() + 0.5;
-        double cz = head.getZ() + 0.5;
-
-        double exclusion = (double) config.headOrbitRadiusBlocks + (double) config.headAvoidSpawnBufferBlocks;
-        double avoidR = exclusion;
-
-        Vec3 left = new Vec3(-h.z, 0.0, h.x);
-        Vec3 right = new Vec3(h.z, 0.0, -h.x);
-
-        // Try both sides and pick the first side that can find a point not inside another head zone.
-        Vec3 best = null;
-        double bestPenalty = Double.POSITIVE_INFINITY;
-        Vec3[] sides = new Vec3[]{left, right};
-
-        for (Vec3 side : sides) {
-            double baseAngle = Math.atan2(side.z, side.x);
-            for (int attempt = 0; attempt < 8; attempt++) {
-                double tryAngle = baseAngle + (attempt * 0.35);
-                double ox = cx + Math.cos(tryAngle) * exclusion;
-                double oz = cz + Math.sin(tryAngle) * exclusion;
-                // Add a forward lead so it "wraps" around and continues past, instead of orbiting.
-                ox += h.x * (exclusion * 0.75);
-                oz += h.z * (exclusion * 0.75);
-
-                boolean blocked = isPointInAnyOtherHeadZone(nearbyHeads, head, ox, oz, avoidR);
-                if (!blocked) {
-                    if (debug) {
-                        LOGGER.debug("[Sky-Islands][dragons][manager] headAvoid bypass ok head={} side=({}, {}) attempt={} target=({}, {})",
-                                head,
-                                round2(side.x), round2(side.z),
-                                attempt,
-                                round1(ox), round1(oz));
-                    }
-                    return new Vec3(ox, 0.0, oz);
-                }
-
-                // Track the least-bad option as a fallback.
-                double penalty = nearestOtherHeadDistanceSq(nearbyHeads, head, ox, oz);
-                if (penalty < bestPenalty) {
-                    bestPenalty = penalty;
-                    best = new Vec3(ox, 0.0, oz);
-                }
-            }
-        }
-
-        if (debug) {
-            LOGGER.debug("[Sky-Islands][dragons][manager] headAvoid bypass fallback head={} target={} bestPenaltySq={} nearbyHeads={}",
-                    head,
-                    best,
-                    (bestPenalty == Double.POSITIVE_INFINITY ? "<inf>" : String.valueOf(round1(bestPenalty))),
-                    nearbyHeads.size());
-        }
-        return best;
-    }
-
-    private static double nearestOtherHeadDistanceSq(List<BlockPos> heads, BlockPos chosenHead, double x, double z) {
-        double best = Double.POSITIVE_INFINITY;
-        for (BlockPos p : heads) {
-            if (p.equals(chosenHead)) {
-                continue;
-            }
-            double cx = p.getX() + 0.5;
-            double cz = p.getZ() + 0.5;
-            double dx = x - cx;
-            double dz = z - cz;
-            double d2 = dx * dx + dz * dz;
-            if (d2 < best) {
-                best = d2;
-            }
-        }
-        return best;
-    }
-
-    private static boolean isPointInAnyOtherHeadZone(List<BlockPos> heads, BlockPos chosenHead, double x, double z, double avoidRadius) {
-        double avoidSq = avoidRadius * avoidRadius;
-        for (BlockPos p : heads) {
-            if (p.equals(chosenHead)) {
-                continue;
-            }
-            double cx = p.getX() + 0.5;
-            double cz = p.getZ() + 0.5;
-            double dx = x - cx;
-            double dz = z - cz;
-            if ((dx * dx + dz * dz) < avoidSq) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private static boolean isInHeadExclusionZone(ServerLevel world, Vec3 pos) {
         final boolean debug = LOGGER.isDebugEnabled();
-        HeadScan scan = scanDragonHeadsAround(world, BlockPos.containing(pos), config.headSearchRadiusBlocks, config.headSearchRadiusBlocks, 64);
+        HeadScan scan = scanDragonHeadsAround(world, BlockPos.containing(pos), Math.max(config.headSearchRadiusBlocks, config.headOrbitRadiusBlocks + config.headAvoidSpawnBufferBlocks), world.getHeight(), 64);
         if (scan.heads.isEmpty()) {
             return false;
         }
@@ -1958,68 +1716,6 @@ public final class EnderDragonManager {
     }
 
     private record HeadScan(BlockPos chosen, List<BlockPos> heads) {
-    }
-
-    private static List<BlockPos> mergeHeadLists(List<BlockPos> a, List<BlockPos> b, int limit) {
-        final boolean trace = LOGGER.isTraceEnabled();
-        if (a.isEmpty()) {
-            if (trace && b.size() > limit) {
-                LOGGER.trace("[Sky-Islands][dragons][manager] headMerge a=0 b={} limit={} (trunc)", b.size(), limit);
-            }
-            return b.size() <= limit ? b : b.subList(0, limit);
-        }
-        if (b.isEmpty()) {
-            if (trace && a.size() > limit) {
-                LOGGER.trace("[Sky-Islands][dragons][manager] headMerge a={} b=0 limit={} (trunc)", a.size(), limit);
-            }
-            return a.size() <= limit ? a : a.subList(0, limit);
-        }
-
-        java.util.LinkedHashSet<BlockPos> set = new java.util.LinkedHashSet<>(Math.min(limit, a.size() + b.size()));
-        for (BlockPos p : a) {
-            if (set.size() >= limit) break;
-            set.add(p);
-        }
-        for (BlockPos p : b) {
-            if (set.size() >= limit) break;
-            set.add(p);
-        }
-
-        if (trace) {
-            int merged = set.size();
-            if (merged >= limit || a.size() + b.size() != merged) {
-                LOGGER.trace("[Sky-Islands][dragons][manager] headMerge a={} b={} merged={} limit={}", a.size(), b.size(), merged, limit);
-            }
-        }
-
-        return java.util.List.copyOf(set);
-    }
-
-    private static BlockPos chooseNearestHead(Vec3 dragonPos, List<BlockPos> heads) {
-        final boolean trace = LOGGER.isTraceEnabled();
-        BlockPos best = null;
-        double bestSq = Double.POSITIVE_INFINITY;
-        for (BlockPos p : heads) {
-            double cx = p.getX() + 0.5;
-            double cy = p.getY() + 0.5;
-            double cz = p.getZ() + 0.5;
-            double dx = dragonPos.x - cx;
-            double dy = dragonPos.y - cy;
-            double dz = dragonPos.z - cz;
-            double d2 = dx * dx + dy * dy + dz * dz;
-            if (d2 < bestSq) {
-                bestSq = d2;
-                best = p;
-            }
-        }
-
-        if (trace && best != null) {
-            LOGGER.trace("[Sky-Islands][dragons][manager] headAvoid chooseNearest best={} distSq={} totalHeads={}",
-                    best,
-                    round1(bestSq),
-                    heads.size());
-        }
-        return best;
     }
 
     private static HeadScan scanDragonHeadsAround(ServerLevel world, BlockPos center, int radius, int vertical, int maxFound) {

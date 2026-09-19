@@ -32,7 +32,7 @@ import java.util.Map;
 /**
  * Tracks player-placed dragon heads (and wall heads) by position.
  *
- * <p>Dragon heads are not block entities in modern versions, so we track placement/break events
+ * <p>Dragon head block entities are discovered on chunk load; we also track block changes
  * and persist a set of known head coordinates to JSON.
  */
 final class DragonHeadTracker {
@@ -51,6 +51,8 @@ final class DragonHeadTracker {
     private final Map<String, Map<Long, LongOpenHashSet>> chunkIndexByDimension = new HashMap<>();
 
     private boolean dirty;
+    private long revision;
+    long revision() { return revision; }
     private long nextFlushTick;
     private long nextValidateTick;
 
@@ -72,6 +74,20 @@ final class DragonHeadTracker {
         if (dirty && nowTick >= nextFlushTick) {
             nextFlushTick = nowTick + FLUSH_INTERVAL_TICKS;
             flush();
+        }
+    }
+
+    void onChunkLoaded(ServerLevel world, net.minecraft.world.level.chunk.LevelChunk chunk) {
+        var known = chunkIndexByDimension.get(dimId(world));
+        var positions = known == null ? null : known.get(chunk.getPos().pack());
+        if (positions != null) {
+            for (long packed : positions.toLongArray()) {
+                BlockPos pos = BlockPos.of(packed);
+                if (!isDragonHead(chunk.getBlockState(pos))) remove(world, pos);
+            }
+        }
+        for (BlockPos pos : chunk.getBlockEntitiesPos()) {
+            if (isDragonHead(chunk.getBlockState(pos))) add(world, pos);
         }
     }
 
@@ -178,14 +194,18 @@ final class DragonHeadTracker {
                         continue;
                     }
 
+                    if (world.isLoaded(p) && !isDragonHead(world.getBlockState(p))) continue;
                     found.add(p);
-                    if (found.size() >= maxFound) {
-                        return found;
+                    if (found.size() > maxFound * 2) {
+                        found.sort(java.util.Comparator.comparingDouble(pos -> pos.distSqr(center)));
+                        found.subList(maxFound, found.size()).clear();
                     }
                 }
             }
         }
 
+        found.sort(java.util.Comparator.comparingDouble(pos -> pos.distSqr(center)));
+        if (found.size() > maxFound) found.subList(maxFound, found.size()).clear();
         return found;
     }
 
@@ -238,6 +258,7 @@ final class DragonHeadTracker {
         }
 
         indexAdd(dim, packed);
+        revision++;
         dirty = true;
 
         if (LOGGER.isDebugEnabled()) {
@@ -258,6 +279,7 @@ final class DragonHeadTracker {
         }
 
         indexRemove(dim, packed);
+        revision++;
         dirty = true;
 
         if (LOGGER.isDebugEnabled()) {

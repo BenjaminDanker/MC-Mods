@@ -7,7 +7,9 @@
     "EnderDragonEntityMixin",
     "PhaseManagerMixin",
     "ServerWorldDragonSpawnDebugMixin",
-    "ServerChunkLoadingManagerMixin"
+    "ServerChunkLoadingManagerMixin",
+    "DragonHeadBlockChangeMixin",
+    "ServerPlayerDragonGustMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -35,6 +35,8 @@ loom {
 }
 
 dependencies {
+    testImplementation "org.junit.jupiter:junit-jupiter:5.11.4"
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
@@ -65,3 +67,31 @@ publishing {
 		}
 	}
 }
+
+
+test {
+    useJUnitPlatform()
+    workingDir = layout.buildDirectory.dir('test-run').get().asFile
+    doFirst { workingDir.mkdirs() }
+}
+
+// Load the actual transformer without launching a world or accepting an EULA.
+def smokeMod = tasks.register('dragonSmokeMod', Jar) {
+    dependsOn testClasses
+    archiveFileName = 'skyislands-dragon-smoke.jar'
+    destinationDirectory = layout.buildDirectory.dir('smoke-mod')
+    from(sourceSets.test.output) { include 'com/silver/skyislands/enderdragons/DragonMixinSmoke.class' }
+    from('src/test/resources/skyislands-smoke.fabric.mod.json') { rename { 'fabric.mod.json' } }
+}
+loom {
+    runs {
+        dragonSmokeTest {
+            server()
+            name 'Sky-Islands Dragon Mixin Smoke Test'
+            runDir 'build/dragon-smoke'
+            programArg '--initSettings'
+            vmArg "-Dfabric.addMods=${layout.buildDirectory.file('smoke-mod/skyislands-dragon-smoke.jar').get().asFile.absolutePath}"
+        }
+    }
+}
+tasks.named('runDragonSmokeTest') { dependsOn smokeMod }

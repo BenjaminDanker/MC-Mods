@@ -54,6 +54,9 @@ public final class EnderDragonsConfig {
     public final int headOrbitYAboveHeadBlocks;
     public final int headAvoidSpawnBufferBlocks;
     public final int headOrbitSwitchCooldownTicks;
+    public final double sphericalGustImpulseStrength;
+    public final double sphericalGustMinimumOutwardSpeed;
+    public final double sphericalGustMaximumRadialSpeed;
 
     private EnderDragonsConfig(int minimumDragons,
                               int roamIntervalTicks,
@@ -84,7 +87,10 @@ public final class EnderDragonsConfig {
                               double headOrbitAngularSpeedRadiansPerTick,
                               int headOrbitYAboveHeadBlocks,
                               int headAvoidSpawnBufferBlocks,
-                              int headOrbitSwitchCooldownTicks) {
+                              int headOrbitSwitchCooldownTicks,
+                              double sphericalGustImpulseStrength,
+                              double sphericalGustMinimumOutwardSpeed,
+                              double sphericalGustMaximumRadialSpeed) {
         this.minimumDragons = Math.max(5, minimumDragons);
         this.roamIntervalTicks = Math.max(20, roamIntervalTicks);
         this.roamMinDistanceBlocks = Math.max(64, roamMinDistanceBlocks);
@@ -120,6 +126,14 @@ public final class EnderDragonsConfig {
         this.headOrbitYAboveHeadBlocks = Math.max(0, headOrbitYAboveHeadBlocks);
         this.headAvoidSpawnBufferBlocks = Math.max(0, headAvoidSpawnBufferBlocks);
         this.headOrbitSwitchCooldownTicks = Math.max(300, headOrbitSwitchCooldownTicks);
+
+        this.sphericalGustImpulseStrength = clampFinite(sphericalGustImpulseStrength, 0.0, 4.0,
+                DragonSphericalGust.DEFAULT_IMPULSE_STRENGTH);
+        this.sphericalGustMaximumRadialSpeed = clampFinite(sphericalGustMaximumRadialSpeed, 0.1, 4.0,
+                DragonSphericalGust.DEFAULT_MAXIMUM_RADIAL_SPEED);
+        this.sphericalGustMinimumOutwardSpeed = Math.min(this.sphericalGustMaximumRadialSpeed,
+                clampFinite(sphericalGustMinimumOutwardSpeed, 0.0, 4.0,
+                        DragonSphericalGust.DEFAULT_MINIMUM_OUTWARD_SPEED));
     }
 
     public static EnderDragonsConfig loadOrCreate() {
@@ -174,6 +188,12 @@ public final class EnderDragonsConfig {
             int headOrbitYAboveHeadBlocks = getInt(root, "headOrbitYAboveHeadBlocks", 16);
             int headAvoidSpawnBufferBlocks = getInt(root, "headAvoidSpawnBufferBlocks", 8);
             int headOrbitSwitchCooldownTicks = getInt(root, "headOrbitSwitchCooldownTicks", 20 * 10);
+            double sphericalGustImpulseStrength = getDouble(root, "sphericalGustImpulseStrength",
+                    DragonSphericalGust.DEFAULT_IMPULSE_STRENGTH);
+            double sphericalGustMinimumOutwardSpeed = getDouble(root, "sphericalGustMinimumOutwardSpeed",
+                    DragonSphericalGust.DEFAULT_MINIMUM_OUTWARD_SPEED);
+            double sphericalGustMaximumRadialSpeed = getDouble(root, "sphericalGustMaximumRadialSpeed",
+                    DragonSphericalGust.DEFAULT_MAXIMUM_RADIAL_SPEED);
 
             EnderDragonsConfig parsed = new EnderDragonsConfig(
                     minimumDragons,
@@ -205,7 +225,10 @@ public final class EnderDragonsConfig {
                         headOrbitAngularSpeedRadiansPerTick,
                         headOrbitYAboveHeadBlocks,
                         headAvoidSpawnBufferBlocks,
-                        headOrbitSwitchCooldownTicks
+                        headOrbitSwitchCooldownTicks,
+                        sphericalGustImpulseStrength,
+                        sphericalGustMinimumOutwardSpeed,
+                        sphericalGustMaximumRadialSpeed
             );
 
             // Rewrite with normalized values if file had invalid entries.
@@ -256,7 +279,10 @@ public final class EnderDragonsConfig {
                 0.06,
                 32,
                 16,
-                20 * 10
+                20 * 10,
+                DragonSphericalGust.DEFAULT_IMPULSE_STRENGTH,
+                DragonSphericalGust.DEFAULT_MINIMUM_OUTWARD_SPEED,
+                DragonSphericalGust.DEFAULT_MAXIMUM_RADIAL_SPEED
         );
     }
 
@@ -332,6 +358,9 @@ public final class EnderDragonsConfig {
             root.addProperty("headOrbitYAboveHeadBlocks", config.headOrbitYAboveHeadBlocks);
             root.addProperty("headAvoidSpawnBufferBlocks", config.headAvoidSpawnBufferBlocks);
             root.addProperty("headOrbitSwitchCooldownTicks", config.headOrbitSwitchCooldownTicks);
+            root.addProperty("sphericalGustImpulseStrength", config.sphericalGustImpulseStrength);
+            root.addProperty("sphericalGustMinimumOutwardSpeed", config.sphericalGustMinimumOutwardSpeed);
+            root.addProperty("sphericalGustMaximumRadialSpeed", config.sphericalGustMaximumRadialSpeed);
 
             Files.writeString(path, GSON.toJson(root), StandardCharsets.UTF_8);
             if (LOGGER.isDebugEnabled()) {
@@ -344,5 +373,10 @@ public final class EnderDragonsConfig {
 
     private static int clamp(int v, int min, int max) {
         return Math.max(min, Math.min(max, v));
+    }
+
+    private static double clampFinite(double value, double min, double max, double fallback) {
+        if (!Double.isFinite(value)) return fallback;
+        return Math.max(min, Math.min(max, value));
     }
 }
