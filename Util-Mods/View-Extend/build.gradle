@@ -28,6 +28,14 @@ dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+	testImplementation "org.junit.jupiter:junit-jupiter:5.11.4"
+	testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+}
+
+test {
+	useJUnitPlatform()
+    workingDir = layout.buildDirectory.dir('test-run').get().asFile
+    doFirst { workingDir.mkdirs() }
 }
 
 processResources {
@@ -55,4 +63,33 @@ publishing {
 			from components.java
 		}
 	}
+}
+
+// Exercise the actual Fabric transformer without accepting an EULA or creating a world.
+def smokeMod = tasks.register('mixinSmokeMod', Jar) {
+    dependsOn testClasses
+    archiveFileName = 'viewextend-mixin-smoke.jar'
+    destinationDirectory = layout.buildDirectory.dir('smoke-mod')
+    from(sourceSets.test.output) {
+        include 'com/silver/viewextend/ViewExtendMixinSmoke.class'
+    }
+    from('src/test/resources/viewextend-smoke.fabric.mod.json') {
+        rename { 'fabric.mod.json' }
+    }
+}
+
+loom {
+    runs {
+        mixinSmokeTest {
+            server()
+            name 'View Extend Mixin Smoke Test'
+            runDir 'build/mixin-smoke'
+            programArg '--initSettings'
+            vmArg "-Dfabric.addMods=${layout.buildDirectory.file('smoke-mod/viewextend-mixin-smoke.jar').get().asFile.absolutePath}"
+        }
+    }
+}
+
+tasks.named('runMixinSmokeTest') {
+    dependsOn smokeMod
 }

@@ -1,1170 +1,948 @@
 package com.silver.viewextend;
 
-import com.silver.viewextend.mixin.ChunkDataS2CPacketAccessor;
-import com.silver.viewextend.mixin.LightUpdateS2CPacketAccessor;
-import com.silver.viewextend.mixin.ServerChunkLoadingManagerAccessor;
-import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
-import it.unimi.dsi.fastutil.longs.Long2ObjectLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
-import java.lang.ref.SoftReference;
+import com.silver.viewextend.VisualChunkPreparer.*;
+import com.silver.viewextend.PlayerViewState.ScheduledChunk;
+import static com.silver.viewextend.ViewExtendGeometry.*;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.BitSet;
-import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.atomic.AtomicLong;
-import io.netty.buffer.Unpooled;
+import java.util.concurrent.atomic.LongAdder;
 import net.fabricmc.fabric.api.networking.v1.context.PacketContext;
 import net.fabricmc.fabric.api.networking.v1.context.PacketContextProvider;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.ListTag;
-import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.protocol.game.ClientboundForgetLevelChunkPacket;
 import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
 import net.minecraft.network.protocol.game.ClientboundSetChunkCacheRadiusPacket;
-import net.minecraft.network.protocol.game.ClientboundLightUpdatePacketData;
-import net.minecraft.network.protocol.game.ClientboundLightUpdatePacket;
-import net.minecraft.network.protocol.game.ClientboundForgetLevelChunkPacket;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.chunk.PalettedContainerFactory;
-import net.minecraft.world.level.chunk.ProtoChunk;
-import net.minecraft.world.level.chunk.DataLayer;
-import net.minecraft.world.level.chunk.storage.SerializableChunkData;
+import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.lighting.LevelLightEngine;
 
+/** Streams read-only, unsimulated chunk snapshots outside the vanilla view distance. */
 public final class ViewExtendService {
-    private static final BitSet EMPTY_BIT_SET = new BitSet();
-    private static final Map<Integer, byte[]> WATER_SKYLIGHT_FALLBACK_CACHE = new ConcurrentHashMap<>();
-    private static final Map<Integer, int[]> RING_OFFSET_CACHE = new ConcurrentHashMap<>();
-    private static final long GLOBAL_TEMPLATE_CACHE_MAX_BYTES = 96L * 1024L * 1024L;
-    private static final int PRIORITY_WEIGHT = 5;
-    private static final int NORMAL_WEIGHT = 1;
-    private static final int LEGACY_BLOCK_REMAP_MAX_DATA_VERSION = 1518;
-
-    private static final Map<String, String> LEGACY_BLOCK_ID_REMAP = Map.ofEntries(
-            Map.entry("minecraft:grass", "minecraft:grass_block"),
-            Map.entry("minecraft:grass_path", "minecraft:dirt_path"),
-            Map.entry("minecraft:chain", "minecraft:iron_chain"),
-            Map.entry("minecraft:lit_pumpkin", "minecraft:jack_o_lantern"),
-            Map.entry("minecraft:portal", "minecraft:nether_portal"),
-            Map.entry("minecraft:lit_furnace", "minecraft:furnace"),
-            Map.entry("minecraft:stone_slab", "minecraft:smooth_stone_slab"),
-            Map.entry("minecraft:stone_slab2", "minecraft:red_sandstone_slab"),
-            Map.entry("minecraft:wooden_slab", "minecraft:oak_slab"),
-            Map.entry("minecraft:wooden_door", "minecraft:oak_door"),
-            Map.entry("minecraft:wooden_pressure_plate", "minecraft:oak_pressure_plate"));
-
     private final ViewExtendConfig config;
-    private final byte[] fallbackSkyLightNibble;
-    private final byte[] fallbackBlockLightNibble;
-    private final byte[] oceanFallbackSkyLightNibble;
-    private final Long2ObjectOpenHashMap<PlayerState> statesByPlayer = new Long2ObjectOpenHashMap<>();
-    private final ConcurrentLinkedQueue<PreparedChunkTask> preparedChunkQueue = new ConcurrentLinkedQueue<>();
-    private final ConcurrentLinkedQueue<NbtReadRequest> nbtReadQueue = new ConcurrentLinkedQueue<>();
-    private final ConcurrentHashMap<GlobalChunkKey, SoftReference<PacketTemplate>> globalPacketTemplateCache = new ConcurrentHashMap<>();
-    private final ConcurrentLinkedQueue<GlobalChunkKey> globalPacketTemplateOrder = new ConcurrentLinkedQueue<>();
-    private final ConcurrentHashMap<GlobalChunkKey, Integer> globalPacketTemplateEstimatedBytes = new ConcurrentHashMap<>();
-    private final AtomicLong globalPacketTemplateTotalEstimatedBytes = new AtomicLong();
-    private final ExecutorService preprocessExecutor;
+    private final VisualChunkLoader loader;
+    private final PlayerViewPlanner planner;
+
+    // Server-thread owned, except completedLoadQueue and the LongAdders.
+    private final Map<PlayerWorldKey, PlayerViewState> statesByPlayer = new HashMap<>();
+    private final ArrayDeque<GlobalChunkKey> nbtReadQueue = new ArrayDeque<>();
+    private final Map<GlobalChunkKey, SharedLoad> loadsByKey = new HashMap<>();
+    private final ConcurrentLinkedQueue<PreparedLoadResult> completedLoadQueue = new ConcurrentLinkedQueue<>();
+    private final ArrayDeque<ReadyDelivery> readyDeliveries = new ArrayDeque<>();
+    private final ReuseAwareChunkCache<GlobalChunkKey, PreparedVisualChunk> packetCache;
+    private final ChunkRetryCache<ChunkSourceKey> retryCache = new ChunkRetryCache<>(65536);
+    private final java.util.EnumMap<VisualChunkFailure, Long> failureCounts = new java.util.EnumMap<>(VisualChunkFailure.class);
+    private final java.util.EnumMap<VisualChunkFailure, Integer> nextFailureLog = new java.util.EnumMap<>(VisualChunkFailure.class);
+    private long totalCooldownHits;
+    private final LongAdder completedTasksQueuedWindow = new LongAdder();
+
+    private boolean sendingVisualPacket;
+    private volatile boolean shuttingDown;
     private int ticks;
     private long metricsWindowStartNanos = System.nanoTime();
-    private long totalCpuNanos;
+
+    // Server-thread metrics. Worker results carry their own stats back to this thread.
+    private long totalMainCpuNanos;
+    private long totalWorkerCpuNanos;
     private long totalChunkPacketsSent;
     private long totalUnloadPacketsSent;
     private long totalDiskNbtReads;
     private long totalDiskNbtReadMisses;
     private long totalNetworkBytesEstimate;
     private long totalChunkLoadDistancePackets;
-    private long lifetimeChunkPacketsSent;
-    private long lifetimeUnloadPacketsSent;
-    private long lifetimeDiskNbtReads;
-    private long lifetimeDiskNbtReadMisses;
-    private long lifetimeNetworkBytesEstimate;
-    private long lifetimeChunkLoadDistancePackets;
     private long totalLegacyBlockIdRemaps;
-    private long lifetimeLegacyBlockIdRemaps;
-    private long totalSuppressedVanillaUnloads;
-    private long lifetimeSuppressedVanillaUnloads;
-    private long totalForcedUpgradeUnloads;
-    private long lifetimeForcedUpgradeUnloads;
     private long totalUnsortedSectionInputs;
-    private long lifetimeUnsortedSectionInputs;
-    private long totalPreparedTasksQueued;
-    private long totalPreparedTasksProcessed;
-    private long totalPreparedTasksDropped;
-    private long totalPayloadCacheHits;
-    private long totalPayloadCacheMisses;
-    private long lifetimePayloadCacheHits;
-    private long lifetimePayloadCacheMisses;
-    private long totalDeterministicBlockLightSections;
-    private long totalDeterministicSkyLightSections;
-    private long lifetimeDeterministicBlockLightSections;
-    private long lifetimeDeterministicSkyLightSections;
-    private long totalSkyLightNbtSections;
-    private long lifetimeSkyLightNbtSections;
-    private long totalSkyLightFallbackSections;
-    private long lifetimeSkyLightFallbackSections;
-    private long totalSkyLightWaterFallbackSections;
-    private long lifetimeSkyLightWaterFallbackSections;
-    private long totalBlockLightNbtSections;
-    private long lifetimeBlockLightNbtSections;
-    private long totalBlockLightFallbackSections;
-    private long lifetimeBlockLightFallbackSections;
-    private long totalQueueBackpressureDeferrals;
-    private long lifetimeQueueBackpressureDeferrals;
     private long totalNbtRequestsQueued;
-    private long totalNbtRequestsProcessed;
-    private long lifetimeNbtRequestsQueued;
-    private long lifetimeNbtRequestsProcessed;
-    private long totalGlobalTemplateHits;
-    private long totalGlobalTemplateMisses;
-    private long lifetimeGlobalTemplateHits;
-    private long lifetimeGlobalTemplateMisses;
-    private long cpuEmaNanos;
-    private int effectiveChunkQueueBudget;
-    private int effectivePreparedProcessBudget;
-    private long totalLod0Sends;
-    private long totalLod1Sends;
-    private long lifetimeLod0Sends;
-    private long lifetimeLod1Sends;
+    private long totalNbtRequestsStarted;
+    private long totalCoalescedRequests;
+    private long totalPreparedResultsProcessed;
+    private long totalPreparedResultsDropped;
+    private long totalPipelineDeferrals;
+    private long totalCacheHits;
+    private long totalCacheMisses;
+    private long totalCandidateInspections;
+    private long totalSuppressedVanillaUnloads;
+    private long totalSkyLightNbtSections;
+    private long totalSkyLightFallbackSections;
+    private long totalSkyLightWaterFallbackSections;
+    private long totalBlockLightNbtSections;
+    private long totalBlockLightFallbackSections;
 
     public ViewExtendService(ViewExtendConfig config) {
         this.config = config;
-        this.fallbackSkyLightNibble = createLightLevelNibble(config.fallbackSkyLightLevel());
-        this.fallbackBlockLightNibble = createLightLevelNibble(config.fallbackBlockLightLevel());
-        this.oceanFallbackSkyLightNibble = createLightLevelNibble(config.oceanFallbackSkyLightLevel());
-        this.effectiveChunkQueueBudget = config.maxChunksPerPlayerPerTick();
-        this.effectivePreparedProcessBudget = config.maxMainThreadPreparedChunksPerTick();
-        int workerThreads = Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors() / 2));
-        ThreadFactory threadFactory = runnable -> {
-            Thread thread = new Thread(runnable);
-            thread.setName("viewextend-preprocess");
-            thread.setDaemon(true);
-            return thread;
-        };
-        this.preprocessExecutor = Executors.newFixedThreadPool(workerThreads, threadFactory);
+        this.adaptive = new AdaptiveWorkBudget(config.maxNbtReadsPerTick());
+        this.loader = new VisualChunkLoader(config);
+        this.planner = new PlayerViewPlanner(config);
+        this.packetCache = new ReuseAwareChunkCache<>(config.globalPacketTemplateCacheMaxEntries(),
+                config.globalPacketTemplateCacheMaxBytes(), config.globalPacketTemplateCacheTtlTicks(),
+                PreparedVisualChunk::estimatedBytes);
     }
+
+    private final java.util.Map<String, it.unimi.dsi.fastutil.ints.IntOpenHashSet> loadedDragons = new java.util.HashMap<>();
+
+    public void onEntityLoaded(net.minecraft.world.entity.Entity entity, ServerLevel world) {
+        if (entity instanceof net.minecraft.world.entity.boss.enderdragon.EnderDragon)
+            loadedDragons.computeIfAbsent(world.dimension().identifier().toString(), ignored -> new it.unimi.dsi.fastutil.ints.IntOpenHashSet()).add(entity.getId());
+    }
+
+    public void onEntityUnloaded(net.minecraft.world.entity.Entity entity, ServerLevel world) {
+        var ids = loadedDragons.get(world.dimension().identifier().toString());
+        if (ids != null) ids.remove(entity.getId());
+    }
+
+    private int sendsThisTick;
+    private final AdaptiveWorkBudget adaptive;
+    private long vanillaTickStarted;
+    private boolean borrowing;
+    private double typicalPacketBytes = 48 * 1024;
+    public void beginTick() { vanillaTickStarted = System.nanoTime(); }
+    private boolean hasWorkTime() { return adaptive.hasTime(System.nanoTime()); }
 
     public void tick(MinecraftServer server) {
         long tickStartNanos = System.nanoTime();
         ticks++;
-        recomputeEffectiveBudgets();
-        if (config.unsimulatedViewDistance() <= 0 || ticks % config.tickInterval() != 0) {
-            processPreparedChunkTasks(server, effectivePreparedProcessBudget);
-            processNbtReadRequests(server, config.maxNbtReadsPerTick());
-            long elapsed = System.nanoTime() - tickStartNanos;
-            totalCpuNanos += elapsed;
-            updateCpuEma(elapsed);
-            maybeLogMetrics(server);
-            return;
-        }
+        planner.ticks = ticks;
 
-        processPreparedChunkTasks(server, effectivePreparedProcessBudget);
-        processNbtReadRequests(server, config.maxNbtReadsPerTick());
-
-        List<PlayerTickTarget> targets = collectTickTargets(server);
-        int[] budgets = allocatePerPlayerBudgets(targets, effectiveChunkQueueBudget);
-
-        for (int index = 0; index < targets.size(); index++) {
-            PlayerTickTarget target = targets.get(index);
-            int budget = budgets[index];
-            if (budget <= 0) {
-                continue;
-            }
-            tickPlayer(server, target.world(), target.player(), budget);
-        }
-
-        processNbtReadRequests(server, config.maxNbtReadsPerTick());
-
+        if (shuttingDown) return;
+        sendsThisTick = 0;
+        borrowing = false;
+        adaptive.begin(tickStartNanos, vanillaTickStarted == 0 ? 0 : tickStartNanos - vanillaTickStarted,
+                loader.pressure(), !loadsByKey.isEmpty() || !readyDeliveries.isEmpty());
         cleanupDisconnected(server);
-        long elapsed = System.nanoTime() - tickStartNanos;
-        totalCpuNanos += elapsed;
-        updateCpuEma(elapsed);
+        List<PlayerTickTarget> targets = collectTickTargets(server);
+        // Rotate the first player so a saturated shared pipeline cannot favor join order.
+        if (!targets.isEmpty()) java.util.Collections.rotate(targets, ticks % targets.size());
+        try {
+            for (PlayerTickTarget target : targets) {
+                tickPlayer(target.world(), target.player());
+            }
+            int active = Math.max(1, (int) statesByPlayer.values().stream()
+                    .filter(state -> state.bootstrapActive || !state.pending.isEmpty() || !state.candidateQueue.isEmpty()).count());
+            for (PlayerViewState state : statesByPlayer.values()) {
+                state.share.accrue((long) (typicalPacketBytes * config.maxMainThreadPreparedChunksPerTick() / active),
+                        adaptive.allowance() / active);
+            }
+            int preparedBudget = config.maxMainThreadPreparedChunksPerTick();
+            transferCompletedLoads(server, Math.max(256, preparedBudget));
+            processNbtReadRequests(server, adaptive.reads());
+            processReadyDeliveries(server, preparedBudget);
+            scheduleCandidates(targets);
+            // Unused shares are borrowable only after every active observer had its fair pass.
+            borrowing = true;
+            processReadyDeliveries(server, preparedBudget);
+            scheduleCandidates(targets);
+            packetCache.expire(ticks);
+            if (targets.isEmpty()) { packetCache.clear(); retryCache.clear(); }
+            refreshPlayerEntities(server);
+
+        } finally {
+            for (PlayerTickTarget target : targets) finishVisualBatch(target.player());
+        }
+        totalMainCpuNanos += System.nanoTime() - tickStartNanos;
         maybeLogMetrics(server);
     }
 
-    private void tickPlayer(MinecraftServer server, ServerLevel world, ServerPlayer player, int maxPerTick) {
+    private void tickPlayer(ServerLevel world, ServerPlayer player) {
         String worldKey = world.dimension().identifier().toString();
-        long stateKey = stateKey(player.getUUID(), worldKey);
-        PlayerState state = statesByPlayer.computeIfAbsent(stateKey, ignored -> new PlayerState(player.getUUID(), worldKey));
+        PlayerWorldKey playerWorldKey = new PlayerWorldKey(player.getUUID(), worldKey);
+        PlayerViewState state = statesByPlayer.computeIfAbsent(
+                playerWorldKey,
+                ignored -> new PlayerViewState(player.getUUID(), worldKey));
 
         int centerX = player.chunkPosition().x();
         int centerZ = player.chunkPosition().z();
         int normalDistance = world.getServer().getPlayerList().getViewDistance();
         int totalDistance = getEffectiveTotalDistance(player, normalDistance);
 
+        state.sendsThisTick = 0;
         updateClientLoadDistance(player, state, totalDistance);
+        planner.updatePlayerView(state, centerX, centerZ, normalDistance, totalDistance);
+        planner.updateVanillaView(state, player.getChunkTrackingView());
+        planner.drainDueRetries(state);
+        processDueUnloads(player, state, centerX, centerZ, totalDistance);
+        var flow = (com.silver.viewextend.mixin.PlayerChunkSenderAccessor) player.connection.chunkSender;
+        state.lookahead = adaptive.lookahead(flow.viewextend$getDesiredRate(), config.pendingChunksHardLimit());
+    }
 
-        boolean movedChunk = state.centerX != centerX || state.centerZ != centerZ;
-        if (movedChunk) {
-            state.centerX = centerX;
-            state.centerZ = centerZ;
-            prunePendingInsideNormal(state, centerX, centerZ, normalDistance);
-        }
-        unloadOutOfRange(player, state, centerX, centerZ, totalDistance, normalDistance);
-
-        if (maxPerTick <= 0) {
-            return;
-        }
-
-        int remainingBudget = maxPerTick;
-        int prioritizedQueued = queueUpgradeCandidates(
-                world,
-                player,
-                state,
-                worldKey,
-                centerX,
-                centerZ,
-                normalDistance,
-                totalDistance,
-                remainingBudget);
-        remainingBudget -= prioritizedQueued;
-        if (remainingBudget <= 0) {
-            return;
-        }
-
-        if (isPreparedQueueAtHardLimit()) {
-            totalQueueBackpressureDeferrals++;
-            lifetimeQueueBackpressureDeferrals++;
-            return;
-        }
-
-        if (state.pending.size() >= config.pendingChunksHardLimit()) {
-            totalQueueBackpressureDeferrals++;
-            lifetimeQueueBackpressureDeferrals++;
-            return;
-        }
-
-        if (shouldDeferChunkSelection(state, movedChunk)) {
-            totalQueueBackpressureDeferrals++;
-            lifetimeQueueBackpressureDeferrals++;
-            return;
-        }
-
-        int sentThisTick = 0;
-        for (int radius = normalDistance + 1; radius <= totalDistance && sentThisTick < remainingBudget; radius++) {
-            int[] offsets = ringOffsets(radius);
-            for (int offsetIndex = 0; offsetIndex < offsets.length && sentThisTick < remainingBudget; offsetIndex += 2) {
-                int chunkX = centerX + offsets[offsetIndex];
-                int chunkZ = centerZ + offsets[offsetIndex + 1];
-                sentThisTick += tryQueueCandidate(world, player, state, worldKey, centerX, centerZ, chunkX, chunkZ, false);
+    private void scheduleCandidates(List<PlayerTickTarget> targets) {
+        for (int round = 0; round < config.maxChunksPerPlayerPerTick() && hasWorkTime(); round++) {
+            boolean attempted = false;
+            for (PlayerTickTarget target : targets) {
+                if (!hasWorkTime()) return;
+                var player = target.player();
+                var state = statesByPlayer.get(new PlayerWorldKey(player.getUUID(), target.world().dimension().identifier().toString()));
+                if (state == null || !isEnabled() || !player.isAlive()
+                        || (!state.bootstrapActive && state.candidateQueue.isEmpty() && !state.candidateOverflowed)
+                        || !canSend(player, state)) continue;
+                attempted = true;
+                long started = System.nanoTime();
+                processCandidates(target.world(), player, state, state.centerX, state.centerZ, state.normalDistance, state.totalDistance, 1);
+                state.share.charge(0, System.nanoTime() - started);
             }
+            if (!attempted) break;
         }
     }
 
-    private int queueUpgradeCandidates(
+    private void processCandidates(
             ServerLevel world,
             ServerPlayer player,
-            PlayerState state,
-            String worldKey,
+            PlayerViewState state,
             int centerX,
             int centerZ,
             int normalDistance,
             int totalDistance,
             int maxPerTick) {
-        int queued = 0;
-        long[] sentSnapshot = state.sent.toLongArray();
-        for (long chunkLong : sentSnapshot) {
-            if (queued >= maxPerTick) {
+        int accepted = 0;
+        int inspected = 0;
+        int inspectionBudget = Math.max(16, maxPerTick * 16);
+
+        while (accepted < maxPerTick && inspected < inspectionBudget && hasWorkTime()) {
+            long packed;
+            if (!state.candidateQueue.isEmpty() && (!state.bootstrapActive || (state.candidateSelectionCounter++ & 1) == 0)) {
+                packed = state.candidateQueue.dequeueLong();
+                state.candidateQueued.remove(packed);
+            } else {
+                packed = planner.nextBootstrapCandidate(state);
+                if (packed == Long.MIN_VALUE) {
+                    if (state.candidateOverflowed) {
+                        state.candidateOverflowed = false;
+                        planner.resetBootstrap(state, centerX, centerZ, normalDistance, totalDistance);
+                        continue;
+                    }
+                    break;
+                }
+            }
+
+            inspected++;
+            int chunkX = ChunkPos.getX(packed);
+            int chunkZ = ChunkPos.getZ(packed);
+            if (!withinDistance(chunkX, chunkZ, centerX, centerZ, totalDistance)
+                    || player.getChunkTrackingView().contains(chunkX, chunkZ)) {
+                continue;
+            }
+
+            int result = tryQueueCandidate(world, player, state, centerX, centerZ, chunkX, chunkZ);
+            if (result < 0) {
+                planner.enqueueCandidate(state, packed);
                 break;
             }
-
-            int chunkX = ChunkPos.getX(chunkLong);
-            int chunkZ = ChunkPos.getZ(chunkLong);
-            if (!withinDistance(chunkX, chunkZ, centerX, centerZ, totalDistance)
-                    || withinDistance(chunkX, chunkZ, centerX, centerZ, normalDistance)) {
-                continue;
-            }
-
-            int sentLodLevel = state.sentLodByChunk.getOrDefault(chunkLong, Integer.MAX_VALUE);
-            int desiredLodLevel = resolveLodLevel(centerX, centerZ, chunkX, chunkZ);
-            if (desiredLodLevel >= sentLodLevel) {
-                continue;
-            }
-
-            queued += tryQueueCandidate(world, player, state, worldKey, centerX, centerZ, chunkX, chunkZ, true);
+            accepted += result;
         }
-        return queued;
+
+        totalCandidateInspections += inspected;
     }
 
     private int tryQueueCandidate(
             ServerLevel world,
             ServerPlayer player,
-            PlayerState state,
-            String worldKey,
+            PlayerViewState state,
             int centerX,
             int centerZ,
             int chunkX,
-            int chunkZ,
-            boolean upgradePriority) {
-        long chunkLong = ChunkPos.pack(chunkX, chunkZ);
-        
-        int missingUntil = state.missingUntilTick.getOrDefault(chunkLong, 0);
-        if (this.ticks < missingUntil) {
-            // It's on cooldown for disk reads. But if it just finished generating and is now a full LevelChunk,
-            // we bypass the cooldown so it gets sent immediately!
-            if (!world.getChunkSource().hasChunk(chunkX, chunkZ) || world.getChunkSource().getChunkNow(chunkX, chunkZ) == null) {
-                return 0; // Skip, it's on cooldown and not in memory
+            int chunkZ) {
+        long packed = ChunkPos.pack(chunkX, chunkZ);
+        if (!canSend(player, state)) return -1;
+        if (state.retryDueByChunk.getOrDefault(packed, Integer.MIN_VALUE) > ticks) return 0;
+        int desiredLod = resolveLodLevel(centerX, centerZ, chunkX, chunkZ);
+
+        int sentLod = state.sentLodByChunk.getOrDefault(packed, Integer.MAX_VALUE);
+        if (state.sent.contains(packed) && desiredLod >= sentLod) {
+            return 0;
+        }
+        int pendingLod = state.pendingLodByChunk.getOrDefault(packed, Integer.MAX_VALUE);
+        if (state.pending.contains(packed) && desiredLod >= pendingLod) {
+            return 0;
+        }
+        if (state.pending.contains(packed)) {
+            state.clearPending(packed);
+        }
+
+        // A currently loaded chunk is authoritative and bypasses disk cache data.
+        LevelChunk loaded = world.getChunkSource().getChunkNow(chunkX, chunkZ);
+        if (loaded != null) {
+            try {
+                sendLoadedChunk(player, loaded);
+                state.markSent(packed, 0);
+                invalidatePreparedCacheForChunk(state.worldKey, packed);
+                return 1;
+            } catch (RuntimeException exception) {
+                ViewExtendMod.LOGGER.debug("Failed to send loaded visual chunk {}", loaded.getPos(), exception);
+                planner.scheduleRetry(state, packed, 200);
+                return 0;
             }
         }
 
-        int desiredLodLevel = resolveLodLevel(centerX, centerZ, chunkX, chunkZ);
+        GlobalChunkKey key = new GlobalChunkKey(state.worldKey, packed, desiredLod);
+        PreparedVisualChunk cached = packetCache.get(key, ticks);
+        if (cached != null) {
+            totalCacheHits++;
 
-        int sentLodLevel = state.sentLodByChunk.getOrDefault(chunkLong, Integer.MAX_VALUE);
-        if (state.sent.contains(chunkLong) && desiredLodLevel >= sentLodLevel) {
+            try {
+                sendPreparedChunk(player, cached);
+                state.markSent(packed, desiredLod);
+                return 1;
+            } catch (RuntimeException exception) {
+                packetCache.invalidate(key);
+                ViewExtendMod.LOGGER.debug("Failed to send cached visual chunk {}", new ChunkPos(chunkX, chunkZ), exception);
+                planner.scheduleRetry(state, packed, 200);
+                return 0;
+            }
+        }
+        totalCacheMisses++;
+
+        int cooldown = retryCache.remaining(new ChunkSourceKey(state.worldKey, packed), ticks);
+        if (cooldown > 0) {
+            totalCooldownHits++;
+            planner.scheduleRetry(state, packed, cooldown);
             return 0;
         }
-        if (state.sent.contains(chunkLong) && desiredLodLevel < sentLodLevel) {
-            state.sent.remove(chunkLong);
-            state.sentLodByChunk.remove(chunkLong);
-            state.payloadCache.remove(chunkLong);
-            invalidateGlobalPacketTemplatesForChunk(worldKey, chunkLong, desiredLodLevel);
-        }
 
-        int pendingLodLevel = state.pendingLodByChunk.getOrDefault(chunkLong, Integer.MAX_VALUE);
-        if (state.pending.contains(chunkLong) && desiredLodLevel >= pendingLodLevel) {
-            return 0;
-        }
-        if (state.pending.contains(chunkLong) && desiredLodLevel < pendingLodLevel) {
-            state.pending.remove(chunkLong);
-            state.pendingLodByChunk.remove(chunkLong);
-            state.payloadCache.remove(chunkLong);
-            invalidateGlobalPacketTemplatesForChunk(worldKey, chunkLong, desiredLodLevel);
-        }
 
-        GlobalChunkKey globalChunkKey = new GlobalChunkKey(worldKey, chunkLong, desiredLodLevel);
-        PacketTemplate globalTemplate = getGlobalPacketTemplate(globalChunkKey);
-        if (globalTemplate != null) {
-            totalGlobalTemplateHits++;
-            lifetimeGlobalTemplateHits++;
-            sendPacketTemplate(player, globalTemplate, desiredLodLevel);
-            state.sent.add(chunkLong);
-            state.sentLodByChunk.put(chunkLong, desiredLodLevel);
-            state.pending.remove(chunkLong);
-            state.pendingLodByChunk.remove(chunkLong);
-            state.unloadOutsideSinceTick.remove(chunkLong);
+        if (state.pending.size() >= state.lookahead) return -1;
+        SharedLoad existingLoad = loadsByKey.get(key);
+        if (existingLoad != null) {
+            long requestId = state.markPending(packed, desiredLod);
+            existingLoad.subscribers.add(new LoadSubscriber(player.getUUID(), state, requestId));
+            totalCoalescedRequests++;
+
             return 1;
         }
-        totalGlobalTemplateMisses++;
-        lifetimeGlobalTemplateMisses++;
 
-        prunePayloadCache(state);
-        CachedPayload cachedPayload = getCachedPayload(state, chunkLong);
-        if (cachedPayload != null) {
-            if (cachedPayload.lodLevel() == desiredLodLevel) {
-                PacketTemplate packetTemplate = cachedPayload.packetTemplate();
-                if (packetTemplate != null) {
-                    sendPacketTemplate(player, packetTemplate, desiredLodLevel);
-                    totalPayloadCacheHits++;
-                    lifetimePayloadCacheHits++;
-                    state.sent.add(chunkLong);
-                    state.sentLodByChunk.put(chunkLong, desiredLodLevel);
-                    state.pending.remove(chunkLong);
-                    state.pendingLodByChunk.remove(chunkLong);
-                    state.unloadOutsideSinceTick.remove(chunkLong);
-                    return 1;
-                }
-            }
+        if (isPipelineAtHardLimit()) {
+            totalPipelineDeferrals++;
 
-            state.payloadCache.remove(chunkLong);
-            invalidateGlobalPacketTemplatesForChunk(worldKey, chunkLong, desiredLodLevel);
+            return -1;
         }
 
-        totalPayloadCacheMisses++;
-        lifetimePayloadCacheMisses++;
+        long requestId = state.markPending(packed, desiredLod);
+        SharedLoad load = new SharedLoad(key, ticks);
+        load.subscribers.add(new LoadSubscriber(player.getUUID(), state, requestId));
+        loadsByKey.put(key, load);
+        nbtReadQueue.addLast(key);
+        totalNbtRequestsQueued++;
 
-        state.pending.add(chunkLong);
-        state.pendingLodByChunk.put(chunkLong, desiredLodLevel);
-        enqueueNbtReadRequest(player.getUUID(), worldKey, new ChunkPos(chunkX, chunkZ), desiredLodLevel, upgradePriority);
         return 1;
     }
 
-    private void enqueueNbtReadRequest(UUID playerUuid, String worldKey, ChunkPos pos, int lodLevel, boolean upgradePriority) {
-        nbtReadQueue.add(new NbtReadRequest(playerUuid, worldKey, pos, lodLevel, upgradePriority));
-        totalNbtRequestsQueued++;
-        lifetimeNbtRequestsQueued++;
-    }
+    private void processNbtReadRequests(MinecraftServer server, int budget) {
+        int started = 0;
+        while (started < Math.max(1, budget) && hasWorkTime()) {
+            GlobalChunkKey key = nbtReadQueue.pollFirst();
+            if (key == null) {
+                return;
+            }
+            SharedLoad load = loadsByKey.get(key);
+            if (load == null || load.started) {
+                continue;
+            }
 
-        private void requestAndSendChunk(
-            ServerLevel world,
-            ServerPlayer player,
-            PlayerState state,
-            String worldKey,
-            ChunkPos pos,
-            int lodLevel,
-            boolean upgradePriority) {
-        if (!upgradePriority && isPreparedQueueAtHardLimit()) {
-            totalQueueBackpressureDeferrals++;
-            lifetimeQueueBackpressureDeferrals++;
-            state.pending.remove(pos.pack());
-            state.pendingLodByChunk.remove(pos.pack());
-            return;
-        }
+            ValidSubscriber firstValid = pruneAndFindFirstValidSubscriber(server, load);
+            if (firstValid == null) {
+                loadsByKey.remove(key);
+                continue;
+            }
 
-        if (world.getChunkSource().hasChunk(pos.x(), pos.z())) {
+            ServerLevel world = firstValid.world();
+            ChunkPos pos = ChunkPos.unpack(key.chunkLong());
             LevelChunk loaded = world.getChunkSource().getChunkNow(pos.x(), pos.z());
             if (loaded != null) {
-                sendChunkPacket(player, loaded, null, null, null);
-                long packed = pos.pack();
-                state.pending.remove(packed);
-                state.pendingLodByChunk.remove(packed);
-                state.sent.add(packed);
-                state.sentLodByChunk.put(packed, 0);
-                state.unloadOutsideSinceTick.remove(packed);
-                return;
-            }
-        }
-
-        ServerChunkCache loadingManager = world.getChunkSource();
-        totalDiskNbtReads++;
-        lifetimeDiskNbtReads++;
-        loadingManager.chunkMap.read(pos).thenAccept(optionalNbt -> {
-            if (optionalNbt.isEmpty()) {
-                preparedChunkQueue.add(PreparedChunkTask.missing(player.getUUID(), worldKey, pos, lodLevel));
-                totalPreparedTasksQueued++;
-                return;
-            }
-
-            preprocessExecutor.execute(() -> {
-                try {
-                    CompoundTag chunkNbt = optionalNbt.get().copy();
-                    applyLodToChunkNbt(chunkNbt, lodLevel);
-                    int remapCount = remapLegacyBlockIds(chunkNbt);
-                    preparedChunkQueue.add(PreparedChunkTask.withNbt(player.getUUID(), worldKey, pos, chunkNbt, remapCount, lodLevel));
-                    totalPreparedTasksQueued++;
-                } catch (Exception exception) {
-                    preparedChunkQueue.add(PreparedChunkTask.failed(player.getUUID(), worldKey, pos, lodLevel));
-                    totalPreparedTasksQueued++;
-                }
-            });
-        });
-    }
-
-    private void processNbtReadRequests(MinecraftServer server, int budget) {
-        int processed = 0;
-        int perTickBudget = Math.max(1, budget);
-        while (processed < perTickBudget) {
-            NbtReadRequest request = nbtReadQueue.poll();
-            if (request == null) {
-                break;
-            }
-
-            ServerPlayer player = server.getPlayerList().getPlayer(request.playerUuid());
-            if (player == null || !player.isAlive()) {
+                loadsByKey.remove(key);
+                deliverLoadedChunkToSubscribers(server, load, loaded);
+                started++;
                 continue;
             }
 
-            ServerLevel world = player.level();
-            String worldKey = world.dimension().identifier().toString();
-            if (!worldKey.equals(request.worldKey())) {
-                continue;
-            }
+            load.started = true;
+            started++;
+            totalNbtRequestsStarted++;
 
-            long stateKey = stateKey(request.playerUuid(), request.worldKey());
-            PlayerState state = statesByPlayer.get(stateKey);
-            if (state == null) {
-                continue;
-            }
+            totalDiskNbtReads++;
 
-            long packed = request.pos().pack();
-            if (!state.pending.contains(packed)) {
-                continue;
-            }
-
-            int desiredPendingLod = state.pendingLodByChunk.getOrDefault(packed, Integer.MAX_VALUE);
-            if (desiredPendingLod != request.lodLevel()) {
-                continue;
-            }
-
-            int normalDistance = world.getServer().getPlayerList().getViewDistance();
-            int totalDistance = getEffectiveTotalDistance(player, normalDistance);
-            int centerX = player.chunkPosition().x();
-            int centerZ = player.chunkPosition().z();
-
-            if (!withinDistance(request.pos().x(), request.pos().z(), centerX, centerZ, totalDistance)
-                    || withinDistance(request.pos().x(), request.pos().z(), centerX, centerZ, normalDistance)) {
-                state.pending.remove(packed);
-                state.pendingLodByChunk.remove(packed);
-                state.unloadOutsideSinceTick.remove(packed);
-                continue;
-            }
-
-            requestAndSendChunk(world, player, state, request.worldKey(), request.pos(), request.lodLevel(), request.upgradePriority());
-            processed++;
-            totalNbtRequestsProcessed++;
-            lifetimeNbtRequestsProcessed++;
-        }
-    }
-
-    private void processPreparedChunkTasks(MinecraftServer server, int budget) {
-        for (int i = 0; i < budget; i++) {
-            PreparedChunkTask task = preparedChunkQueue.poll();
-            if (task == null) {
-                return;
-            }
-            totalPreparedTasksProcessed++;
-
-            ServerPlayer player = server.getPlayerList().getPlayer(task.playerUuid());
-            if (player == null || !player.isAlive()) {
-                continue;
-            }
-
-            long originalStateKey = stateKey(task.playerUuid(), task.worldKey());
-            PlayerState originalState = statesByPlayer.get(originalStateKey);
-            if (originalState == null) {
-                continue;
-            }
-
-            ServerLevel world = player.level();
-            String worldKey = world.dimension().identifier().toString();
-            if (!worldKey.equals(task.worldKey())) {
-                originalState.pending.remove(task.pos().pack());
-                originalState.pendingLodByChunk.remove(task.pos().pack());
-                originalState.unloadOutsideSinceTick.remove(task.pos().pack());
-                continue;
-            }
-
-            PlayerState state = originalState;
-
-            ChunkPos pos = task.pos();
-            long packed = pos.pack();
-
-            int desiredPendingLod = state.pendingLodByChunk.getOrDefault(packed, Integer.MAX_VALUE);
-            if (desiredPendingLod != task.lodLevel()) {
-                continue;
-            }
-
-            int normalDistance = world.getServer().getPlayerList().getViewDistance();
-            int totalDistance = getEffectiveTotalDistance(player, normalDistance);
-            int centerX = player.chunkPosition().x();
-            int centerZ = player.chunkPosition().z();
-
-            if (!withinDistance(pos.x(), pos.z(), centerX, centerZ, totalDistance)
-                    || withinDistance(pos.x(), pos.z(), centerX, centerZ, normalDistance)) {
-                state.pending.remove(packed);
-                state.pendingLodByChunk.remove(packed);
-                state.unloadOutsideSinceTick.remove(packed);
-                continue;
-            }
-
-            if (task.missing() || task.failed()) {
-                totalDiskNbtReadMisses++;
-                lifetimeDiskNbtReadMisses++;
-                if (task.failed()) {
-                    totalPreparedTasksDropped++;
-                }
-                state.pending.remove(packed);
-                state.pendingLodByChunk.remove(packed);
-                state.unloadOutsideSinceTick.remove(packed);
-                
-                int cooldownTicks = task.missing() ? 100 : 200; // 5 seconds for missing, 10 for failed
-                state.missingUntilTick.put(packed, this.ticks + cooldownTicks);
-                
-                continue;
-            }
-
-            if (task.remapCount() > 0) {
-                totalLegacyBlockIdRemaps += task.remapCount();
-                lifetimeLegacyBlockIdRemaps += task.remapCount();
-            }
-
-            if (!task.parsedReady()) {
-                try {
-                    CompoundTag chunkNbt = task.chunkNbt();
-
-                    int bottomSectionY = world.getMinSectionY();
-                    int topSectionY = world.getMaxSectionY() + 1;
-                    boolean hasSkyLight = world.dimensionType().hasSkyLight();
-
-                    preprocessExecutor.execute(() -> {
-                        try {
-                            PalettedContainerFactory palettesFactory = PalettedContainerFactory.create(world.registryAccess());
-                            SerializableChunkData serialized = SerializableChunkData.parse(world, palettesFactory, chunkNbt);
-                            boolean isOceanBiome = isChunkInOceanBiome(chunkNbt);
-                    ClientboundLightUpdatePacketData deterministicLightData = createDeterministicLightData(
-                                    pos,
-                                    bottomSectionY,
-                                    topSectionY,
-                                    serialized,
-                                    hasSkyLight,
-                                    false,
-                                    isOceanBiome);
-
-                            preparedChunkQueue.add(PreparedChunkTask.parsed(
-                                    task.playerUuid(),
-                                    task.worldKey(),
-                                    pos,
-                                    task.lodLevel(),
-                                    serialized,
-                                    deterministicLightData,
-                                    task.remapCount()));
-                            totalPreparedTasksQueued++;
-                        } catch (Exception exception) {
-                            preparedChunkQueue.add(PreparedChunkTask.failed(task.playerUuid(), task.worldKey(), pos, task.lodLevel()));
-                            totalPreparedTasksQueued++;
-                        }
-                    });
-                } catch (Exception exception) {
-                    totalPreparedTasksDropped++;
-                    state.pending.remove(packed);
-                    state.pendingLodByChunk.remove(packed);
-                    state.unloadOutsideSinceTick.remove(packed);
-                }
-                continue;
-            }
+            LevelLightEngine lightEngine = world.getChunkSource().getLightEngine();
+            LoadContext context = new LoadContext(
+                    world.registryAccess(),
+                    LevelHeightAccessor.create(world.getMinY(), world.getHeight()),
+                    world.palettedContainerFactory(),
+                    lightEngine.getMinLightSection(),
+                    lightEngine.getMaxLightSection(),
+                    world.dimensionType().hasSkyLight());
 
             try {
-                SerializableChunkData serialized = task.serializedChunk();
-                ProtoChunk proto = serialized.read(world, world.getChunkSource().getPoiManager(), world.getChunkSource().chunkMap.storageInfo(), pos);
-                LevelChunk transientChunk = new LevelChunk(world, proto, chunk -> {
-                });
-                transientChunk.getBlockEntities().clear();
-
-                LevelLightEngine lightingProvider = world.getChunkSource().getLightEngine();
-                PacketTemplate packetTemplate = createSerializedPacketTemplate(
-                        player,
-                        transientChunk,
-                        lightingProvider,
-                        serialized,
-                    task.deterministicLightData(),
-                    task.lodLevel());
-                putGlobalPacketTemplate(new GlobalChunkKey(task.worldKey(), packed, task.lodLevel()), packetTemplate);
-                sendPacketTemplate(player, packetTemplate, task.lodLevel());
-                state.sent.add(packed);
-                state.sentLodByChunk.put(packed, task.lodLevel());
-                state.unloadOutsideSinceTick.remove(packed);
-                state.pending.remove(packed);
-                state.pendingLodByChunk.remove(packed);
-                putCachedPayload(state, packed, packetTemplate, task.lodLevel());
-            } catch (Exception exception) {
-                totalPreparedTasksDropped++;
-                state.pending.remove(packed);
-                state.pendingLodByChunk.remove(packed);
-                state.unloadOutsideSinceTick.remove(packed);
-                ViewExtendMod.LOGGER.debug("Failed to process prepared unsimulated chunk {} for {}", pos, player.getName().getString(), exception);
+                loader.load(world.getChunkSource().chunkMap.read(pos), pos, key.lodLevel(), context)
+                        .thenAccept(result -> publishCompletion(new PreparedLoadResult(
+                                key, result.prepared(), result.missing(), result.error(), result.workerNanos())));
+            } catch (RuntimeException exception) {
+                publishCompletion(PreparedLoadResult.failed(key, exception));
             }
         }
     }
 
-    private void sendChunkPacket(
-            ServerPlayer player,
-            LevelChunk chunk,
-            LevelLightEngine lightingProvider,
-            SerializableChunkData serializedChunk,
-            ClientboundLightUpdatePacketData prebuiltLightData) {
-        LevelLightEngine resolvedLightingProvider = lightingProvider != null
-                ? lightingProvider
-                : ((ServerLevel) chunk.getLevel()).getChunkSource().getLightEngine();
-        ChunkPos pos = chunk.getPos();
-        ClientboundLevelChunkWithLightPacket packet;
-        BitSet includeNone = new BitSet();
-        if (serializedChunk != null) {
-            packet = createChunkPacket(player, chunk, resolvedLightingProvider, includeNone, includeNone);
-        } else {
-            packet = createChunkPacket(player, chunk, resolvedLightingProvider, null, null);
+    private void publishCompletion(PreparedLoadResult result) {
+        if (shuttingDown) {
+            return;
         }
-        ClientboundLightUpdatePacket lightPacket = serializedChunk != null
-                ? new ClientboundLightUpdatePacket(pos, resolvedLightingProvider, includeNone, includeNone)
-                : new ClientboundLightUpdatePacket(pos, resolvedLightingProvider, null, null);
-
-        if (serializedChunk != null) {
-            ClientboundLightUpdatePacketData deterministicLightData = prebuiltLightData != null
-                    ? prebuiltLightData
-                    : createDeterministicLightData(
-                            pos,
-                            resolvedLightingProvider.getMinLightSection(),
-                            resolvedLightingProvider.getMaxLightSection() + 1,
-                            serializedChunk,
-                            chunk.getLevel().dimensionType().hasSkyLight(),
-                        false,
-                        isChunkInOcean(chunk));
-            totalDeterministicBlockLightSections += deterministicLightData.getBlockYMask().cardinality();
-            totalDeterministicSkyLightSections += deterministicLightData.getSkyYMask().cardinality();
-            lifetimeDeterministicBlockLightSections += deterministicLightData.getBlockYMask().cardinality();
-            lifetimeDeterministicSkyLightSections += deterministicLightData.getSkyYMask().cardinality();
-            ((LightUpdateS2CPacketAccessor) (Object) lightPacket).viewextend$setData(deterministicLightData);
-            ((ChunkDataS2CPacketAccessor) (Object) packet).viewextend$setLightData(deterministicLightData);
-        }
-
-        totalChunkPacketsSent++;
-        lifetimeChunkPacketsSent++;
-        int packetBytes = packet.getChunkData().getReadBuffer().readableBytes();
-        totalNetworkBytesEstimate += packetBytes;
-        lifetimeNetworkBytesEstimate += packetBytes;
-        recordLodSend(0);
-        player.connection.send(packet);
-        player.connection.send(lightPacket);
+        completedLoadQueue.add(result);
+        completedTasksQueuedWindow.increment();
     }
 
-    private PacketTemplate createSerializedPacketTemplate(
-            ServerPlayer player,
-            LevelChunk chunk,
-            LevelLightEngine lightingProvider,
-            SerializableChunkData serializedChunk,
-            ClientboundLightUpdatePacketData prebuiltLightData,
-            int lodLevel) {
-        LevelLightEngine resolvedLightingProvider = lightingProvider != null
-                ? lightingProvider
-                : ((ServerLevel) chunk.getLevel()).getChunkSource().getLightEngine();
-        ChunkPos pos = chunk.getPos();
-        BitSet includeNone = new BitSet();
-        ClientboundLevelChunkWithLightPacket chunkPacket = createChunkPacket(
-                player,
-                chunk,
-                resolvedLightingProvider,
-                includeNone,
-                includeNone);
-        ClientboundLightUpdatePacket lightPacket = new ClientboundLightUpdatePacket(pos, resolvedLightingProvider, includeNone, includeNone);
+    private void transferCompletedLoads(MinecraftServer server, int budget) {
+        for (int index = 0; index < budget; index++) {
+            PreparedLoadResult result = completedLoadQueue.poll();
+            if (result == null) {
+                return;
+            }
+            SharedLoad load = loadsByKey.remove(result.key());
+            if (load == null) {
+                continue;
+            }
 
-        ClientboundLightUpdatePacketData deterministicLightData = prebuiltLightData != null
-                ? prebuiltLightData
-                : createDeterministicLightData(
-                        pos,
-                        resolvedLightingProvider.getMinLightSection(),
-                        resolvedLightingProvider.getMaxLightSection() + 1,
-                        serializedChunk,
-                    chunk.getLevel().dimensionType().hasSkyLight(),
-            false,
-            isChunkInOcean(chunk));
-        ((LightUpdateS2CPacketAccessor) (Object) lightPacket).viewextend$setData(deterministicLightData);
-        ((ChunkDataS2CPacketAccessor) (Object) chunkPacket).viewextend$setLightData(deterministicLightData);
+            adaptive.completed(ticks - load.createdTick);
+            totalPreparedResultsProcessed++;
 
-        int chunkPacketBytes = chunkPacket.getChunkData().getReadBuffer().readableBytes();
-        int blockSections = deterministicLightData.getBlockYMask().cardinality();
-        int skySections = deterministicLightData.getSkyYMask().cardinality();
-        return new PacketTemplate(chunkPacket, lightPacket, chunkPacketBytes, blockSections, skySections);
+            totalWorkerCpuNanos += result.workerNanos();
+
+            if (result.missing() || result.error() != null || result.prepared() == null) {
+                VisualChunkFailure failure = VisualChunkFailure.classify(result.missing(), result.error());
+                if (result.missing()) totalDiskNbtReadMisses++;
+                else totalPreparedResultsDropped++;
+                failureCounts.merge(failure, 1L, Long::sum);
+                Throwable cause = VisualChunkFailure.unwrap(result.error());
+                Object failureIdentity = failure == VisualChunkFailure.UNFINISHED && cause != null ? cause.getMessage() : failure;
+                int retryTicks = retryCache.fail(new ChunkSourceKey(result.key().worldKey(), result.key().chunkLong()),
+                        ticks, failureIdentity, failure.retryTicks);
+                if (ticks >= nextFailureLog.getOrDefault(failure, 0)) {
+                    nextFailureLog.put(failure, ticks + 1200);
+                    if (failure == VisualChunkFailure.MISSING || failure == VisualChunkFailure.UNFINISHED) {
+                        ViewExtendMod.LOGGER.info("[ViewExtend Preparation] reason={} world={} chunk={} lod={} retryTicks={} detail={}",
+                                failure, result.key().worldKey(), ChunkPos.unpack(result.key().chunkLong()),
+                                result.key().lodLevel(), retryTicks, cause == null ? "No saved chunk" : cause.getMessage());
+                    } else {
+                        ViewExtendMod.LOGGER.warn("[ViewExtend Preparation] reason={} world={} chunk={} lod={} retryTicks={} (one example per reason/minute)",
+                                failure, result.key().worldKey(), ChunkPos.unpack(result.key().chunkLong()),
+                                result.key().lodLevel(), retryTicks, cause);
+                    }
+                }
+                for (LoadSubscriber subscriber : load.subscribers) {
+                    clearPendingAndScheduleRetry(server, subscriber, result.key(), retryTicks);
+                }
+                continue;
+            }
+
+            retryCache.invalidate(new ChunkSourceKey(result.key().worldKey(), result.key().chunkLong()));
+            PreparedVisualChunk prepared = result.prepared();
+            recordPreparationStats(prepared);
+            packetCache.put(result.key(), prepared, ticks, load.subscribers.size() > 1);
+            readyDeliveries.addLast(new ReadyDelivery(result.key(), prepared, load.subscribers));
+        }
     }
 
-    /**
-     * Fabric's packet context is normally installed by the connection before a packet is
-     * constructed. View Extend constructs synthetic chunk packets itself, so it must install
-     * the recipient's context around the constructor as well. Polymer uses that context while
-     * its mixins translate block states and block-entity data for vanilla clients.
-     */
+    private void processReadyDeliveries(MinecraftServer server, int budget) {
+        int processed = 0;
+        int inspected = 0;
+        int scanLimit = readyDeliveries.size() + budget;
+        while (processed < Math.max(1, budget) && inspected++ < scanLimit && hasWorkTime()) {
+            ReadyDelivery delivery = readyDeliveries.pollFirst();
+            if (delivery == null) {
+                return;
+            }
+            LoadSubscriber subscriber = delivery.nextSubscriber();
+            if (subscriber == null) {
+                continue;
+            }
+
+            ValidSubscriber valid = resolveValidSubscriber(server, subscriber, delivery.key());
+            if (valid != null && !canSend(valid.player(), valid.state())) {
+                delivery.defer(subscriber);
+                readyDeliveries.addLast(delivery);
+                continue;
+            }
+            if (valid != null) {
+                long deliveryStarted = System.nanoTime();
+                try {
+                    ChunkPos pos = ChunkPos.unpack(delivery.key().chunkLong());
+                    LevelChunk live = valid.world().getChunkSource().getChunkNow(pos.x(), pos.z());
+                    if (live == null) {
+                        sendPreparedChunk(valid.player(), delivery.prepared());
+                        valid.state().markSent(delivery.key().chunkLong(), delivery.key().lodLevel());
+                    } else {
+                        sendLoadedChunk(valid.player(), live);
+                        valid.state().markSent(delivery.key().chunkLong(), 0);
+                        invalidatePreparedCacheForChunk(delivery.key().worldKey(), delivery.key().chunkLong());
+                    }
+                } catch (RuntimeException exception) {
+                    valid.state().clearPending(delivery.key().chunkLong());
+                    planner.scheduleRetry(valid.state(), delivery.key().chunkLong(), 200);
+                    ViewExtendMod.LOGGER.debug(
+                            "Failed to deliver prepared visual chunk {}",
+                            ChunkPos.unpack(delivery.key().chunkLong()),
+                            exception);
+                } finally {
+                    valid.state().share.charge(0, System.nanoTime() - deliveryStarted);
+                }
+            }
+            processed++;
+
+            if (delivery.hasSubscribers()) {
+                readyDeliveries.addLast(delivery);
+            }
+        }
+    }
+
+    private void deliverLoadedChunkToSubscribers(MinecraftServer server, SharedLoad load, LevelChunk loaded) {
+        for (LoadSubscriber subscriber : load.subscribers) {
+            ValidSubscriber valid = resolveValidSubscriber(server, subscriber, load.key);
+            if (valid == null) {
+                continue;
+            }
+            if (!canSend(valid.player(), valid.state())) {
+                valid.state().clearPending(load.key.chunkLong());
+                planner.scheduleRetry(valid.state(), load.key.chunkLong(), 1);
+                continue;
+            }
+            try {
+                sendLoadedChunk(valid.player(), loaded);
+                valid.state().markSent(load.key.chunkLong(), 0);
+            } catch (RuntimeException exception) {
+                valid.state().clearPending(load.key.chunkLong());
+                planner.scheduleRetry(valid.state(), load.key.chunkLong(), 200);
+            }
+        }
+        invalidatePreparedCacheForChunk(load.key.worldKey(), load.key.chunkLong());
+    }
+
+    private ValidSubscriber pruneAndFindFirstValidSubscriber(MinecraftServer server, SharedLoad load) {
+        ValidSubscriber first = null;
+        Iterator<LoadSubscriber> iterator = load.subscribers.iterator();
+        while (iterator.hasNext()) {
+            LoadSubscriber subscriber = iterator.next();
+            ValidSubscriber valid = resolveValidSubscriber(server, subscriber, load.key);
+            if (valid == null) {
+                iterator.remove();
+            } else if (first == null) {
+                first = valid;
+            }
+        }
+        return first;
+    }
+
+    private ValidSubscriber resolveValidSubscriber(
+            MinecraftServer server,
+            LoadSubscriber subscriber,
+            GlobalChunkKey key) {
+        ServerPlayer player = server.getPlayerList().getPlayer(subscriber.playerUuid());
+        PlayerViewState state = statesByPlayer.get(new PlayerWorldKey(subscriber.playerUuid(), key.worldKey()));
+        if (player == null || state == null || !state.isCurrentRequest(subscriber.state(), key.chunkLong(), subscriber.requestId())) {
+            return null;
+        }
+
+        ServerLevel world = player.level();
+        long packed = key.chunkLong();
+        if (!world.dimension().identifier().toString().equals(key.worldKey())) {
+            state.clearPending(packed);
+            return null;
+        }
+        if (!state.pending.contains(packed)
+                || state.pendingLodByChunk.getOrDefault(packed, Integer.MAX_VALUE) != key.lodLevel()) {
+            return null;
+        }
+
+        int normalDistance = world.getServer().getPlayerList().getViewDistance();
+        int totalDistance = getEffectiveTotalDistance(player, normalDistance);
+        int centerX = player.chunkPosition().x();
+        int centerZ = player.chunkPosition().z();
+        int chunkX = ChunkPos.getX(packed);
+        int chunkZ = ChunkPos.getZ(packed);
+        if (!withinDistance(chunkX, chunkZ, centerX, centerZ, totalDistance)
+                || player.getChunkTrackingView().contains(chunkX, chunkZ)) {
+            state.clearPending(packed);
+            return null;
+        }
+        // A full-detail result is valid at any distance. A result too coarse for the new
+        // view must explicitly schedule its replacement, including when the player stops.
+        if (resolveLodLevel(centerX, centerZ, chunkX, chunkZ) < key.lodLevel()) {
+            state.clearPending(packed);
+            planner.enqueueCandidate(state, packed);
+            return null;
+        }
+        return new ValidSubscriber(player, world, state);
+    }
+
+    private void clearPendingAndScheduleRetry(
+            MinecraftServer server,
+            LoadSubscriber subscriber,
+            GlobalChunkKey key,
+            int retryTicks) {
+        PlayerViewState state = statesByPlayer.get(new PlayerWorldKey(subscriber.playerUuid(), key.worldKey()));
+        if (state == null || !state.isCurrentRequest(subscriber.state(), key.chunkLong(), subscriber.requestId())) {
+            return;
+        }
+        state.clearPending(key.chunkLong());
+        ServerPlayer player = server.getPlayerList().getPlayer(subscriber.playerUuid());
+        if (player != null && player.isAlive()
+                && player.level().dimension().identifier().toString().equals(key.worldKey())) {
+            planner.scheduleRetry(state, key.chunkLong(), retryTicks);
+        }
+    }
+
+    private void sendLoadedChunk(ServerPlayer player, LevelChunk chunk) {
+        LevelLightEngine lightEngine = ((ServerLevel) chunk.getLevel()).getChunkSource().getLightEngine();
+        ClientboundLevelChunkWithLightPacket packet = createChunkPacket(player, chunk, lightEngine, null, null);
+        sendChunkPacket(player, packet);
+    }
+
+    private void sendPreparedChunk(ServerPlayer player, PreparedVisualChunk prepared) {
+        sendChunkPacket(player, prepared.packet());
+    }
+
     private static ClientboundLevelChunkWithLightPacket createChunkPacket(
             ServerPlayer player,
             LevelChunk chunk,
-            LevelLightEngine lightingProvider,
+            LevelLightEngine lightEngine,
             BitSet skyLightMask,
             BitSet blockLightMask) {
         if (!(player.connection instanceof PacketContextProvider contextProvider)) {
             throw new IllegalStateException("Server connection does not provide a Fabric packet context");
         }
-
         return PacketContext.supplyWithContext(
                 contextProvider,
                 () -> new ClientboundLevelChunkWithLightPacket(
-                        chunk,
-                        lightingProvider,
-                        skyLightMask,
-                        blockLightMask));
+                        chunk, lightEngine, skyLightMask, blockLightMask));
     }
 
-    private void sendPacketTemplate(ServerPlayer player, PacketTemplate packetTemplate, int lodLevel) {
+    public boolean isEnabled() { return config.unsimulatedViewDistance() > 0; }
+
+    private boolean canSend(ServerPlayer player, PlayerViewState state) {
+        var connection = ((com.silver.viewextend.mixin.ServerConnectionAccessor) player.connection).viewextend$getConnection();
+        var channel = ((com.silver.viewextend.mixin.ConnectionAccessor) connection).viewextend$getChannel();
+        var flow = (com.silver.viewextend.mixin.PlayerChunkSenderAccessor) player.connection.chunkSender;
+        return hasWorkTime() && (borrowing || state.share.available())
+                && sendsThisTick < config.maxMainThreadPreparedChunksPerTick()
+                && VisualChunkFlow.canSend(flow.viewextend$getQuota(), flow.viewextend$getOutstanding(),
+                        flow.viewextend$getMaxOutstanding(), state.visualBatchOpen)
+                && state.sendsThisTick < config.maxChunksPerPlayerPerTick() && connection.isConnected()
+                && channel != null && channel.isWritable();
+    }
+
+    private void sendChunkPacket(ServerPlayer player, ClientboundLevelChunkWithLightPacket packet) {
+        String worldKey = player.level().dimension().identifier().toString();
+        PlayerViewState state = statesByPlayer.get(new PlayerWorldKey(player.getUUID(), worldKey));
+        if (state == null) throw new IllegalStateException("Missing visual batch state");
+        var flow = (com.silver.viewextend.mixin.PlayerChunkSenderAccessor) player.connection.chunkSender;
+        if (!state.visualBatchOpen) {
+            flow.viewextend$setOutstanding(flow.viewextend$getOutstanding() + 1);
+            state.visualBatchOpen = true;
+            player.connection.send(net.minecraft.network.protocol.game.ClientboundChunkBatchStartPacket.INSTANCE);
+        }
+        flow.viewextend$setQuota(flow.viewextend$getQuota() - 1);
+        int packetBytes = VisualChunkPackets.estimate(packet);
+        sendingVisualPacket = true;
+        try {
+            player.connection.send(packet);
+        } finally {
+            sendingVisualPacket = false;
+        }
+        state.share.charge(packetBytes, 0);
+        typicalPacketBytes += .02 * (packetBytes - typicalPacketBytes);
+        state.sendsThisTick++;
+        state.refreshEntities = true;
+        sendsThisTick++;
         totalChunkPacketsSent++;
-        lifetimeChunkPacketsSent++;
-        totalNetworkBytesEstimate += packetTemplate.chunkPacketBytes();
-        lifetimeNetworkBytesEstimate += packetTemplate.chunkPacketBytes();
-        totalDeterministicBlockLightSections += packetTemplate.blockLightSections();
-        totalDeterministicSkyLightSections += packetTemplate.skyLightSections();
-        lifetimeDeterministicBlockLightSections += packetTemplate.blockLightSections();
-        lifetimeDeterministicSkyLightSections += packetTemplate.skyLightSections();
-        recordLodSend(lodLevel);
-        player.connection.send(packetTemplate.chunkPacket());
-        player.connection.send(packetTemplate.lightPacket());
+
+        totalNetworkBytesEstimate += packetBytes;
     }
 
-    private PacketTemplate getGlobalPacketTemplate(GlobalChunkKey key) {
-        SoftReference<PacketTemplate> ref = globalPacketTemplateCache.get(key);
-        if (ref == null) {
-            return null;
-        }
-        PacketTemplate template = ref.get();
-        if (template == null) {
-            removeGlobalPacketTemplateEntry(key);
-            return null;
-        }
-        return template;
-    }
-
-    private void invalidateGlobalPacketTemplatesForChunk(String worldKey, long chunkLong, int keepLodLevel) {
-        for (int lod = 0; lod <= 3; lod++) {
-            if (lod == keepLodLevel) {
-                continue;
-            }
-            removeGlobalPacketTemplateEntry(new GlobalChunkKey(worldKey, chunkLong, lod));
-        }
-        globalPacketTemplateOrder.removeIf(key -> key.worldKey().equals(worldKey)
-                && key.chunkLong() == chunkLong
-                && key.lodLevel() != keepLodLevel);
-    }
-
-    private void putGlobalPacketTemplate(GlobalChunkKey key, PacketTemplate template) {
-        if (config.globalPacketTemplateCacheMaxEntries() <= 0) {
-            return;
-        }
-        SoftReference<PacketTemplate> previous = globalPacketTemplateCache.put(key, new SoftReference<>(template));
-        int estimatedBytes = estimatePacketTemplateBytes(template);
-        Integer previousBytes = globalPacketTemplateEstimatedBytes.put(key, estimatedBytes);
-        if (previousBytes != null) {
-            globalPacketTemplateTotalEstimatedBytes.addAndGet(-previousBytes.longValue());
-        }
-        globalPacketTemplateTotalEstimatedBytes.addAndGet(estimatedBytes);
-        if (previous == null) {
-            globalPacketTemplateOrder.add(key);
-        }
-        pruneGlobalPacketTemplateCache();
-    }
-
-    private void pruneGlobalPacketTemplateCache() {
-        int maxEntries = config.globalPacketTemplateCacheMaxEntries();
-        if (maxEntries <= 0) {
-            globalPacketTemplateCache.clear();
-            globalPacketTemplateOrder.clear();
-            globalPacketTemplateEstimatedBytes.clear();
-            globalPacketTemplateTotalEstimatedBytes.set(0L);
-            return;
-        }
-
-        globalPacketTemplateOrder.removeIf(key -> {
-            SoftReference<PacketTemplate> ref = globalPacketTemplateCache.get(key);
-            if (ref == null || ref.get() == null) {
-                removeGlobalPacketTemplateEntry(key);
-                return true;
-            }
-            return false;
-        });
-
-        while (globalPacketTemplateCache.size() > maxEntries
-                || globalPacketTemplateTotalEstimatedBytes.get() > GLOBAL_TEMPLATE_CACHE_MAX_BYTES) {
-            GlobalChunkKey oldest = globalPacketTemplateOrder.poll();
-            if (oldest == null) {
-                break;
-            }
-            removeGlobalPacketTemplateEntry(oldest);
+    private void finishVisualBatch(ServerPlayer player) {
+        var key = new PlayerWorldKey(player.getUUID(), player.level().dimension().identifier().toString());
+        PlayerViewState state = statesByPlayer.get(key);
+        if (state != null && state.visualBatchOpen) {
+            state.visualBatchOpen = false;
+            player.connection.send(new net.minecraft.network.protocol.game.ClientboundChunkBatchFinishedPacket(state.sendsThisTick));
         }
     }
 
-    private void removeGlobalPacketTemplateEntry(GlobalChunkKey key) {
-        globalPacketTemplateCache.remove(key);
-        Integer removedBytes = globalPacketTemplateEstimatedBytes.remove(key);
-        if (removedBytes != null) {
-            globalPacketTemplateTotalEstimatedBytes.addAndGet(-removedBytes.longValue());
-        }
-    }
-
-    private static int estimatePacketTemplateBytes(PacketTemplate template) {
-        int chunkBytes = Math.max(0, template.chunkPacketBytes());
-        int lightBytes = Math.max(0, template.blockLightSections() + template.skyLightSections()) * 2048;
-        return chunkBytes + lightBytes + 512;
-    }
-
-    private CachedPayload getCachedPayload(PlayerState state, long chunkLong) {
-        CachedPayload cached = state.payloadCache.get(chunkLong);
-        if (cached == null) {
-            return null;
-        }
-        if (cached.expiresAtTick() < ticks) {
-            state.payloadCache.remove(chunkLong);
-            return null;
-        }
-        state.payloadCache.putAndMoveToLast(chunkLong, cached);
-        return cached;
-    }
-
-    private void putCachedPayload(
-            PlayerState state,
-            long chunkLong,
-            PacketTemplate packetTemplate,
-            int lodLevel) {
-        if (config.payloadCacheTtlTicks() <= 0 || config.payloadCacheMaxEntriesPerPlayer() <= 0) {
-            return;
-        }
-
-        state.payloadCache.putAndMoveToLast(
-                chunkLong,
-            new CachedPayload(packetTemplate, lodLevel, ticks + config.payloadCacheTtlTicks()));
-        while (state.payloadCache.size() > config.payloadCacheMaxEntriesPerPlayer()) {
-            state.payloadCache.remove(state.payloadCache.firstLongKey());
-        }
-    }
-
-    private void prunePayloadCache(PlayerState state) {
-        if (state.payloadCache.isEmpty()) {
-            return;
-        }
-        if (config.payloadCacheTtlTicks() <= 0 || config.payloadCacheMaxEntriesPerPlayer() <= 0) {
-            state.payloadCache.clear();
-            return;
-        }
-
-        var iterator = state.payloadCache.long2ObjectEntrySet().fastIterator();
-        while (iterator.hasNext()) {
-            var entry = iterator.next();
-            if (entry.getValue().expiresAtTick() < ticks) {
-                iterator.remove();
+    public void onChunkAvailable(ServerLevel world, LevelChunk chunk) {
+        String worldKey = world.dimension().identifier().toString();
+        long packed = chunk.getPos().pack();
+        invalidatePreparedCacheForChunk(worldKey, packed);
+        for (PlayerViewState state : statesByPlayer.values()) {
+            if (state.worldKey.equals(worldKey) && state.retryDueByChunk.remove(packed) != Integer.MIN_VALUE) {
+                planner.enqueueCandidate(state, packed);
             }
         }
-        while (state.payloadCache.size() > config.payloadCacheMaxEntriesPerPlayer()) {
-            state.payloadCache.remove(state.payloadCache.firstLongKey());
-        }
     }
 
-    private void unloadOutOfRange(
+    private void invalidatePreparedCacheForChunk(String worldKey, long packed) {
+        retryCache.invalidate(new ChunkSourceKey(worldKey, packed));
+        packetCache.invalidate(new GlobalChunkKey(worldKey, packed, 0));
+        packetCache.invalidate(new GlobalChunkKey(worldKey, packed, 1));
+    }
+
+    private void recordPreparationStats(PreparedVisualChunk prepared) {
+        TransformStats transform = prepared.transformStats();
+        totalLegacyBlockIdRemaps += transform.remapCount();
+
+        if (transform.unsortedSections()) {
+            totalUnsortedSectionInputs++;
+        }
+
+        LightStats light = prepared.lightStats();
+        totalSkyLightNbtSections += light.skyNbt();
+        totalSkyLightFallbackSections += light.skyFallback();
+        totalSkyLightWaterFallbackSections += light.skyWaterFallback();
+        totalBlockLightNbtSections += light.blockNbt();
+        totalBlockLightFallbackSections += light.blockFallback();
+    }
+
+    private void processDueUnloads(
             ServerPlayer player,
-            PlayerState state,
+            PlayerViewState state,
             int centerX,
             int centerZ,
-            int totalDistance,
-            int normalDistance) {
+            int totalDistance) {
         int unloadDistance = totalDistance + config.unloadBufferChunks();
-        int unloadedThisTick = 0;
-        long[] sentSnapshot = state.sent.toLongArray();
-        for (long packed : sentSnapshot) {
-            int chunkX = ChunkPos.getX(packed);
-            int chunkZ = ChunkPos.getZ(packed);
-            boolean insideNormal = withinDistance(chunkX, chunkZ, centerX, centerZ, normalDistance);
-            boolean insideUnloadDistance = withinDistance(chunkX, chunkZ, centerX, centerZ, unloadDistance);
-
-            if (insideNormal) {
-                state.payloadCache.remove(packed);
-                invalidateGlobalPacketTemplatesForChunk(state.worldKey, packed, -1);
-                state.sent.remove(packed);
-                state.sentLodByChunk.remove(packed);
-                state.pending.remove(packed);
-                state.pendingLodByChunk.remove(packed);
-                state.unloadOutsideSinceTick.remove(packed);
+        int sent = 0;
+        while (sent < config.maxUnloadsPerPlayerPerTick()
+                && !state.unloadQueue.isEmpty()
+                && state.unloadQueue.peek().dueTick() <= ticks) {
+            ScheduledChunk scheduled = state.unloadQueue.poll();
+            long packed = scheduled.chunkLong();
+            if (state.unloadDueByChunk.getOrDefault(packed, Integer.MIN_VALUE) != scheduled.dueTick()) {
+                continue;
+            }
+            state.unloadDueByChunk.remove(packed);
+            if (!state.sent.contains(packed)) {
                 continue;
             }
 
-            if (insideUnloadDistance) {
-                state.unloadOutsideSinceTick.remove(packed);
+            int x = ChunkPos.getX(packed);
+            int z = ChunkPos.getZ(packed);
+            if (withinDistance(x, z, centerX, centerZ, unloadDistance)) {
                 continue;
             }
-
-            int firstOutsideTick = state.unloadOutsideSinceTick.getOrDefault(packed, Integer.MIN_VALUE);
-            if (firstOutsideTick == Integer.MIN_VALUE) {
-                state.unloadOutsideSinceTick.put(packed, ticks);
-                continue;
-            }
-
-            if (ticks - firstOutsideTick < config.unloadGraceTicks()) {
-                continue;
-            }
-
-            if (unloadedThisTick >= config.maxUnloadsPerPlayerPerTick()) {
-                continue;
-            }
-
-            player.connection.send(new ClientboundForgetLevelChunkPacket(new ChunkPos(chunkX, chunkZ)));
-            totalUnloadPacketsSent++;
-            lifetimeUnloadPacketsSent++;
-            totalNetworkBytesEstimate += 9;
-            lifetimeNetworkBytesEstimate += 9;
+            player.connection.send(new ClientboundForgetLevelChunkPacket(new ChunkPos(x, z)));
             state.sent.remove(packed);
             state.sentLodByChunk.remove(packed);
-            state.pending.remove(packed);
-            state.pendingLodByChunk.remove(packed);
-            state.unloadOutsideSinceTick.remove(packed);
-            unloadedThisTick++;
+            state.clearPending(packed);
+            totalUnloadPacketsSent++;
+
+            totalNetworkBytesEstimate += 9;
+
+            sent++;
+        }
+        planner.compactScheduledQueueIfNeeded(state.unloadQueue, state.unloadDueByChunk);
+    }
+
+    private boolean isPipelineAtHardLimit() {
+        int hardLimit = config.preparedQueueHardLimit();
+        return hardLimit > 0 && loadsByKey.size() + readyDeliveries.size() >= hardLimit;
+    }
+
+    private int resolveLodLevel(int centerX, int centerZ, int chunkX, int chunkZ) {
+        int distance = Math.max(Math.abs(chunkX - centerX), Math.abs(chunkZ - centerZ));
+        return distance >= config.lod1StartDistance() ? 1 : 0;
+    }
+
+    private void refreshPlayerEntities(MinecraftServer server) {
+        // Refresh only supported live entities; never scan every mob for each terrain delivery.
+        var byWorld = new java.util.HashMap<ServerLevel, java.util.List<ServerPlayer>>();
+        for (PlayerViewState state : statesByPlayer.values()) {
+            if (!state.refreshEntities) continue;
+            state.refreshEntities = false;
+            ServerPlayer observer = server.getPlayerList().getPlayer(state.playerUuid);
+            if (observer != null) byWorld.computeIfAbsent(observer.level(), ignored -> new ArrayList<>()).add(observer);
+        }
+        byWorld.forEach((world, observers) -> {
+            var trackers = ((com.silver.viewextend.mixin.ServerChunkLoadingManagerAccessor)
+                    world.getChunkSource().chunkMap).viewextend$getEntityMap();
+            for (ServerPlayer target : world.players()) refreshTracker(trackers.get(target.getId()), observers);
+            var dragons = loadedDragons.get(world.dimension().identifier().toString());
+            if (dragons != null) for (int id : dragons) refreshTracker(trackers.get(id), observers);
+        });
+    }
+
+    private static void refreshTracker(Object tracker, java.util.List<ServerPlayer> observers) {
+        if (tracker instanceof ExtendedPlayerTracker extended && extended.viewextend$eligible()) {
+            for (ServerPlayer observer : observers) extended.viewextend$refresh(observer);
         }
     }
 
-    private void prunePendingInsideNormal(PlayerState state, int centerX, int centerZ, int normalDistance) {
-        long[] currentPending = state.pending.toLongArray();
-        for (long packed : currentPending) {
-            int chunkX = ChunkPos.getX(packed);
-            int chunkZ = ChunkPos.getZ(packed);
-            if (withinDistance(chunkX, chunkZ, centerX, centerZ, normalDistance)) {
-                state.pending.remove(packed);
-                state.pendingLodByChunk.remove(packed);
-                state.unloadOutsideSinceTick.remove(packed);
-            }
+    public void resetPlayer(ServerPlayer player) {
+        statesByPlayer.keySet().removeIf(key -> key.playerUuid().equals(player.getUUID()));
+    }
+
+    public void onVanillaChunkSent(ServerPlayer player, int x, int z) {
+        if (sendingVisualPacket) return;
+        String worldKey = player.level().dimension().identifier().toString();
+        PlayerViewState state = statesByPlayer.computeIfAbsent(
+                new PlayerWorldKey(player.getUUID(), worldKey),
+                ignored -> new PlayerViewState(player.getUUID(), worldKey));
+        state.markSent(ChunkPos.pack(x, z), 0);
+        state.refreshEntities = true;
+        invalidatePreparedCacheForChunk(worldKey, ChunkPos.pack(x, z));
+    }
+
+    public boolean shouldSuppressVanillaUnload(ServerPlayer player, ChunkPos pos) {
+        if (config.unsimulatedViewDistance() == 0) return false;
+        int totalDistance = getRequiredClientLoadDistance(player);
+        if (!withinDistance(pos.x(), pos.z(), player.chunkPosition().x(), player.chunkPosition().z(), totalDistance)) {
+            return false;
         }
+        String worldKey = player.level().dimension().identifier().toString();
+        PlayerViewState state = statesByPlayer.get(new PlayerWorldKey(player.getUUID(), worldKey));
+        if (state == null || !state.sent.contains(pos.pack())) return false;
+        totalSuppressedVanillaUnloads++;
+
+        return true;
     }
 
     public void onLikelyClientUnload(ServerPlayer player, ChunkPos pos) {
-        long stateKey = stateKey(player.getUUID(), player.level().dimension().identifier().toString());
-        PlayerState state = statesByPlayer.get(stateKey);
+        String worldKey = player.level().dimension().identifier().toString();
+        PlayerViewState state = statesByPlayer.get(new PlayerWorldKey(player.getUUID(), worldKey));
         if (state == null) {
             return;
         }
-
         long packed = pos.pack();
         state.sent.remove(packed);
         state.sentLodByChunk.remove(packed);
-        state.pending.remove(packed);
-        state.pendingLodByChunk.remove(packed);
-        state.unloadOutsideSinceTick.remove(packed);
+        state.clearPending(packed);
+        state.unloadDueByChunk.remove(packed);
+        if (withinDistance(pos.x(), pos.z(), player.chunkPosition().x(), player.chunkPosition().z(), getRequiredClientLoadDistance(player))) {
+            planner.enqueueCandidate(state, packed);
+        }
     }
 
-    private void updateClientLoadDistance(ServerPlayer player, PlayerState state, int totalDistance) {
+    public boolean hasSentVisualChunk(ServerPlayer player, ChunkPos pos) {
+        String worldKey = player.level().dimension().identifier().toString();
+        PlayerViewState state = statesByPlayer.get(new PlayerWorldKey(player.getUUID(), worldKey));
+        return state != null && state.sent.contains(pos.pack());
+    }
+
+    public int getEffectiveTotalDistance(ServerPlayer player, int normalDistance) {
+        return ViewDistancePolicy.effective(normalDistance, config.unsimulatedViewDistance(),
+                player.requestedViewDistance(), config.clientReportedViewDistanceHardCap());
+    }
+
+    public int getRequiredClientLoadDistance(ServerPlayer player) {
+        int normalDistance = player.level().getServer().getPlayerList().getViewDistance();
+        return getEffectiveTotalDistance(player, normalDistance);
+    }
+
+    private void updateClientLoadDistance(ServerPlayer player, PlayerViewState state, int totalDistance) {
         if (state.clientChunkLoadDistance == totalDistance) {
             return;
         }
         player.connection.send(new ClientboundSetChunkCacheRadiusPacket(totalDistance));
         state.clientChunkLoadDistance = totalDistance;
         totalChunkLoadDistancePackets++;
-        lifetimeChunkLoadDistancePackets++;
+
         totalNetworkBytesEstimate += 5;
-        lifetimeNetworkBytesEstimate += 5;
+    }
+
+    private void cleanupDisconnected(MinecraftServer server) {
+        Iterator<Map.Entry<PlayerWorldKey, PlayerViewState>> iterator = statesByPlayer.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<PlayerWorldKey, PlayerViewState> entry = iterator.next();
+            ServerPlayer player = server.getPlayerList().getPlayer(entry.getKey().playerUuid());
+            if (player == null
+                    || !entry.getKey().worldKey().equals(
+                            player.level().dimension().identifier().toString())) {
+                iterator.remove();
+            }
+        }
+    }
+
+    private static List<PlayerTickTarget> collectTickTargets(MinecraftServer server) {
+        List<PlayerTickTarget> targets = new ArrayList<>();
+        for (ServerLevel world : server.getAllLevels()) {
+            for (ServerPlayer player : world.players()) {
+                targets.add(new PlayerTickTarget(world, player));
+            }
+        }
+        return targets;
     }
 
     private void maybeLogMetrics(MinecraftServer server) {
-        if (!config.metricsInfoLogsEnabled()) {
-            return;
-        }
-        if (ticks % config.metricsLogIntervalTicks() != 0) {
+        if (!config.metricsInfoLogsEnabled() || ticks % config.metricsLogIntervalTicks() != 0) {
             return;
         }
 
         long now = System.nanoTime();
-        long windowNanos = Math.max(1L, now - metricsWindowStartNanos);
-        double windowSeconds = windowNanos / 1_000_000_000.0;
-
-        long pendingChunks = 0;
-        long sentChunks = 0;
-        long payloadCacheEntries = 0;
-        for (PlayerState state : statesByPlayer.values()) {
-            pendingChunks += state.pending.size();
-            sentChunks += state.sent.size();
-            payloadCacheEntries += state.payloadCache.size();
+        double seconds = Math.max(1L, now - metricsWindowStartNanos) / 1_000_000_000.0;
+        long pending = 0;
+        long sent = 0;
+        long candidateQueue = 0;
+        for (PlayerViewState state : statesByPlayer.values()) {
+            pending += state.pending.size();
+            sent += state.sent.size();
+            candidateQueue += state.candidateQueue.size();
         }
+        long completedQueued = completedTasksQueuedWindow.sumThenReset();
 
-        int onlinePlayers = server.getPlayerList().getPlayers().size();
-        Runtime runtime = Runtime.getRuntime();
-        long usedMemoryBytes = runtime.totalMemory() - runtime.freeMemory();
-        long committedMemoryBytes = runtime.totalMemory();
-        long maxMemoryBytes = runtime.maxMemory();
-
-        double netKiBPerSecond = (totalNetworkBytesEstimate / 1024.0) / windowSeconds;
-        double cpuMillisPerSecond = (totalCpuNanos / 1_000_000.0) / windowSeconds;
-        double cpuPercentSingleCore = (totalCpuNanos / (double) windowNanos) * 100.0;
-        String windowState = (totalChunkPacketsSent == 0
-            && totalUnloadPacketsSent == 0
-            && totalChunkLoadDistancePackets == 0
-            && totalDiskNbtReads == 0
-            && totalNetworkBytesEstimate == 0)
-            ? "idle"
-            : "active";
-
-        ViewExtendMod.LOGGER.debug(
-            "[ViewExtend Metrics] windowState={} players={} trackedStates={} sentVisualChunks={} pendingVisualChunks={} preparedQueue={} nbtReadQueue={} globalTemplateCache={} globalTemplateBytes~={} payloadCacheEntries={} waterSkylightFallbackCache={} preparedQueued={} preparedProcessed={} preparedDropped={} nbtQueued={}(total={}) nbtProcessed={}(total={}) queueDeferrals={}(total={}) lodSends(0/1)={}/{}(total={}/{}) globalTemplateHits={}(total={}) globalTemplateMisses={}(total={}) cacheHits={}(total={}) cacheMisses={}(total={}) chunkPackets={}(total={}) unloadPackets={}(total={}) suppressedVanillaUnloads={}(total={}) forcedUpgradeUnloads={}(total={}) unsortedSectionInputs={}(total={}) loadDistancePackets={}(total={}) diskNbtReads={}(total={}) diskNbtMisses={}(total={}) deterministicLightSections(block/sky)={}/{}(total={}/{}) lightSourceSections sky(nbt/fallback/waterFallback)={}/{}/{}(total={}/{}/{}) block(nbt/fallback)={}/{}(total={}/{}) netBytes~={}(total={}) netKiBps~={}/s cpuMsps={} cpuSingleCore~{}% memUsedMiB={}/{}/{}",
-            windowState,
-                onlinePlayers,
-                statesByPlayer.size(),
-                sentChunks,
-                pendingChunks,
-                preparedChunkQueue.size(),
-                nbtReadQueue.size(),
-                globalPacketTemplateCache.size(),
-                globalPacketTemplateTotalEstimatedBytes.get(),
-                payloadCacheEntries,
-                WATER_SKYLIGHT_FALLBACK_CACHE.size(),
-                totalPreparedTasksQueued,
-                totalPreparedTasksProcessed,
-                totalPreparedTasksDropped,
-                totalNbtRequestsQueued,
-                lifetimeNbtRequestsQueued,
-                totalNbtRequestsProcessed,
-                lifetimeNbtRequestsProcessed,
-                totalQueueBackpressureDeferrals,
-                lifetimeQueueBackpressureDeferrals,
-                totalLod0Sends,
-                totalLod1Sends,
-                lifetimeLod0Sends,
-                lifetimeLod1Sends,
-                totalGlobalTemplateHits,
-                lifetimeGlobalTemplateHits,
-                totalGlobalTemplateMisses,
-                lifetimeGlobalTemplateMisses,
-                totalPayloadCacheHits,
-                lifetimePayloadCacheHits,
-                totalPayloadCacheMisses,
-                lifetimePayloadCacheMisses,
-                totalChunkPacketsSent,
-            lifetimeChunkPacketsSent,
-                totalUnloadPacketsSent,
-            lifetimeUnloadPacketsSent,
-                totalSuppressedVanillaUnloads,
-            lifetimeSuppressedVanillaUnloads,
-                totalForcedUpgradeUnloads,
-            lifetimeForcedUpgradeUnloads,
-                totalUnsortedSectionInputs,
-            lifetimeUnsortedSectionInputs,
-                totalChunkLoadDistancePackets,
-            lifetimeChunkLoadDistancePackets,
-                totalDiskNbtReads,
-            lifetimeDiskNbtReads,
-                totalDiskNbtReadMisses,
-            lifetimeDiskNbtReadMisses,
-                totalDeterministicBlockLightSections,
-                totalDeterministicSkyLightSections,
-                lifetimeDeterministicBlockLightSections,
-                lifetimeDeterministicSkyLightSections,
-                totalSkyLightNbtSections,
-                totalSkyLightFallbackSections,
-                totalSkyLightWaterFallbackSections,
-                lifetimeSkyLightNbtSections,
-                lifetimeSkyLightFallbackSections,
-                lifetimeSkyLightWaterFallbackSections,
-                totalBlockLightNbtSections,
+        ViewExtendMod.LOGGER.info(
+                "[ViewExtend Metrics] players={} states={} sent={} pending={} candidates={} loads={} nbtQueue={} completedQueue={} deliveries={} cache={}/{}MiB packets={} unloads={} diskReads={} diskMisses={} nbtQueued={} nbtStarted={} coalesced={} cacheHits={} cacheMisses={} pipelineDeferrals={} candidateChecks={} preparedQueued={} preparedProcessed={} preparedDropped={} remaps={} unsorted={} suppressedUnloads={} lightSky(nbt/fallback/water)={}/{}/{} lightBlock(nbt/fallback)={}/{} netMiB~={} netMiBps~={} mainElapsedMsps={} workerElapsedMsps={}",
+                server.getPlayerList().getPlayers().size(), statesByPlayer.size(), sent, pending,
+                candidateQueue, loadsByKey.size(), nbtReadQueue.size(), completedLoadQueue.size(),
+                readyDeliveries.size(), packetCache.size(),
+                packetCache.bytes() / (1024L * 1024L), totalChunkPacketsSent,
+                totalUnloadPacketsSent, totalDiskNbtReads, totalDiskNbtReadMisses,
+                totalNbtRequestsQueued, totalNbtRequestsStarted, totalCoalescedRequests,
+                totalCacheHits, totalCacheMisses, totalPipelineDeferrals, totalCandidateInspections,
+                completedQueued, totalPreparedResultsProcessed, totalPreparedResultsDropped,
+                totalLegacyBlockIdRemaps, totalUnsortedSectionInputs, totalSuppressedVanillaUnloads,
+                totalSkyLightNbtSections, totalSkyLightFallbackSections,
+                totalSkyLightWaterFallbackSections, totalBlockLightNbtSections,
                 totalBlockLightFallbackSections,
-                lifetimeBlockLightNbtSections,
-                lifetimeBlockLightFallbackSections,
-                totalNetworkBytesEstimate,
-            lifetimeNetworkBytesEstimate,
-                String.format("%.2f", netKiBPerSecond),
-                String.format("%.2f", cpuMillisPerSecond),
-                String.format("%.2f", cpuPercentSingleCore),
-                bytesToMiB(usedMemoryBytes),
-            bytesToMiB(committedMemoryBytes),
-                bytesToMiB(maxMemoryBytes));
+                String.format(Locale.ROOT, "%.2f", totalNetworkBytesEstimate / 1048576.0),
+                String.format(Locale.ROOT, "%.2f", totalNetworkBytesEstimate / 1048576.0 / seconds),
+                String.format(Locale.ROOT, "%.2f", totalMainCpuNanos / 1_000_000.0 / seconds),
+                String.format(Locale.ROOT, "%.2f", totalWorkerCpuNanos / 1_000_000.0 / seconds));
 
-        if (totalLegacyBlockIdRemaps > 0) {
-            ViewExtendMod.LOGGER.debug(
-                    "[ViewExtend Metrics] legacyBlockIdRemaps={} (total={})",
-                    totalLegacyBlockIdRemaps,
-                    lifetimeLegacyBlockIdRemaps);
+        ViewExtendMod.LOGGER.info("[ViewExtend Preparation] outcomes={} sharedCooldownHits={}", failureCounts, totalCooldownHits);
+        for (PlayerViewState state : statesByPlayer.values()) {
+            ServerPlayer player = server.getPlayerList().getPlayer(state.playerUuid);
+            if (player == null) continue;
+            ViewExtendMod.LOGGER.info("[ViewExtend View] player={} world={} requested={} effective={} server={} sent={} pending={} retries={} bootstrapActive={} bootstrapRadius={} batchQuota={} unackedBatches={} lookahead={}",
+                    player.getGameProfile().name(), state.worldKey, player.requestedViewDistance(), state.totalDistance,
+                    state.normalDistance, state.sent.size(), state.pending.size(), state.retryDueByChunk.size(),
+                    state.bootstrapActive, state.bootstrapRadius,
+                    ((com.silver.viewextend.mixin.PlayerChunkSenderAccessor) player.connection.chunkSender).viewextend$getQuota(),
+                    ((com.silver.viewextend.mixin.PlayerChunkSenderAccessor) player.connection.chunkSender).viewextend$getOutstanding(), state.lookahead);
         }
-
+        ViewExtendMod.LOGGER.info("[ViewExtend Scheduler] readsPerTick={} budgetMs={} preparationLatencyTicks={} cachePromotions={}",
+                adaptive.reads(), adaptive.allowance() / 1_000_000.0, adaptive.latencyTicks(), packetCache.promotions());
+        failureCounts.clear();
+        totalCooldownHits = 0;
         metricsWindowStartNanos = now;
-        totalCpuNanos = 0;
+        totalMainCpuNanos = 0;
+        totalWorkerCpuNanos = 0;
         totalChunkPacketsSent = 0;
         totalUnloadPacketsSent = 0;
-        totalChunkLoadDistancePackets = 0;
         totalDiskNbtReads = 0;
         totalDiskNbtReadMisses = 0;
         totalNetworkBytesEstimate = 0;
+        totalChunkLoadDistancePackets = 0;
         totalLegacyBlockIdRemaps = 0;
-        totalSuppressedVanillaUnloads = 0;
-        totalForcedUpgradeUnloads = 0;
         totalUnsortedSectionInputs = 0;
-        totalPreparedTasksQueued = 0;
-        totalPreparedTasksProcessed = 0;
-        totalPreparedTasksDropped = 0;
         totalNbtRequestsQueued = 0;
-        totalNbtRequestsProcessed = 0;
-        totalQueueBackpressureDeferrals = 0;
-        totalLod0Sends = 0;
-        totalLod1Sends = 0;
-        totalGlobalTemplateHits = 0;
-        totalGlobalTemplateMisses = 0;
-        totalPayloadCacheHits = 0;
-        totalPayloadCacheMisses = 0;
-        totalDeterministicBlockLightSections = 0;
-        totalDeterministicSkyLightSections = 0;
+        totalNbtRequestsStarted = 0;
+        totalCoalescedRequests = 0;
+        totalPreparedResultsProcessed = 0;
+        totalPreparedResultsDropped = 0;
+        totalPipelineDeferrals = 0;
+        totalCacheHits = 0;
+        totalCacheMisses = 0;
+        totalCandidateInspections = 0;
+        totalSuppressedVanillaUnloads = 0;
         totalSkyLightNbtSections = 0;
         totalSkyLightFallbackSections = 0;
         totalSkyLightWaterFallbackSections = 0;
@@ -1172,709 +950,74 @@ public final class ViewExtendService {
         totalBlockLightFallbackSections = 0;
     }
 
-    private ClientboundLightUpdatePacketData createDeterministicLightData(
-            ChunkPos pos,
-            int bottomSectionY,
-            int topSectionY,
-            SerializableChunkData serializedChunk,
-            boolean hasSkyLight,
-            boolean forceFullBright,
-            boolean isOceanBiome) {
-        int sectionHeight = Math.max(0, topSectionY - bottomSectionY);
-        if (sectionHeight == 0) {
-            FriendlyByteBuf emptyBuffer = new FriendlyByteBuf(Unpooled.buffer(32));
-            emptyBuffer.writeBitSet(EMPTY_BIT_SET);
-            emptyBuffer.writeBitSet(EMPTY_BIT_SET);
-            emptyBuffer.writeBitSet(EMPTY_BIT_SET);
-            emptyBuffer.writeBitSet(EMPTY_BIT_SET);
-            emptyBuffer.writeCollection(List.<byte[]>of(), (buf, array) -> buf.writeByteArray(array));
-            emptyBuffer.writeCollection(List.<byte[]>of(), (buf, array) -> buf.writeByteArray(array));
-            ClientboundLightUpdatePacketData lightData = new ClientboundLightUpdatePacketData(emptyBuffer, pos.x(), pos.z());
-            emptyBuffer.release();
-            return lightData;
-        }
-
-        BitSet initedSky = new BitSet();
-        BitSet initedBlock = new BitSet();
-        List<byte[]> skyNibbles = new ArrayList<>(sectionHeight);
-        List<byte[]> blockNibbles = new ArrayList<>(sectionHeight);
-
-        SerializableChunkData.SectionData[] sectionDataByIndex = new SerializableChunkData.SectionData[sectionHeight];
-        for (SerializableChunkData.SectionData sectionData : serializedChunk.sectionData()) {
-            int index = sectionData.y() - bottomSectionY;
-            if (index >= 0 && index < sectionHeight) {
-                sectionDataByIndex[index] = sectionData;
-            }
-        }
-
-        for (int section = 0; section < sectionHeight; section++) {
-            SerializableChunkData.SectionData sectionData = sectionDataByIndex[section];
-            int sectionY = bottomSectionY + section;
-            // Consider section underwater if it's in an ocean biome and at or below sea level (Y=64)
-            boolean isUnderwaterSection = isOceanBiome && (sectionY * 16) < 64;
-
-            if (hasSkyLight) {
-                initedSky.set(section);
-                if (!forceFullBright && sectionData != null && sectionData.skyLight() != null) {
-                    totalSkyLightNbtSections++;
-                    lifetimeSkyLightNbtSections++;
-                    skyNibbles.add(sectionData.skyLight().getData());
-                } else {
-                    totalSkyLightFallbackSections++;
-                    lifetimeSkyLightFallbackSections++;
-                    if (forceFullBright) {
-                        skyNibbles.add(fallbackSkyLightNibble);
-                    } else {
-                        if (isUnderwaterSection) {
-                            if (config.oceanFallbackEnabled()) {
-                                // Use configured ocean fallback light level
-                                skyNibbles.add(oceanFallbackSkyLightNibble);
-                            } else {
-                                // Use gradient-based water-aware fallback
-                                byte[] fallbackSky = getWaterAwareSkyLightFallback(sectionY);
-                                totalSkyLightWaterFallbackSections++;
-                                lifetimeSkyLightWaterFallbackSections++;
-                                skyNibbles.add(fallbackSky);
-                            }
-                        } else {
-                            skyNibbles.add(fallbackSkyLightNibble);
-                        }
-                    }
-                }
-            }
-
-            initedBlock.set(section);
-            if (!forceFullBright && sectionData != null && sectionData.blockLight() != null) {
-                totalBlockLightNbtSections++;
-                lifetimeBlockLightNbtSections++;
-                blockNibbles.add(sectionData.blockLight().getData());
-            } else {
-                totalBlockLightFallbackSections++;
-                lifetimeBlockLightFallbackSections++;
-                blockNibbles.add(forceFullBright ? fallbackSkyLightNibble : (hasSkyLight ? fallbackBlockLightNibble : fallbackSkyLightNibble));
-            }
-        }
-
-        int perSectionNibbleBytes = hasSkyLight ? 4096 : 2048;
-        int estimatedSize = 128 + (sectionHeight * perSectionNibbleBytes);
-        FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer(Math.max(256, estimatedSize)));
-        buffer.writeBitSet(initedSky);
-        buffer.writeBitSet(initedBlock);
-        buffer.writeBitSet(EMPTY_BIT_SET);
-        buffer.writeBitSet(EMPTY_BIT_SET);
-        buffer.writeCollection(skyNibbles, (buf, array) -> buf.writeByteArray(array));
-        buffer.writeCollection(blockNibbles, (buf, array) -> buf.writeByteArray(array));
-        ClientboundLightUpdatePacketData lightData = new ClientboundLightUpdatePacketData(buffer, pos.x(), pos.z());
-        buffer.release();
-        return lightData;
-    }
-
     public void shutdown() {
-        preprocessExecutor.shutdownNow();
-        preparedChunkQueue.clear();
+        shuttingDown = true;
+        loader.close();
         nbtReadQueue.clear();
-        globalPacketTemplateCache.clear();
-        globalPacketTemplateOrder.clear();
-        globalPacketTemplateEstimatedBytes.clear();
-        globalPacketTemplateTotalEstimatedBytes.set(0L);
-    }
-
-    public boolean shouldSuppressVanillaUnload(ServerPlayer player, ChunkPos pos) {
-        int normalDistance = player.level().getServer().getPlayerList().getViewDistance();
-        int totalDistance = getEffectiveTotalDistance(player, normalDistance);
-        int centerX = player.chunkPosition().x();
-        int centerZ = player.chunkPosition().z();
-
-        if (!withinDistance(pos.x(), pos.z(), centerX, centerZ, totalDistance)) {
-            return false;
-        }
-        if (withinDistance(pos.x(), pos.z(), centerX, centerZ, normalDistance)) {
-            return false;
-        }
-
-        String worldKey = player.level().dimension().identifier().toString();
-        long stateKey = stateKey(player.getUUID(), worldKey);
-        PlayerState state = statesByPlayer.computeIfAbsent(stateKey, ignored -> new PlayerState(player.getUUID(), worldKey));
-
-        long packed = pos.pack();
-        if (!state.sent.contains(packed)) {
-            int retainedLodLevel = resolveLodLevel(centerX, centerZ, pos.x(), pos.z());
-            state.sent.add(packed);
-            state.sentLodByChunk.put(packed, retainedLodLevel);
-        }
-
-        state.pending.remove(packed);
-        state.pendingLodByChunk.remove(packed);
-        state.unloadOutsideSinceTick.remove(packed);
-
-        totalSuppressedVanillaUnloads++;
-        lifetimeSuppressedVanillaUnloads++;
-        return true;
-    }
-
-    public int getEffectiveTotalDistance(ServerPlayer player, int normalDistance) {
-        int configuredTotal = normalDistance + config.unsimulatedViewDistance();
-        int hardCap = config.clientReportedViewDistanceHardCap();
-        int rawClientDistance = player.requestedViewDistance();
-        int normalizedClientDistance;
-        if (rawClientDistance > 0) {
-            normalizedClientDistance = rawClientDistance;
-        } else if (rawClientDistance < 0) {
-            normalizedClientDistance = rawClientDistance & 0xFF;
-        } else {
-            normalizedClientDistance = configuredTotal;
-        }
-
-        int effectiveClientDistance = normalizedClientDistance > 0 ? normalizedClientDistance : configuredTotal;
-        if (hardCap > 0) {
-            effectiveClientDistance = Math.min(effectiveClientDistance, hardCap);
-        }
-        int cappedByClient = Math.min(configuredTotal, effectiveClientDistance);
-        return Math.max(normalDistance, cappedByClient);
-    }
-
-        private int remapLegacyBlockIds(CompoundTag chunkNbt) {
-        int dataVersion = chunkNbt.getIntOr("DataVersion", Integer.MAX_VALUE);
-        if (dataVersion > LEGACY_BLOCK_REMAP_MAX_DATA_VERSION) {
-            return 0;
-        }
-
-        int remapCount = 0;
-        ListTag sections = chunkNbt.getListOrEmpty("sections");
-        for (int i = 0; i < sections.size(); i++) {
-            CompoundTag section = sections.getCompoundOrEmpty(i);
-            CompoundTag blockStates = section.getCompoundOrEmpty("block_states");
-            ListTag palette = blockStates.getListOrEmpty("palette");
-
-            for (int paletteIndex = 0; paletteIndex < palette.size(); paletteIndex++) {
-                CompoundTag state = palette.getCompoundOrEmpty(paletteIndex);
-                String name = state.getStringOr("Name", "");
-                String remapped = LEGACY_BLOCK_ID_REMAP.get(name);
-                if (remapped != null) {
-                    state.putString("Name", remapped);
-                    remapCount++;
-                }
-            }
-        }
-        return remapCount;
-    }
-
-    private static long bytesToMiB(long bytes) {
-        return bytes / (1024L * 1024L);
-    }
-
-    private int resolveLodLevel(int centerX, int centerZ, int chunkX, int chunkZ) {
-        int distance = Math.max(Math.abs(chunkX - centerX), Math.abs(chunkZ - centerZ));
-        if (distance >= config.lod1StartDistance()) {
-            return 1;
-        }
-        return 0;
-    }
-
-    private void applyLodToChunkNbt(CompoundTag chunkNbt, int lodLevel) {
-        if (lodLevel <= 0) {
-            return;
-        }
-
-        ListTag sections = chunkNbt.getListOrEmpty("sections");
-        if (sections.isEmpty()) {
-            return;
-        }
-
-        int previousSectionY = Integer.MIN_VALUE;
-        boolean unsortedSectionOrder = false;
-        for (int index = 0; index < sections.size(); index++) {
-            int sectionY = sections.getCompoundOrEmpty(index).getByteOr("Y", (byte) 0);
-            if (sectionY < previousSectionY) {
-                unsortedSectionOrder = true;
-                break;
-            }
-            previousSectionY = sectionY;
-        }
-        if (unsortedSectionOrder) {
-            totalUnsortedSectionInputs++;
-            lifetimeUnsortedSectionInputs++;
-        }
-
-        List<CompoundTag> sortedSections = new ArrayList<>(sections.size());
-        for (int index = 0; index < sections.size(); index++) {
-            sortedSections.add(sections.getCompoundOrEmpty(index));
-        }
-        sortedSections.sort(Comparator.comparingInt(section -> section.getByteOr("Y", (byte) 0)));
-
-        int keepNonAirSections = config.lod1TopNonAirSections();
-
-        int highestNonAirSectionY = Integer.MIN_VALUE;
-        for (CompoundTag section : sortedSections) {
-            if (!sectionHasNonAir(section)) {
-                continue;
-            }
-            int y = section.getByteOr("Y", (byte) 0);
-            if (y > highestNonAirSectionY) {
-                highestNonAirSectionY = y;
-            }
-        }
-
-        if (highestNonAirSectionY == Integer.MIN_VALUE) {
-            return;
-        }
-
-        int minKeepY = highestNonAirSectionY - (keepNonAirSections - 1);
-        ListTag filteredSections = new ListTag();
-        for (CompoundTag section : sortedSections) {
-            int y = section.getByteOr("Y", (byte) 0);
-            if (y >= minKeepY && sectionHasNonAir(section)) {
-                filteredSections.add(section.copy());
-            }
-        }
-        chunkNbt.put("sections", filteredSections);
-
-        chunkNbt.put("block_entities", new ListTag());
-    }
-
-    private boolean sectionHasNonAir(CompoundTag section) {
-        CompoundTag blockStates = section.getCompoundOrEmpty("block_states");
-        ListTag palette = blockStates.getListOrEmpty("palette");
-        for (int index = 0; index < palette.size(); index++) {
-            CompoundTag state = palette.getCompoundOrEmpty(index);
-            String name = state.getStringOr("Name", "");
-            if (!"minecraft:air".equals(name) && !"minecraft:cave_air".equals(name) && !"minecraft:void_air".equals(name)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private void recordLodSend(int lodLevel) {
-        switch (normalizeLodLevel(lodLevel)) {
-            case 0 -> {
-                totalLod0Sends++;
-                lifetimeLod0Sends++;
-            }
-            default -> {
-                totalLod1Sends++;
-                lifetimeLod1Sends++;
-            }
-        }
-    }
-
-    private static int normalizeLodLevel(int lodLevel) {
-        return lodLevel <= 0 ? 0 : 1;
-    }
-
-    private static byte[] createFilledNibble(byte value) {
-        byte[] data = new byte[2048];
-        if (value != 0) {
-            java.util.Arrays.fill(data, value);
-        }
-        return data;
-    }
-
-    private static byte[] createLightLevelNibble(int lightLevel) {
-        if (lightLevel < 0 || lightLevel > 15) {
-            throw new IllegalArgumentException("Light level must be 0-15, got: " + lightLevel);
-        }
-        // Each byte contains two 4-bit nibbles (high and low)
-        byte nibbleValue = (byte) ((lightLevel << 4) | lightLevel);
-        return createFilledNibble(nibbleValue);
-    }
-
-    /**
-     * Checks if a chunk is in an ocean biome by examining the biome list in the NBT.
-     * Biomes are stored as a palette of biome strings.
-     * 
-     * @param chunkNbt The chunk NBT data
-     * @return true if the chunk's primary biome is an ocean variant
-     */
-    private static boolean isChunkInOceanBiome(CompoundTag chunkNbt) {
-        try {
-            ListTag sections = chunkNbt.getListOrEmpty("sections");
-            for (int sectionIndex = 0; sectionIndex < sections.size(); sectionIndex++) {
-                CompoundTag section = sections.getCompoundOrEmpty(sectionIndex);
-                CompoundTag biomes = section.getCompoundOrEmpty("biomes");
-                ListTag biomePalette = biomes.getListOrEmpty("palette");
-
-                for (int paletteIndex = 0; paletteIndex < biomePalette.size(); paletteIndex++) {
-                    String biomeId = biomePalette.getString(paletteIndex).orElse("");
-                    if (biomeId.isEmpty()) {
-                        CompoundTag biomeEntry = biomePalette.getCompoundOrEmpty(paletteIndex);
-                        biomeId = biomeEntry.getStringOr("Name", "");
-                    }
-
-                    if (!biomeId.isEmpty() && isOceanBiomeId(biomeId)) {
-                        return true;
-                    }
-                }
-            }
-        } catch (Exception e) {
-            ViewExtendMod.LOGGER.debug("Error detecting ocean biome from section palettes", e);
-        }
-        return false;
-    }
-
-    /**
-     * Checks if a chunk is in an ocean biome from a LevelChunk.
-     * Simplified version - returns false as NBT-based detection is more reliable.
-     * 
-     * @param chunk The world chunk
-     * @return false (NBT-based detection is used in preprocessing where it matters)
-     */
-    private static boolean isChunkInOcean(LevelChunk chunk) {
-        // The NBT-based detection is used during preprocessing
-        // Here we return false as a safe default for runtime chunk checks
-        return false;
-    }
-
-    /**
-     * Checks if a biome ID represents a water-dominant biome.
-     * 
-     * @param biomeId The biome ID string
-     * @return true if the biome is water-dominant (ocean, river, etc.)
-     */
-    private static boolean isOceanBiomeId(String biomeId) {
-        String lower = biomeId.toLowerCase();
-        return lower.contains("ocean")
-                || lower.contains("sea")
-                || lower.contains("river")
-                || lower.contains("beach")
-                || lower.contains("shore")
-                || lower.contains("swamp")
-                || lower.contains("mangrove");
-    }
-
-    /**
-     * Determines the appropriate sky light fallback based on water depth estimation.
-     * Uses section Y coordinate to estimate depth and apply realistic water lighting.
-     * Only called for sections that are in ocean biomes and below sea level (Y=64).
-     * 
-     * @param sectionY The Y coordinate of the section
-     * @return The appropriate fallback nibble array for the estimated water depth
-     */
-    private static byte[] getWaterAwareSkyLightFallback(int sectionY) {
-        return WATER_SKYLIGHT_FALLBACK_CACHE.computeIfAbsent(sectionY, ViewExtendService::createWaterAwareSkyLightFallback);
-    }
-
-    private static byte[] createWaterAwareSkyLightFallback(int sectionY) {
-        int seaSurfaceY = 63;
-        int sectionBaseY = sectionY * 16;
-        DataLayer nibbleArray = new DataLayer(0);
-
-        for (int localY = 0; localY < 16; localY++) {
-            int blockY = sectionBaseY + localY;
-            int depth = Math.max(0, seaSurfaceY - blockY);
-            int brightness = Math.max(0, 15 - depth);
-
-            for (int z = 0; z < 16; z++) {
-                for (int x = 0; x < 16; x++) {
-                    nibbleArray.set(x, localY, z, brightness);
-                }
-            }
-        }
-
-        return nibbleArray.getData();
-    }
-
-    private void recomputeEffectiveBudgets() {
-        int configuredChunkBudget = config.maxChunksPerPlayerPerTick();
-        int configuredPreparedBudget = config.maxMainThreadPreparedChunksPerTick();
-
-        if (cpuEmaNanos <= 0) {
-            effectiveChunkQueueBudget = configuredChunkBudget;
-            effectivePreparedProcessBudget = configuredPreparedBudget;
-            return;
-        }
-
-        long cpuMs = cpuEmaNanos / 1_000_000L;
-        int divisor;
-        if (cpuMs >= 30) {
-            divisor = 8;
-        } else if (cpuMs >= 18) {
-            divisor = 4;
-        } else if (cpuMs >= 10) {
-            divisor = 2;
-        } else {
-            divisor = 1;
-        }
-
-        effectiveChunkQueueBudget = Math.max(1, configuredChunkBudget / divisor);
-        effectivePreparedProcessBudget = Math.max(8, configuredPreparedBudget / divisor);
-    }
-
-    private void updateCpuEma(long currentTickCpuNanos) {
-        if (cpuEmaNanos == 0) {
-            cpuEmaNanos = currentTickCpuNanos;
-            return;
-        }
-        cpuEmaNanos = ((cpuEmaNanos * 7) + currentTickCpuNanos) / 8;
-    }
-
-    private void cleanupDisconnected(MinecraftServer server) {
-        List<Long> toRemove = new ArrayList<>();
-        statesByPlayer.forEach((key, state) -> {
-            ServerPlayer player = server.getPlayerList().getPlayer(state.playerUuid);
-            if (player == null) {
-                toRemove.add(key);
-                return;
-            }
-
-            String currentWorldKey = player.level().dimension().identifier().toString();
-            if (!currentWorldKey.equals(state.worldKey)) {
-                toRemove.add(key);
-            }
-        });
-
-        for (Long key : toRemove) {
-            statesByPlayer.remove(key);
-        }
-    }
-
-    private List<PlayerTickTarget> collectTickTargets(MinecraftServer server) {
-        List<PlayerTickTarget> targets = new ArrayList<>();
-        for (ServerLevel world : server.getAllLevels()) {
-            List<ServerPlayer> players = world.getPlayers(player -> true);
-            if (players.isEmpty()) {
-                continue;
-            }
-            for (ServerPlayer player : players) {
-                targets.add(new PlayerTickTarget(world, player));
-            }
-        }
-        return targets;
-    }
-
-    private int[] allocatePerPlayerBudgets(List<PlayerTickTarget> targets, int basePerPlayerBudget) {
-        int count = targets.size();
-        int[] budgets = new int[count];
-        if (count == 0 || basePerPlayerBudget <= 0) {
-            return budgets;
-        }
-
-        int globalBudget = basePerPlayerBudget * count;
-        int baseFloor = Math.min(basePerPlayerBudget, 2);
-
-        int weightSum = 0;
-        int spent = 0;
-        int[] weights = new int[count];
-        int[] caps = new int[count];
-
-        for (int index = 0; index < count; index++) {
-            ServerPlayer player = targets.get(index).player();
-            boolean priority = isPriorityStreamer(player);
-            int weight = priority ? PRIORITY_WEIGHT : NORMAL_WEIGHT;
-            int cap = priority ? Math.max(basePerPlayerBudget, basePerPlayerBudget * 6) : basePerPlayerBudget;
-
-            budgets[index] = Math.min(baseFloor, cap);
-            weights[index] = weight;
-            caps[index] = cap;
-            spent += budgets[index];
-            weightSum += weight;
-        }
-
-        int remaining = Math.max(0, globalBudget - spent);
-        if (remaining <= 0 || weightSum <= 0) {
-            return budgets;
-        }
-
-        for (int index = 0; index < count; index++) {
-            if (remaining <= 0) {
-                break;
-            }
-            int share = (remaining * weights[index]) / weightSum;
-            if (share <= 0) {
-                continue;
-            }
-            int allocatable = Math.min(share, caps[index] - budgets[index]);
-            if (allocatable <= 0) {
-                continue;
-            }
-            budgets[index] += allocatable;
-            remaining -= allocatable;
-        }
-
-        if (remaining > 0) {
-            List<Integer> order = new ArrayList<>(count);
-            for (int index = 0; index < count; index++) {
-                order.add(index);
-            }
-            order.sort(Comparator.comparingInt((Integer index) -> weights[index]).reversed());
-
-            int cursor = 0;
-            while (remaining > 0 && !order.isEmpty()) {
-                int index = order.get(cursor % order.size());
-                if (budgets[index] < caps[index]) {
-                    budgets[index]++;
-                    remaining--;
-                }
-                cursor++;
-                if (cursor > order.size() * 8) {
-                    break;
-                }
-            }
-        }
-
-        return budgets;
-    }
-
-    private static boolean isPriorityStreamer(ServerPlayer player) {
-        return player.getAbilities().flying;
-    }
-
-    private static int[] ringOffsets(int radius) {
-        if (radius <= 0) {
-            return new int[0];
-        }
-        return RING_OFFSET_CACHE.computeIfAbsent(radius, ViewExtendService::computeRingOffsets);
-    }
-
-    private static int[] computeRingOffsets(int radius) {
-        int sideLength = radius * 2 + 1;
-        int perimeter = Math.max(1, sideLength * 4 - 4);
-        int[] offsets = new int[perimeter * 2];
-        int index = 0;
-
-        int min = -radius;
-        int max = radius;
-
-        for (int x = min; x <= max; x++) {
-            offsets[index++] = x;
-            offsets[index++] = min;
-            if (min != max) {
-                offsets[index++] = x;
-                offsets[index++] = max;
-            }
-        }
-
-        for (int z = min + 1; z < max; z++) {
-            offsets[index++] = min;
-            offsets[index++] = z;
-            if (min != max) {
-                offsets[index++] = max;
-                offsets[index++] = z;
-            }
-        }
-
-        if (index == offsets.length) {
-            return offsets;
-        }
-
-        int[] trimmed = new int[index];
-        System.arraycopy(offsets, 0, trimmed, 0, index);
-        return trimmed;
-    }
-
-    private boolean shouldDeferChunkSelection(PlayerState state, boolean movedChunk) {
-        if (movedChunk) {
-            return false;
-        }
-        if (cpuEmaNanos <= 0L) {
-            return false;
-        }
-
-        long cpuMs = cpuEmaNanos / 1_000_000L;
-        int phase = state.selectionPhase;
-        if (cpuMs >= 30) {
-            return (ticks + phase) % 4 != 0;
-        }
-        if (cpuMs >= 18) {
-            return (ticks + phase) % 2 != 0;
-        }
-        return false;
-    }
-
-    private boolean isPreparedQueueAtHardLimit() {
-        int hardLimit = config.preparedQueueHardLimit();
-        return hardLimit > 0 && preparedChunkQueue.size() >= hardLimit;
-    }
-
-    private static boolean withinDistance(int chunkX, int chunkZ, int centerX, int centerZ, int radius) {
-        return Math.abs(chunkX - centerX) <= radius && Math.abs(chunkZ - centerZ) <= radius;
-    }
-
-    private static long stateKey(UUID uuid, String worldKey) {
-        return ((long) uuid.hashCode() << 32) ^ worldKey.hashCode();
+        loadsByKey.clear();
+        completedLoadQueue.clear();
+        readyDeliveries.clear();
+        packetCache.clear();
+        retryCache.clear();
+        loadedDragons.clear();
+        statesByPlayer.clear();
     }
 
     private record PlayerTickTarget(ServerLevel world, ServerPlayer player) {
     }
 
-    private record NbtReadRequest(UUID playerUuid, String worldKey, ChunkPos pos, int lodLevel, boolean upgradePriority) {
+    private record PlayerWorldKey(UUID playerUuid, String worldKey) {
     }
 
-    private record GlobalChunkKey(String worldKey, long chunkLong, int lodLevel) {
+    private record ChunkSourceKey(String worldKey, long chunkLong) {}
+
+    record GlobalChunkKey(String worldKey, long chunkLong, int lodLevel) {
     }
 
-    private record PreparedChunkTask(
-            UUID playerUuid,
-            String worldKey,
-            ChunkPos pos,
-            int lodLevel,
-            CompoundTag chunkNbt,
-            SerializableChunkData serializedChunk,
-            ClientboundLightUpdatePacketData deterministicLightData,
-            int remapCount,
+    record LoadSubscriber(UUID playerUuid, PlayerViewState state, long requestId) {
+    }
+
+    private record ValidSubscriber(ServerPlayer player, ServerLevel world, PlayerViewState state) {
+    }
+
+    private record PreparedLoadResult(
+            GlobalChunkKey key,
+            PreparedVisualChunk prepared,
             boolean missing,
-            boolean failed) {
-        private static PreparedChunkTask withNbt(UUID playerUuid, String worldKey, ChunkPos pos, CompoundTag chunkNbt, int remapCount, int lodLevel) {
-            return new PreparedChunkTask(playerUuid, worldKey, pos, lodLevel, chunkNbt, null, null, remapCount, false, false);
-        }
-
-        private static PreparedChunkTask parsed(
-                UUID playerUuid,
-                String worldKey,
-                ChunkPos pos,
-                int lodLevel,
-                SerializableChunkData serializedChunk,
-                ClientboundLightUpdatePacketData deterministicLightData,
-                int remapCount) {
-            return new PreparedChunkTask(playerUuid, worldKey, pos, lodLevel, null, serializedChunk, deterministicLightData, remapCount, false, false);
-        }
-
-        private static PreparedChunkTask missing(UUID playerUuid, String worldKey, ChunkPos pos, int lodLevel) {
-            return new PreparedChunkTask(playerUuid, worldKey, pos, lodLevel, null, null, null, 0, true, false);
-        }
-
-        private static PreparedChunkTask failed(UUID playerUuid, String worldKey, ChunkPos pos, int lodLevel) {
-            return new PreparedChunkTask(playerUuid, worldKey, pos, lodLevel, null, null, null, 0, false, true);
-        }
-
-        private boolean parsedReady() {
-            return serializedChunk != null;
+            Throwable error,
+            long workerNanos) {
+        private static PreparedLoadResult failed(GlobalChunkKey key, Throwable error) {
+            return new PreparedLoadResult(key, null, false, error, 0L);
         }
     }
 
-    private record PacketTemplate(
-            ClientboundLevelChunkWithLightPacket chunkPacket,
-            ClientboundLightUpdatePacket lightPacket,
-            int chunkPacketBytes,
-            int blockLightSections,
-            int skyLightSections) {
-    }
+    private static final class SharedLoad {
+        private final GlobalChunkKey key;
+        private final List<LoadSubscriber> subscribers = new ArrayList<>();
+        private boolean started;
+        private final int createdTick;
 
-    private record CachedPayload(
-            PacketTemplate packetTemplate,
-            int lodLevel,
-            int expiresAtTick) {
-    }
-
-    private static final class PlayerState {
-        private final UUID playerUuid;
-        private final String worldKey;
-        private final LongOpenHashSet sent = new LongOpenHashSet();
-        private final LongOpenHashSet pending = new LongOpenHashSet();
-        private final Long2IntOpenHashMap sentLodByChunk = new Long2IntOpenHashMap();
-        private final Long2IntOpenHashMap pendingLodByChunk = new Long2IntOpenHashMap();
-        private final Long2IntOpenHashMap missingUntilTick = new Long2IntOpenHashMap();
-        private final Long2IntOpenHashMap unloadOutsideSinceTick = new Long2IntOpenHashMap();
-        private final Long2ObjectLinkedOpenHashMap<CachedPayload> payloadCache = new Long2ObjectLinkedOpenHashMap<>();
-        private final int selectionPhase;
-        private int clientChunkLoadDistance = Integer.MIN_VALUE;
-        private int centerX = Integer.MIN_VALUE;
-        private int centerZ = Integer.MIN_VALUE;
-
-        private PlayerState(UUID playerUuid, String worldKey) {
-            this.playerUuid = playerUuid;
-            this.worldKey = worldKey;
-            this.selectionPhase = Math.floorMod(playerUuid.hashCode(), 4);
+        private SharedLoad(GlobalChunkKey key, int createdTick) {
+            this.key = key;
+            this.createdTick = createdTick;
         }
+    }
+
+    static final class ReadyDelivery {
+        private final GlobalChunkKey key;
+        private final PreparedVisualChunk prepared;
+        private final ArrayDeque<LoadSubscriber> subscribers;
+
+        ReadyDelivery(GlobalChunkKey key, PreparedVisualChunk prepared, List<LoadSubscriber> subscribers) {
+            this.key = key;
+            this.prepared = prepared;
+            this.subscribers = new ArrayDeque<>(subscribers);
+        }
+
+        GlobalChunkKey key() { return key; }
+        PreparedVisualChunk prepared() { return prepared; }
+        LoadSubscriber nextSubscriber() { return subscribers.pollFirst(); }
+        void defer(LoadSubscriber subscriber) { subscribers.addLast(subscriber); }
+        boolean hasSubscribers() { return !subscribers.isEmpty(); }
     }
 }

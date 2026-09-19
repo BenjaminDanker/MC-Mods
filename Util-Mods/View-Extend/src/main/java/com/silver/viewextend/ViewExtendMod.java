@@ -1,6 +1,10 @@
 package com.silver.viewextend;
 
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -11,34 +15,32 @@ public class ViewExtendMod implements ModInitializer {
 
     @Override
     public void onInitialize() {
-        ViewExtendConfig config = ViewExtendConfig.load();
-        service = new ViewExtendService(config);
-        LOGGER.info(
-            "View Extend initialized (unsimulated-view-distance={}, max-chunks-per-player-per-tick={}, max-main-thread-prepared-chunks-per-tick={}, max-unloads-per-player-per-tick={}, lod1-start-distance={}, unload-buffer-chunks={}, unload-grace-ticks={}, pending-chunks-hard-limit={}, payload-cache-ttl-ticks={}, payload-cache-max-entries-per-player={}, client-reported-view-distance-hard-cap={}, global-packet-template-cache-max-entries={}, max-nbt-reads-per-tick={}, prepared-queue-hard-limit={}, tick-interval={}, metrics-info-logs-enabled={}, metrics-log-interval-ticks={}, fallback-sky-light-level={}, fallback-block-light-level={}, ocean-fallback-enabled={}, ocean-fallback-sky-light-level={})",
-                config.unsimulatedViewDistance(),
-                config.maxChunksPerPlayerPerTick(),
-                config.maxMainThreadPreparedChunksPerTick(),
-                config.maxUnloadsPerPlayerPerTick(),
-                config.lod1StartDistance(),
-                config.unloadBufferChunks(),
-                config.unloadGraceTicks(),
-                config.pendingChunksHardLimit(),
-                config.payloadCacheTtlTicks(),
-                config.payloadCacheMaxEntriesPerPlayer(),
-                config.clientReportedViewDistanceHardCap(),
-                config.globalPacketTemplateCacheMaxEntries(),
-                config.maxNbtReadsPerTick(),
-                config.preparedQueueHardLimit(),
-            config.tickInterval(),
-            config.metricsInfoLogsEnabled(),
-            config.metricsLogIntervalTicks(),
-            config.fallbackSkyLightLevel(),
-            config.fallbackBlockLightLevel(),
-            config.oceanFallbackEnabled(),
-            config.oceanFallbackSkyLightLevel());
+        ServerLifecycleEvents.SERVER_STARTING.register(server -> {
+            if (service != null) service.shutdown();
+            ViewExtendConfig config = ViewExtendConfig.load();
+            service = new ViewExtendService(config);
+            LOGGER.info("View Extend: up to 127 chunks, equal player budget={}, disk starts/tick={}, cache={} MiB",
+                    config.maxChunksPerPlayerPerTick(), config.maxNbtReadsPerTick(), config.globalPacketTemplateCacheMaxMiB());
+        });
+        // Vanilla must update the client's cache center before extended packets arrive.
+        ServerTickEvents.START_SERVER_TICK.register(server -> { if (service != null) service.beginTick(); });
+        ServerTickEvents.END_SERVER_TICK.register(server -> { if (service != null) service.tick(server); });
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents.ENTITY_LOAD.register((entity, world) -> {
+            if (service != null) service.onEntityLoaded(entity, world);
+        });
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents.ENTITY_UNLOAD.register((entity, world) -> {
+            if (service != null) service.onEntityUnloaded(entity, world);
+        });
+        ServerChunkEvents.CHUNK_LOAD.register((world, chunk, generated) -> {
+            if (service != null) service.onChunkAvailable(world, chunk);
+        });
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+            if (service != null) service.resetPlayer(handler.player);
+        });
+        ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
+            if (service != null) { service.shutdown(); service = null; }
+        });
     }
 
-    public static ViewExtendService getService() {
-        return service;
-    }
+    public static ViewExtendService getService() { return service; }
 }

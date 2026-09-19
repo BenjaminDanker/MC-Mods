@@ -3,7 +3,7 @@
   "id": "viewextend",
   "version": "${version}",
   "name": "View Extend",
-  "description": "Bare-bones scaffold for the View Extend Fabric mod.",
+  "description": "Streams read-only visual chunks beyond the server simulation distance.",
   "authors": [
     "BenjaminDanker"
   ],

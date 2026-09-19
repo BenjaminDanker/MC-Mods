@@ -9,9 +9,10 @@ import net.minecraft.network.protocol.game.ClientboundLightUpdatePacket;
 import net.minecraft.world.level.ChunkPos;
 
 public final class ClientPacketDebugTracker {
-    private static final boolean ENABLED = !"false".equalsIgnoreCase(System.getProperty("viewextend.clientDebug", "true"));
+    private static final boolean ENABLED = Boolean.getBoolean("viewextend.clientDebug");
     private static final int LOG_INTERVAL_TICKS = Integer.getInteger("viewextend.clientDebugIntervalTicks", 100);
     private static final long MISSING_LIGHT_UPDATE_AGE_MS = Long.getLong("viewextend.clientDebugMissingAgeMs", 2000L);
+    private static final int MAX_TRACKED_CHUNKS = Integer.getInteger("viewextend.clientDebugMaxTrackedChunks", 8192);
 
     private static final Map<Long, ChunkDebugState> STATES = new HashMap<>();
     private static long totalChunkDataPackets;
@@ -42,7 +43,7 @@ public final class ClientPacketDebugTracker {
         }
 
         long packed = new ChunkPos(packet.getX(), packet.getZ()).pack();
-        ChunkDebugState state = STATES.computeIfAbsent(packed, ignored -> new ChunkDebugState());
+        ChunkDebugState state = getOrCreateState(packed);
         state.chunkDataCount++;
         state.lastChunkDataMillis = System.currentTimeMillis();
 
@@ -70,7 +71,7 @@ public final class ClientPacketDebugTracker {
         }
 
         long packed = new ChunkPos(packet.getX(), packet.getZ()).pack();
-        ChunkDebugState state = STATES.computeIfAbsent(packed, ignored -> new ChunkDebugState());
+        ChunkDebugState state = getOrCreateState(packed);
         state.lightUpdateCount++;
 
         ClientboundLightUpdatePacketData light = packet.getLightData();
@@ -136,6 +137,33 @@ public final class ClientPacketDebugTracker {
         windowChunkDataBlockNibbles = 0;
         windowLightUpdateSkyNibbles = 0;
         windowLightUpdateBlockNibbles = 0;
+    }
+
+    public static void onForgetChunk(ChunkPos pos) {
+        if (ENABLED) {
+            STATES.remove(pos.pack());
+        }
+    }
+
+    public static void clear() {
+        STATES.clear();
+    }
+
+    private static ChunkDebugState getOrCreateState(long packed) {
+        ChunkDebugState existing = STATES.get(packed);
+        if (existing != null) {
+            return existing;
+        }
+        if (STATES.size() >= Math.max(1, MAX_TRACKED_CHUNKS)) {
+            var iterator = STATES.keySet().iterator();
+            if (iterator.hasNext()) {
+                iterator.next();
+                iterator.remove();
+            }
+        }
+        ChunkDebugState created = new ChunkDebugState();
+        STATES.put(packed, created);
+        return created;
     }
 
     private static final class ChunkDebugState {

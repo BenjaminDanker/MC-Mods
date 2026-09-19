@@ -4,11 +4,12 @@
   "package": "com.silver.viewextend.mixin",
   "compatibilityLevel": "JAVA_25",
   "mixins": [
-    "MinecraftServerMixin",
     "ServerCommonNetworkHandlerMixin",
-    "ChunkDataS2CPacketAccessor",
-    "LightUpdateS2CPacketAccessor",
-    "EntityTrackerMixin"
+    "EntityTrackerMixin",
+    "ServerChunkLoadingManagerAccessor",
+    "ServerConnectionAccessor",
+    "ConnectionAccessor",
+    "PlayerChunkSenderAccessor"
   ],
   "server": [],
   "client": [
