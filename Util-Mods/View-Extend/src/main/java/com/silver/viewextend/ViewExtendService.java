@@ -5,12 +5,17 @@ import com.silver.viewextend.PlayerViewState.ScheduledChunk;
 import static com.silver.viewextend.ViewExtendGeometry.*;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.BitSet;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.PriorityQueue;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.LongAdder;
@@ -32,6 +37,7 @@ public final class ViewExtendService {
     private final ViewExtendConfig config;
     private final VisualChunkLoader loader;
     private final PlayerViewPlanner planner;
+    private final ViewExtendNetworkMetrics networkMetrics = new ViewExtendNetworkMetrics();
 
     // Server-thread owned, except completedLoadQueue and the LongAdders.
     private final Map<PlayerWorldKey, PlayerViewState> statesByPlayer = new HashMap<>();
@@ -66,7 +72,8 @@ public final class ViewExtendService {
     private long totalNbtRequestsStarted;
     private long totalCoalescedRequests;
     private long totalPreparedResultsProcessed;
-    private long totalPreparedResultsDropped;
+    private long totalPreparationFailures;
+    private long totalPreparedOrphaned;
     private long totalPipelineDeferrals;
     private long totalCacheHits;
     private long totalCacheMisses;
@@ -77,6 +84,28 @@ public final class ViewExtendService {
     private long totalSkyLightWaterFallbackSections;
     private long totalBlockLightNbtSections;
     private long totalBlockLightFallbackSections;
+    private final DistanceRange admittedDistances = new DistanceRange();
+    private final DistanceRange sentDistances = new DistanceRange();
+    private long totalPriorityInversions;
+    private long totalPriorityInversionsAvoided;
+    private long totalStaleCandidatesSkipped;
+    private long totalSupersededSubscribers;
+    private long totalSkippedUnstartedLoads;
+    private long totalPreparationsSkippedNoSubscribers;
+    private long totalOrphanRawNbtCount;
+    private long totalOrphanRawNbtBytes;
+    private long totalPreparedDiscardedBytes;
+    private long totalPreparedDiscardedNoCache;
+    private long currentReadyBytes;
+    private long peakReadyBytes;
+    private long totalReadyWaitTicks;
+    private long totalReadyWaitSamples;
+    private long peakReadyWaitTicks;
+    private long readyFairnessSequence;
+    private final long[] demandYielded = new long[PlayerViewPlanner.DemandSource.values().length];
+    private final long[] demandAccepted = new long[PlayerViewPlanner.DemandSource.values().length];
+    private final long[] demandSkipped = new long[PlayerViewPlanner.DemandSource.values().length];
+    private final long[] candidateSkipReasons = new long[CandidateSkipReason.values().length];
 
     public ViewExtendService(ViewExtendConfig config) {
         this.config = config;
@@ -127,15 +156,16 @@ public final class ViewExtendService {
                 tickPlayer(target.world(), target.player());
             }
             int active = Math.max(1, (int) statesByPlayer.values().stream()
-                    .filter(state -> state.bootstrapActive || !state.pending.isEmpty() || !state.candidateQueue.isEmpty()).count());
+                    .filter(state -> state.bootstrapActive || state.nearActive
+                            || !state.pending.isEmpty() || state.demandDescriptorCount() > 0).count());
             for (PlayerViewState state : statesByPlayer.values()) {
                 state.share.accrue((long) (typicalPacketBytes * config.maxMainThreadPreparedChunksPerTick() / active),
                         adaptive.allowance() / active);
             }
             int preparedBudget = config.maxMainThreadPreparedChunksPerTick();
             transferCompletedLoads(server, Math.max(256, preparedBudget));
-            processNbtReadRequests(server, adaptive.reads());
             processReadyDeliveries(server, preparedBudget);
+            processNbtReadRequests(server, adaptive.reads());
             scheduleCandidates(targets);
             // Unused shares are borrowable only after every active observer had its fair pass.
             borrowing = true;
@@ -182,8 +212,8 @@ public final class ViewExtendService {
                 var player = target.player();
                 var state = statesByPlayer.get(new PlayerWorldKey(player.getUUID(), target.world().dimension().identifier().toString()));
                 if (state == null || !isEnabled() || !player.isAlive()
-                        || (!state.bootstrapActive && state.candidateQueue.isEmpty() && !state.candidateOverflowed)
-                        || !canSend(player, state)) continue;
+                        || state.demandDescriptorCount() == 0
+                        || !canAdmit(player, state)) continue;
                 attempted = true;
                 long started = System.nanoTime();
                 processCandidates(target.world(), player, state, state.centerX, state.centerZ, state.normalDistance, state.totalDistance, 1);
@@ -207,61 +237,62 @@ public final class ViewExtendService {
         int inspectionBudget = Math.max(16, maxPerTick * 16);
 
         while (accepted < maxPerTick && inspected < inspectionBudget && hasWorkTime()) {
-            long packed;
-            if (!state.candidateQueue.isEmpty() && (!state.bootstrapActive || (state.candidateSelectionCounter++ & 1) == 0)) {
-                packed = state.candidateQueue.dequeueLong();
-                state.candidateQueued.remove(packed);
-            } else {
-                packed = planner.nextBootstrapCandidate(state);
-                if (packed == Long.MIN_VALUE) {
-                    if (state.candidateOverflowed) {
-                        state.candidateOverflowed = false;
-                        planner.resetBootstrap(state, centerX, centerZ, normalDistance, totalDistance);
-                        continue;
-                    }
-                    break;
-                }
-            }
+            PlayerViewPlanner.DemandCandidate candidate = planner.peekBestCandidate(state);
+            if (candidate == null) break;
+            demandYielded[candidate.source().ordinal()]++;
+            long packed = candidate.packed();
 
             inspected++;
             int chunkX = ChunkPos.getX(packed);
             int chunkZ = ChunkPos.getZ(packed);
-            if (!withinDistance(chunkX, chunkZ, centerX, centerZ, totalDistance)
-                    || player.getChunkTrackingView().contains(chunkX, chunkZ)) {
+            if (!withinDistance(chunkX, chunkZ, centerX, centerZ, totalDistance)) {
+                planner.consumeCandidate(state, candidate);
+                recordCandidateSkip(candidate.source(), CandidateSkipReason.OUTSIDE_RADIUS);
+                continue;
+            }
+            if (player.getChunkTrackingView().contains(chunkX, chunkZ)) {
+                planner.consumeCandidate(state, candidate);
+                recordCandidateSkip(candidate.source(), CandidateSkipReason.VANILLA_OWNED);
                 continue;
             }
 
-            int result = tryQueueCandidate(world, player, state, centerX, centerZ, chunkX, chunkZ);
-            if (result < 0) {
-                planner.enqueueCandidate(state, packed);
+            CandidateResult result = tryQueueCandidate(world, player, state, candidate, chunkX, chunkZ);
+            if (result == CandidateResult.BLOCKED) {
                 break;
             }
-            accepted += result;
+            planner.consumeCandidate(state, candidate);
+            if (result == CandidateResult.ACCEPTED) {
+                accepted++;
+                demandAccepted[candidate.source().ordinal()]++;
+            } else {
+                recordCandidateSkip(candidate.source(), result.skipReason);
+            }
         }
 
         totalCandidateInspections += inspected;
     }
 
-    private int tryQueueCandidate(
+    private CandidateResult tryQueueCandidate(
             ServerLevel world,
             ServerPlayer player,
             PlayerViewState state,
-            int centerX,
-            int centerZ,
+            PlayerViewPlanner.DemandCandidate candidate,
             int chunkX,
             int chunkZ) {
         long packed = ChunkPos.pack(chunkX, chunkZ);
-        if (!canSend(player, state)) return -1;
-        if (state.retryDueByChunk.getOrDefault(packed, Integer.MIN_VALUE) > ticks) return 0;
-        int desiredLod = resolveLodLevel(centerX, centerZ, chunkX, chunkZ);
+        if (!canAdmit(player, state)) return CandidateResult.BLOCKED;
+        if (state.retryDueByChunk.getOrDefault(packed, Integer.MIN_VALUE) > ticks) {
+            return CandidateResult.SKIPPED_RETRY_DEADLINE;
+        }
+        int desiredLod = resolveLodLevel(state.centerX, state.centerZ, chunkX, chunkZ);
 
         int sentLod = state.sentLodByChunk.getOrDefault(packed, Integer.MAX_VALUE);
         if (state.sent.contains(packed) && desiredLod >= sentLod) {
-            return 0;
+            return CandidateResult.SKIPPED_ALREADY_SENT;
         }
         int pendingLod = state.pendingLodByChunk.getOrDefault(packed, Integer.MAX_VALUE);
         if (state.pending.contains(packed) && desiredLod >= pendingLod) {
-            return 0;
+            return CandidateResult.SKIPPED_ALREADY_PENDING;
         }
         if (state.pending.contains(packed)) {
             state.clearPending(packed);
@@ -270,32 +301,34 @@ public final class ViewExtendService {
         // A currently loaded chunk is authoritative and bypasses disk cache data.
         LevelChunk loaded = world.getChunkSource().getChunkNow(chunkX, chunkZ);
         if (loaded != null) {
+            if (!canSend(player, state)) return CandidateResult.BLOCKED;
             try {
                 sendLoadedChunk(player, loaded);
                 state.markSent(packed, 0);
                 invalidatePreparedCacheForChunk(state.worldKey, packed);
-                return 1;
+                return CandidateResult.ACCEPTED;
             } catch (RuntimeException exception) {
                 ViewExtendMod.LOGGER.debug("Failed to send loaded visual chunk {}", loaded.getPos(), exception);
                 planner.scheduleRetry(state, packed, 200);
-                return 0;
+                return CandidateResult.SKIPPED_DELIVERY_FAILURE;
             }
         }
 
         GlobalChunkKey key = new GlobalChunkKey(state.worldKey, packed, desiredLod);
         PreparedVisualChunk cached = packetCache.get(key, ticks);
         if (cached != null) {
+            if (!canSend(player, state)) return CandidateResult.BLOCKED;
             totalCacheHits++;
 
             try {
                 sendPreparedChunk(player, cached);
                 state.markSent(packed, desiredLod);
-                return 1;
+                return CandidateResult.ACCEPTED;
             } catch (RuntimeException exception) {
                 packetCache.invalidate(key);
                 ViewExtendMod.LOGGER.debug("Failed to send cached visual chunk {}", new ChunkPos(chunkX, chunkZ), exception);
                 planner.scheduleRetry(state, packed, 200);
-                return 0;
+                return CandidateResult.SKIPPED_DELIVERY_FAILURE;
             }
         }
         totalCacheMisses++;
@@ -304,24 +337,25 @@ public final class ViewExtendService {
         if (cooldown > 0) {
             totalCooldownHits++;
             planner.scheduleRetry(state, packed, cooldown);
-            return 0;
+            return CandidateResult.SKIPPED_SHARED_COOLDOWN;
         }
 
-
-        if (state.pending.size() >= state.lookahead) return -1;
+        if (state.pending.size() >= state.lookahead
+                && !supersedeWorseSubscription(state, candidate)) return CandidateResult.BLOCKED;
         SharedLoad existingLoad = loadsByKey.get(key);
         if (existingLoad != null) {
             long requestId = state.markPending(packed, desiredLod);
             existingLoad.subscribers.add(new LoadSubscriber(player.getUUID(), state, requestId));
             totalCoalescedRequests++;
-
-            return 1;
+            admittedDistances.record(candidate.distance());
+            return CandidateResult.ACCEPTED;
         }
 
         if (isPipelineAtHardLimit()) {
             totalPipelineDeferrals++;
-
-            return -1;
+            if (!supersedeWorseSubscription(state, candidate) || isPipelineAtHardLimit()) {
+                return CandidateResult.BLOCKED;
+            }
         }
 
         long requestId = state.markPending(packed, desiredLod);
@@ -330,27 +364,93 @@ public final class ViewExtendService {
         loadsByKey.put(key, load);
         nbtReadQueue.addLast(key);
         totalNbtRequestsQueued++;
+        admittedDistances.record(candidate.distance());
+        return CandidateResult.ACCEPTED;
+    }
 
-        return 1;
+    private boolean supersedeWorseSubscription(
+            PlayerViewState state,
+            PlayerViewPlanner.DemandCandidate incoming) {
+        long worstPacked = Long.MIN_VALUE;
+        int worstTier = -1;
+        int worstDistance = -1;
+        long worstRequestId = 0;
+        var iterator = state.pending.iterator();
+        while (iterator.hasNext()) {
+            long packed = iterator.nextLong();
+            int distance = Math.max(Math.abs(ChunkPos.getX(packed) - state.centerX),
+                    Math.abs(ChunkPos.getZ(packed) - state.centerZ));
+            int tier = PlayerViewPlanner.priorityTier(state.normalDistance, distance);
+            boolean substantiallyWorse = shouldSupersede(
+                    incoming.tier(), incoming.distance(), tier, distance);
+            if (!substantiallyWorse) continue;
+            if (worstPacked == Long.MIN_VALUE
+                    || PlayerViewPlanner.comparePriority(tier, distance, 0,
+                            worstTier, worstDistance, 0) > 0) {
+                worstPacked = packed;
+                worstTier = tier;
+                worstDistance = distance;
+                worstRequestId = state.pendingRequestIds.get(packed);
+            }
+        }
+        if (worstPacked == Long.MIN_VALUE) return false;
+
+        int lod = state.pendingLodByChunk.getOrDefault(worstPacked, 0);
+        GlobalChunkKey key = new GlobalChunkKey(state.worldKey, worstPacked, lod);
+        SharedLoad load = loadsByKey.get(key);
+        if (load != null) {
+            long requestId = worstRequestId;
+            load.subscribers.removeIf(subscriber -> subscriber.state() == state
+                    && subscriber.requestId() == requestId);
+            if (load.subscribers.isEmpty() && !load.started) {
+                loadsByKey.remove(key);
+                totalSkippedUnstartedLoads++;
+                totalPreparationsSkippedNoSubscribers++;
+            }
+        }
+        long requestId = worstRequestId;
+        readyDeliveries.removeIf(delivery -> {
+            delivery.removeSubscriber(state, requestId);
+            return !delivery.hasSubscribers();
+        });
+        reconcileReadyBytes();
+        state.clearPending(worstPacked);
+        totalSupersededSubscribers++;
+        return true;
+    }
+
+    static boolean shouldSupersede(int incomingTier, int incomingDistance,
+            int existingTier, int existingDistance) {
+        return existingTier > incomingTier
+                || (existingTier == incomingTier && existingDistance >= incomingDistance + 8);
     }
 
     private void processNbtReadRequests(MinecraftServer server, int budget) {
-        int started = 0;
-        while (started < Math.max(1, budget) && hasWorkTime()) {
+        List<QueuedLoadRank> ranked = new ArrayList<>(nbtReadQueue.size());
+        while (!nbtReadQueue.isEmpty()) {
             GlobalChunkKey key = nbtReadQueue.pollFirst();
-            if (key == null) {
-                return;
-            }
             SharedLoad load = loadsByKey.get(key);
-            if (load == null || load.started) {
-                continue;
-            }
-
-            ValidSubscriber firstValid = pruneAndFindFirstValidSubscriber(server, load);
-            if (firstValid == null) {
+            if (load == null || load.started) continue;
+            QueuedLoadRank rank = rankQueuedLoad(server, load);
+            if (rank == null) {
                 loadsByKey.remove(key);
-                continue;
+                totalSkippedUnstartedLoads++;
+                totalPreparationsSkippedNoSubscribers++;
+            } else {
+                ranked.add(rank);
             }
+        }
+        ranked.sort((left, right) -> PlayerViewPlanner.comparePriority(
+                left.tier(), left.distance(), left.load().createdTick,
+                right.tier(), right.distance(), right.load().createdTick));
+
+        int started = 0;
+        int index = 0;
+        while (index < ranked.size() && started < Math.max(1, budget) && hasWorkTime()) {
+            QueuedLoadRank rank = ranked.get(index++);
+            SharedLoad load = rank.load();
+            GlobalChunkKey key = load.key;
+            ValidSubscriber firstValid = rank.firstValid();
 
             ServerLevel world = firstValid.world();
             ChunkPos pos = ChunkPos.unpack(key.chunkLong());
@@ -380,11 +480,39 @@ public final class ViewExtendService {
             try {
                 loader.load(world.getChunkSource().chunkMap.read(pos), pos, key.lodLevel(), context)
                         .thenAccept(result -> publishCompletion(new PreparedLoadResult(
-                                key, result.prepared(), result.missing(), result.error(), result.workerNanos())));
+                                key, result.prepared(), result.missing(), result.error(),
+                                result.workerNanos(), result.rawNbtBytes())));
             } catch (RuntimeException exception) {
                 publishCompletion(PreparedLoadResult.failed(key, exception));
             }
         }
+        while (index < ranked.size()) nbtReadQueue.addLast(ranked.get(index++).load().key);
+    }
+
+    private QueuedLoadRank rankQueuedLoad(MinecraftServer server, SharedLoad load) {
+        ValidSubscriber first = null;
+        int bestTier = Integer.MAX_VALUE;
+        int bestDistance = Integer.MAX_VALUE;
+        Iterator<LoadSubscriber> iterator = load.subscribers.iterator();
+        while (iterator.hasNext()) {
+            LoadSubscriber subscriber = iterator.next();
+            ValidSubscriber valid = resolveValidSubscriber(server, subscriber, load.key);
+            if (valid == null) {
+                iterator.remove();
+                continue;
+            }
+            ChunkPos pos = ChunkPos.unpack(load.key.chunkLong());
+            int distance = Math.max(Math.abs(pos.x() - valid.state().centerX),
+                    Math.abs(pos.z() - valid.state().centerZ));
+            int tier = PlayerViewPlanner.priorityTier(valid.state().normalDistance, distance);
+            if (first == null || PlayerViewPlanner.comparePriority(tier, distance, load.createdTick,
+                    bestTier, bestDistance, load.createdTick) < 0) {
+                first = valid;
+                bestTier = tier;
+                bestDistance = distance;
+            }
+        }
+        return first == null ? null : new QueuedLoadRank(load, first, bestTier, bestDistance);
     }
 
     private void publishCompletion(PreparedLoadResult result) {
@@ -403,6 +531,7 @@ public final class ViewExtendService {
             }
             SharedLoad load = loadsByKey.remove(result.key());
             if (load == null) {
+                recordOrphanResult(result);
                 continue;
             }
 
@@ -411,10 +540,18 @@ public final class ViewExtendService {
 
             totalWorkerCpuNanos += result.workerNanos();
 
+            // Validation is server-thread-only. The numeric NBT size travelled with the result;
+            // no NBT object survives the worker task.
+            pruneAndFindFirstValidSubscriber(server, load);
+            if (load.subscribers.isEmpty() && result.rawNbtBytes() > 0) {
+                totalOrphanRawNbtCount++;
+                totalOrphanRawNbtBytes += result.rawNbtBytes();
+            }
+
             if (result.missing() || result.error() != null || result.prepared() == null) {
                 VisualChunkFailure failure = VisualChunkFailure.classify(result.missing(), result.error());
                 if (result.missing()) totalDiskNbtReadMisses++;
-                else totalPreparedResultsDropped++;
+                else totalPreparationFailures++;
                 failureCounts.merge(failure, 1L, Long::sum);
                 Throwable cause = VisualChunkFailure.unwrap(result.error());
                 Object failureIdentity = failure == VisualChunkFailure.UNFINISHED && cause != null ? cause.getMessage() : failure;
@@ -438,64 +575,157 @@ public final class ViewExtendService {
                 continue;
             }
 
+            if (load.subscribers.isEmpty()) {
+                totalPreparedOrphaned++;
+                totalPreparedDiscardedNoCache++;
+                totalPreparedDiscardedBytes += result.prepared().estimatedBytes();
+                continue;
+            }
+
             retryCache.invalidate(new ChunkSourceKey(result.key().worldKey(), result.key().chunkLong()));
             PreparedVisualChunk prepared = result.prepared();
             recordPreparationStats(prepared);
             packetCache.put(result.key(), prepared, ticks, load.subscribers.size() > 1);
-            readyDeliveries.addLast(new ReadyDelivery(result.key(), prepared, load.subscribers));
+            readyDeliveries.addLast(new ReadyDelivery(result.key(), prepared, load.subscribers, ticks));
+            currentReadyBytes += prepared.estimatedBytes();
+            peakReadyBytes = Math.max(peakReadyBytes, currentReadyBytes);
+        }
+    }
+
+    private void recordOrphanResult(PreparedLoadResult result) {
+        if (result.rawNbtBytes() > 0) {
+            totalOrphanRawNbtCount++;
+            totalOrphanRawNbtBytes += result.rawNbtBytes();
+        }
+        if (result.prepared() != null) {
+            totalPreparedOrphaned++;
+            totalPreparedDiscardedNoCache++;
+            totalPreparedDiscardedBytes += result.prepared().estimatedBytes();
         }
     }
 
     private void processReadyDeliveries(MinecraftServer server, int budget) {
+        ReadyPass pass = buildReadyPass(server);
         int processed = 0;
-        int inspected = 0;
-        int scanLimit = readyDeliveries.size() + budget;
-        while (processed < Math.max(1, budget) && inspected++ < scanLimit && hasWorkTime()) {
-            ReadyDelivery delivery = readyDeliveries.pollFirst();
-            if (delivery == null) {
-                return;
-            }
-            LoadSubscriber subscriber = delivery.nextSubscriber();
-            if (subscriber == null) {
-                continue;
-            }
+        while (processed < Math.max(1, budget) && hasWorkTime()) {
+            ReadyChoice choice = chooseBestReady(pass);
+            if (choice == null) break;
+            PriorityQueue<ReadyChoice> playerQueue = pass.byPlayer().get(choice.valid().state());
+            ReadyChoice rankedFirst = playerQueue.poll();
+            if (rankedFirst != choice) totalPriorityInversions++;
 
-            ValidSubscriber valid = resolveValidSubscriber(server, subscriber, delivery.key());
-            if (valid != null && !canSend(valid.player(), valid.state())) {
-                delivery.defer(subscriber);
-                readyDeliveries.addLast(delivery);
-                continue;
+            ReadyChoice fifoFirst = firstUnconsumed(pass.fifoByPlayer().get(choice.valid().state()),
+                    pass.consumed());
+            if (fifoFirst != null && fifoFirst != choice && compareReady(choice, fifoFirst) < 0) {
+                totalPriorityInversionsAvoided++;
             }
-            if (valid != null) {
-                long deliveryStarted = System.nanoTime();
-                try {
-                    ChunkPos pos = ChunkPos.unpack(delivery.key().chunkLong());
-                    LevelChunk live = valid.world().getChunkSource().getChunkNow(pos.x(), pos.z());
-                    if (live == null) {
-                        sendPreparedChunk(valid.player(), delivery.prepared());
-                        valid.state().markSent(delivery.key().chunkLong(), delivery.key().lodLevel());
-                    } else {
-                        sendLoadedChunk(valid.player(), live);
-                        valid.state().markSent(delivery.key().chunkLong(), 0);
-                        invalidatePreparedCacheForChunk(delivery.key().worldKey(), delivery.key().chunkLong());
-                    }
-                } catch (RuntimeException exception) {
-                    valid.state().clearPending(delivery.key().chunkLong());
-                    planner.scheduleRetry(valid.state(), delivery.key().chunkLong(), 200);
-                    ViewExtendMod.LOGGER.debug(
-                            "Failed to deliver prepared visual chunk {}",
-                            ChunkPos.unpack(delivery.key().chunkLong()),
-                            exception);
-                } finally {
-                    valid.state().share.charge(0, System.nanoTime() - deliveryStarted);
+            pass.consumed().add(choice);
+            choice.delivery().removeSubscriber(choice.subscriber());
+            if (!choice.delivery().hasSubscribers()) readyDeliveries.remove(choice.delivery());
+
+            choice.valid().state().readyFairnessSequence = ++readyFairnessSequence;
+            long readyWait = Math.max(0, ticks - choice.delivery().createdTick());
+            totalReadyWaitTicks += readyWait;
+            totalReadyWaitSamples++;
+            peakReadyWaitTicks = Math.max(peakReadyWaitTicks, readyWait);
+            long deliveryStarted = System.nanoTime();
+            try {
+                ChunkPos pos = ChunkPos.unpack(choice.delivery().key().chunkLong());
+                LevelChunk live = choice.valid().world().getChunkSource().getChunkNow(pos.x(), pos.z());
+                if (live == null) {
+                    sendPreparedChunk(choice.valid().player(), choice.delivery().prepared());
+                    choice.valid().state().markSent(choice.delivery().key().chunkLong(),
+                            choice.delivery().key().lodLevel());
+                } else {
+                    sendLoadedChunk(choice.valid().player(), live);
+                    choice.valid().state().markSent(choice.delivery().key().chunkLong(), 0);
+                    invalidatePreparedCacheForChunk(choice.delivery().key().worldKey(),
+                            choice.delivery().key().chunkLong());
                 }
+            } catch (RuntimeException exception) {
+                choice.valid().state().clearPending(choice.delivery().key().chunkLong());
+                planner.scheduleRetry(choice.valid().state(), choice.delivery().key().chunkLong(), 200);
+                ViewExtendMod.LOGGER.debug("Failed to deliver prepared visual chunk {}",
+                        ChunkPos.unpack(choice.delivery().key().chunkLong()), exception);
+            } finally {
+                choice.valid().state().share.charge(0, System.nanoTime() - deliveryStarted);
             }
             processed++;
+        }
+        readyDeliveries.removeIf(delivery -> !delivery.hasSubscribers());
+        reconcileReadyBytes();
+    }
 
-            if (delivery.hasSubscribers()) {
-                readyDeliveries.addLast(delivery);
+    /** Builds one current-position priority snapshot for this bounded delivery pass. */
+    private ReadyPass buildReadyPass(MinecraftServer server) {
+        Map<PlayerViewState, PriorityQueue<ReadyChoice>> byPlayer = new HashMap<>();
+        Map<PlayerViewState, ArrayDeque<ReadyChoice>> fifoByPlayer = new HashMap<>();
+        for (ReadyDelivery delivery : readyDeliveries) {
+            List<LoadSubscriber> stale = null;
+            for (LoadSubscriber subscriber : delivery.subscribers()) {
+                ValidSubscriber valid = resolveValidSubscriber(server, subscriber, delivery.key());
+                if (valid == null) {
+                    if (stale == null) stale = new ArrayList<>();
+                    stale.add(subscriber);
+                    continue;
+                }
+                ChunkPos pos = ChunkPos.unpack(delivery.key().chunkLong());
+                int distance = Math.max(Math.abs(pos.x() - valid.state().centerX),
+                        Math.abs(pos.z() - valid.state().centerZ));
+                int tier = PlayerViewPlanner.priorityTier(valid.state().normalDistance, distance);
+                ReadyChoice candidate = new ReadyChoice(delivery, subscriber, valid, tier, distance,
+                        delivery.createdTick());
+                byPlayer.computeIfAbsent(valid.state(), ignored ->
+                        new PriorityQueue<>(ViewExtendService::compareReady)).add(candidate);
+                fifoByPlayer.computeIfAbsent(valid.state(), ignored -> new ArrayDeque<>())
+                        .addLast(candidate);
+            }
+            if (stale != null) for (LoadSubscriber subscriber : stale) delivery.removeSubscriber(subscriber);
+        }
+        readyDeliveries.removeIf(delivery -> !delivery.hasSubscribers());
+        reconcileReadyBytes();
+        return new ReadyPass(byPlayer, fifoByPlayer, new HashSet<>());
+    }
+
+    private void reconcileReadyBytes() {
+        long bytes = 0;
+        for (ReadyDelivery delivery : readyDeliveries) bytes += delivery.prepared().estimatedBytes();
+        currentReadyBytes = bytes;
+        peakReadyBytes = Math.max(peakReadyBytes, bytes);
+    }
+
+    private ReadyChoice chooseBestReady(ReadyPass pass) {
+        ReadyChoice selected = null;
+        for (PriorityQueue<ReadyChoice> queue : pass.byPlayer().values()) {
+            ReadyChoice candidate = queue.peek();
+            if (candidate == null || !canSend(candidate.valid().player(), candidate.valid().state())) continue;
+            if (selected == null
+                    || candidate.valid().state().readyFairnessSequence
+                            < selected.valid().state().readyFairnessSequence
+                    || (candidate.valid().state().readyFairnessSequence
+                            == selected.valid().state().readyFairnessSequence
+                        && compareReady(candidate, selected) < 0)) {
+                selected = candidate;
             }
         }
+        return selected;
+    }
+
+    private static ReadyChoice firstUnconsumed(ArrayDeque<ReadyChoice> fifo, Set<ReadyChoice> consumed) {
+        if (fifo == null) return null;
+        while (!fifo.isEmpty() && consumed.contains(fifo.peekFirst())) fifo.removeFirst();
+        return fifo.peekFirst();
+    }
+
+    private static int compareReady(ReadyChoice left, ReadyChoice right) {
+        return compareReadyPriority(left.tier(), left.distance(), left.age(),
+                right.tier(), right.distance(), right.age());
+    }
+
+    static int compareReadyPriority(int leftTier, int leftDistance, long leftAge,
+            int rightTier, int rightDistance, long rightAge) {
+        return PlayerViewPlanner.comparePriority(leftTier, leftDistance, leftAge,
+                rightTier, rightDistance, rightAge);
     }
 
     private void deliverLoadedChunkToSubscribers(MinecraftServer server, SharedLoad load, LevelChunk loaded) {
@@ -597,11 +827,11 @@ public final class ViewExtendService {
     private void sendLoadedChunk(ServerPlayer player, LevelChunk chunk) {
         LevelLightEngine lightEngine = ((ServerLevel) chunk.getLevel()).getChunkSource().getLightEngine();
         ClientboundLevelChunkWithLightPacket packet = createChunkPacket(player, chunk, lightEngine, null, null);
-        sendChunkPacket(player, packet);
+        sendChunkPacket(player, packet, null);
     }
 
     private void sendPreparedChunk(ServerPlayer player, PreparedVisualChunk prepared) {
-        sendChunkPacket(player, prepared.packet());
+        sendChunkPacket(player, prepared.packet(), prepared.composition());
     }
 
     private static ClientboundLevelChunkWithLightPacket createChunkPacket(
@@ -624,19 +854,33 @@ public final class ViewExtendService {
     private boolean canSend(ServerPlayer player, PlayerViewState state) {
         var connection = ((com.silver.viewextend.mixin.ServerConnectionAccessor) player.connection).viewextend$getConnection();
         var channel = ((com.silver.viewextend.mixin.ConnectionAccessor) connection).viewextend$getChannel();
-        var flow = (com.silver.viewextend.mixin.PlayerChunkSenderAccessor) player.connection.chunkSender;
         return hasWorkTime() && (borrowing || state.share.available())
                 && sendsThisTick < config.maxMainThreadPreparedChunksPerTick()
-                && VisualChunkFlow.canSend(flow.viewextend$getQuota(), flow.viewextend$getOutstanding(),
-                        flow.viewextend$getMaxOutstanding(), state.visualBatchOpen)
+                && hasNetworkQuota(player, state)
                 && state.sendsThisTick < config.maxChunksPerPlayerPerTick() && connection.isConnected()
                 && channel != null && channel.isWritable();
     }
 
-    private void sendChunkPacket(ServerPlayer player, ClientboundLevelChunkWithLightPacket packet) {
+    private static boolean hasNetworkQuota(ServerPlayer player, PlayerViewState state) {
+        var flow = (com.silver.viewextend.mixin.PlayerChunkSenderAccessor) player.connection.chunkSender;
+        return VisualChunkFlow.canSend(flow.viewextend$getQuota(), flow.viewextend$getOutstanding(),
+                flow.viewextend$getMaxOutstanding(), state.visualBatchOpen);
+    }
+
+    private boolean canAdmit(ServerPlayer player, PlayerViewState state) {
+        var connection = ((com.silver.viewextend.mixin.ServerConnectionAccessor)
+                player.connection).viewextend$getConnection();
+        return hasWorkTime() && (borrowing || state.share.available()) && connection.isConnected();
+    }
+
+    private void sendChunkPacket(ServerPlayer player, ClientboundLevelChunkWithLightPacket packet,
+            VisualChunkPackets.PacketComposition composition) {
         String worldKey = player.level().dimension().identifier().toString();
         PlayerViewState state = statesByPlayer.get(new PlayerWorldKey(player.getUUID(), worldKey));
         if (state == null) throw new IllegalStateException("Missing visual batch state");
+        int sentDistance = Math.max(Math.abs(packet.getX() - state.centerX),
+                Math.abs(packet.getZ() - state.centerZ));
+        sentDistances.record(sentDistance);
         var flow = (com.silver.viewextend.mixin.PlayerChunkSenderAccessor) player.connection.chunkSender;
         if (!state.visualBatchOpen) {
             flow.viewextend$setOutstanding(flow.viewextend$getOutstanding() + 1);
@@ -645,6 +889,10 @@ public final class ViewExtendService {
         }
         flow.viewextend$setQuota(flow.viewextend$getQuota() - 1);
         int packetBytes = VisualChunkPackets.estimate(packet);
+        var connection = ((com.silver.viewextend.mixin.ServerConnectionAccessor) player.connection)
+                .viewextend$getConnection();
+        var channel = ((com.silver.viewextend.mixin.ConnectionAccessor) connection).viewextend$getChannel();
+        networkMetrics.observe(channel, packet, composition);
         sendingVisualPacket = true;
         try {
             player.connection.send(packet);
@@ -745,6 +993,40 @@ public final class ViewExtendService {
     private boolean isPipelineAtHardLimit() {
         int hardLimit = config.preparedQueueHardLimit();
         return hardLimit > 0 && loadsByKey.size() + readyDeliveries.size() >= hardLimit;
+    }
+
+    private void recordCandidateSkip(PlayerViewPlanner.DemandSource source, CandidateSkipReason reason) {
+        demandSkipped[source.ordinal()]++;
+        candidateSkipReasons[reason.ordinal()]++;
+        if (reason == CandidateSkipReason.ALREADY_SENT
+                || reason == CandidateSkipReason.ALREADY_PENDING) {
+            candidateSkipReasons[CandidateSkipReason.DUPLICATE_OVERLAP.ordinal()]++;
+        }
+        totalStaleCandidatesSkipped++;
+    }
+
+    private enum CandidateSkipReason {
+        ALREADY_SENT,
+        ALREADY_PENDING,
+        RETRY_DEADLINE,
+        SHARED_COOLDOWN,
+        VANILLA_OWNED,
+        OUTSIDE_RADIUS,
+        DUPLICATE_OVERLAP,
+        DELIVERY_FAILURE
+    }
+
+    private enum CandidateResult {
+        ACCEPTED(null),
+        BLOCKED(null),
+        SKIPPED_ALREADY_SENT(CandidateSkipReason.ALREADY_SENT),
+        SKIPPED_ALREADY_PENDING(CandidateSkipReason.ALREADY_PENDING),
+        SKIPPED_RETRY_DEADLINE(CandidateSkipReason.RETRY_DEADLINE),
+        SKIPPED_SHARED_COOLDOWN(CandidateSkipReason.SHARED_COOLDOWN),
+        SKIPPED_DELIVERY_FAILURE(CandidateSkipReason.DELIVERY_FAILURE);
+
+        private final CandidateSkipReason skipReason;
+        CandidateResult(CandidateSkipReason skipReason) { this.skipReason = skipReason; }
     }
 
     private int resolveLodLevel(int centerX, int centerZ, int chunkX, int chunkZ) {
@@ -880,24 +1162,52 @@ public final class ViewExtendService {
         double seconds = Math.max(1L, now - metricsWindowStartNanos) / 1_000_000_000.0;
         long pending = 0;
         long sent = 0;
-        long candidateQueue = 0;
+        long demandDescriptors = 0;
+        long activeDirectDemand = 0;
+        long activeMovementDescriptors = 0;
+        long activeGapDescriptors = 0;
+        long activeNearCursors = 0;
+        long activeBootstrapCursors = 0;
+        long activeGapCursors = 0;
         for (PlayerViewState state : statesByPlayer.values()) {
             pending += state.pending.size();
             sent += state.sent.size();
-            candidateQueue += state.candidateQueue.size();
+            demandDescriptors += state.demandDescriptorCount();
+            activeDirectDemand += state.directDemand.size();
+            activeMovementDescriptors += state.movementDemand.size();
+            activeGapDescriptors += state.vanillaGapDemand.size();
+            if (state.nearActive) activeNearCursors++;
+            if (state.bootstrapActive) activeBootstrapCursors++;
+            if (state.gapActive) activeGapCursors++;
         }
         long completedQueued = completedTasksQueuedWindow.sumThenReset();
+        PipelineSnapshot pipeline = schedulerSnapshot();
+        PipelineMemoryMetrics.Snapshot nbtMemory = loader.memorySnapshot();
+        PreparationMetrics.Snapshot preparationMetrics = loader.drainPreparationMetrics();
+        ViewExtendNetworkMetrics.Snapshot network = networkMetrics.drainSnapshot();
+        ReadyMemorySnapshot readyMemory = readyMemorySnapshot(server);
+        ReuseAwareChunkCache.CacheStats cacheStats = packetCache.drainStats();
+        PlayerViewPlanner.SelectionMetrics selectionMetrics = planner.drainSelectionMetrics();
+        StateMemoryEstimate globalStateMemory = new StateMemoryEstimate(0, 0, 0, 0, 0, 0, 0);
+        for (PlayerViewState state : statesByPlayer.values()) {
+            globalStateMemory = globalStateMemory.plus(estimateStateMemory(state));
+        }
 
         ViewExtendMod.LOGGER.info(
-                "[ViewExtend Metrics] players={} states={} sent={} pending={} candidates={} loads={} nbtQueue={} completedQueue={} deliveries={} cache={}/{}MiB packets={} unloads={} diskReads={} diskMisses={} nbtQueued={} nbtStarted={} coalesced={} cacheHits={} cacheMisses={} pipelineDeferrals={} candidateChecks={} preparedQueued={} preparedProcessed={} preparedDropped={} remaps={} unsorted={} suppressedUnloads={} lightSky(nbt/fallback/water)={}/{}/{} lightBlock(nbt/fallback)={}/{} netMiB~={} netMiBps~={} mainElapsedMsps={} workerElapsedMsps={}",
+                "[ViewExtend Metrics] players={} states={} sent={} pending={} descriptors={} loads={} stages(queuedRead/read/complete/readyPackets/readySubscribers)={}/{}/{}/{}/{} distances(admitted/active/read/ready/sent)={}/{}/{}/{}/{} inversions(actual/avoided)={}/{} staleSkipped={} superseded={} skippedUnstarted={} cache={}/{}MiB packets={} unloads={} diskReads={} diskMisses={} nbtQueued={} nbtStarted={} coalesced={} cacheHits={} cacheMisses={} pipelineDeferrals={} candidateChecks={} preparedQueued={} preparedProcessed={} prepFailures={} preparedOrphaned={} remaps={} unsorted={} suppressedUnloads={} lightSky(nbt/fallback/water)={}/{}/{} lightBlock(nbt/fallback)={}/{} preCompressionEstimateMiB={} preCompressionEstimateMiBps={} mainElapsedMsps={} workerElapsedMsps={}",
                 server.getPlayerList().getPlayers().size(), statesByPlayer.size(), sent, pending,
-                candidateQueue, loadsByKey.size(), nbtReadQueue.size(), completedLoadQueue.size(),
-                readyDeliveries.size(), packetCache.size(),
+                demandDescriptors, loadsByKey.size(), pipeline.queuedReads(), pipeline.startedReads(),
+                completedLoadQueue.size(), readyDeliveries.size(), pipeline.readySubscribers(),
+                admittedDistances.display(), pipeline.activeDistances().display(),
+                pipeline.readDistances().display(), pipeline.readyDistances().display(), sentDistances.display(),
+                totalPriorityInversions, totalPriorityInversionsAvoided, totalStaleCandidatesSkipped,
+                totalSupersededSubscribers, totalSkippedUnstartedLoads, packetCache.size(),
                 packetCache.bytes() / (1024L * 1024L), totalChunkPacketsSent,
                 totalUnloadPacketsSent, totalDiskNbtReads, totalDiskNbtReadMisses,
                 totalNbtRequestsQueued, totalNbtRequestsStarted, totalCoalescedRequests,
                 totalCacheHits, totalCacheMisses, totalPipelineDeferrals, totalCandidateInspections,
-                completedQueued, totalPreparedResultsProcessed, totalPreparedResultsDropped,
+                completedQueued, totalPreparedResultsProcessed, totalPreparationFailures,
+                totalPreparedOrphaned,
                 totalLegacyBlockIdRemaps, totalUnsortedSectionInputs, totalSuppressedVanillaUnloads,
                 totalSkyLightNbtSections, totalSkyLightFallbackSections,
                 totalSkyLightWaterFallbackSections, totalBlockLightNbtSections,
@@ -907,7 +1217,103 @@ public final class ViewExtendService {
                 String.format(Locale.ROOT, "%.2f", totalMainCpuNanos / 1_000_000.0 / seconds),
                 String.format(Locale.ROOT, "%.2f", totalWorkerCpuNanos / 1_000_000.0 / seconds));
 
+        ViewExtendMod.LOGGER.info(
+                "[ViewExtend Demand] source(yielded/accepted/skipped) direct={}/{}/{} near={}/{}/{} bootstrap={}/{}/{} movement={}/{}/{} gap={}/{}/{} skip(sent/pending/retryDeadline/sharedCooldown/vanilla/outside/overlap/delivery)={}/{}/{}/{}/{}/{}/{}/{} active(direct/movement/gapLines/near/bootstrap/gapCursor)={}/{}/{}/{}/{}/{} selection(comparisons/directEntries/directPruned/movementHeap/nearCursor/bootstrapCursor/gap)={}/{}/{}/{}/{}/{}/{} heads(rebuilds/rekeys/merges/dedup)={}/{}/{}/{}",
+                demandYielded[PlayerViewPlanner.DemandSource.DIRECT_RETRY.ordinal()],
+                demandAccepted[PlayerViewPlanner.DemandSource.DIRECT_RETRY.ordinal()],
+                demandSkipped[PlayerViewPlanner.DemandSource.DIRECT_RETRY.ordinal()],
+                demandYielded[PlayerViewPlanner.DemandSource.NEAR.ordinal()],
+                demandAccepted[PlayerViewPlanner.DemandSource.NEAR.ordinal()],
+                demandSkipped[PlayerViewPlanner.DemandSource.NEAR.ordinal()],
+                demandYielded[PlayerViewPlanner.DemandSource.BOOTSTRAP.ordinal()],
+                demandAccepted[PlayerViewPlanner.DemandSource.BOOTSTRAP.ordinal()],
+                demandSkipped[PlayerViewPlanner.DemandSource.BOOTSTRAP.ordinal()],
+                demandYielded[PlayerViewPlanner.DemandSource.MOVEMENT.ordinal()],
+                demandAccepted[PlayerViewPlanner.DemandSource.MOVEMENT.ordinal()],
+                demandSkipped[PlayerViewPlanner.DemandSource.MOVEMENT.ordinal()],
+                demandYielded[PlayerViewPlanner.DemandSource.VANILLA_GAP.ordinal()],
+                demandAccepted[PlayerViewPlanner.DemandSource.VANILLA_GAP.ordinal()],
+                demandSkipped[PlayerViewPlanner.DemandSource.VANILLA_GAP.ordinal()],
+                candidateSkipReasons[CandidateSkipReason.ALREADY_SENT.ordinal()],
+                candidateSkipReasons[CandidateSkipReason.ALREADY_PENDING.ordinal()],
+                candidateSkipReasons[CandidateSkipReason.RETRY_DEADLINE.ordinal()],
+                candidateSkipReasons[CandidateSkipReason.SHARED_COOLDOWN.ordinal()],
+                candidateSkipReasons[CandidateSkipReason.VANILLA_OWNED.ordinal()],
+                candidateSkipReasons[CandidateSkipReason.OUTSIDE_RADIUS.ordinal()],
+                candidateSkipReasons[CandidateSkipReason.DUPLICATE_OVERLAP.ordinal()],
+                candidateSkipReasons[CandidateSkipReason.DELIVERY_FAILURE.ordinal()],
+                activeDirectDemand, activeMovementDescriptors, activeGapDescriptors,
+                activeNearCursors, activeBootstrapCursors, activeGapCursors,
+                selectionMetrics.comparisons(), selectionMetrics.directRetryComparisons(),
+                selectionMetrics.directRetryPruned(), selectionMetrics.movementDescriptorComparisons(),
+                selectionMetrics.nearCursorChecks(),
+                selectionMetrics.bootstrapCursorChecks(), selectionMetrics.gapCursorChecks(),
+                selectionMetrics.descriptorHeadRebuilds(), selectionMetrics.descriptorHeadRekeys(),
+                selectionMetrics.descriptorMerges(), selectionMetrics.descriptorDeduplications());
+
         ViewExtendMod.LOGGER.info("[ViewExtend Preparation] outcomes={} sharedCooldownHits={}", failureCounts, totalCooldownHits);
+        ViewExtendMod.LOGGER.info(
+                "[ViewExtend Worker] prep(attempts/success/failure)={}/{}/{} totalMs={} avgMs={} p50Ms~={} p95Ms~={} maxMs={} stagesMs(validate/copy/transform/parse/light/packet)={}/{}/{}/{}/{}/{} packetMs(section/encode/decode)={}/{}/{} sectionCopyMiBAvoided={} bufferGrowths={} sections={} lightFastPath(layers/scanKiBAvoided)={}/{}",
+                preparationMetrics.attempts(), preparationMetrics.successes(), preparationMetrics.failures(),
+                formatWorkerMillis(preparationMetrics.totalNanos()),
+                formatWorkerMillis(preparationMetrics.averageNanos()),
+                formatWorkerMillis(preparationMetrics.percentileNanos(0.50)),
+                formatWorkerMillis(preparationMetrics.percentileNanos(0.95)),
+                formatWorkerMillis(preparationMetrics.maxNanos()),
+                formatWorkerMillis(preparationMetrics.validationNanos()),
+                formatWorkerMillis(preparationMetrics.copyNanos()),
+                formatWorkerMillis(preparationMetrics.transformNanos()),
+                formatWorkerMillis(preparationMetrics.parseNanos()),
+                formatWorkerMillis(preparationMetrics.lightNanos()),
+                formatWorkerMillis(preparationMetrics.packetNanos()),
+                formatWorkerMillis(preparationMetrics.packetSectionNanos()),
+                formatWorkerMillis(preparationMetrics.packetEncodingNanos()),
+                formatWorkerMillis(preparationMetrics.packetDecodeNanos()),
+                String.format(Locale.ROOT, "%.2f", preparationMetrics.sectionCopyBytesEliminated() / 1048576.0),
+                preparationMetrics.packetBufferGrowths(),
+                preparationMetrics.sectionsProcessed(), preparationMetrics.lightLayersFastPathed(),
+                preparationMetrics.lightBytesScanAvoided() / 1024);
+        long categorizedBytes = network.categorizedBytes();
+        ViewExtendMod.LOGGER.info(
+                "[ViewExtend Network] chunks={} compressionThreshold={} logicalMiB/ps={}/{} compressedMiB/ps={}/{} wireMiB/ps={}/{} ratio(compressed/logical)={} chunkBytes(avg/p50~/p95~)={}/{}/{} composition(bytes; pctOfCategorized) sections={};{} biomes={};{} heightmaps={};{} sky={};{} block={};{} masks={};{} protocol={};{} categorizedMiB={} uncategorized={} dropped={}",
+                network.packets(), network.compressionThreshold(),
+                formatMiB(network.logicalBytes()), formatMiBPerSecond(network.logicalBytes(), seconds),
+                formatMiB(network.compressedBytes()), formatMiBPerSecond(network.compressedBytes(), seconds),
+                formatMiB(network.wireBytes()), formatMiBPerSecond(network.wireBytes(), seconds),
+                network.logicalBytes() == 0 ? "-" : String.format(Locale.ROOT, "%.3f",
+                        (double) network.compressedBytes() / network.logicalBytes()),
+                network.averageBytes(), network.percentileBytes(0.50), network.percentileBytes(0.95),
+                network.blockStateBytes(), formatPercent(network.blockStateBytes(), categorizedBytes),
+                network.biomeBytes(), formatPercent(network.biomeBytes(), categorizedBytes),
+                network.heightmapBytes(), formatPercent(network.heightmapBytes(), categorizedBytes),
+                network.skyLightBytes(), formatPercent(network.skyLightBytes(), categorizedBytes),
+                network.blockLightBytes(), formatPercent(network.blockLightBytes(), categorizedBytes),
+                network.lightMaskBytes(), formatPercent(network.lightMaskBytes(), categorizedBytes),
+                network.protocolBytes(), formatPercent(network.protocolBytes(), categorizedBytes),
+                formatMiB(categorizedBytes), network.uncategorizedPackets(), network.droppedObservations());
+        ViewExtendMod.LOGGER.info(
+                "[ViewExtend Memory] nbt(retained/bytes/avg/max/peakCount/peakBytes)={}/{}/{}/{}/{}/{} prep(queued/active/peakQueued/peakActive/queuedNbtBytes/activeNbtBytes/copyPayloads/peakCopyPayloads)={}/{}/{}/{}/{}/{}/{}/{} prepared(readyPackets/readyBytes/cacheBytes/uniqueBytes/peakReadyBytes/quotaBlockedBytes)={}/{}/{}/{}/{}/{} readyWaitTicks(avg/peak/currentOldest)={}/{}/{} orphan(rawProcessedCount/rawProcessedBytes/prepSkipped/preparedDiscarded/preparedBytes)={}/{}/{}/{}/{} state(sent/sentLod/pending/activeMetadata/descriptors/sentBytes/schedulerBytes)={}/{}/{}/{}/{}/{}/{}",
+                nbtMemory.rawCount(), nbtMemory.rawBytes(), nbtMemory.averageRawBytes(),
+                nbtMemory.maxRawBytes(), nbtMemory.peakRawCount(), nbtMemory.peakRawBytes(),
+                nbtMemory.queuedTasks(), nbtMemory.activeTasks(), nbtMemory.peakQueuedTasks(),
+                nbtMemory.peakActiveTasks(), nbtMemory.queuedRawBytes(), nbtMemory.activeRawBytes(),
+                nbtMemory.copyingNbt() * 2, nbtMemory.peakCopyingNbt() * 2, readyMemory.packetCount(),
+                readyMemory.readyBytes(), packetCache.bytes(), readyMemory.uniquePreparedBytes(),
+                peakReadyBytes, readyMemory.quotaBlockedBytes(),
+                totalReadyWaitSamples == 0 ? 0 : totalReadyWaitTicks / totalReadyWaitSamples,
+                peakReadyWaitTicks, readyMemory.oldestWaitTicks(), totalOrphanRawNbtCount,
+                totalOrphanRawNbtBytes, totalPreparationsSkippedNoSubscribers,
+                totalPreparedDiscardedNoCache, totalPreparedDiscardedBytes,
+                globalStateMemory.sentEntries(), globalStateMemory.sentLodEntries(),
+                globalStateMemory.pendingEntries(), globalStateMemory.activeMetadataEntries(),
+                globalStateMemory.descriptors(),
+                globalStateMemory.sentBytes(), globalStateMemory.schedulerBytes());
+        ViewExtendMod.LOGGER.info(
+                "[ViewExtend Cache] admissions={} probation={} protectedShared={} hits={} promotions={} expirations={} evictedEntries={} evictedBytes={} expiredWithoutReuse={}",
+                cacheStats.admissions(), cacheStats.probationAdmissions(),
+                cacheStats.protectedAdmissions(), cacheStats.hits(), cacheStats.promotions(),
+                cacheStats.expirations(), cacheStats.entryLimitEvictions(),
+                cacheStats.byteLimitEvictions(), cacheStats.expiredWithoutReuse());
         for (PlayerViewState state : statesByPlayer.values()) {
             ServerPlayer player = server.getPlayerList().getPlayer(state.playerUuid);
             if (player == null) continue;
@@ -917,9 +1323,15 @@ public final class ViewExtendService {
                     state.bootstrapActive, state.bootstrapRadius,
                     ((com.silver.viewextend.mixin.PlayerChunkSenderAccessor) player.connection.chunkSender).viewextend$getQuota(),
                     ((com.silver.viewextend.mixin.PlayerChunkSenderAccessor) player.connection.chunkSender).viewextend$getOutstanding(), state.lookahead);
+            StateMemoryEstimate memory = estimateStateMemory(state);
+            ViewExtendMod.LOGGER.info(
+                    "[ViewExtend State] player={} world={} sent={} sentLod={} pending={} activeMetadata={} descriptors={} sentBytes~={} schedulerBytes~={}",
+                    player.getGameProfile().name(), state.worldKey, memory.sentEntries(),
+                    memory.sentLodEntries(), memory.pendingEntries(), memory.activeMetadataEntries(),
+                    memory.descriptors(), memory.sentBytes(), memory.schedulerBytes());
         }
         ViewExtendMod.LOGGER.info("[ViewExtend Scheduler] readsPerTick={} budgetMs={} preparationLatencyTicks={} cachePromotions={}",
-                adaptive.reads(), adaptive.allowance() / 1_000_000.0, adaptive.latencyTicks(), packetCache.promotions());
+                adaptive.reads(), adaptive.allowance() / 1_000_000.0, adaptive.latencyTicks(), cacheStats.promotions());
         failureCounts.clear();
         totalCooldownHits = 0;
         metricsWindowStartNanos = now;
@@ -937,7 +1349,8 @@ public final class ViewExtendService {
         totalNbtRequestsStarted = 0;
         totalCoalescedRequests = 0;
         totalPreparedResultsProcessed = 0;
-        totalPreparedResultsDropped = 0;
+        totalPreparationFailures = 0;
+        totalPreparedOrphaned = 0;
         totalPipelineDeferrals = 0;
         totalCacheHits = 0;
         totalCacheMisses = 0;
@@ -948,6 +1361,150 @@ public final class ViewExtendService {
         totalSkyLightWaterFallbackSections = 0;
         totalBlockLightNbtSections = 0;
         totalBlockLightFallbackSections = 0;
+        admittedDistances.clear();
+        sentDistances.clear();
+        totalPriorityInversions = 0;
+        totalPriorityInversionsAvoided = 0;
+        totalStaleCandidatesSkipped = 0;
+        Arrays.fill(demandYielded, 0);
+        Arrays.fill(demandAccepted, 0);
+        Arrays.fill(demandSkipped, 0);
+        Arrays.fill(candidateSkipReasons, 0);
+        totalSupersededSubscribers = 0;
+        totalSkippedUnstartedLoads = 0;
+        totalPreparationsSkippedNoSubscribers = 0;
+        totalOrphanRawNbtCount = 0;
+        totalOrphanRawNbtBytes = 0;
+        totalPreparedDiscardedBytes = 0;
+        totalPreparedDiscardedNoCache = 0;
+    }
+
+    private PipelineSnapshot schedulerSnapshot() {
+        DistanceRange active = new DistanceRange();
+        DistanceRange reads = new DistanceRange();
+        DistanceRange ready = new DistanceRange();
+        int queuedReads = 0;
+        int startedReads = 0;
+        int readySubscribers = 0;
+        for (PlayerViewState state : statesByPlayer.values()) {
+            var pending = state.pending.iterator();
+            while (pending.hasNext()) active.record(distanceFromState(state, pending.nextLong()));
+        }
+        for (SharedLoad load : loadsByKey.values()) {
+            if (load.started) startedReads++;
+            else queuedReads++;
+            if (!load.started) continue;
+            for (LoadSubscriber subscriber : load.subscribers) {
+                if (subscriber.state().isCurrentRequest(subscriber.state(), load.key.chunkLong(),
+                        subscriber.requestId())) {
+                    reads.record(distanceFromState(subscriber.state(), load.key.chunkLong()));
+                }
+            }
+        }
+        for (ReadyDelivery delivery : readyDeliveries) {
+            for (LoadSubscriber subscriber : delivery.subscribers()) {
+                if (subscriber.state().isCurrentRequest(subscriber.state(), delivery.key().chunkLong(),
+                        subscriber.requestId())) {
+                    ready.record(distanceFromState(subscriber.state(), delivery.key().chunkLong()));
+                    readySubscribers++;
+                }
+            }
+        }
+        return new PipelineSnapshot(queuedReads, startedReads, readySubscribers, active, reads, ready);
+    }
+
+    private ReadyMemorySnapshot readyMemorySnapshot(MinecraftServer server) {
+        Set<PreparedVisualChunk> readySeen = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
+        Set<PreparedVisualChunk> blockedSeen = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
+        long readyBytes = 0;
+        long readyOnlyBytes = 0;
+        long quotaBlockedBytes = 0;
+        long oldestWaitTicks = 0;
+        for (ReadyDelivery delivery : readyDeliveries) {
+            PreparedVisualChunk prepared = delivery.prepared();
+            if (readySeen.add(prepared)) {
+                readyBytes += prepared.estimatedBytes();
+                if (!packetCache.containsIdentity(delivery.key(), prepared)) {
+                    readyOnlyBytes += prepared.estimatedBytes();
+                }
+            }
+            oldestWaitTicks = Math.max(oldestWaitTicks, Math.max(0, ticks - delivery.createdTick()));
+            boolean quotaBlocked = false;
+            for (LoadSubscriber subscriber : delivery.subscribers()) {
+                PlayerViewState state = subscriber.state();
+                if (!state.isCurrentRequest(state, delivery.key().chunkLong(), subscriber.requestId())) continue;
+                ServerPlayer player = server.getPlayerList().getPlayer(subscriber.playerUuid());
+                if (player != null && state.worldKey.equals(
+                        player.level().dimension().identifier().toString())
+                        && !hasNetworkQuota(player, state)) {
+                    quotaBlocked = true;
+                    break;
+                }
+            }
+            if (quotaBlocked && blockedSeen.add(prepared)) {
+                quotaBlockedBytes += prepared.estimatedBytes();
+            }
+        }
+        return new ReadyMemorySnapshot(readyDeliveries.size(), readyBytes,
+                packetCache.bytes() + readyOnlyBytes, quotaBlockedBytes, oldestWaitTicks);
+    }
+
+    static StateMemoryEstimate estimateStateMemory(PlayerViewState state) {
+        long sentBytes = primitiveTableBytes(state.sent.size(), 8, 48)
+                + primitiveTableBytes(state.sentLodByChunk.size(), 12, 56);
+        long schedulerBytes = primitiveTableBytes(state.pending.size(), 8, 48)
+                + primitiveTableBytes(state.pendingLodByChunk.size(), 12, 56)
+                + primitiveTableBytes(state.pendingRequestIds.size(), 16, 56)
+                + primitiveTableBytes(state.directDemandSet.size(), 8, 48)
+                + primitiveTableBytes(state.directDemandAge.size(), 16, 56)
+                + 24L + 8L * state.directDemand.elements().length
+                + primitiveTableBytes(state.retryDueByChunk.size(), 12, 56)
+                + primitiveTableBytes(state.unloadDueByChunk.size(), 12, 56)
+                + 40L * (state.retryQueue.size() + state.unloadQueue.size())
+                + 72L * (state.movementDemand.size() + state.vanillaGapDemand.size())
+                + 8L * ((state.movementHeads == null ? 0 : state.movementHeads.size())
+                        + (state.vanillaGapHeads == null ? 0 : state.vanillaGapHeads.size()))
+                + 280L;
+        long activeMetadata = (long) state.pending.size() + state.pendingLodByChunk.size()
+                + state.pendingRequestIds.size() + state.directDemand.size()
+                + state.directDemandSet.size() + state.directDemandAge.size()
+                + state.retryDueByChunk.size() + state.retryQueue.size()
+                + state.unloadDueByChunk.size() + state.unloadQueue.size()
+                + (state.movementHeads == null ? 0 : state.movementHeads.size())
+                + (state.vanillaGapHeads == null ? 0 : state.vanillaGapHeads.size())
+                + state.demandDescriptorCount();
+        return new StateMemoryEstimate(state.sent.size(), state.sentLodByChunk.size(),
+                state.pending.size(), activeMetadata, state.demandDescriptorCount(), sentBytes,
+                schedulerBytes);
+    }
+
+    private static String formatWorkerMillis(long nanos) {
+        return String.format(Locale.ROOT, "%.3f", nanos / 1_000_000.0);
+    }
+
+    private static String formatMiB(long bytes) {
+        return String.format(Locale.ROOT, "%.2f", bytes / 1048576.0);
+    }
+
+    private static String formatMiBPerSecond(long bytes, double seconds) {
+        return String.format(Locale.ROOT, "%.2f", bytes / 1048576.0 / seconds);
+    }
+
+    private static String formatPercent(long bytes, long total) {
+        return total == 0 ? "-" : String.format(Locale.ROOT, "%.1f%%", 100.0 * bytes / total);
+    }
+
+    private static long primitiveTableBytes(int size, int bytesPerSlot, int objectBytes) {
+        if (size == 0) return objectBytes + 16L;
+        long needed = (size * 4L + 2L) / 3L;
+        long capacity = 2;
+        while (capacity < needed && capacity < (1L << 30)) capacity <<= 1;
+        return objectBytes + 16L + bytesPerSlot * (capacity + 1);
+    }
+
+    private static int distanceFromState(PlayerViewState state, long packed) {
+        return Math.max(Math.abs(ChunkPos.getX(packed) - state.centerX),
+                Math.abs(ChunkPos.getZ(packed) - state.centerZ));
     }
 
     public void shutdown() {
@@ -957,6 +1514,7 @@ public final class ViewExtendService {
         loadsByKey.clear();
         completedLoadQueue.clear();
         readyDeliveries.clear();
+        currentReadyBytes = 0;
         packetCache.clear();
         retryCache.clear();
         loadedDragons.clear();
@@ -980,14 +1538,73 @@ public final class ViewExtendService {
     private record ValidSubscriber(ServerPlayer player, ServerLevel world, PlayerViewState state) {
     }
 
+    private record ReadyChoice(
+            ReadyDelivery delivery,
+            LoadSubscriber subscriber,
+            ValidSubscriber valid,
+            int tier,
+            int distance,
+            long age) {
+    }
+
+    private record ReadyPass(
+            Map<PlayerViewState, PriorityQueue<ReadyChoice>> byPlayer,
+            Map<PlayerViewState, ArrayDeque<ReadyChoice>> fifoByPlayer,
+            Set<ReadyChoice> consumed) {
+    }
+
+    private record QueuedLoadRank(
+            SharedLoad load,
+            ValidSubscriber firstValid,
+            int tier,
+            int distance) {
+    }
+
+    private record PipelineSnapshot(
+            int queuedReads,
+            int startedReads,
+            int readySubscribers,
+            DistanceRange activeDistances,
+            DistanceRange readDistances,
+            DistanceRange readyDistances) {
+    }
+
+    private record ReadyMemorySnapshot(
+            int packetCount,
+            long readyBytes,
+            long uniquePreparedBytes,
+            long quotaBlockedBytes,
+            long oldestWaitTicks) {
+    }
+
+    record StateMemoryEstimate(
+            long sentEntries,
+            long sentLodEntries,
+            long pendingEntries,
+            long activeMetadataEntries,
+            long descriptors,
+            long sentBytes,
+            long schedulerBytes) {
+        StateMemoryEstimate plus(StateMemoryEstimate other) {
+            return new StateMemoryEstimate(sentEntries + other.sentEntries,
+                    sentLodEntries + other.sentLodEntries,
+                    pendingEntries + other.pendingEntries,
+                    activeMetadataEntries + other.activeMetadataEntries,
+                    descriptors + other.descriptors,
+                    sentBytes + other.sentBytes,
+                    schedulerBytes + other.schedulerBytes);
+        }
+    }
+
     private record PreparedLoadResult(
             GlobalChunkKey key,
             PreparedVisualChunk prepared,
             boolean missing,
             Throwable error,
-            long workerNanos) {
+            long workerNanos,
+            int rawNbtBytes) {
         private static PreparedLoadResult failed(GlobalChunkKey key, Throwable error) {
-            return new PreparedLoadResult(key, null, false, error, 0L);
+            return new PreparedLoadResult(key, null, false, error, 0L, 0);
         }
     }
 
@@ -1007,17 +1624,42 @@ public final class ViewExtendService {
         private final GlobalChunkKey key;
         private final PreparedVisualChunk prepared;
         private final ArrayDeque<LoadSubscriber> subscribers;
+        private final int createdTick;
 
         ReadyDelivery(GlobalChunkKey key, PreparedVisualChunk prepared, List<LoadSubscriber> subscribers) {
+            this(key, prepared, subscribers, 0);
+        }
+
+        ReadyDelivery(GlobalChunkKey key, PreparedVisualChunk prepared, List<LoadSubscriber> subscribers,
+                int createdTick) {
             this.key = key;
             this.prepared = prepared;
             this.subscribers = new ArrayDeque<>(subscribers);
+            this.createdTick = createdTick;
         }
 
         GlobalChunkKey key() { return key; }
         PreparedVisualChunk prepared() { return prepared; }
+        int createdTick() { return createdTick; }
         LoadSubscriber nextSubscriber() { return subscribers.pollFirst(); }
         void defer(LoadSubscriber subscriber) { subscribers.addLast(subscriber); }
         boolean hasSubscribers() { return !subscribers.isEmpty(); }
+        Iterable<LoadSubscriber> subscribers() { return subscribers; }
+        boolean removeSubscriber(LoadSubscriber subscriber) { return subscribers.removeFirstOccurrence(subscriber); }
+        void removeSubscriber(PlayerViewState state, long requestId) {
+            subscribers.removeIf(subscriber -> subscriber.state() == state
+                    && subscriber.requestId() == requestId);
+        }
+    }
+
+    private static final class DistanceRange {
+        private int nearest = Integer.MAX_VALUE;
+        private int farthest = Integer.MIN_VALUE;
+        void record(int distance) {
+            nearest = Math.min(nearest, distance);
+            farthest = Math.max(farthest, distance);
+        }
+        String display() { return nearest == Integer.MAX_VALUE ? "-/-" : nearest + "/" + farthest; }
+        void clear() { nearest = Integer.MAX_VALUE; farthest = Integer.MIN_VALUE; }
     }
 }

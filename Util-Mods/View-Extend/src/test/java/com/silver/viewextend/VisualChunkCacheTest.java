@@ -61,4 +61,18 @@ class VisualChunkCacheTest {
         assertEquals("ok", cache.get("small", 1));
         assertNull(cache.get("huge", 1));
     }
+
+    @Test void evictionReasonsAreCountedWithoutRetainingPayloads() {
+        var entryBound = new VisualChunkCache<String, byte[]>(1, 100, 100, a -> a.length);
+        entryBound.put("one", new byte[1], 0);
+        entryBound.put("two", new byte[1], 1);
+        assertEquals(1, entryBound.drainEventStats().entryLimitEvictions());
+
+        var byteBound = new VisualChunkCache<String, byte[]>(10, 5, 100, a -> a.length);
+        byteBound.put("one", new byte[3], 0);
+        byteBound.put("two", new byte[3], 1);
+        var stats = byteBound.drainEventStats();
+        assertEquals(0, stats.entryLimitEvictions());
+        assertEquals(1, stats.byteLimitEvictions());
+    }
 }

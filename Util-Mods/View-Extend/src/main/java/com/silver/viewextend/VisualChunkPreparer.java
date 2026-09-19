@@ -43,12 +43,25 @@ final class VisualChunkPreparer {
     };
 
     private final ViewExtendConfig config;
+    private final PipelineMemoryMetrics memoryMetrics;
+    private final PreparationMetrics preparationMetrics;
     private final byte[] fallbackSkyLightNibble;
     private final byte[] fallbackBlockLightNibble;
     private final byte[] oceanFallbackSkyLightNibble;
 
     VisualChunkPreparer(ViewExtendConfig config) {
+        this(config, new PipelineMemoryMetrics(), new PreparationMetrics());
+    }
+
+    VisualChunkPreparer(ViewExtendConfig config, PipelineMemoryMetrics memoryMetrics) {
+        this(config, memoryMetrics, new PreparationMetrics());
+    }
+
+    VisualChunkPreparer(ViewExtendConfig config, PipelineMemoryMetrics memoryMetrics,
+            PreparationMetrics preparationMetrics) {
         this.config = config;
+        this.memoryMetrics = memoryMetrics;
+        this.preparationMetrics = preparationMetrics;
         fallbackSkyLightNibble = createLightLevelNibble(config.fallbackSkyLightLevel());
         fallbackBlockLightNibble = createLightLevelNibble(config.fallbackBlockLightLevel());
         oceanFallbackSkyLightNibble = createLightLevelNibble(config.oceanFallbackSkyLightLevel());
@@ -59,35 +72,71 @@ final class VisualChunkPreparer {
             int lodLevel,
             CompoundTag sourceNbt,
             LoadContext context) {
-        var status = sourceNbt.read("Status", net.minecraft.world.level.chunk.status.ChunkStatus.CODEC)
-                .orElseThrow(() -> new IllegalArgumentException("Missing or invalid chunk Status: " + sourceNbt.getStringOr("Status", "<missing>")));
-        if (status != net.minecraft.world.level.chunk.status.ChunkStatus.FULL) {
-            // Reject before copying/parsing section palettes: generation neighbors are common during flight.
-            throw new VisualChunkFailure.UnfinishedChunk(sourceNbt.getStringOr("Status", "<missing>"));
-        }
-        CompoundTag chunkNbt = sourceNbt.copy();
-        TransformStats transformStats = transformVisualChunkNbt(chunkNbt, lodLevel);
-        SerializableChunkData serialized = SerializableChunkData.parse(
-                context.heightAccessor(), context.containerFactory(), chunkNbt);
-        if (serialized == null) {
-            throw new IllegalArgumentException("Chunk NBT has no status");
-        }
-        if (!expectedPos.equals(serialized.chunkPos())) {
-            throw new IllegalArgumentException(
-                    "Chunk NBT position " + serialized.chunkPos() + " does not match " + expectedPos);
-        }
+        long totalStarted = System.nanoTime();
+        long validationNanos = 0;
+        long copyNanos = 0;
+        long transformNanos = 0;
+        long parseNanos = 0;
+        long lightNanos = 0;
+        long packetNanos = 0;
+        try {
+            long started = System.nanoTime();
+            var status = sourceNbt.read("Status", net.minecraft.world.level.chunk.status.ChunkStatus.CODEC)
+                    .orElseThrow(() -> new IllegalArgumentException("Missing or invalid chunk Status: " + sourceNbt.getStringOr("Status", "<missing>")));
+            if (status != net.minecraft.world.level.chunk.status.ChunkStatus.FULL) {
+                // Reject before copying/parsing section palettes: generation neighbors are common during flight.
+                throw new VisualChunkFailure.UnfinishedChunk(sourceNbt.getStringOr("Status", "<missing>"));
+            }
+            validationNanos = System.nanoTime() - started;
+            started = System.nanoTime();
+            CompoundTag chunkNbt;
+            memoryMetrics.copyStarted();
+            try {
+                chunkNbt = sourceNbt.copy();
+            } finally {
+                memoryMetrics.copyFinished();
+            }
+            copyNanos = System.nanoTime() - started;
 
-        LightBuild lightBuild = createDeterministicLightData(
-                expectedPos,
-                context.bottomLightSectionY(),
-                context.topLightSectionYExclusive(),
-                serialized,
-                context.hasSkyLight(),
-                transformStats.oceanBiome());
-        ClientboundLevelChunkWithLightPacket packet = VisualChunkPackets.create(expectedPos, serialized, lightBuild.data(), context);
-        int estimatedBytes = VisualChunkPackets.retainedBytes(packet);
-        return new PreparedVisualChunk(
-                packet, transformStats, lightBuild.stats(), estimatedBytes);
+            started = System.nanoTime();
+            TransformStats transformStats = transformVisualChunkNbt(chunkNbt, lodLevel);
+            transformNanos = System.nanoTime() - started;
+
+            started = System.nanoTime();
+            SerializableChunkData serialized = SerializableChunkData.parse(
+                    context.heightAccessor(), context.containerFactory(), chunkNbt);
+            parseNanos = System.nanoTime() - started;
+            if (serialized == null) throw new IllegalArgumentException("Chunk NBT has no status");
+            if (!expectedPos.equals(serialized.chunkPos())) {
+                throw new IllegalArgumentException(
+                        "Chunk NBT position " + serialized.chunkPos() + " does not match " + expectedPos);
+            }
+
+            started = System.nanoTime();
+            LightBuild lightBuild = createDeterministicLightData(
+                    expectedPos, context.bottomLightSectionY(), context.topLightSectionYExclusive(),
+                    serialized, context.hasSkyLight(), transformStats.oceanBiome());
+            lightNanos = System.nanoTime() - started;
+
+            started = System.nanoTime();
+            VisualChunkPackets.PacketBuild packetBuild = VisualChunkPackets.create(
+                    expectedPos, serialized, lightBuild.data(), context);
+            ClientboundLevelChunkWithLightPacket packet = packetBuild.packet();
+            int estimatedBytes = VisualChunkPackets.retainedBytes(packet);
+            packetNanos = System.nanoTime() - started;
+            long totalNanos = System.nanoTime() - totalStarted;
+            preparationMetrics.recordSuccess(totalNanos, validationNanos, copyNanos, transformNanos, parseNanos,
+                    lightNanos, packetNanos, packetBuild.sectionSerializationNanos(),
+                    packetBuild.encodingNanos(), packetBuild.decodeNanos(),
+                    packetBuild.sectionPayloadBytes(), packetBuild.bufferGrew(),
+                    transformStats.sectionsProcessed(),
+                    lightBuild.fastPathedLayers(), lightBuild.scanBytesAvoided());
+            return new PreparedVisualChunk(packet, transformStats, lightBuild.stats(), estimatedBytes,
+                    packetBuild.composition());
+        } catch (RuntimeException error) {
+            preparationMetrics.recordFailure(System.nanoTime() - totalStarted);
+            throw error;
+        }
     }
 
     private TransformStats transformVisualChunkNbt(CompoundTag chunkNbt, int lodLevel) {
@@ -180,7 +229,7 @@ final class VisualChunkPreparer {
         for (String key : UNUSED_VISUAL_NBT_KEYS) {
             chunkNbt.remove(key);
         }
-        return new TransformStats(remapCount, unsorted, oceanBiome);
+        return new TransformStats(remapCount, unsorted, oceanBiome, sections.size());
     }
 
     private static boolean isAirBlockId(String id) {
@@ -213,6 +262,8 @@ final class VisualChunkPreparer {
         int sectionCount = Math.max(0, topLightSectionYExclusive - bottomLightSectionY);
         BitSet initializedSky = new BitSet(sectionCount);
         BitSet initializedBlock = new BitSet(sectionCount);
+        BitSet emptySky = new BitSet(sectionCount);
+        BitSet emptyBlock = new BitSet(sectionCount);
         List<byte[]> skyNibbles = new ArrayList<>(sectionCount);
         List<byte[]> blockNibbles = new ArrayList<>(sectionCount);
         SerializableChunkData.SectionData[] dataByIndex = new SerializableChunkData.SectionData[sectionCount];
@@ -229,41 +280,56 @@ final class VisualChunkPreparer {
         int skyWaterFallback = 0;
         int blockNbt = 0;
         int blockFallback = 0;
+        int fastPathedLayers = 0;
+        long scanBytesAvoided = 0;
         for (int index = 0; index < sectionCount; index++) {
             int sectionY = bottomLightSectionY + index;
             SerializableChunkData.SectionData sectionData = dataByIndex[index];
 
             if (hasSkyLight) {
-                initializedSky.set(index);
+                byte[] layer;
+                boolean knownZero;
                 if (sectionData != null && sectionData.skyLight() != null) {
-                    skyNibbles.add(sectionData.skyLight().getData().clone());
+                    layer = sectionData.skyLight().getData().clone();
+                    knownZero = false;
                     skyNbt++;
                 } else if (oceanBiome && sectionY * 16 < 64) {
                     if (config.oceanFallbackEnabled()) {
-                        skyNibbles.add(oceanFallbackSkyLightNibble);
+                        layer = oceanFallbackSkyLightNibble;
                     } else {
-                        skyNibbles.add(getWaterAwareSkyLightFallback(sectionY));
+                        layer = getWaterAwareSkyLightFallback(sectionY);
                         skyWaterFallback++;
                     }
+                    knownZero = isKnownZeroFallback(layer);
                     skyFallback++;
                 } else {
-                    skyNibbles.add(fallbackSkyLightNibble);
+                    layer = fallbackSkyLightNibble;
+                    knownZero = isKnownZeroFallback(layer);
                     skyFallback++;
+                }
+                if (appendLightLayer(index, layer, knownZero, initializedSky, emptySky, skyNibbles)) {
+                    fastPathedLayers++;
+                    scanBytesAvoided += layer.length;
                 }
             }
 
-            initializedBlock.set(index);
+            byte[] blockLayer;
+            boolean knownZero;
             if (sectionData != null && sectionData.blockLight() != null) {
-                blockNibbles.add(sectionData.blockLight().getData().clone());
+                blockLayer = sectionData.blockLight().getData().clone();
+                knownZero = false;
                 blockNbt++;
             } else {
-                blockNibbles.add(hasSkyLight ? fallbackBlockLightNibble : fallbackSkyLightNibble);
+                blockLayer = hasSkyLight ? fallbackBlockLightNibble : fallbackSkyLightNibble;
+                knownZero = isKnownZeroFallback(blockLayer);
                 blockFallback++;
+            }
+            if (appendLightLayer(index, blockLayer, knownZero, initializedBlock, emptyBlock, blockNibbles)) {
+                fastPathedLayers++;
+                scanBytesAvoided += blockLayer.length;
             }
         }
 
-        BitSet emptySky = compactEmptyLayers(initializedSky, skyNibbles);
-        BitSet emptyBlock = compactEmptyLayers(initializedBlock, blockNibbles);
         FriendlyByteBuf lightBuffer = new FriendlyByteBuf(Unpooled.buffer());
         try {
             lightBuffer.writeBitSet(initializedSky);
@@ -276,7 +342,8 @@ final class VisualChunkPreparer {
                     lightBuffer, pos.x(), pos.z());
             return new LightBuild(
                     data,
-                    new LightStats(skyNbt, skyFallback, skyWaterFallback, blockNbt, blockFallback));
+                    new LightStats(skyNbt, skyFallback, skyWaterFallback, blockNbt, blockFallback),
+                    fastPathedLayers, scanBytesAvoided);
         } finally {
             lightBuffer.release();
         }
@@ -296,6 +363,29 @@ final class VisualChunkPreparer {
             } else index++;
         }
         return empty;
+    }
+
+    private boolean isKnownZeroFallback(byte[] layer) {
+        return layer == fallbackSkyLightNibble && config.fallbackSkyLightLevel() == 0
+                || layer == fallbackBlockLightNibble && config.fallbackBlockLightLevel() == 0
+                || layer == oceanFallbackSkyLightNibble && config.oceanFallbackSkyLightLevel() == 0;
+    }
+
+    /** Returns true when the zero test was skipped because the immutable fallback is known zero. */
+    private static boolean appendLightLayer(int sectionIndex, byte[] layer, boolean knownZero,
+            BitSet initialized, BitSet empty, List<byte[]> layers) {
+        if (knownZero || isAllZero(layer)) {
+            empty.set(sectionIndex);
+            return knownZero;
+        }
+        initialized.set(sectionIndex);
+        layers.add(layer);
+        return false;
+    }
+
+    private static boolean isAllZero(byte[] layer) {
+        for (byte value : layer) if (value != 0) return false;
+        return true;
     }
 
     private static byte[] createLightLevelNibble(int lightLevel) {
@@ -339,7 +429,8 @@ final class VisualChunkPreparer {
             boolean hasSkyLight) {
     }
 
-    record TransformStats(int remapCount, boolean unsortedSections, boolean oceanBiome) {
+    record TransformStats(int remapCount, boolean unsortedSections, boolean oceanBiome,
+            int sectionsProcessed) {
     }
 
     record VisualSection(CompoundTag tag, int sectionY, boolean hasNonAir) {
@@ -353,14 +444,16 @@ final class VisualChunkPreparer {
             int blockFallback) {
     }
 
-    record LightBuild(ClientboundLightUpdatePacketData data, LightStats stats) {
+    record LightBuild(ClientboundLightUpdatePacketData data, LightStats stats,
+            int fastPathedLayers, long scanBytesAvoided) {
     }
 
     record PreparedVisualChunk(
             ClientboundLevelChunkWithLightPacket packet,
             TransformStats transformStats,
             LightStats lightStats,
-            int estimatedBytes) {
+            int estimatedBytes,
+            VisualChunkPackets.PacketComposition composition) {
     }
 
 }

@@ -20,7 +20,7 @@ import net.minecraft.world.level.levelgen.Heightmap;
 final class VisualChunkPackets {
     private VisualChunkPackets() {}
 
-    static ClientboundLevelChunkWithLightPacket create(ChunkPos pos, SerializableChunkData chunk,
+    static PacketBuild create(ChunkPos pos, SerializableChunkData chunk,
             ClientboundLightUpdatePacketData light, VisualChunkPreparer.LoadContext context) {
         LevelChunkSection[] sections = new LevelChunkSection[context.heightAccessor().getSectionsCount()];
         for (var section : chunk.sectionData()) {
@@ -28,29 +28,146 @@ final class VisualChunkPackets {
             if (index >= 0 && index < sections.length) sections[index] = section.chunkSection();
         }
         LevelChunkSection empty = new LevelChunkSection(context.containerFactory());
-        FriendlyByteBuf sectionBuffer = new FriendlyByteBuf(Unpooled.buffer());
-        RegistryFriendlyByteBuf packetBuffer = new RegistryFriendlyByteBuf(Unpooled.buffer(), context.registries());
+        int sectionPayloadBytes = 0;
+        int blockStateBytes = 0;
+        int biomeBytes = 0;
+        int sectionOverheadBytes = 0;
+        for (LevelChunkSection section : sections) {
+            LevelChunkSection actual = section == null ? empty : section;
+            int states = actual.getStates().getSerializedSize();
+            int biomes = actual.getBiomes().getSerializedSize();
+            blockStateBytes += states;
+            biomeBytes += biomes;
+            sectionOverheadBytes += 4; // non-empty and fluid counts
+            sectionPayloadBytes += 4 + states + biomes;
+        }
+        HashMap<Heightmap.Types, long[]> heightmaps = new HashMap<>();
+        for (Map.Entry<Heightmap.Types, long[]> entry : chunk.heightmaps().entrySet()) {
+            if (entry.getKey().sendToClient()) heightmaps.put(entry.getKey(), entry.getValue());
+        }
+        int initialCapacity = estimateTemporaryBufferBytes(sectionPayloadBytes, heightmaps, light);
+        RegistryFriendlyByteBuf packetBuffer = new RegistryFriendlyByteBuf(
+                Unpooled.buffer(initialCapacity), context.registries());
         try {
-            for (LevelChunkSection section : sections) (section == null ? empty : section).write(sectionBuffer);
+            long started = System.nanoTime();
             packetBuffer.writeInt(pos.x());
             packetBuffer.writeInt(pos.z());
-            HashMap<Heightmap.Types, long[]> heightmaps = new HashMap<>();
-            for (Map.Entry<Heightmap.Types, long[]> entry : chunk.heightmaps().entrySet()) {
-                if (entry.getKey().sendToClient()) heightmaps.put(entry.getKey(), entry.getValue());
-            }
             ByteBufCodecs.map(HashMap::new, Heightmap.Types.STREAM_CODEC, ByteBufCodecs.LONG_ARRAY)
                     .encode(packetBuffer, heightmaps);
-            packetBuffer.writeVarInt(sectionBuffer.readableBytes());
-            packetBuffer.writeBytes(sectionBuffer);
+            packetBuffer.writeVarInt(sectionPayloadBytes);
+            long encodingNanos = System.nanoTime() - started;
+
+            started = System.nanoTime();
+            int sectionStart = packetBuffer.writerIndex();
+            for (LevelChunkSection section : sections) (section == null ? empty : section).write(packetBuffer);
+            int writtenSectionBytes = packetBuffer.writerIndex() - sectionStart;
+            if (writtenSectionBytes != sectionPayloadBytes) {
+                throw new IllegalStateException("Section size changed while encoding: expected "
+                        + sectionPayloadBytes + " bytes, wrote " + writtenSectionBytes);
+            }
+            long sectionSerializationNanos = System.nanoTime() - started;
+
+            started = System.nanoTime();
             packetBuffer.writeVarInt(0); // Visual snapshots never instantiate block entities.
             light.write(packetBuffer);
+            encodingNanos += System.nanoTime() - started;
+            int finalCapacity = packetBuffer.capacity();
+            PacketComposition composition = new PacketComposition(blockStateBytes, biomeBytes,
+                    heightmapBytes(heightmaps), skyLightArrayBytes(light.getSkyUpdates()),
+                    blockLightArrayBytes(light.getBlockUpdates()), lightMaskAndListBytes(light),
+                    8 + varIntBytes(sectionPayloadBytes) + 1 + sectionOverheadBytes);
+            if (composition.totalBytes() != packetBuffer.writerIndex()) {
+                throw new IllegalStateException("Packet accounting mismatch: expected "
+                        + composition.totalBytes() + " bytes, wrote " + packetBuffer.writerIndex());
+            }
+
+            started = System.nanoTime();
             var packet = ClientboundLevelChunkWithLightPacket.STREAM_CODEC.decode(packetBuffer);
+            long decodeNanos = System.nanoTime() - started;
             compactLight(packet.getLightData().getSkyUpdates());
             compactLight(packet.getLightData().getBlockUpdates());
-            return packet;
+            return new PacketBuild(packet, sectionSerializationNanos, encodingNanos, decodeNanos,
+                    sectionPayloadBytes, initialCapacity, finalCapacity, composition);
         } finally {
-            sectionBuffer.release();
             packetBuffer.release();
+        }
+    }
+
+    private static int estimateTemporaryBufferBytes(int sectionBytes,
+            Map<Heightmap.Types, long[]> heightmaps, ClientboundLightUpdatePacketData light) {
+        long bytes = 8L + varIntBytes(heightmaps.size());
+        for (long[] values : heightmaps.values()) {
+            bytes += 1L + varIntBytes(values.length) + (long) values.length * Long.BYTES;
+        }
+        bytes += varIntBytes(sectionBytes) + sectionBytes + 1L;
+        bytes += bitSetBytes(light.getSkyYMask()) + bitSetBytes(light.getBlockYMask())
+                + bitSetBytes(light.getEmptySkyYMask()) + bitSetBytes(light.getEmptyBlockYMask());
+        bytes += lightListBytes(light.getSkyUpdates()) + lightListBytes(light.getBlockUpdates());
+        // Small guard for codec representation changes while still avoiding normal buffer growth.
+        return (int) Math.min(Integer.MAX_VALUE - 8L, Math.max(256L, bytes + 32L));
+    }
+
+    private static long bitSetBytes(java.util.BitSet bits) {
+        int words = (bits.length() + 63) >>> 6;
+        return varIntBytes(words) + (long) words * Long.BYTES;
+    }
+
+    private static long lightListBytes(java.util.List<byte[]> layers) {
+        long bytes = varIntBytes(layers.size());
+        for (byte[] layer : layers) bytes += varIntBytes(layer.length) + layer.length;
+        return bytes;
+    }
+
+    private static int heightmapBytes(Map<Heightmap.Types, long[]> heightmaps) {
+        long bytes = varIntBytes(heightmaps.size());
+        for (long[] values : heightmaps.values()) {
+            bytes += 1L + varIntBytes(values.length) + (long) values.length * Long.BYTES;
+        }
+        return checkedBytes(bytes);
+    }
+
+    private static int skyLightArrayBytes(java.util.List<byte[]> layers) { return arrayBytes(layers); }
+    private static int blockLightArrayBytes(java.util.List<byte[]> layers) { return arrayBytes(layers); }
+
+    private static int arrayBytes(java.util.List<byte[]> layers) {
+        long bytes = 0;
+        for (byte[] layer : layers) bytes += layer.length;
+        return checkedBytes(bytes);
+    }
+
+    private static int lightMaskAndListBytes(ClientboundLightUpdatePacketData light) {
+        long bytes = bitSetBytes(light.getSkyYMask()) + bitSetBytes(light.getBlockYMask())
+                + bitSetBytes(light.getEmptySkyYMask()) + bitSetBytes(light.getEmptyBlockYMask())
+                + varIntBytes(light.getSkyUpdates().size()) + varIntBytes(light.getBlockUpdates().size());
+        for (byte[] layer : light.getSkyUpdates()) bytes += varIntBytes(layer.length);
+        for (byte[] layer : light.getBlockUpdates()) bytes += varIntBytes(layer.length);
+        return checkedBytes(bytes);
+    }
+
+    private static int checkedBytes(long bytes) {
+        if (bytes > Integer.MAX_VALUE) throw new IllegalArgumentException("Packet field too large: " + bytes);
+        return (int) bytes;
+    }
+
+    private static int varIntBytes(int value) {
+        int bytes = 1;
+        while ((value & ~0x7f) != 0) { value >>>= 7; bytes++; }
+        return bytes;
+    }
+
+    record PacketBuild(ClientboundLevelChunkWithLightPacket packet,
+            long sectionSerializationNanos, long encodingNanos, long decodeNanos,
+            int sectionPayloadBytes, int initialCapacity, int finalCapacity,
+            PacketComposition composition) {
+        boolean bufferGrew() { return finalCapacity > initialCapacity; }
+    }
+
+    /** Exact packet-codec payload categories, before packet-ID and compression framing. */
+    record PacketComposition(int blockStateBytes, int biomeBytes, int heightmapBytes,
+            int skyLightBytes, int blockLightBytes, int lightMaskBytes, int protocolBytes) {
+        int totalBytes() {
+            return blockStateBytes + biomeBytes + heightmapBytes + skyLightBytes + blockLightBytes
+                    + lightMaskBytes + protocolBytes;
         }
     }
     // Published packets are immutable. Only the sixteen uniform nibble layers are interned.

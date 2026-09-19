@@ -15,4 +15,22 @@ class ReuseAwareChunkCacheTest {
         cache.put("shared",new byte[10],0,true);cache.expire(101);
         assertNotNull(cache.get("shared",101));cache.invalidate("shared");assertEquals(0,cache.bytes());
     }
+
+    @Test void usefulnessStatsSeparateAdmissionTiersPromotionAndUnusedExpiry() {
+        var cache = new ReuseAwareChunkCache<String, byte[]>(80, 800, 1200, a -> a.length);
+        cache.put("promoted", new byte[10], 0, false);
+        cache.put("unused", new byte[10], 0, false);
+        cache.put("shared", new byte[10], 0, true);
+        assertNotNull(cache.get("promoted", 1));
+        cache.expire(1201);
+        var stats = cache.drainStats();
+        assertEquals(3, stats.admissions());
+        assertEquals(2, stats.probationAdmissions());
+        assertEquals(1, stats.protectedAdmissions());
+        assertEquals(1, stats.hits());
+        assertEquals(1, stats.promotions());
+        assertEquals(3, stats.expirations());
+        assertEquals(1, stats.expiredWithoutReuse());
+        assertEquals(0, cache.drainStats().admissions());
+    }
 }
