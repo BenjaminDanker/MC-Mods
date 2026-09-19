@@ -1,0 +1,7 @@
+plugins { id 'application' }
+
+group = 'com.silver'
+version = '0.1.0-SNAPSHOT'
+
+java { toolchain { languageVersion = JavaLanguageVersion.of(25) } }
+application { mainClass = 'com.silver.openpacpruner.Main' }
