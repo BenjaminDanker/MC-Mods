@@ -10,3 +10,6 @@ pluginManagement {
 }
 
 rootProject.name = 'Disable-Dimensions'
+includeBuild('../Authorization-Common')
+include 'network-authorization'
+project(':network-authorization').projectDir = file('../Network-Authorization/fabric')

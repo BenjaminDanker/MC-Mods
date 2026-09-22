@@ -1,5 +1,7 @@
 package com.silver.atlantis;
 
+import com.silver.authorization.PermissionNodes;
+import com.silver.authorization.fabric.AuthorizationChecks;
 import com.mojang.brigadier.CommandDispatcher;
 import com.silver.atlantis.construct.ConstructCommandManager;
 import com.silver.atlantis.construct.ConstructService;
@@ -55,7 +57,7 @@ public final class AtlantisCommandManager {
     private void registerCommand(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(
             Commands.literal("atlantis")
-                .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+                .requires(AuthorizationChecks.requires(PermissionNodes.ATLANTIS_MANAGE))
                 .then(Commands.literal("pause")
                     .executes(context -> pause(context.getSource()))
                 )

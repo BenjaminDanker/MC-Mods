@@ -1,5 +1,7 @@
 package com.silver.borderlock;
 
+import com.silver.authorization.PermissionNodes;
+import com.silver.authorization.fabric.AuthorizationChecks;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.server.level.ServerPlayer;
@@ -26,7 +28,7 @@ public final class BorderLockMod implements ModInitializer {
     }
 
     private static void enforceBorder(ServerPlayer player) {
-        if (player.level().getServer().getPlayerList().isOp(player.nameAndId())) {
+        if (AuthorizationChecks.has(player, PermissionNodes.BORDER_BYPASS)) {
             return;
         }
 

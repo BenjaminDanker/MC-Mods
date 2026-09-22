@@ -13,6 +13,8 @@ import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.entity.animal.wolf.Wolf;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.server.level.ServerPlayer;
+import com.silver.authorization.PermissionNodes;
+import com.silver.authorization.fabric.AuthorizationChecks;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.entity.EntityTypeTest;
@@ -142,7 +144,7 @@ public final class SpawnProtectionManager {
 
     private boolean isAllowedBypass(ServerPlayer player) {
         SpawnProtectConfig snapshot = config;
-        return snapshot.allowOpBypass() && player.permissions().hasPermission(net.minecraft.server.permissions.Permissions.COMMANDS_ADMIN);
+        return snapshot.allowOpBypass() && AuthorizationChecks.has(player, PermissionNodes.SPAWNPROTECT_BYPASS);
     }
 
     private static ServerLevel playerWorld(ServerPlayer player) {

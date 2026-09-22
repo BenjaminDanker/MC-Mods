@@ -1,5 +1,7 @@
 package com.silver.enderfight.command;
 
+import com.silver.authorization.PermissionNodes;
+import com.silver.authorization.fabric.AuthorizationChecks;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.exceptions.SimpleCommandExceptionType;
@@ -9,8 +11,6 @@ import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
-import net.minecraft.server.permissions.LevelBasedPermissionSet;
-import net.minecraft.server.permissions.PermissionLevel;
 
 /**
  * Registers administrative commands for Ender Fight. Currently exposes a single command that forces
@@ -33,8 +33,7 @@ public final class EnderFightCommands {
 
     private static void registerCommands(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("enderfight")
-            .requires(source -> source.permissions() instanceof LevelBasedPermissionSet levels
-                && levels.level().isEqualOrHigherThan(PermissionLevel.byId(4)))
+            .requires(AuthorizationChecks.requires(PermissionNodes.ENDERFIGHT_RESET))
             .then(Commands.literal("resetend")
                 .executes(context -> executeReset(context.getSource()))));
     }

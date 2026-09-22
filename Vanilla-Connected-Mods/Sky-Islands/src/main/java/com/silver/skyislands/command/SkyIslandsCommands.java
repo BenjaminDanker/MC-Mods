@@ -1,5 +1,7 @@
 package com.silver.skyislands.command;
 
+import com.silver.authorization.PermissionNodes;
+import com.silver.authorization.fabric.AuthorizationChecks;
 import com.mojang.brigadier.CommandDispatcher;
 import com.silver.skyislands.enderdragons.EnderDragonManager;
 import com.silver.skyislands.giantmobs.GiantMobManager;
@@ -20,7 +22,7 @@ public final class SkyIslandsCommands {
 
     private static void registerCommands(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("skyislands")
-                .requires(Commands.hasPermission(Commands.LEVEL_ADMINS))
+                .requires(AuthorizationChecks.requires(PermissionNodes.SKYISLANDS_INSPECT))
                 .executes(ctx -> {
                                         ctx.getSource().sendSuccess(() -> Component.literal("Usage: /skyislands dragons [all|virtual|loaded] | /skyislands giants [all|virtual|loaded|projectiles]"), false);
                     return 1;

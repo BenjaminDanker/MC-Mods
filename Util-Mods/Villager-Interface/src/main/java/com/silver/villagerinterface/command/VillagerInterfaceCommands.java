@@ -1,5 +1,7 @@
 package com.silver.villagerinterface.command;
 
+import com.silver.authorization.PermissionNodes;
+import com.silver.authorization.fabric.AuthorizationChecks;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
@@ -11,8 +13,6 @@ import net.minecraft.commands.Commands;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.server.permissions.LevelBasedPermissionSet;
-import net.minecraft.server.permissions.PermissionLevel;
 import net.minecraft.network.chat.Component;
 
 public final class VillagerInterfaceCommands {
@@ -37,8 +37,7 @@ public final class VillagerInterfaceCommands {
 
     private static void registerCommands(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("villagerinterface")
-            .requires(source -> source.permissions() instanceof LevelBasedPermissionSet level
-                && level.level().isEqualOrHigherThan(PermissionLevel.GAMEMASTERS))
+            .requires(AuthorizationChecks.requires(PermissionNodes.VILLAGERINTERFACE_DEVTEST))
             .then(Commands.literal("devtest")
                 .executes(context -> executeDevTest(context.getSource(), 4))
                 .then(Commands.argument("count", IntegerArgumentType.integer(1, 32))
@@ -48,8 +47,7 @@ public final class VillagerInterfaceCommands {
                     )))));
 
         dispatcher.register(Commands.literal("vi")
-            .requires(source -> source.permissions() instanceof LevelBasedPermissionSet level
-                && level.level().isEqualOrHigherThan(PermissionLevel.GAMEMASTERS))
+            .requires(AuthorizationChecks.requires(PermissionNodes.VILLAGERINTERFACE_DEVTEST))
             .then(Commands.literal("devtest")
                 .executes(context -> executeDevTest(context.getSource(), 4))
                 .then(Commands.argument("count", IntegerArgumentType.integer(1, 32))

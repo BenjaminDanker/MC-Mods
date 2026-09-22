@@ -1,5 +1,7 @@
 package com.silver.atlantis.protect;
 
+import com.silver.authorization.PermissionNodes;
+import com.silver.authorization.fabric.AuthorizationChecks;
 import com.silver.atlantis.AtlantisMod;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
 import java.util.UUID;
@@ -142,12 +144,8 @@ public final class ProtectionManager {
         return world.dimension().identifier().toString();
     }
 
-    /**
-     * Only ops in creative can bypass protections.
-     */
+    /** Creative mode remains a gameplay condition; authorization grants the separate bypass capability. */
     private static boolean isAllowedBypass(ServerPlayer player) {
-        return player.createCommandSourceStack().permissions() instanceof net.minecraft.server.permissions.LevelBasedPermissionSet levels
-            && levels.level().isEqualOrHigherThan(net.minecraft.server.permissions.PermissionLevel.byId(2))
-            && player.isCreative();
+        return AuthorizationChecks.has(player, PermissionNodes.ATLANTIS_PROTECTION_BYPASS) && player.isCreative();
     }
 }

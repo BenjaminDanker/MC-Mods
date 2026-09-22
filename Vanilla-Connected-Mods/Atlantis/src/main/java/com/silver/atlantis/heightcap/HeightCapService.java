@@ -1,5 +1,7 @@
 package com.silver.atlantis.heightcap;
 
+import com.silver.authorization.PermissionNodes;
+import com.silver.authorization.fabric.AuthorizationChecks;
 import com.silver.atlantis.AtlantisMod;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.network.chat.Component;
@@ -61,9 +63,7 @@ public final class HeightCapService {
                 continue;
             }
 
-            // Allow admins/operators to bypass the cap.
-            if (player.createCommandSourceStack().permissions() instanceof net.minecraft.server.permissions.LevelBasedPermissionSet levels
-                && levels.level().isEqualOrHigherThan(net.minecraft.server.permissions.PermissionLevel.byId(2))) {
+            if (AuthorizationChecks.has(player, PermissionNodes.ATLANTIS_HEIGHTCAP_BYPASS)) {
                 continue;
             }
 

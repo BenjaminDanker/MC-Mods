@@ -5,7 +5,8 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.Level;
-import net.minecraft.server.permissions.Permissions;
+import com.silver.authorization.PermissionNodes;
+import com.silver.authorization.fabric.AuthorizationChecks;
 
 import java.nio.file.Path;
 import java.util.Map;
@@ -36,7 +37,7 @@ final class DisableDimensionsManager {
         }
 
         DisableDimensionsConfig snapshot = config;
-        if (snapshot.allowOpBypass() && player.permissions().hasPermission(Permissions.COMMANDS_ADMIN)) {
+        if (snapshot.allowOpBypass() && AuthorizationChecks.has(player, PermissionNodes.DIMENSIONS_BYPASS)) {
             return false;
         }
 

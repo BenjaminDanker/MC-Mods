@@ -1,11 +1,12 @@
 package com.silver.disabledimensions;
 
+import com.silver.authorization.PermissionNodes;
+import com.silver.authorization.fabric.AuthorizationChecks;
 import com.mojang.brigadier.CommandDispatcher;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.network.chat.Component;
-import net.minecraft.server.permissions.Permissions;
 
 final class DisableDimensionsCommands {
     private static final Component NETHER_ENABLED = Component.literal("Nether has been enabled.");
@@ -22,7 +23,7 @@ final class DisableDimensionsCommands {
 
     private static void register(CommandDispatcher<CommandSourceStack> dispatcher, DisableDimensionsManager manager) {
         dispatcher.register(Commands.literal("dimensions")
-            .requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_ADMIN))
+            .requires(AuthorizationChecks.requires(PermissionNodes.DIMENSIONS_MANAGE))
             .then(Commands.literal("enable")
                 .then(Commands.literal("nether")
                     .executes(context -> enableNether(context.getSource(), manager)))
@@ -30,7 +31,7 @@ final class DisableDimensionsCommands {
                     .executes(context -> enableEnd(context.getSource(), manager)))));
 
         dispatcher.register(Commands.literal("disabledimensions")
-            .requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_ADMIN))
+            .requires(AuthorizationChecks.requires(PermissionNodes.DIMENSIONS_MANAGE))
             .then(Commands.literal("enable")
                 .then(Commands.literal("nether")
                     .executes(context -> enableNether(context.getSource(), manager)))

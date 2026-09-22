@@ -23,6 +23,7 @@
   "depends": {
     "fabricloader": ">=0.19.3",
     "fabric-api": "*",
+    "network_authorization": "*",
     "mc-portal-protocol": ">=1.0.0",
     "minecraft": "26.2",
     "java": ">=25"
