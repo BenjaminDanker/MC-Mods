@@ -7,12 +7,13 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Objects;
 
-/** Readiness requires a responsive DB and the current V001-V004 schema; optional systems may degrade. */
+/** Readiness requires a responsive DB and the current V001-V005 schema; optional systems may degrade. */
 public final class JdbcPetReadinessProbe implements PetReadinessProbe {
-    public static final int EXPECTED_V001_TABLE_COUNT = 16;
+    public static final int EXPECTED_CURRENT_TABLE_COUNT = 17;
     public static final int EXPECTED_V002_RECALL_COLUMN_COUNT = 3;
     public static final int EXPECTED_V003_CHECKOUT_COLUMN_COUNT = 2;
     public static final int EXPECTED_V004_CONTEXT_COLUMN_COUNT = 1;
+    public static final int EXPECTED_V005_PENDING_ADOPTION_COLUMN_COUNT = 17;
 
     private static final String SCHEMA_COUNTS = """
             SELECT
@@ -25,7 +26,7 @@ public final class JdbcPetReadinessProbe implements PetReadinessProbe {
                    'long_term_memories', 'long_term_memory_source_events',
                    'long_term_memory_revisions', 'trait_change_audit', 'subscriptions',
                    'stripe_webhook_events', 'pet_recall_usage', 'ai_usage', 'jobs',
-                   'account_link_tokens', 'idempotency_requests')) AS table_count,
+                   'account_link_tokens', 'idempotency_requests', 'pending_adoptions')) AS table_count,
               (SELECT COUNT(*)
                FROM information_schema.columns
                WHERE table_schema = DATABASE()
@@ -42,8 +43,19 @@ public final class JdbcPetReadinessProbe implements PetReadinessProbe {
               (SELECT COUNT(*)
                FROM information_schema.columns
                WHERE table_schema = DATABASE()
-                 AND table_name = 'ai_usage'
-                 AND column_name = 'context_json') AS context_column_count
+               AND table_name = 'ai_usage'
+               AND column_name = 'context_json') AS context_column_count,
+              (SELECT COUNT(*)
+               FROM information_schema.columns
+               WHERE table_schema = DATABASE()
+                 AND table_name = 'pending_adoptions'
+                 AND column_name IN (
+                   'owner_uuid', 'intent_id', 'species', 'pet_name', 'state', 'created_at',
+                   'expires_at', 'checkout_started_at', 'hard_expires_at', 'account_link_hash',
+                   'stripe_checkout_session_id', 'checkout_launch_claimed_at',
+                   'checkout_completed_at', 'completed_pet_id', 'completed_at',
+                   'notification_pending', 'notification_acknowledged_at'))
+                 AS pending_adoption_column_count
             """;
 
     private final DataSource dataSource;
@@ -95,10 +107,12 @@ public final class JdbcPetReadinessProbe implements PetReadinessProbe {
                 int recallColumnCount = rows.getInt(2);
                 int checkoutColumnCount = rows.getInt(3);
                 int contextColumnCount = rows.getInt(4);
-                return tableCount == EXPECTED_V001_TABLE_COUNT
+                int pendingAdoptionColumnCount = rows.getInt(5);
+                return tableCount == EXPECTED_CURRENT_TABLE_COUNT
                                 && recallColumnCount == EXPECTED_V002_RECALL_COLUMN_COUNT
                                 && checkoutColumnCount == EXPECTED_V003_CHECKOUT_COLUMN_COUNT
                                 && contextColumnCount == EXPECTED_V004_CONTEXT_COLUMN_COUNT
+                                && pendingAdoptionColumnCount == EXPECTED_V005_PENDING_ADOPTION_COLUMN_COUNT
                         ? PetReadinessSnapshot.fullyReady(
                                 stripeConfigured, vectorConfigured, modelConfigured)
                         : PetReadinessSnapshot.migrationsOutdated(

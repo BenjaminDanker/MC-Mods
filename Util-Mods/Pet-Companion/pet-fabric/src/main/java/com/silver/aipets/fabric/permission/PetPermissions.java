@@ -1,21 +1,16 @@
 package com.silver.aipets.fabric.permission;
 
+import com.silver.authorization.PermissionNode;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 import net.minecraft.commands.CommandSourceStack;
-import net.minecraft.server.permissions.LevelBasedPermissionSet;
-import net.minecraft.server.permissions.PermissionLevel;
 
 /**
- * Named permission boundary with vanilla permission levels as a no-dependency fallback. A server
- * permission-provider adapter may install one checker during startup without changing commands.
+ * Named permission boundary. Missing central integration fails closed; there is no vanilla OP fallback.
  */
 public final class PetPermissions {
-    private static final PermissionChecker VANILLA =
-            (source, node, defaultRequiredLevel) -> source.permissions() instanceof LevelBasedPermissionSet levels
-                    && levels.level().isEqualOrHigherThan(PermissionLevel.byId(defaultRequiredLevel));
     private static final AtomicReference<PermissionChecker> CHECKER =
-            new AtomicReference<>(VANILLA);
+            new AtomicReference<>((source, node) -> false);
 
     private PetPermissions() {
     }
@@ -23,8 +18,7 @@ public final class PetPermissions {
     public static boolean check(CommandSourceStack source, PetPermission permission) {
         Objects.requireNonNull(source, "source");
         Objects.requireNonNull(permission, "permission");
-        return CHECKER.get().hasPermission(
-                source, permission.node(), permission.defaultRequiredLevel());
+        return CHECKER.get().hasPermission(source, permission.node());
     }
 
     /** Installs a provider adapter and returns an idempotent restoration handle. */
@@ -36,9 +30,6 @@ public final class PetPermissions {
 
     @FunctionalInterface
     public interface PermissionChecker {
-        boolean hasPermission(
-                CommandSourceStack source,
-                String permissionNode,
-                int defaultRequiredLevel);
+        boolean hasPermission(CommandSourceStack source, PermissionNode permission);
     }
 }

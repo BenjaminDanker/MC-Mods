@@ -9,11 +9,13 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.time.Instant;
 
 /** Strict bounded adoption JSON layered on the existing pet snapshot codec. */
 public final class PetAdoptionWireCodec {
     private static final Set<String> REQUEST_FIELDS = Set.of("ownerUuid", "species", "name");
-    private static final Set<String> RESULT_FIELDS = Set.of("status", "snapshot");
+    private static final Set<String> RESULT_FIELDS = Set.of(
+            "status", "snapshot", "checkoutUrl", "checkoutExpiresAt");
 
     private final PetWireCodec petCodec;
 
@@ -49,6 +51,12 @@ public final class PetAdoptionWireCodec {
                         .<JsonElement>map(pet -> JsonParser.parseString(petCodec.encodeSnapshot(
                                 new PetSnapshotWire(pet, false, true))))
                         .orElse(com.google.gson.JsonNull.INSTANCE));
+        root.add("checkoutUrl", result.checkoutUrl()
+                .<JsonElement>map(com.google.gson.JsonPrimitive::new)
+                .orElse(com.google.gson.JsonNull.INSTANCE));
+        root.add("checkoutExpiresAt", result.checkoutExpiresAt()
+                .<JsonElement>map(value -> new com.google.gson.JsonPrimitive(value.toString()))
+                .orElse(com.google.gson.JsonNull.INSTANCE));
         return root.toString();
     }
 
@@ -60,7 +68,11 @@ public final class PetAdoptionWireCodec {
         Optional<com.silver.aipets.common.domain.Pet> pet = snapshot == null || snapshot.isJsonNull()
                 ? Optional.empty()
                 : Optional.of(petCodec.decodeSnapshot(snapshot.toString()).pet());
-        return new PetAdoptionWireResult(status, pet);
+        return new PetAdoptionWireResult(
+                status,
+                pet,
+                nullableString(root, "checkoutUrl"),
+                nullableString(root, "checkoutExpiresAt").map(Instant::parse));
     }
 
     private static JsonObject object(String json, String context) {
@@ -94,5 +106,12 @@ public final class PetAdoptionWireCodec {
             throw new PetWireFormatException(field + " must be a string");
         }
         return value.getAsString();
+    }
+
+    private static Optional<String> nullableString(JsonObject root, String field) {
+        JsonElement value = root.get(field);
+        return value == null || value.isJsonNull()
+                ? Optional.empty()
+                : Optional.of(string(root, field));
     }
 }

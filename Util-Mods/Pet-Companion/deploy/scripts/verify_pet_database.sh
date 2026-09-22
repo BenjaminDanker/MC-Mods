@@ -33,7 +33,7 @@ schema_counts=$(mariadb \
                'long_term_memories','long_term_memory_source_events',
                'long_term_memory_revisions','trait_change_audit','subscriptions',
                'stripe_webhook_events','pet_recall_usage','ai_usage','jobs',
-               'account_link_tokens','idempotency_requests')),
+               'account_link_tokens','idempotency_requests','pending_adoptions')),
           (SELECT COUNT(*) FROM information_schema.columns
            WHERE table_schema = DATABASE() AND table_name = 'pet_recall_usage'
              AND column_name IN (
@@ -42,8 +42,25 @@ schema_counts=$(mariadb \
            WHERE table_schema = DATABASE() AND table_name = 'account_link_tokens'
              AND column_name IN (
                'stripe_checkout_session_id','checkout_started_at'));")
-[[ $schema_counts == $'16\t3\t2' ]] || {
-    echo "pet schema is incomplete: expected 16 InnoDB tables, 3 recall replay columns, and 2 Checkout-link columns" >&2
+[[ $schema_counts == $'17\t3\t2' ]] || {
+    echo "pet schema is incomplete: expected 17 InnoDB tables, 3 recall replay columns, and 2 Checkout-link columns" >&2
+    exit 65
+}
+
+pending_adoption_columns=$(mariadb \
+    --defaults-extra-file="$client_cnf" \
+    --batch --skip-column-names \
+    --database="$database" \
+    --execute="SELECT COUNT(*) FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'pending_adoptions'
+          AND column_name IN (
+            'owner_uuid','intent_id','species','pet_name','state','created_at','expires_at',
+            'checkout_started_at','hard_expires_at','account_link_hash',
+            'stripe_checkout_session_id','checkout_launch_claimed_at','checkout_completed_at',
+            'completed_pet_id','completed_at','notification_pending',
+            'notification_acknowledged_at');")
+[[ $pending_adoption_columns == 17 ]] || {
+    echo "pending-adoption schema is incomplete: expected all 17 V005 columns" >&2
     exit 65
 }
 

@@ -1,6 +1,6 @@
 # AI pet database migrations
 
-`migrations/V001__create_ai_pet_schema.sql` is the forward-only MariaDB baseline for the authoritative pet store. `V002__make_recall_operations_replayable.sql` adds the request fingerprint and exact stored response required by the recall workflow. `V003__bind_account_links_to_stripe_checkout.sql` binds each opened opaque link to the exact Stripe Checkout Session consumed by its webhook. `V004__persist_dialogue_context_usage.sql` adds bounded prompt-part accounting to provider usage rows without storing raw prompts. Apply all migration files in version order.
+`migrations/V001__create_ai_pet_schema.sql` is the forward-only MariaDB baseline for the authoritative pet store. `V002__make_recall_operations_replayable.sql` adds the request fingerprint and exact stored response required by the recall workflow. `V003__bind_account_links_to_stripe_checkout.sql` binds each opened opaque link to the exact Stripe Checkout Session consumed by its webhook. `V004__persist_dialogue_context_usage.sql` adds bounded prompt-part accounting to provider usage rows without storing raw prompts. `V005__persist_pending_adoptions.sql` persists the exact species/name intent and its PRE_CHECKOUT/CHECKOUT_STARTED lifecycle. Apply all migration files in version order.
 
 The migration is additive and contains no credentials, `USE` statement, startup hook, or vector-vendor dependency. The handoff identifies the host-native Raspberry Pi MariaDB as the selected SQL server and `minecraft` as its current database, but deployment inspection still must confirm whether these tables belong directly in `minecraft` or in a separate database on that same instance. Select the approved database explicitly when applying it.
 
@@ -27,6 +27,9 @@ The migration is additive and contains no credentials, `USE` statement, startup 
      < db/migrations/V003__bind_account_links_to_stripe_checkout.sql
    mariadb --defaults-extra-file=/secure/path/client.cnf --database=confirmed_pet_database \
      < db/migrations/V004__persist_dialogue_context_usage.sql
+
+   mariadb --defaults-extra-file=/secure/path/client.cnf --database=confirmed_pet_database \
+     < db/migrations/V005__persist_pending_adoptions.sql
    ```
 
 3. Apply each migration exactly once through the chosen migration/operator process. MariaDB DDL causes implicit commits, so a migration file is not an all-or-nothing transaction. Never run migrations automatically from pet-service startup.
@@ -36,7 +39,7 @@ The migration is additive and contains no credentials, `USE` statement, startup 
 
 ## Verify
 
-In the selected database, the following should return 16 InnoDB tables:
+In the selected database, the following should return 17 InnoDB tables:
 
 ```sql
 SELECT table_name, engine
@@ -47,7 +50,7 @@ WHERE table_schema = DATABASE()
     'long_term_memories', 'long_term_memory_source_events',
     'long_term_memory_revisions', 'trait_change_audit', 'subscriptions',
     'stripe_webhook_events', 'pet_recall_usage', 'ai_usage', 'jobs',
-    'account_link_tokens', 'idempotency_requests'
+    'account_link_tokens', 'idempotency_requests', 'pending_adoptions'
   )
 ORDER BY table_name;
 ```
@@ -58,6 +61,7 @@ Then inspect enforcement and critical indexes rather than assuming the DDL was h
 SHOW CREATE TABLE pets;
 SHOW CREATE TABLE pet_recall_usage;
 SHOW CREATE TABLE account_link_tokens;
+SHOW CREATE TABLE pending_adoptions;
 SHOW INDEX FROM pet_events;
 SHOW INDEX FROM jobs;
 SHOW INDEX FROM idempotency_requests;

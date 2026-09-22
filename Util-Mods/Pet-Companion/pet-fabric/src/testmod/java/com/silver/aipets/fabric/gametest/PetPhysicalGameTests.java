@@ -1394,7 +1394,7 @@ public final class PetPhysicalGameTests {
             context.assertValueEqual(1, opens.get(), Component.literal("Owner interaction did not open once"));
 
             Runnable restoreChatPermission = PetPermissions.install(
-                    (ignored, node, defaultLevel) -> !node.equals(PetPermission.CHAT.node()));
+                    (ignored, node) -> !node.equals(PetPermission.CHAT.node()));
             try {
                 InteractionResult deniedChatResult = UseEntityCallback.EVENT.invoker().interact(
                         owner,
@@ -2145,7 +2145,7 @@ public final class PetPhysicalGameTests {
         CapturingCommandOutput output = new CapturingCommandOutput();
         CommandSourceStack source = owner.createCommandSourceStack().withSource(output);
         Runnable restoreFeaturePermissions = PetPermissions.install(
-                (ignored, node, defaultLevel) ->
+                (ignored, node) ->
                         !node.equals(PetPermission.ADOPT.node())
                                 && !node.equals(PetPermission.RECALL.node()));
         try {
@@ -2178,7 +2178,7 @@ public final class PetPhysicalGameTests {
             restoreFeaturePermissions.run();
 
             Runnable restoreUse = PetPermissions.install(
-                    (ignored, node, defaultLevel) -> !node.equals(PetPermission.USE.node()));
+                    (ignored, node) -> !node.equals(PetPermission.USE.node()));
             try {
                 assertCommandDenied(context, world, source, "pet status");
             } finally {

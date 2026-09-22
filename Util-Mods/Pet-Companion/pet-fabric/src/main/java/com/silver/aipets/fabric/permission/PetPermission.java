@@ -1,31 +1,24 @@
 package com.silver.aipets.fabric.permission;
 
-/** Explicit permission nodes and their vanilla operator-level fallback. */
+import com.silver.authorization.PermissionNode;
+import com.silver.authorization.PermissionNodes;
+
+/** Typed Pet Companion capabilities shared with the network authorization API. */
 public enum PetPermission {
-    USE("aipets.use", 0),
-    ADOPT("aipets.adopt", 0),
-    CHAT("aipets.chat", 0),
-    COMPASS("aipets.compass", 0),
-    RECALL("aipets.recall", 0),
-    ADMIN_INSPECT("aipets.admin.inspect", 3),
-    ADMIN_RECOVER("aipets.admin.recover", 3),
-    ADMIN_SUBSCRIPTION("aipets.admin.subscription", 3),
-    ADMIN_MEMORY("aipets.admin.memory", 3),
-    ADMIN_RECONCILE("aipets.admin.reconcile", 3);
+    USE(PermissionNodes.AIPETS_USE),
+    ADOPT(PermissionNodes.AIPETS_ADOPT),
+    CHAT(PermissionNodes.AIPETS_CHAT),
+    COMPASS(PermissionNodes.AIPETS_COMPASS),
+    RECALL(PermissionNodes.AIPETS_RECALL),
+    ADMIN_INSPECT(PermissionNodes.AIPETS_ADMIN_INSPECT),
+    ADMIN_RECOVER(PermissionNodes.AIPETS_ADMIN_RECOVER),
+    ADMIN_SUBSCRIPTION(PermissionNodes.AIPETS_ADMIN_SUBSCRIPTION),
+    ADMIN_MEMORY(PermissionNodes.AIPETS_ADMIN_MEMORY),
+    ADMIN_RECONCILE(PermissionNodes.AIPETS_ADMIN_RECONCILE);
 
-    private final String node;
-    private final int defaultRequiredLevel;
+    private final PermissionNode node;
 
-    PetPermission(String node, int defaultRequiredLevel) {
-        this.node = node;
-        this.defaultRequiredLevel = defaultRequiredLevel;
-    }
+    PetPermission(PermissionNode node) { this.node = node; }
 
-    public String node() {
-        return node;
-    }
-
-    public int defaultRequiredLevel() {
-        return defaultRequiredLevel;
-    }
+    public PermissionNode node() { return node; }
 }

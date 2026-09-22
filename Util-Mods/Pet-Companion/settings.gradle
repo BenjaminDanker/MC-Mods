@@ -11,7 +11,11 @@ pluginManagement {
 
 rootProject.name = 'Pet-Companion'
 
+includeBuild('../Authorization-Common')
+
 include 'pet-common'
 include 'pet-service'
 include 'pet-fabric'
 include 'pet-velocity'
+include 'network-authorization'
+project(':network-authorization').projectDir = file('../Network-Authorization/fabric')

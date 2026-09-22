@@ -68,7 +68,11 @@ public final class AccountLinkHttpHandler implements HttpHandler {
                 return;
             }
             AccountLinkWireResult result = links.generate(ownerUuid);
-            int status = result.status() == AccountLinkWireStatus.CREATED ? 201 : 429;
+            int status = switch (result.status()) {
+                case CREATED -> 201;
+                case RATE_LIMITED -> 429;
+                case CHECKOUT_IN_PROGRESS -> 409;
+            };
             send(exchange, status, codec.encodeResult(result));
         } catch (IllegalArgumentException malformed) {
             send(exchange, 400, "{\"error\":\"BAD_REQUEST\"}");

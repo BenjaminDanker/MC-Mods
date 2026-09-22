@@ -51,15 +51,22 @@ dependencies {
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
     implementation "net.fabricmc:fabric-loader:${project.loader_version}"
     implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+    compileOnly project(':network-authorization')
+    compileOnly 'com.silver:authorization-common:0.1.0'
 
     implementation project(':pet-common')
     include project(':pet-common')
+
+    // Shared permission API plus the separately-installable backend snapshot receiver.
+    compileOnly 'com.silver:authorization-common:0.1.0'
+    implementation project(':network-authorization')
 
     testmodImplementation sourceSets.main.output
     testmodImplementation project(':pet-service')
 
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.11.3'
     testImplementation project(':pet-service')
+    testImplementation 'com.silver:authorization-common:0.1.0'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.11.3'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.3'
 }

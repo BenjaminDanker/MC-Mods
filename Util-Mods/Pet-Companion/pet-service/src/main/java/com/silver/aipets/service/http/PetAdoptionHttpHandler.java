@@ -8,6 +8,7 @@ import com.silver.aipets.common.transport.PetWireCodec;
 import com.silver.aipets.common.transport.PetWireFormatException;
 import com.silver.aipets.service.adoption.AdoptionResult;
 import com.silver.aipets.service.adoption.PetAdoptionService;
+import com.silver.aipets.service.adoption.PetAdoptionWorkflowService;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
@@ -26,6 +27,7 @@ public final class PetAdoptionHttpHandler implements HttpHandler {
     private static final byte[] SERVICE_FAILURE = error("SERVICE_FAILURE");
 
     private final PetAdoptionService adoptionService;
+    private final PetAdoptionWorkflowService workflowService;
     private final PetAdoptionWireCodec codec;
     private final byte[] expectedAuthorization;
 
@@ -33,7 +35,16 @@ public final class PetAdoptionHttpHandler implements HttpHandler {
             PetAdoptionService adoptionService,
             PetAdoptionWireCodec codec,
             String bearerToken) {
+        this(adoptionService, null, codec, bearerToken);
+    }
+
+    public PetAdoptionHttpHandler(
+            PetAdoptionService adoptionService,
+            PetAdoptionWorkflowService workflowService,
+            PetAdoptionWireCodec codec,
+            String bearerToken) {
         this.adoptionService = Objects.requireNonNull(adoptionService, "adoptionService");
+        this.workflowService = workflowService;
         this.codec = Objects.requireNonNull(codec, "codec");
         Objects.requireNonNull(bearerToken, "bearerToken");
         if (bearerToken.length() < 32 || bearerToken.isBlank()) {
@@ -64,12 +75,16 @@ public final class PetAdoptionHttpHandler implements HttpHandler {
                 throw new IllegalArgumentException("Content-Type must be JSON");
             }
             PetAdoptionWireRequest request = codec.decodeRequest(readBody(exchange));
-            AdoptionResult result = adoptionService.adopt(
-                    request.ownerUuid(), request.species(), request.name());
-            PetAdoptionWireResult wire = new PetAdoptionWireResult(
-                    PetAdoptionWireStatus.valueOf(result.status().name()),
-                    result.pet());
-            send(exchange, result.pet().isPresent() ? 200 : 403,
+            AdoptionResult adoption = workflowService == null ? adoptionService.adopt(
+                    request.ownerUuid(), request.species(), request.name()) : null;
+            PetAdoptionWireResult wire = workflowService == null
+                    ? new PetAdoptionWireResult(
+                            PetAdoptionWireStatus.valueOf(adoption.status().name()), adoption.pet())
+                    : workflowService.adopt(request);
+            int status = wire.pet().isPresent() ? 200
+                    : wire.status() == PetAdoptionWireStatus.CHECKOUT_REQUIRED
+                            || wire.status() == PetAdoptionWireStatus.CHECKOUT_IN_PROGRESS ? 200 : 403;
+            send(exchange, status,
                     codec.encodeResult(wire).getBytes(StandardCharsets.UTF_8));
         } catch (PetWireFormatException | IllegalArgumentException malformed) {
             send(exchange, 400, BAD_REQUEST);

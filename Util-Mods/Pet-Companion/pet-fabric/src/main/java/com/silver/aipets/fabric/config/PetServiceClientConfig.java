@@ -139,7 +139,7 @@ public record PetServiceClientConfig(
                 Duration.ofMillis(integer(properties, "authority.request-timeout-ms", 15_000, 100, 30_000)),
                 signingSecret,
                 friendlyNames(properties.getProperty("authority.backend-friendly-names", ""), backendId),
-                properties.getProperty("conversation.mode", "disabled")));
+                properties.getProperty("conversation.mode", "service")));
     }
 
     public String friendlyBackendName(BackendId backend) {

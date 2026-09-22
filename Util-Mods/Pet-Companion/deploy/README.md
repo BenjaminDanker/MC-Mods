@@ -27,7 +27,7 @@ Build the application distribution without embedding secrets:
 
 Copy the contents of `pet-service/build/install/pet-service/` to `/opt/pet-companion/`. Create a dedicated `pet-companion` system user with no interactive login. Copy `config/pet-service.env.example` to `/etc/pet-companion/pet-service.env`, set mode `0600`, ownership `pet-companion:pet-companion`, and supply secrets through the approved host mechanism.
 
-Apply every migration in `db/migrations/` in version order, including V001 through V004, using the operator-controlled process in `db/README.md`. The service never changes schema on startup.
+Apply every migration in `db/migrations/` in version order, including V001 through V005, using the operator-controlled process in `db/README.md`. The service never changes schema on startup.
 
 Install `deploy/systemd/pet-companion.service`, run `systemd-analyze verify` and
 `systemctl daemon-reload`, then stage with `systemctl enable --now pet-companion`. Wildcard IPv4
@@ -56,7 +56,7 @@ and HTTPS reverse-proxy addresses.
 - `PET_PUBLIC_BASE_URL`: HTTPS origin hosting the public `/checkout/*` proxy routes; paths, queries, fragments, and HTTP are rejected.
 - `PET_ACCOUNT_LINK_PEPPER`: unique random 32–512 character HMAC key; keep it distinct from the service bearer token and Stripe secret. Rotation invalidates outstanding opaque links.
 - `PET_STRIPE_PAYMENT_GRACE_DAYS`: failed-payment grace, 0–14 days; defaults to 3.
-- `PET_ACCOUNT_LINK_TTL_MINUTES`: one-time `/pet link` lifetime, 2–30 minutes; defaults to 10.
+- `PET_ACCOUNT_LINK_TTL_MINUTES`: application checkout-link lifetime, 2–30 minutes; defaults to 15. A started adoption checkout receives its own 24-hour hard cap.
 - `PET_DB_POOL_MAXIMUM`, `PET_DB_POOL_MINIMUM_IDLE`: bounded pool sizes, default 4/1 and hard maximum 16.
 - `PET_DB_CONNECTION_TIMEOUT_MS`, `PET_DB_VALIDATION_TIMEOUT_MS`: bounded database waits.
 - `PET_QDRANT_ENABLED`: opt-in Qdrant vector index; defaults to `false` and must remain disabled until the endpoint is staged.
@@ -82,9 +82,9 @@ Conversation startup is controlled by `conversation.mode`. Use `staging` only on
 ## Health and rollback
 
 All health routes require the bearer token. `/health/live` reports process liveness.
-`/health/ready` reports database reachability and requires all 16 V001 InnoDB tables plus
-V002's recall replay, V003's Checkout-link columns, and V004's dialogue context-accounting
-column. Stripe, vector, and model report
+`/health/ready` reports database reachability and requires all 17 V001/V005 InnoDB tables plus
+V002's recall replay, V003's Checkout-link columns, V004's dialogue context-accounting column,
+and V005's pending-adoption columns. Stripe, vector, and model report
 `CONFIGURED` only when their validated local configuration is enabled; these are configuration
 states, not provider-reachability probes. `/health/metrics` exports Prometheus text with bounded names and no owner, pet,
 conversation, authorization, or raw-text labels. Keep it on the same backend-only network

@@ -7,12 +7,16 @@ import com.silver.aipets.common.transport.PetAdoptionWireCodec;
 import com.silver.aipets.service.adoption.AppearanceCatalog;
 import com.silver.aipets.service.adoption.InitialMood;
 import com.silver.aipets.service.adoption.PetAdoptionService;
+import com.silver.aipets.service.adoption.PetAdoptionWorkflowService;
+import com.silver.aipets.service.adoption.PendingAdoptionCompletionScheduler;
+import com.silver.aipets.service.adoption.PendingAdoptionCompletionWorker;
 import com.silver.aipets.service.adoption.PetRandomizer;
 import com.silver.aipets.service.config.PetServiceConfig;
 import com.silver.aipets.service.health.JdbcPetReadinessProbe;
 import com.silver.aipets.service.http.JdbcPetSleepStateReader;
 import com.silver.aipets.service.http.PetAuthorityHttpHandler;
 import com.silver.aipets.service.http.PetAdoptionHttpHandler;
+import com.silver.aipets.service.http.PetAdoptionNotificationHttpHandler;
 import com.silver.aipets.service.http.PetHealthHttpHandler;
 import com.silver.aipets.service.http.PetPresenceHttpHandler;
 import com.silver.aipets.service.http.AccountLinkHttpHandler;
@@ -127,6 +131,7 @@ public final class PetServiceRuntime implements AutoCloseable {
     private final PetTransferExpiryScheduler transferExpiryScheduler;
     private final EmbeddingScheduler embeddingScheduler;
     private final ConsolidationScheduler consolidationScheduler;
+    private final PendingAdoptionCompletionScheduler adoptionCompletionScheduler;
     private final AtomicBoolean closed = new AtomicBoolean();
 
     private PetServiceRuntime(
@@ -138,7 +143,8 @@ public final class PetServiceRuntime implements AutoCloseable {
             RetentionCleanupScheduler retentionScheduler,
             PetTransferExpiryScheduler transferExpiryScheduler,
             EmbeddingScheduler embeddingScheduler,
-            ConsolidationScheduler consolidationScheduler) {
+            ConsolidationScheduler consolidationScheduler,
+            PendingAdoptionCompletionScheduler adoptionCompletionScheduler) {
         this.config = config;
         this.dataSource = dataSource;
         this.workers = workers;
@@ -148,6 +154,7 @@ public final class PetServiceRuntime implements AutoCloseable {
         this.transferExpiryScheduler = transferExpiryScheduler;
         this.embeddingScheduler = embeddingScheduler;
         this.consolidationScheduler = consolidationScheduler;
+        this.adoptionCompletionScheduler = adoptionCompletionScheduler;
     }
 
     public static PetServiceRuntime create(PetServiceConfig config) throws IOException {
@@ -159,6 +166,7 @@ public final class PetServiceRuntime implements AutoCloseable {
         PetTransferExpiryScheduler transferExpiryScheduler = null;
         EmbeddingScheduler embeddingScheduler = null;
         ConsolidationScheduler consolidationScheduler = null;
+        PendingAdoptionCompletionScheduler adoptionCompletionScheduler = null;
         try {
             HttpServer server = HttpServer.create(
                     new InetSocketAddress(
@@ -188,6 +196,40 @@ public final class PetServiceRuntime implements AutoCloseable {
                     };
             com.silver.aipets.service.subscription.SubscriptionAccess aiAccess =
                     ownerUuid -> config.aiEnabled() && subscriptionAccess.canAdopt(ownerUuid);
+            Clock billingClock = Clock.systemUTC();
+            PetOperationalMetrics metrics = new PetOperationalMetrics();
+            JdbcAccountLinkRepository accountLinkRepository = new JdbcAccountLinkRepository(dataSource);
+            AccountLinkService accountLinks = config.stripeEnabled()
+                    ? new AccountLinkService(
+                            accountLinkRepository,
+                            billingClock,
+                            Duration.ofMinutes(config.accountLinkTtlMinutes()),
+                            new SecureRandom(),
+                            config.accountLinkPepper(),
+                            config.publicBaseUri())
+                    : null;
+            PetAdoptionService adoptionService = new PetAdoptionService(
+                    repository,
+                    aiAccess,
+                    new PetRandomizer(
+                            appearanceRules,
+                            AppearanceCatalog.vanilla12110(),
+                            InitialMood.defaults(),
+                            new Random()),
+                    billingClock,
+                    UUID::randomUUID,
+                    config.allowedSpecies(),
+                    metrics);
+            PetAdoptionWorkflowService adoptionWorkflow = accountLinks == null ? null
+                    : new PetAdoptionWorkflowService(
+                            adoptionService,
+                            aiAccess,
+                            accountLinkRepository,
+                            accountLinks,
+                            billingClock);
+            adoptionCompletionScheduler = new PendingAdoptionCompletionScheduler(
+                    new PendingAdoptionCompletionWorker(
+                            accountLinkRepository, adoptionService, aiAccess, billingClock));
             AiBudgetService budget = (config.stripeEnabled() || config.dummySubscriptionEnabled())
                     ? new JdbcAiBudgetService(dataSource, subscriptionAccess, config.aiPricing())
                     : AiBudgetService.UNLIMITED;
@@ -232,7 +274,6 @@ public final class PetServiceRuntime implements AutoCloseable {
                                     repository, placements, Clock.systemUTC()),
                             100,
                             Duration.ofSeconds(5));
-            PetOperationalMetrics metrics = new PetOperationalMetrics();
             JdbcOperationalMetricsSampler metricsSampler =
                     new JdbcOperationalMetricsSampler(dataSource, metrics);
             server.createContext(
@@ -248,20 +289,14 @@ public final class PetServiceRuntime implements AutoCloseable {
             server.createContext(
                     "/v1/adoptions",
                     new MetricsHttpHandler(new PetAdoptionHttpHandler(
-                            new PetAdoptionService(
-                                    repository,
-                                    aiAccess,
-                                    new PetRandomizer(
-                                            appearanceRules,
-                                            AppearanceCatalog.vanilla12110(),
-                                            InitialMood.defaults(),
-                                            new Random()),
-                                    java.time.Clock.systemUTC(),
-                                    UUID::randomUUID,
-                                    config.allowedSpecies(),
-                                    metrics),
+                            adoptionService,
+                            adoptionWorkflow,
                             new PetAdoptionWireCodec(petCodec),
                             config.bearerToken()), metrics));
+            server.createContext(
+                    "/v1/adoptions/notifications/",
+                    new MetricsHttpHandler(new PetAdoptionNotificationHttpHandler(
+                            accountLinkRepository, config.bearerToken(), billingClock), metrics));
             server.createContext(
                     "/v1/subscriptions",
                     new MetricsHttpHandler(new SubscriptionAccessHttpHandler(
@@ -429,14 +464,6 @@ public final class PetServiceRuntime implements AutoCloseable {
                                     new JdbcRecallAdminRepository(dataSource), adminClock),
                             config.bearerToken(), adminClock), metrics));
             if (config.stripeEnabled()) {
-                Clock billingClock = Clock.systemUTC();
-                AccountLinkService accountLinks = new AccountLinkService(
-                        new JdbcAccountLinkRepository(dataSource),
-                        billingClock,
-                        Duration.ofMinutes(config.accountLinkTtlMinutes()),
-                        new SecureRandom(),
-                        config.accountLinkPepper(),
-                        config.publicBaseUri());
                 server.createContext(
                         "/v1/account-links",
                         new MetricsHttpHandler(new AccountLinkHttpHandler(
@@ -475,13 +502,17 @@ public final class PetServiceRuntime implements AutoCloseable {
             server.setExecutor(workers);
             return new PetServiceRuntime(
                     config, dataSource, workers, server, sleepScheduler, retentionScheduler,
-                    transferExpiryScheduler, embeddingScheduler, consolidationScheduler);
+                    transferExpiryScheduler, embeddingScheduler, consolidationScheduler,
+                    adoptionCompletionScheduler);
         } catch (IOException | RuntimeException failure) {
             if (embeddingScheduler != null) {
                 embeddingScheduler.close();
             }
             if (consolidationScheduler != null) {
                 consolidationScheduler.close();
+            }
+            if (adoptionCompletionScheduler != null) {
+                adoptionCompletionScheduler.close();
             }
             if (transferExpiryScheduler != null) {
                 transferExpiryScheduler.close();
@@ -513,6 +544,7 @@ public final class PetServiceRuntime implements AutoCloseable {
         if (consolidationScheduler != null) {
             consolidationScheduler.start();
         }
+        adoptionCompletionScheduler.start();
     }
 
     public InetSocketAddress address() {
@@ -534,6 +566,7 @@ public final class PetServiceRuntime implements AutoCloseable {
         if (consolidationScheduler != null) {
             consolidationScheduler.close();
         }
+        adoptionCompletionScheduler.close();
         workers.shutdown();
         try {
             if (!workers.awaitTermination(config.shutdownGraceSeconds(), TimeUnit.SECONDS)) {

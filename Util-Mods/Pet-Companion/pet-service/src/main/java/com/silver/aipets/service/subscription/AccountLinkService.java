@@ -1,6 +1,13 @@
 package com.silver.aipets.service.subscription;
 
+import com.silver.aipets.common.domain.PetSpecies;
 import com.silver.aipets.common.transport.AccountLinkWireResult;
+import com.silver.aipets.service.adoption.CheckoutLaunchClaim;
+import com.silver.aipets.service.adoption.PendingAdoption;
+import com.silver.aipets.service.adoption.PendingAdoptionLinkResult;
+import com.silver.aipets.service.adoption.PendingAdoptionLinkStatus;
+import com.silver.aipets.service.adoption.PendingAdoptionRepository;
+import com.silver.aipets.service.adoption.PendingAdoptionState;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -55,6 +62,29 @@ public final class AccountLinkService {
     public AccountLinkWireResult generate(UUID ownerUuid) {
         Objects.requireNonNull(ownerUuid, "ownerUuid");
         Instant now = clock.instant();
+        if (repository instanceof PendingAdoptionRepository pendingRepository) {
+            Optional<PendingAdoption> pending = pendingRepository.find(ownerUuid);
+            if (pending.isPresent()) {
+                PendingAdoption intent = pending.orElseThrow();
+                if (intent.state() == PendingAdoptionState.PRE_CHECKOUT
+                        && intent.expiresAt().isAfter(now)) {
+                    Instant linkExpiry = min(now.plus(timeToLive), intent.expiresAt());
+                    String token = randomToken();
+                    PendingAdoptionLinkStatus status = pendingRepository.rotatePreCheckoutLink(
+                            ownerUuid, intent.intentId(), digest(token), now, linkExpiry,
+                            now.minus(GENERATION_WINDOW), MAX_GENERATIONS);
+                    return switch (status) {
+                        case CREATED -> AccountLinkWireResult.created(
+                                checkoutUrl(token).toString(), linkExpiry);
+                        case RATE_LIMITED -> AccountLinkWireResult.rateLimited();
+                        case CHECKOUT_IN_PROGRESS -> AccountLinkWireResult.checkoutInProgress();
+                    };
+                }
+                if (intent.checkoutStillActive(now)) {
+                    return AccountLinkWireResult.checkoutInProgress();
+                }
+            }
+        }
         Instant expiresAt = now.plus(timeToLive);
         String token = randomToken();
         boolean created = repository.create(
@@ -67,6 +97,43 @@ public final class AccountLinkService {
         return created
                 ? AccountLinkWireResult.created(checkoutUrl(token).toString(), expiresAt)
                 : AccountLinkWireResult.rateLimited();
+    }
+
+    public PendingAdoptionLinkResult generateForPendingAdoption(
+            UUID ownerUuid, UUID intentId, PetSpecies species, String name) {
+        Objects.requireNonNull(ownerUuid, "ownerUuid");
+        Objects.requireNonNull(intentId, "intentId");
+        Objects.requireNonNull(species, "species");
+        Objects.requireNonNull(name, "name");
+        if (!(repository instanceof PendingAdoptionRepository pendingRepository)) {
+            throw new IllegalStateException("Pending adoption persistence is not configured");
+        }
+        Instant now = clock.instant();
+        Instant expiresAt = now.plus(timeToLive);
+        String token = randomToken();
+        PendingAdoptionLinkStatus status = pendingRepository.createWithLink(
+                ownerUuid, intentId, species, name, digest(token), now, expiresAt,
+                now.minus(GENERATION_WINDOW), MAX_GENERATIONS);
+        return switch (status) {
+            case CREATED -> new PendingAdoptionLinkResult(
+                    com.silver.aipets.service.adoption.PendingAdoptionStartStatus.CREATED,
+                    Optional.of(checkoutUrl(token).toString()), Optional.of(expiresAt));
+            case RATE_LIMITED -> new PendingAdoptionLinkResult(
+                    com.silver.aipets.service.adoption.PendingAdoptionStartStatus.RATE_LIMITED,
+                    Optional.empty(), Optional.empty());
+            case CHECKOUT_IN_PROGRESS -> new PendingAdoptionLinkResult(
+                    com.silver.aipets.service.adoption.PendingAdoptionStartStatus.CHECKOUT_IN_PROGRESS,
+                    Optional.empty(), Optional.empty());
+        };
+    }
+
+    public CheckoutLaunchClaim claimCheckoutStart(String tokenHash) {
+        Instant now = clock.instant();
+        return repository.claimCheckoutStart(tokenHash, now, now.minusSeconds(60));
+    }
+
+    public void releaseCheckoutStart(String tokenHash) {
+        repository.releaseCheckoutStart(tokenHash, clock.instant());
     }
 
     public Optional<AccountLinkTarget> resolve(String submittedToken) {
@@ -111,5 +178,9 @@ public final class AccountLinkService {
 
     private URI checkoutUrl(String token) {
         return publicBaseUri.resolve("/checkout/" + token);
+    }
+
+    private static Instant min(Instant left, Instant right) {
+        return left.isBefore(right) ? left : right;
     }
 }

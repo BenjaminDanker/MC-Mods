@@ -18,6 +18,8 @@ import com.silver.aipets.common.transport.SubscriptionAccessWireCodec;
 import com.silver.aipets.common.transport.SubscriptionAccessWireResult;
 import com.silver.aipets.common.transport.DialogueHistoryWireCodec;
 import com.silver.aipets.common.transport.DialogueHistoryWireResult;
+import com.silver.aipets.common.transport.PendingAdoptionNoticeWire;
+import com.silver.aipets.common.transport.PendingAdoptionNoticeWireCodec;
 import com.silver.aipets.common.transport.RecallResetWireCodec;
 import com.silver.aipets.common.transport.RecallResetWireResult;
 import com.silver.aipets.fabric.config.PetServiceClientConfig;
@@ -48,6 +50,7 @@ public final class HttpPetAuthorityGateway implements PetAuthorityGateway {
     private final SubscriptionAccessWireCodec subscriptionAccessCodec;
     private final DialogueHistoryWireCodec dialogueHistoryCodec;
     private final RecallResetWireCodec recallResetCodec;
+    private final PendingAdoptionNoticeWireCodec adoptionNoticeCodec;
     private final HttpClient client;
 
     public HttpPetAuthorityGateway(PetServiceClientConfig config, PetWireCodec codec) {
@@ -74,6 +77,7 @@ public final class HttpPetAuthorityGateway implements PetAuthorityGateway {
         this.subscriptionAccessCodec = new SubscriptionAccessWireCodec();
         this.dialogueHistoryCodec = new DialogueHistoryWireCodec();
         this.recallResetCodec = new RecallResetWireCodec();
+        this.adoptionNoticeCodec = new PendingAdoptionNoticeWireCodec();
         this.client = Objects.requireNonNull(client, "client");
     }
 
@@ -99,7 +103,8 @@ public final class HttpPetAuthorityGateway implements PetAuthorityGateway {
     }
 
     private AccountLinkWireResult decodeAccountLinkResponse(HttpResponse<String> response) {
-        if (response.statusCode() != 201 && response.statusCode() != 429) {
+        if (response.statusCode() != 201 && response.statusCode() != 409
+                && response.statusCode() != 429) {
             throw new PetAuthorityTransportException(
                     "Account-link authority returned HTTP " + response.statusCode());
         }
@@ -116,6 +121,60 @@ public final class HttpPetAuthorityGateway implements PetAuthorityGateway {
             return accountLinkCodec.decodeResult(body);
         } catch (RuntimeException malformed) {
             throw new PetAuthorityTransportException("Account-link response is invalid", malformed);
+        }
+    }
+
+    @Override
+    public CompletionStage<Optional<PendingAdoptionNoticeWire>> findPendingAdoptionNotice(UUID ownerUuid) {
+        Objects.requireNonNull(ownerUuid, "ownerUuid");
+        URI uri = config.baseUri().resolve("v1/adoptions/notifications/" + ownerUuid);
+        HttpRequest request = HttpRequest.newBuilder(uri)
+                .timeout(config.requestTimeout())
+                .header("Accept", "application/json")
+                .header("Authorization", "Bearer " + config.bearerToken())
+                .GET().build();
+        try {
+            return client.sendAsync(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
+                    .thenApply(response -> {
+                        if (response.statusCode() == 204) return Optional.empty();
+                        if (response.statusCode() != 200 || response.body() == null
+                                || response.body().length() > 2_048) {
+                            throw new PetAuthorityTransportException(
+                                    "Adoption notification authority returned HTTP " + response.statusCode());
+                        }
+                        try {
+                            return Optional.of(adoptionNoticeCodec.decode(response.body()));
+                        } catch (RuntimeException malformed) {
+                            throw new PetAuthorityTransportException(
+                                    "Adoption notification response is invalid", malformed);
+                        }
+                    });
+        } catch (RuntimeException failure) {
+            return CompletableFuture.failedFuture(failure);
+        }
+    }
+
+    @Override
+    public CompletionStage<Boolean> acknowledgePendingAdoptionNotice(UUID ownerUuid, UUID intentId) {
+        Objects.requireNonNull(ownerUuid, "ownerUuid");
+        Objects.requireNonNull(intentId, "intentId");
+        URI uri = config.baseUri().resolve(
+                "v1/adoptions/notifications/" + ownerUuid + "/" + intentId + "/ack");
+        HttpRequest request = HttpRequest.newBuilder(uri)
+                .timeout(config.requestTimeout())
+                .header("Authorization", "Bearer " + config.bearerToken())
+                .POST(HttpRequest.BodyPublishers.noBody()).build();
+        try {
+            return client.sendAsync(request, HttpResponse.BodyHandlers.discarding())
+                    .thenApply(response -> {
+                        if (response.statusCode() == 204) return true;
+                        if (response.statusCode() == 409) return false;
+                        throw new PetAuthorityTransportException(
+                                "Adoption notification acknowledgement returned HTTP "
+                                        + response.statusCode());
+                    });
+        } catch (RuntimeException failure) {
+            return CompletableFuture.failedFuture(failure);
         }
     }
 

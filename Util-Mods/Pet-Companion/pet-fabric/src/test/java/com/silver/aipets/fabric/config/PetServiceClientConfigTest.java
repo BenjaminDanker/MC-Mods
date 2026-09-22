@@ -35,11 +35,17 @@ class PetServiceClientConfigTest {
 
         PetServiceClientConfig config = PetServiceClientConfig.load(directory, environment)
                 .orElseThrow();
+        assertEquals("service", config.conversationMode());
         assertEquals("Ocean", config.friendlyBackendName(new BackendId("ocean")));
         assertEquals("Survival Realm", config.friendlyBackendName(new BackendId("survival")));
         assertEquals("unknown", config.friendlyBackendName(new BackendId("unknown")));
         assertFalse(config.toString().contains(TOKEN));
         assertFalse(config.toString().contains(SIGNING));
+
+        Path configPath = directory.resolve(PetServiceClientConfig.FILE_NAME);
+        Files.writeString(configPath, Files.readString(configPath) + "conversation.mode=disabled\n");
+        assertEquals("disabled", PetServiceClientConfig.load(directory, environment)
+                .orElseThrow().conversationMode());
 
         environment.remove("TEST_COMPASS_SIGNING");
         assertThrows(

@@ -9,6 +9,7 @@ import com.silver.aipets.common.transport.CustomerPortalWireResult;
 import com.silver.aipets.common.transport.RecallResetWireResult;
 import com.silver.aipets.common.transport.SubscriptionAccessWireResult;
 import com.silver.aipets.common.transport.DialogueHistoryWireResult;
+import com.silver.aipets.common.transport.PendingAdoptionNoticeWire;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -42,6 +43,16 @@ public interface PetAuthorityGateway {
     default CompletionStage<DialogueHistoryWireResult> findDialogueHistory(UUID ownerUuid) {
         return CompletableFuture.failedFuture(
                 new UnsupportedOperationException("Dialogue history is not configured"));
+    }
+
+    default CompletionStage<Optional<PendingAdoptionNoticeWire>> findPendingAdoptionNotice(UUID ownerUuid) {
+        return CompletableFuture.failedFuture(
+                new UnsupportedOperationException("Adoption notifications are not configured"));
+    }
+
+    default CompletionStage<Boolean> acknowledgePendingAdoptionNotice(UUID ownerUuid, UUID intentId) {
+        return CompletableFuture.failedFuture(
+                new UnsupportedOperationException("Adoption notifications are not configured"));
     }
 
     default CompletionStage<RecallResetWireResult> resetRecall(UUID petId) {

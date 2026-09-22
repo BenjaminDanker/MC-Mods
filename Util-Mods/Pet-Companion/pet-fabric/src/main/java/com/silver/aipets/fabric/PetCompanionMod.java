@@ -34,6 +34,9 @@ import com.silver.aipets.fabric.speech.PetSpeechPolicy;
 import com.silver.aipets.fabric.transfer.PetTransferConfig;
 import com.silver.aipets.fabric.transfer.PetTransferCoordinator;
 import com.silver.aipets.fabric.transfer.PetTransferOutcome;
+import com.silver.aipets.fabric.permission.CentralPetPermissionChecker;
+import com.silver.aipets.fabric.permission.PetPermissions;
+import com.silver.authorization.fabric.NetworkAuthorizationMod;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.world.entity.player.Inventory;
@@ -93,6 +96,8 @@ public final class PetCompanionMod implements ModInitializer {
 
     @Override
     public void onInitialize() {
+        PetPermissions.install(new CentralPetPermissionChecker(
+                NetworkAuthorizationMod.authorization(), NetworkAuthorizationMod.serverId()));
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
                 PetCommands.register(dispatcher));
         ServerLifecycleEvents.SERVER_STARTED.register(server ->
@@ -126,6 +131,7 @@ public final class PetCompanionMod implements ModInitializer {
         });
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             PetCommands.refreshVisibility(handler.player);
+            PetCommands.checkPendingAdoptionNotice(handler.player);
             petCompassManager().ifPresent(manager -> manager.validateAsync(handler.player));
             transferCoordinator().ifPresentOrElse(coordinator ->
                     coordinator.claimDestination(handler.player).thenAccept(outcome -> {

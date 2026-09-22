@@ -46,11 +46,24 @@ public final class JdbcStripeWebhookRepository implements StripeWebhookRepositor
                 }
                 Optional<UUID> checkoutOwner = Optional.empty();
                 if (event.kind() == StripeWebhookKind.CHECKOUT_COMPLETED) {
+                    if (event.accountLinkHash().isEmpty() || event.checkoutSessionId().isEmpty()) {
+                        markProcessed(connection, event.eventId(), processedAt);
+                        connection.commit();
+                        return StripeWebhookApplyStatus.REJECTED;
+                    }
                     checkoutOwner = resolveCheckoutOwner(connection, event);
                     if (checkoutOwner.isEmpty()
                             || (event.ownerUuid().isPresent()
                                 && !event.ownerUuid().orElseThrow()
                                         .equals(checkoutOwner.orElseThrow()))) {
+                        if (checkoutOwner.isEmpty()
+                                && checkoutLinkAwaitingBinding(
+                                        connection, event.accountLinkHash().orElseThrow(),
+                                        event.checkoutSessionId().orElseThrow())) {
+                            markFailed(connection, event.eventId(), "CHECKOUT_SESSION_NOT_BOUND_YET");
+                            connection.commit();
+                            return StripeWebhookApplyStatus.RETRY_NEEDED;
+                        }
                         markProcessed(connection, event.eventId(), processedAt);
                         connection.commit();
                         return StripeWebhookApplyStatus.REJECTED;
@@ -70,17 +83,21 @@ public final class JdbcStripeWebhookRepository implements StripeWebhookRepositor
                     return StripeWebhookApplyStatus.REJECTED;
                 }
                 StripeWebhookApplyStatus result;
-                if (row.lastStripeEventAt() != null
-                        && event.createdAt().isBefore(row.lastStripeEventAt())) {
-                    result = StripeWebhookApplyStatus.STALE;
-                } else if (event.kind() == StripeWebhookKind.CHECKOUT_COMPLETED) {
-                    bindCheckoutIdentity(connection, row, event, processedAt);
+                boolean stale = row.lastStripeEventAt() != null
+                        && event.createdAt().isBefore(row.lastStripeEventAt());
+                if (event.kind() == StripeWebhookKind.CHECKOUT_COMPLETED) {
+                    recordPendingCheckoutCompletion(
+                            connection, checkoutOwner.orElseThrow(), event, processedAt);
+                    if (!stale) bindCheckoutIdentity(connection, row, event, processedAt);
                     consumeCheckoutLink(connection, event, processedAt);
-                    result = StripeWebhookApplyStatus.APPLIED;
+                    result = stale ? StripeWebhookApplyStatus.STALE : StripeWebhookApplyStatus.APPLIED;
+                } else if (stale) {
+                    result = StripeWebhookApplyStatus.STALE;
                 } else {
                     updateEntitlement(
                             connection, row, event, processedAt,
                             configuredPriceId, paymentGraceDays);
+                    restorePendingCheckoutIfEntitled(connection, event, processedAt);
                     result = StripeWebhookApplyStatus.APPLIED;
                 }
                 markProcessed(connection, event.eventId(), processedAt);
@@ -200,6 +217,75 @@ public final class JdbcStripeWebhookRepository implements StripeWebhookRepositor
             update.setString(2, event.accountLinkHash().orElseThrow());
             update.setString(3, event.checkoutSessionId().orElseThrow());
             requireSingleUpdate(update);
+        }
+    }
+
+    private static boolean checkoutLinkAwaitingBinding(
+            Connection connection, String tokenHash, String checkoutSessionId) throws SQLException {
+        try (PreparedStatement select = connection.prepareStatement("""
+                SELECT stripe_checkout_session_id, consumed_at
+                FROM account_link_tokens WHERE link_token_hash = ?
+                FOR UPDATE
+                """)) {
+            select.setString(1, tokenHash);
+            try (ResultSet rows = select.executeQuery()) {
+                if (!rows.next()) return false;
+                String boundSession = rows.getString("stripe_checkout_session_id");
+                boolean unconsumed = rows.getTimestamp("consumed_at") == null;
+                return boundSession == null && unconsumed;
+            }
+        }
+    }
+
+    private static void recordPendingCheckoutCompletion(
+            Connection connection, UUID ownerUuid, StripeWebhookEvent event, Instant processedAt)
+            throws SQLException {
+        if (event.accountLinkHash().isEmpty()
+                || event.checkoutSessionId().isEmpty()) return;
+        try (PreparedStatement update = connection.prepareStatement("""
+                UPDATE pending_adoptions
+                SET checkout_completed_at = ?,
+                    state = CASE
+                        WHEN ? >= checkout_started_at AND ? <= hard_expires_at
+                            THEN 'CHECKOUT_STARTED'
+                        ELSE 'EXPIRED'
+                    END,
+                    updated_at = ?
+                WHERE owner_uuid = ? AND account_link_hash = ?
+                  AND stripe_checkout_session_id = ?
+                  AND state IN ('CHECKOUT_STARTED', 'EXPIRED')
+                """)) {
+            update.setTimestamp(1, Timestamp.from(event.createdAt()));
+            update.setTimestamp(2, Timestamp.from(event.createdAt()));
+            update.setTimestamp(3, Timestamp.from(event.createdAt()));
+            update.setTimestamp(4, Timestamp.from(processedAt));
+            update.setString(5, ownerUuid.toString());
+            update.setString(6, event.accountLinkHash().orElseThrow());
+            update.setString(7, event.checkoutSessionId().orElseThrow());
+            update.executeUpdate();
+        }
+    }
+
+    /** A paid-on-time checkout may outlive delayed/out-of-order entitlement webhook delivery. */
+    private static void restorePendingCheckoutIfEntitled(
+            Connection connection, StripeWebhookEvent event, Instant processedAt)
+            throws SQLException {
+        if (event.ownerUuid().isEmpty() || event.accountLinkHash().isEmpty()) return;
+        try (PreparedStatement update = connection.prepareStatement("""
+                UPDATE pending_adoptions p
+                SET state = 'CHECKOUT_STARTED', updated_at = ?
+                WHERE p.owner_uuid = ? AND p.account_link_hash = ? AND p.state = 'EXPIRED'
+                  AND p.stripe_checkout_session_id IS NOT NULL
+                  AND p.checkout_completed_at IS NOT NULL
+                  AND p.checkout_completed_at <= p.hard_expires_at
+                  AND EXISTS (
+                    SELECT 1 FROM subscriptions s
+                    WHERE s.owner_uuid = p.owner_uuid AND s.ai_access_enabled = TRUE)
+                """)) {
+            update.setTimestamp(1, Timestamp.from(processedAt));
+            update.setString(2, event.ownerUuid().orElseThrow().toString());
+            update.setString(3, event.accountLinkHash().orElseThrow());
+            update.executeUpdate();
         }
     }
 

@@ -12,4 +12,4 @@ authority.connect-timeout-ms=2000
 authority.request-timeout-ms=15000
 # Conversation transport: staging gives deterministic local replies for acceptance tests;
 # service uses the authenticated central dialogue endpoint; disabled reports unavailable.
-conversation.mode=disabled
+conversation.mode=service

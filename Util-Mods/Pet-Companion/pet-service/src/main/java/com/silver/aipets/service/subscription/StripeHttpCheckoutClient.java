@@ -79,6 +79,34 @@ public final class StripeHttpCheckoutClient implements StripeCheckoutClient {
         }
     }
 
+    @Override
+    public void expire(String checkoutSessionId) {
+        if (checkoutSessionId == null || !checkoutSessionId.matches("cs_[A-Za-z0-9_]+")) {
+            throw new IllegalArgumentException("checkoutSessionId is invalid");
+        }
+        URI expireEndpoint = URI.create(endpoint.toString() + "/" + checkoutSessionId + "/expire");
+        HttpRequest request = HttpRequest.newBuilder(expireEndpoint)
+                .timeout(timeout)
+                .header("Accept", "application/json")
+                .header("Authorization", "Bearer " + secretKey)
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .build();
+        final HttpResponse<Void> response;
+        try {
+            response = client.send(request, HttpResponse.BodyHandlers.discarding());
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Stripe Checkout expiration was interrupted", interrupted);
+        } catch (java.io.IOException failure) {
+            throw new IllegalStateException("Stripe Checkout expiration failed", failure);
+        }
+        if (response.statusCode() != 200) {
+            throw new IllegalStateException("Stripe Checkout expiration returned HTTP "
+                    + response.statusCode());
+        }
+    }
+
     static String form(StripeCheckoutRequest request) {
         Map<String, String> fields = new LinkedHashMap<>();
         String owner = request.ownerUuid().toString();

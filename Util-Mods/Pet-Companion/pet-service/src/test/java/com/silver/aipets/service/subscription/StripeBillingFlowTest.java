@@ -197,6 +197,29 @@ class StripeBillingFlowTest {
     }
 
     @Test
+    void creatingAnotherLinkDoesNotInvalidateAnAlreadyStartedCheckout() {
+        MutableClock clock = new MutableClock(Instant.parse("2026-09-01T12:00:00Z"));
+        MemoryLinkRepository repository = new MemoryLinkRepository();
+        AccountLinkService links = new AccountLinkService(
+                repository, clock, Duration.ofMinutes(15), new SecureRandom(),
+                "a-test-only-account-link-pepper-at-least-32-characters",
+                URI.create("https://pets.example.test"));
+
+        String firstUrl = links.generate(OWNER).checkoutUrl().orElseThrow();
+        String firstToken = URI.create(firstUrl).getPath().substring("/checkout/".length());
+        var started = links.resolve(firstToken).orElseThrow();
+        assertTrue(links.attachCheckout(started, "cs_test_started"));
+        clock.set(clock.instant().plusSeconds(1));
+        assertEquals(AccountLinkWireStatus.CREATED, links.generate(OWNER).status());
+
+        assertTrue(links.resolve(firstToken).isPresent(),
+                "a started Stripe session must remain associated with its original token");
+        assertEquals("cs_test_started", repository.tokens.getFirst().checkoutSessionId);
+        assertEquals(15, Duration.between(
+                repository.tokens.get(1).createdAt, repository.tokens.get(1).expiresAt).toMinutes());
+    }
+
+    @Test
     void stripeCheckoutFormIsSubscriptionModeAndServerBound() {
         String hash = "a".repeat(64);
         String form = StripeHttpCheckoutClient.form(new StripeCheckoutRequest(
@@ -315,6 +338,7 @@ class StripeBillingFlowTest {
             if (count >= maximumGenerations) return false;
             tokens.stream().filter(token -> token.owner.equals(ownerUuid))
                     .filter(token -> token.consumedAt == null)
+                    .filter(token -> token.checkoutSessionId == null)
                     .forEach(token -> token.consumedAt = createdAt);
             tokens.add(new Token(ownerUuid, tokenHash, createdAt, expiresAt));
             return true;

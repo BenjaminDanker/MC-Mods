@@ -30,6 +30,11 @@ public record AccountLinkWireResult(
                 AccountLinkWireStatus.RATE_LIMITED, Optional.empty(), Optional.empty());
     }
 
+    public static AccountLinkWireResult checkoutInProgress() {
+        return new AccountLinkWireResult(
+                AccountLinkWireStatus.CHECKOUT_IN_PROGRESS, Optional.empty(), Optional.empty());
+    }
+
     private static void validateCheckoutUrl(String value) {
         URI parsed = URI.create(value);
         if (!"https".equalsIgnoreCase(parsed.getScheme())

@@ -3,6 +3,7 @@ package com.silver.aipets.service.subscription;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
+import com.silver.aipets.service.adoption.CheckoutLaunchClaim;
 
 /** Durable one-use token boundary; callers pass only keyed token digests. */
 public interface AccountLinkRepository {
@@ -18,4 +19,12 @@ public interface AccountLinkRepository {
 
     boolean attachCheckout(
             String tokenHash, String checkoutSessionId, Instant checkoutStartedAt);
+
+    default CheckoutLaunchClaim claimCheckoutStart(
+            String tokenHash, Instant now, Instant staleClaimBefore) {
+        return CheckoutLaunchClaim.CLAIMED;
+    }
+
+    default void releaseCheckoutStart(String tokenHash, Instant claimedAt) {
+    }
 }

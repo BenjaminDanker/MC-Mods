@@ -248,7 +248,7 @@ public final class PetServiceConfig {
         int stripePaymentGraceDays = integer(
                 environment, STRIPE_PAYMENT_GRACE_DAYS_ENV, 3, 0, 14);
         int accountLinkTtlMinutes = integer(
-                environment, ACCOUNT_LINK_TTL_MINUTES_ENV, 10, 2, 30);
+                environment, ACCOUNT_LINK_TTL_MINUTES_ENV, 15, 2, 30);
         if (stripeEnabled) {
             validateStripeConfiguration(
                     stripePriceId, stripeSecretKey, stripeWebhookSecret, accountLinkPepper);

@@ -26,6 +26,7 @@ class PetServiceConfigTest {
         assertEquals(4, config.poolMaximumSize());
         assertEquals(Set.of(PetSpecies.CAT, PetSpecies.DOG), config.allowedSpecies());
         assertEquals(7, config.rawTextRetentionDays());
+        assertEquals(15, config.accountLinkTtlMinutes());
         assertEquals(100, config.dialogueDailyReplyCap());
         assertEquals(0, config.aiPricing().netBudgetUsd().compareTo(new BigDecimal("1.628")));
         assertEquals(true, config.aiEnabled());

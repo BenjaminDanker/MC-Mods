@@ -63,13 +63,14 @@ import static net.minecraft.commands.Commands.argument;
 public final class PetCommands {
     private static final Map<UUID, Boolean> HAS_PET = new ConcurrentHashMap<>();
     private static final Map<UUID, UUID> BILLING_WATCHES = new ConcurrentHashMap<>();
+    private static final Map<UUID, UUID> ADOPTION_WATCHES = new ConcurrentHashMap<>();
 
     private PetCommands() {
     }
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(literal("pet")
-                .executes(PetCommands::help)
+                .executes(PetCommands::usage)
                 .then(literal("help")
                         .requires(source -> PetPermissions.check(source, PetPermission.USE))
                         .executes(PetCommands::help))
@@ -87,16 +88,17 @@ public final class PetCommands {
                         .executes(PetCommands::billing))
                 .then(literal("adopt")
                         .requires(source -> PetPermissions.check(source, PetPermission.ADOPT))
-                        .executes(context -> adoptionMenu(context, null))
+                        .executes(context -> adoptionUsage(context, null))
                         .then(literal("cat")
-                                .executes(context -> adoptionMenu(context, PetSpecies.CAT))
+                                .executes(context -> adoptionUsage(context, PetSpecies.CAT))
                                 .then(argument("name", StringArgumentType.greedyString())
                                         .executes(context -> adopt(context, PetSpecies.CAT))))
                         .then(literal("dog")
-                                .executes(context -> adoptionMenu(context, PetSpecies.DOG))
+                                .executes(context -> adoptionUsage(context, PetSpecies.DOG))
                                 .then(argument("name", StringArgumentType.greedyString())
                                         .executes(context -> adopt(context, PetSpecies.DOG))))
                         .then(literal("subscribe")
+                                .requires(source -> PetPermissions.check(source, PetPermission.USE))
                                 .executes(PetCommands::link)))
                 .then(literal("place")
                         .requires(source -> PetPermissions.check(source, PetPermission.USE))
@@ -144,74 +146,33 @@ public final class PetCommands {
 
     private static int help(CommandContext<CommandSourceStack> context) {
         CommandSourceStack source = context.getSource();
-        boolean ownsPet = hasPetAccess(source);
-        boolean ownershipKnown = source.getPlayer() == null
-                || HAS_PET.containsKey(source.getPlayer().getUUID());
-        boolean canUse = PetPermissions.check(source, PetPermission.USE)
-                && (ownsPet || !ownershipKnown);
-        StringBuilder index = new StringBuilder("Pet Companion:");
-        if (canUse) {
-            index.append(" /pet status, /pet billing, /pet place, /pet pickup");
-        }
-        if (!ownsPet && PetPermissions.check(source, PetPermission.ADOPT)) {
-            index.append(", /pet adopt <cat|dog> <name>");
-        }
-        if (PetPermissions.check(source, PetPermission.RECALL)) {
-            index.append(", /pet recall");
-        }
-        if (PetPermissions.check(source, PetPermission.COMPASS)) {
-            index.append(", /pet compass");
-        }
-        if (hasAdminAccess(source)) {
-            index.append(", /pet admin …");
-        }
-        source.sendSuccess(
-                () -> Component.literal(index.toString())
-                        .withStyle(ChatFormatting.AQUA),
-                false);
-        if (canUse) {
-            source.sendSuccess(() -> Component.empty()
-                    .append(Component.literal("VIEW     ").withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD))
-                    .append(commandAction("[STATUS]", "/pet status")), false);
-            source.sendSuccess(() -> Component.empty()
-                    .append(Component.literal("BILLING  ").withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD))
-                    .append(commandAction("[OPEN BILLING MENU]", "/pet billing")), false);
-            source.sendSuccess(() -> Component.empty()
-                    .append(Component.literal("PET      ").withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD))
-                    .append(commandAction("[PLACE]", "/pet place"))
-                    .append(Component.literal("  "))
-                    .append(commandAction("[PICKUP]", "/pet pickup")), false);
-            source.sendSuccess(() -> Component.literal(
-                    "Tip: hold Shift and right-click your pet to pick them up quickly.")
-                    .withStyle(ChatFormatting.GRAY), false);
-        }
-        if (!ownsPet && PetPermissions.check(source, PetPermission.ADOPT)) {
-            source.sendSuccess(() -> Component.empty()
-                    .append(Component.literal("ADOPTION ").withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD))
-                    .append(commandAction("[OPEN MENU]", "/pet adopt"))
-                    .append(Component.literal("  Choose a species, then name it.")), false);
-        }
-        if (PetPermissions.check(source, PetPermission.RECALL)
-                || PetPermissions.check(source, PetPermission.COMPASS)) {
-            source.sendSuccess(() -> Component.empty()
-                    .append(Component.literal("TOOLS    ").withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD))
-                    .append(PetPermissions.check(source, PetPermission.RECALL)
-                            ? commandAction("[RECALL]", "/pet recall")
-                            : Component.empty())
-                    .append(PetPermissions.check(source, PetPermission.RECALL)
-                            && PetPermissions.check(source, PetPermission.COMPASS)
-                            ? Component.literal("  ")
-                            : Component.empty())
-                    .append(PetPermissions.check(source, PetPermission.COMPASS)
-                            ? commandAction("[COMPASS]", "/pet compass")
-                            : Component.empty()), false);
-        }
-        if (hasAdminAccess(source)) {
-            source.sendSuccess(() -> Component.literal(
-                    "ADMIN    /pet admin inspect|recover|recall-reset|history|reconcile (permission-gated; UUID defaults to you)")
-                    .withStyle(ChatFormatting.DARK_GRAY), false);
-        }
+        source.sendSuccess(() -> Component.literal("Pet Companion commands")
+                .withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD), false);
+        sendHelpLine(source, "/pet adopt <cat|dog> <name> — adopts now with an active subscription.");
+        sendHelpLine(source, "Without one, open the checkout link within 15 minutes; after checkout starts,"
+                + " your named pet is adopted automatically when payment is confirmed (no second command).");
+        sendHelpLine(source, "/pet status — show your pet and current status.");
+        sendHelpLine(source, "/pet place — bring your pet into the world.");
+        sendHelpLine(source, "/pet pickup — pick up your placed pet.");
+        sendHelpLine(source, "/pet compass — get a compass pointing to your pet.");
+        sendHelpLine(source, "/pet recall — use your monthly pet recall.");
+        sendHelpLine(source, "/pet link — start a subscription if needed.");
+        sendHelpLine(source, "/pet billing — check subscription status.");
+        sendHelpLine(source, "/pet portal — manage or cancel billing.");
+        sendHelpLine(source, "Conversation: right-click your awake, placed pet, then type normally in chat. Use !exit to leave.");
+        sendHelpLine(source, "An active subscription is required to adopt and use conversation. If you cancel, access lasts through the paid period; your pet remains stored.");
         return 1;
+    }
+
+    private static int usage(CommandContext<CommandSourceStack> context) {
+        context.getSource().sendSuccess(() -> Component.literal(
+                "Pet Companion: use /pet help for commands, or type /pet and press Tab.")
+                .withStyle(ChatFormatting.GRAY), false);
+        return 1;
+    }
+
+    private static void sendHelpLine(CommandSourceStack source, String line) {
+        source.sendSuccess(() -> Component.literal(line).withStyle(ChatFormatting.GRAY), false);
     }
 
     private static int link(CommandContext<CommandSourceStack> context) {
@@ -245,10 +206,8 @@ public final class PetCommands {
                             source.sendSuccess(() -> Component.empty()
                                     .append(Component.literal(
                                             "No new checkout was created. " + billingStateText(details)
-                                                    + " Manage it in ")
-                                            .withStyle(ChatFormatting.GRAY))
-                                    .append(commandAction("[STRIPE BILLING PORTAL]", "/pet portal"))
-                                    .append(Component.literal(".")), false);
+                                                    + " Manage it with /pet portal.")
+                                            .withStyle(ChatFormatting.GRAY)), false);
                             return;
                         }
                         source.sendSuccess(() -> Component.literal("Creating your secure pet checkout link…")
@@ -289,19 +248,23 @@ public final class PetCommands {
                     false);
             return;
         }
+        if (result.status() == AccountLinkWireStatus.CHECKOUT_IN_PROGRESS) {
+            source.sendSuccess(() -> Component.literal(
+                    "Your adoption checkout is already in progress. Complete that checkout to adopt your pet.")
+                    .withStyle(ChatFormatting.YELLOW), false);
+            watchAdoptionNotice(source.getServer().getPlayerList().getPlayer(ownerUuid), gateway);
+            return;
+        }
         URI checkoutUrl = URI.create(result.checkoutUrl().orElseThrow());
         source.sendSuccess(() -> Component.literal("STRIPE CHECKOUT")
                 .withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD), false);
-        source.sendSuccess(() -> Component.empty()
-                        .append(Component.literal("Open the one checkout link below, finish payment in your browser, then return to Minecraft. ")
-                                .withStyle(ChatFormatting.GRAY))
-                        .append(Component.literal("[OPEN STRIPE CHECKOUT]")
-                                .withStyle(ChatFormatting.AQUA, ChatFormatting.UNDERLINE)
-                                .withStyle(style -> style.withClickEvent(
-                                        new ClickEvent.OpenUrl(checkoutUrl))))
-                        .append(Component.literal(" (expires "
-                                + formatUtc(result.expiresAt().orElseThrow()) + ")")
-                                .withStyle(ChatFormatting.GRAY)), false);
+        source.sendSuccess(() -> Component.literal("Subscription link (expires "
+                        + formatUtc(result.expiresAt().orElseThrow()) + "):")
+                .withStyle(ChatFormatting.GRAY), false);
+        source.sendSuccess(() -> urlComponent(checkoutUrl), false);
+        source.sendSuccess(() -> Component.literal(
+                "Open or copy the full URL in a browser, complete payment, then return to Minecraft.")
+                .withStyle(ChatFormatting.GRAY), false);
         watchBilling(source, ownerUuid, gateway, baseline);
     }
 
@@ -391,15 +354,15 @@ public final class PetCommands {
                     "Your subscription is active. " + billingStateText(details))
                     .withStyle(ChatFormatting.GRAY), false);
             source.sendSuccess(() -> Component.empty()
-                    .append(Component.literal("Next action: ").withStyle(ChatFormatting.GRAY))
-                    .append(commandAction("[MANAGE / CANCEL IN STRIPE]", "/pet portal")), false);
+                    .append(Component.literal("Next action: run /pet portal to manage or cancel billing.")
+                            .withStyle(ChatFormatting.GRAY)), false);
         } else {
             source.sendSuccess(() -> Component.literal(
                     "No active subscription is linked to this Minecraft account.")
                     .withStyle(ChatFormatting.GRAY), false);
             source.sendSuccess(() -> Component.empty()
-                    .append(Component.literal("Next action: ").withStyle(ChatFormatting.GRAY))
-                    .append(commandAction("[START SUBSCRIPTION]", "/pet link")), false);
+                    .append(Component.literal("Next action: run /pet link to start a subscription.")
+                            .withStyle(ChatFormatting.GRAY)), false);
         }
     }
 
@@ -423,8 +386,8 @@ public final class PetCommands {
             source.sendSuccess(() -> Component.literal("NO BILLING ACCOUNT LINKED")
                     .withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD), false);
             source.sendSuccess(() -> Component.empty()
-                    .append(Component.literal("Start checkout first: ").withStyle(ChatFormatting.GRAY))
-                    .append(commandAction("[SUBSCRIBE]", "/pet link")), false);
+                    .append(Component.literal("Start checkout first with /pet link.")
+                            .withStyle(ChatFormatting.GRAY)), false);
             return;
         }
         if (result.status() == CustomerPortalWireStatus.RATE_LIMITED) {
@@ -438,12 +401,20 @@ public final class PetCommands {
         source.sendSuccess(() -> Component.literal("BILLING PORTAL READY")
                 .withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD), false);
 
-        source.sendSuccess(() -> Component.empty()
-                .append(Component.literal("[OPEN STRIPE BILLING PORTAL]")
-                        .withStyle(ChatFormatting.AQUA, ChatFormatting.UNDERLINE)
-                        .withStyle(style -> style.withClickEvent(
-                                new ClickEvent.OpenUrl(portalUrl)))), false);
+        source.sendSuccess(() -> Component.literal("Billing portal link:")
+                .withStyle(ChatFormatting.GRAY), false);
+        source.sendSuccess(() -> urlComponent(portalUrl), false);
+        source.sendSuccess(() -> Component.literal(
+                "Open or copy the full URL in a browser to manage your subscription.")
+                .withStyle(ChatFormatting.GRAY), false);
         watchBilling(source, ownerUuid, gateway, baseline);
+        watchAdoptionNotice(source.getServer().getPlayerList().getPlayer(ownerUuid), gateway);
+    }
+
+    private static Component urlComponent(URI url) {
+        return Component.literal(url.toString())
+                .withStyle(ChatFormatting.AQUA, ChatFormatting.UNDERLINE)
+                .withStyle(style -> style.withClickEvent(new ClickEvent.OpenUrl(url)));
     }
 
     /** Refreshes the command tree after the authoritative ownership read completes. */
@@ -467,6 +438,72 @@ public final class PetCommands {
     public static void clearPlayerState(UUID ownerUuid) {
         HAS_PET.remove(ownerUuid);
         BILLING_WATCHES.remove(ownerUuid);
+        ADOPTION_WATCHES.remove(ownerUuid);
+    }
+
+    public static void checkPendingAdoptionNotice(ServerPlayer player) {
+        Objects.requireNonNull(player, "player");
+        PetCompanionMod.authorityGateway().ifPresent(gateway -> watchAdoptionNotice(player, gateway));
+    }
+
+    private static void watchAdoptionNotice(ServerPlayer player, PetAuthorityGateway gateway) {
+        if (player == null) return;
+        UUID ownerUuid = player.getUUID();
+        UUID watchId = UUID.randomUUID();
+        ADOPTION_WATCHES.put(ownerUuid, watchId);
+        pollAdoptionNotice(player.level().getServer(), ownerUuid, gateway, watchId, 0);
+    }
+
+    private static void pollAdoptionNotice(
+            net.minecraft.server.MinecraftServer server,
+            UUID ownerUuid,
+            PetAuthorityGateway gateway,
+            UUID watchId,
+            int attempt) {
+        if (attempt >= 5_760 || !watchId.equals(ADOPTION_WATCHES.get(ownerUuid))) {
+            ADOPTION_WATCHES.remove(ownerUuid, watchId);
+            return;
+        }
+        try {
+            gateway.findPendingAdoptionNotice(ownerUuid).whenComplete((notice, failure) ->
+                    server.execute(() -> {
+                        if (!watchId.equals(ADOPTION_WATCHES.get(ownerUuid))) return;
+                        ServerPlayer online = server.getPlayerList().getPlayer(ownerUuid);
+                        if (online == null) {
+                            ADOPTION_WATCHES.remove(ownerUuid, watchId);
+                            return;
+                        }
+                        if (failure == null && notice != null && notice.isPresent()) {
+                            var completed = notice.orElseThrow();
+                            online.sendSystemMessage(Component.literal(completed.petName()
+                                            + " has been adopted. Use /pet place when you're ready.")
+                                    .withStyle(ChatFormatting.GREEN));
+                            gateway.acknowledgePendingAdoptionNotice(ownerUuid, completed.intentId())
+                                    .whenComplete((acknowledged, ackFailure) -> server.execute(() -> {
+                                        if (ackFailure == null && Boolean.TRUE.equals(acknowledged)) {
+                                            ADOPTION_WATCHES.remove(ownerUuid, watchId);
+                                        } else {
+                                            scheduleAdoptionNoticePoll(
+                                                    server, ownerUuid, gateway, watchId, attempt + 1);
+                                        }
+                                    }));
+                        } else {
+                            scheduleAdoptionNoticePoll(server, ownerUuid, gateway, watchId, attempt + 1);
+                        }
+                    }));
+        } catch (RuntimeException failure) {
+            scheduleAdoptionNoticePoll(server, ownerUuid, gateway, watchId, attempt + 1);
+        }
+    }
+
+    private static void scheduleAdoptionNoticePoll(
+            net.minecraft.server.MinecraftServer server,
+            UUID ownerUuid,
+            PetAuthorityGateway gateway,
+            UUID watchId,
+            int attempt) {
+        CompletableFuture.delayedExecutor(15, TimeUnit.SECONDS).execute(() ->
+                pollAdoptionNotice(server, ownerUuid, gateway, watchId, attempt));
     }
 
     private static boolean hasPetAccess(CommandSourceStack source) {
@@ -548,10 +585,9 @@ public final class PetCommands {
             SubscriptionAccessWireResult before,
             SubscriptionAccessWireResult after) {
         if (!before.aiAccessEnabled() && after.aiAccessEnabled()) {
-            source.sendSuccess(() -> Component.empty()
-                    .append(Component.literal("Your membership is active! ")
-                            .withStyle(ChatFormatting.GREEN))
-                    .append(commandAction("[CONTINUE TO ADOPTION]", "/pet adopt")), false);
+            source.sendSuccess(() -> Component.literal(
+                    "Your membership is active! Run /pet adopt <cat|dog> <name> to adopt.")
+                    .withStyle(ChatFormatting.GREEN), false);
             return;
         }
         if (after.cancelAtPeriodEnd()) {
@@ -563,12 +599,6 @@ public final class PetCommands {
             source.sendSuccess(() -> Component.literal("Your subscription has been cancelled.")
                     .withStyle(ChatFormatting.YELLOW), false);
         }
-    }
-
-    private static Component commandAction(String label, String command) {
-        return Component.literal(label)
-                .withStyle(ChatFormatting.GREEN, ChatFormatting.UNDERLINE)
-                .withStyle(style -> style.withClickEvent(new ClickEvent.RunCommand(command)));
     }
 
     private static String billingStateText(SubscriptionAccessWireResult details) {
@@ -687,7 +717,8 @@ public final class PetCommands {
         source.sendSuccess(() -> Component.literal("Preparing your adoption…").withStyle(ChatFormatting.GRAY), false);
         try {
             gateway.orElseThrow().adopt(request).whenComplete((result, failure) ->
-                    onServer(source, () -> completeAdoption(source, ownerUuid, result, failure)));
+                    onServer(source, () -> completeAdoption(
+                            source, ownerUuid, request.name(), gateway.orElseThrow(), result, failure)));
         } catch (RuntimeException failure) {
             source.sendFailure(Component.literal("Pet adoption is temporarily unavailable."));
             return 0;
@@ -695,45 +726,26 @@ public final class PetCommands {
         return 1;
     }
 
-    private static int adoptionMenu(CommandContext<CommandSourceStack> context, PetSpecies species) {
+    private static int adoptionUsage(CommandContext<CommandSourceStack> context, PetSpecies species) {
         CommandSourceStack source = context.getSource();
         if (source.getPlayer() == null) {
             source.sendFailure(Component.literal("This command is available only to players."));
             return 0;
         }
         if (species == null) {
-            Optional<PetAuthorityGateway> gateway = PetCompanionMod.authorityGateway();
-            if (gateway.isEmpty()) {
-                source.sendFailure(Component.literal("Pet Companion is temporarily unavailable."));
-                return 0;
-            }
-            UUID ownerUuid = source.getPlayer().getUUID();
-            source.sendSuccess(() -> Component.literal("Opening the adoption center…")
-                    .withStyle(ChatFormatting.GRAY), false);
-            try {
-                gateway.orElseThrow().findSubscriptionDetails(ownerUuid).whenComplete((details, failure) ->
-                        onServer(source, () -> {
-                            if (source.getServer().getPlayerList().getPlayer(ownerUuid) == null) return;
-                            if (failure != null || details == null) {
-                                source.sendFailure(Component.literal(
-                                        "Subscription status is temporarily unavailable; please retry."));
-                                return;
-                            }
-                            PetAdoptionMenu.open(source, details.aiAccessEnabled());
-                        }));
-            } catch (RuntimeException failure) {
-                source.sendFailure(Component.literal("Subscription status is temporarily unavailable; please retry."));
-                return 0;
-            }
+            source.sendFailure(Component.literal("Usage: /pet adopt <cat|dog> <name>"));
         } else {
-            PetAdoptionMenu.choose(source, species);
+            source.sendFailure(Component.literal("Usage: /pet adopt "
+                    + species.name().toLowerCase(Locale.ROOT) + " <name>"));
         }
-        return 1;
+        return 0;
     }
 
     private static void completeAdoption(
             CommandSourceStack source,
             UUID ownerUuid,
+            String requestedName,
+            PetAuthorityGateway gateway,
             PetAdoptionWireResult result,
             Throwable failure) {
         if (source.getServer().getPlayerList().getPlayer(ownerUuid) == null) {
@@ -743,13 +755,36 @@ public final class PetCommands {
             source.sendFailure(Component.literal("Pet adoption is temporarily unavailable."));
             return;
         }
+        if (result.status() == PetAdoptionWireStatus.CHECKOUT_REQUIRED) {
+            URI checkoutUrl = URI.create(result.checkoutUrl().orElseThrow());
+            source.sendSuccess(() -> Component.literal(
+                    "An active subscription is required to adopt " + requestedName + ".")
+                    .withStyle(ChatFormatting.YELLOW), false);
+            source.sendSuccess(() -> Component.literal("Open this checkout link within 15 minutes:")
+                    .withStyle(ChatFormatting.GRAY), false);
+            source.sendSuccess(() -> urlComponent(checkoutUrl), false);
+            source.sendSuccess(() -> Component.literal(
+                    requestedName + " will be adopted automatically after your subscription is confirmed.")
+                    .withStyle(ChatFormatting.GRAY), false);
+            watchAdoptionNotice(source.getServer().getPlayerList().getPlayer(ownerUuid), gateway);
+            return;
+        }
+        if (result.status() == PetAdoptionWireStatus.CHECKOUT_IN_PROGRESS) {
+            source.sendSuccess(() -> Component.literal(
+                    "Your adoption checkout is already in progress. Complete it to adopt your pet automatically.")
+                    .withStyle(ChatFormatting.YELLOW), false);
+            watchAdoptionNotice(source.getServer().getPlayerList().getPlayer(ownerUuid), gateway);
+            return;
+        }
+        if (result.status() == PetAdoptionWireStatus.CHECKOUT_RATE_LIMITED) {
+            source.sendFailure(Component.literal(
+                    "Too many checkout links were requested recently. Wait a few minutes, then retry /pet adopt."));
+            return;
+        }
         if (result.status() == PetAdoptionWireStatus.SUBSCRIPTION_REQUIRED) {
-            source.sendSuccess(
-                    () -> Component.empty()
-                            .append(Component.literal("An active subscription is needed first. "))
-                            .append(commandAction("[CONTINUE TO SUBSCRIPTION]", "/pet adopt subscribe"))
-                            .withStyle(ChatFormatting.YELLOW),
-                    false);
+            source.sendSuccess(() -> Component.literal(
+                    "An active subscription is needed first. Run /pet link to start checkout.")
+                    .withStyle(ChatFormatting.YELLOW), false);
             return;
         }
         if (result.status() == PetAdoptionWireStatus.SPECIES_UNAVAILABLE) {
