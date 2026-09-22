@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "package": "com.silver.authorization.fabric.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "CommandNodeMixin",
+    "CommandDispatcherMixin",
+    "CommandsMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
