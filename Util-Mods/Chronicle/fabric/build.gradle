@@ -1,0 +1,33 @@
+plugins {
+    id 'net.fabricmc.fabric-loom'
+}
+
+group = 'com.silver'
+version = project.mod_version
+base { archivesName = 'chronicle-fabric' }
+
+loom {
+    splitEnvironmentSourceSets()
+    mods { 'chronicle' { sourceSet sourceSets.main } }
+}
+
+sourceSets.main.java.srcDir '../common/src/main/java'
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+    compileOnly files('../../Network-Authorization/fabric/build/libs/network-authorization-0.1.0-SNAPSHOT.jar')
+    compileOnly files('../../Authorization-Common/build/libs/authorization-common-0.1.0.jar')
+}
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('fabric.mod.json') { expand version: project.version }
+}
+
+java { toolchain { languageVersion = JavaLanguageVersion.of(25) }; withSourcesJar() }
+tasks.withType(JavaCompile).configureEach {
+    options.release = 25
+    options.encoding = 'UTF-8'
+}
