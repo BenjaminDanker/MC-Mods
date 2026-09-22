@@ -1,0 +1,30 @@
+plugins {
+    id 'net.fabricmc.fabric-loom'
+}
+repositories {
+    mavenLocal()
+    mavenCentral()
+}
+group = 'com.silver'
+version = project.mod_version
+base { archivesName = 'resonant-message-fabric' }
+loom {
+    splitEnvironmentSourceSets()
+    mods { 'resonantmessage' { sourceSet sourceSets.main } }
+}
+sourceSets.main.java.srcDir '../common/src/main/java'
+dependencies {
+    compileOnly('com.silver:authorization-common:0.1.0')
+    minecraft('com.mojang:minecraft:' + project.minecraft_version)
+    implementation('net.fabricmc:fabric-loader:' + project.loader_version)
+    implementation('net.fabricmc.fabric-api:fabric-api:' + project.fabric_version)
+}
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('fabric.mod.json') { expand version: project.version }
+}
+java { toolchain { languageVersion = JavaLanguageVersion.of(25) }; withSourcesJar() }
+tasks.withType(JavaCompile).configureEach {
+    options.release = 25
+    options.encoding = 'UTF-8'
+}

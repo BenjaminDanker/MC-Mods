@@ -1,0 +1,33 @@
+plugins {
+    id 'java'
+    id 'com.gradleup.shadow'
+}
+group = 'com.silver'
+version = '1.0.0'
+java { toolchain { languageVersion = JavaLanguageVersion.of(25) } }
+sourceSets.main.java.srcDir '../common/src/main/java'
+repositories {
+    mavenLocal()
+    mavenCentral()
+    maven { url = 'https://repo.papermc.io/repository/maven-public/' }
+}
+dependencies {
+    implementation 'com.silver:authorization-common:0.1.0'
+    compileOnly files('../../Pretty-Chat/api/build/libs/pretty-chat-api-1.0.0.jar')
+    compileOnly 'com.velocitypowered:velocity-api:3.4.0-SNAPSHOT'
+    annotationProcessor 'com.velocitypowered:velocity-api:3.4.0-SNAPSHOT'
+    compileOnly 'org.slf4j:slf4j-api:2.0.13'
+}
+tasks.withType(JavaCompile).configureEach {
+    options.release = 25
+    options.encoding = 'UTF-8'
+}
+tasks.shadowJar {
+    archiveBaseName.set('resonant-message-velocity')
+    archiveClassifier.set('')
+    mergeServiceFiles()
+}
+tasks.jar {
+    archiveBaseName.set('resonant-message-velocity')
+    archiveClassifier.set('thin')
+}

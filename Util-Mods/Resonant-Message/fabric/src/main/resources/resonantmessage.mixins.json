@@ -1,0 +1,10 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.silver.resonantmessage.fabric.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "mixins": ["ServerGamePacketListenerMixin"],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

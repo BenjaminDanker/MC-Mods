@@ -1,0 +1,9 @@
+.gradle/
+**/.gradle/
+build/
+**/build/
+*.iml
+.idea/
+**/resonant-message.properties
+**/backend-keys.properties
+**/replay-journal.log

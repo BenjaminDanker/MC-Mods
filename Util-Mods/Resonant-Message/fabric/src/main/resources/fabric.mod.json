@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "resonantmessage",
+  "version": "${version}",
+  "name": "Resonant Message",
+  "description": "One shard-powered cross-world message for the server network.",
+  "authors": ["SilverSphere"],
+  "license": "MIT",
+  "environment": "server",
+  "mixins": ["resonantmessage.mixins.json"],
+  "entrypoints": { "main": ["com.silver.resonantmessage.fabric.ResonantMessageMod"] },
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "fabric-api": "*",
+    "minecraft": "26.2",
+    "network_authorization": "*",
+    "java": ">=25"
+  }
+}
