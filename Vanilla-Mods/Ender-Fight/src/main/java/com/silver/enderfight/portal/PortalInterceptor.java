@@ -3,6 +3,7 @@ package com.silver.enderfight.portal;
 import com.silver.portalprotocol.PortalRequestPayload;
 import com.silver.portalprotocol.PortalRequestPayloadCodec;
 import com.silver.portalprotocol.PortalRequestSigner;
+import com.silver.portalprotocol.PortalPetTransferGate;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
@@ -302,13 +303,8 @@ public final class PortalInterceptor {
         player.sendSystemMessage(Component.literal("Redirecting you to " + targetServer + "..."), false);
 
         try {
-            long issuedAtMs = System.currentTimeMillis();
-            String nonce = PortalRequestPayloadCodec.generateNonce();
-            byte[] unsigned = PortalRequestPayloadCodec.encodeUnsigned(player.getUUID(), targetServer.trim(), destinationPortal, issuedAtMs, nonce);
-            byte[] signature = PortalRequestSigner.hmacSha256(secret.trim(), unsigned);
-            byte[] signed = PortalRequestPayloadCodec.encodeSigned(player.getUUID(), targetServer.trim(), destinationPortal, issuedAtMs, nonce, signature);
-            ServerPlayNetworking.send(player, new PortalRequestPayload(signed));
-            EnderFightMod.LOGGER.info("Sent Ender-Fight portal request for {} -> {}", player.getName().getString(), targetServer);
+            if (!PortalPetTransferGate.send(player, targetServer, destinationPortal, secret)) return false;
+            EnderFightMod.LOGGER.info("Queued Ender-Fight redirect for {} -> {} after pet preparation", player.getName().getString(), targetServer);
         } catch (Exception ex) {
             EnderFightMod.LOGGER.error("Failed sending Ender-Fight portal request for {}", player.getName().getString(), ex);
             return false;

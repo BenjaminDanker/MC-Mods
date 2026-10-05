@@ -6,6 +6,7 @@ import com.silver.witherfight.config.WitherControlConfig;
 import com.silver.portalprotocol.PortalRequestPayload;
 import com.silver.portalprotocol.PortalRequestPayloadCodec;
 import com.silver.portalprotocol.PortalRequestSigner;
+import com.silver.portalprotocol.PortalPetTransferGate;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.world.level.block.BeaconBlock;
 import net.minecraft.world.level.block.Block;
@@ -109,14 +110,9 @@ public final class BeaconRedirector {
             destinationPortal = "";
         }
 
-        long issuedAtMs = System.currentTimeMillis();
-        String nonce = PortalRequestPayloadCodec.generateNonce();
-        byte[] unsigned = PortalRequestPayloadCodec.encodeUnsigned(player.getUUID(), targetServer, destinationPortal, issuedAtMs, nonce);
-        byte[] signature = PortalRequestSigner.hmacSha256(secret, unsigned);
-        byte[] signed = PortalRequestPayloadCodec.encodeSigned(player.getUUID(), targetServer, destinationPortal, issuedAtMs, nonce, signature);
-        ServerPlayNetworking.send(player, new PortalRequestPayload(signed));
-        WitherFightMod.LOGGER.info("Sent beacon redirect portal request for {} -> {}", player.getName().getString(), targetServer);
-        return true;
+        boolean queued = PortalPetTransferGate.send(player, targetServer, destinationPortal, secret);
+        if (queued) WitherFightMod.LOGGER.info("Queued beacon redirect for {} -> {} after pet preparation", player.getName().getString(), targetServer);
+        return queued;
     }
 
     private static void removeBeacon(ServerLevel world, BlockPos beaconPos, ServerPlayer player) {

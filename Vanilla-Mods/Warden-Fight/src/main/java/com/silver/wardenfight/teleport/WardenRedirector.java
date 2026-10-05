@@ -6,6 +6,7 @@ import com.silver.wardenfight.config.WardenControlConfig;
 import com.silver.portalprotocol.PortalRequestPayload;
 import com.silver.portalprotocol.PortalRequestPayloadCodec;
 import com.silver.portalprotocol.PortalRequestSigner;
+import com.silver.portalprotocol.PortalPetTransferGate;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -75,13 +76,8 @@ public final class WardenRedirector {
             ServerPlayer requestPlayer = player;
             server.execute(() -> {
                 try {
-                    long issuedAtMs = System.currentTimeMillis();
-                    String nonce = PortalRequestPayloadCodec.generateNonce();
-                    byte[] unsigned = PortalRequestPayloadCodec.encodeUnsigned(requestPlayer.getUUID(), targetServer, destinationPortal, issuedAtMs, nonce);
-                    byte[] signature = PortalRequestSigner.hmacSha256(secret, unsigned);
-                    byte[] signed = PortalRequestPayloadCodec.encodeSigned(requestPlayer.getUUID(), targetServer, destinationPortal, issuedAtMs, nonce, signature);
-                    ServerPlayNetworking.send(requestPlayer, new PortalRequestPayload(signed));
-                    WardenFightMod.LOGGER.info("Sent warden redirect portal request for {} -> {}", requestPlayer.getName().getString(), targetServer);
+                    if (PortalPetTransferGate.send(requestPlayer, targetServer, destinationPortal, secret))
+                        WardenFightMod.LOGGER.info("Queued warden redirect for {} -> {} after pet preparation", requestPlayer.getName().getString(), targetServer);
                 } catch (Exception ex) {
                     WardenFightMod.LOGGER.error("Error sending warden redirect portal request for {}", requestPlayer.getName().getString(), ex);
                 }

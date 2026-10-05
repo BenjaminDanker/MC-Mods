@@ -5,6 +5,7 @@ import com.silver.babylon.config.BabylonConfigManager;
 import com.silver.portalprotocol.PortalRequestPayload;
 import com.silver.portalprotocol.PortalRequestPayloadCodec;
 import com.silver.portalprotocol.PortalRequestSigner;
+import com.silver.portalprotocol.PortalPetTransferGate;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -307,13 +308,8 @@ public final class BabylonMod implements ModInitializer {
                 } else if (secret == null || secret.isBlank()) {
                     LOGGER.warn("portalRequestSecret is blank; cannot send portal request for {}", playerName);
                 } else {
-                    long issuedAtMs = System.currentTimeMillis();
-                    String nonce = PortalRequestPayloadCodec.generateNonce();
-                    byte[] unsigned = PortalRequestPayloadCodec.encodeUnsigned(player.getUUID(), targetServer, destinationPortal, issuedAtMs, nonce);
-                    byte[] signature = PortalRequestSigner.hmacSha256(secret, unsigned);
-                    byte[] signed = PortalRequestPayloadCodec.encodeSigned(player.getUUID(), targetServer, destinationPortal, issuedAtMs, nonce, signature);
-                    ServerPlayNetworking.send(player, new PortalRequestPayload(signed));
-                    LOGGER.info("Sent Babylon portal request for {} -> {}", playerName, targetServer);
+                    if (PortalPetTransferGate.send(player, targetServer, destinationPortal, secret))
+                        LOGGER.info("Queued Babylon redirect for {} -> {} after pet preparation", playerName, targetServer);
                 }
 
                 LOGGER.info("{} stage1 done", playerName);
