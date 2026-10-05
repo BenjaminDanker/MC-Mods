@@ -4,7 +4,11 @@ public interface StripeCheckoutClient {
     StripeCheckoutSession create(
             StripeCheckoutRequest request, String idempotencyKey);
 
-    default void expire(String checkoutSessionId) {
-        // Optional for test or alternate providers; Stripe-backed production client supports it.
+    default StripeCheckoutState retrieve(String checkoutSessionId) {
+        throw new UnsupportedOperationException("Checkout retrieval is not configured");
+    }
+
+    default StripeCheckoutState expire(String checkoutSessionId) {
+        throw new UnsupportedOperationException("Checkout expiration is not configured");
     }
 }

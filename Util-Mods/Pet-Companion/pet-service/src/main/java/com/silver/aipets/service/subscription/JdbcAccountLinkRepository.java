@@ -14,6 +14,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.SQLIntegrityConstraintViolationException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Objects;
@@ -36,12 +37,14 @@ public final class JdbcAccountLinkRepository
     public boolean create(
             UUID ownerUuid,
             String tokenHash,
+            String checkoutAliasHash,
             Instant createdAt,
             Instant expiresAt,
             Instant generationWindowStart,
             int maximumGenerations) {
         Objects.requireNonNull(ownerUuid, "ownerUuid");
         Objects.requireNonNull(tokenHash, "tokenHash");
+        Objects.requireNonNull(checkoutAliasHash, "checkoutAliasHash");
         try (Connection connection = dataSource.getConnection()) {
             boolean autoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
@@ -62,17 +65,7 @@ public final class JdbcAccountLinkRepository
                     invalidate.setString(2, ownerUuid.toString());
                     invalidate.executeUpdate();
                 }
-                try (PreparedStatement insert = connection.prepareStatement("""
-                        INSERT INTO account_link_tokens
-                            (link_token_hash, owner_uuid, expires_at, created_at)
-                        VALUES (?, ?, ?, ?)
-                        """)) {
-                    insert.setString(1, tokenHash);
-                    insert.setString(2, ownerUuid.toString());
-                    insert.setTimestamp(3, Timestamp.from(expiresAt));
-                    insert.setTimestamp(4, Timestamp.from(createdAt));
-                    insert.executeUpdate();
-                }
+                insertAccountLink(connection, ownerUuid, tokenHash, checkoutAliasHash, expiresAt, createdAt);
                 connection.commit();
                 return true;
             } catch (SQLException | RuntimeException failure) {
@@ -83,29 +76,6 @@ public final class JdbcAccountLinkRepository
             }
         } catch (SQLException failure) {
             throw new PetPersistenceException("Could not create account-link token", failure);
-        }
-    }
-
-    @Override
-    public Optional<AccountLinkTarget> findValid(String tokenHash, Instant checkedAt) {
-        Objects.requireNonNull(tokenHash, "tokenHash");
-        Objects.requireNonNull(checkedAt, "checkedAt");
-        try (Connection connection = dataSource.getConnection()) {
-            try (PreparedStatement select = connection.prepareStatement("""
-                    SELECT owner_uuid
-                    FROM account_link_tokens
-                    WHERE link_token_hash = ? AND consumed_at IS NULL AND expires_at > ?
-                    """)) {
-                select.setString(1, tokenHash);
-                select.setTimestamp(2, Timestamp.from(checkedAt));
-                try (ResultSet rows = select.executeQuery()) {
-                    if (!rows.next()) return Optional.empty();
-                    return Optional.of(new AccountLinkTarget(
-                            UUID.fromString(rows.getString(1)), tokenHash));
-                }
-            }
-        } catch (SQLException failure) {
-            throw new PetPersistenceException("Could not resolve account-link token", failure);
         }
     }
 
@@ -211,11 +181,47 @@ public final class JdbcAccountLinkRepository
     }
 
     @Override
+    public Optional<AccountLinkTarget> findValidAlias(String checkoutAliasHash, Instant checkedAt) {
+        Objects.requireNonNull(checkoutAliasHash, "checkoutAliasHash");
+        Objects.requireNonNull(checkedAt, "checkedAt");
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement select = connection.prepareStatement("""
+                     SELECT owner_uuid, link_token_hash
+                     FROM account_link_tokens
+                     WHERE checkout_alias_hash = ? AND consumed_at IS NULL AND expires_at > ?
+                       AND EXISTS (
+                           SELECT 1 FROM pending_adoptions current_intent
+                           WHERE current_intent.owner_uuid = account_link_tokens.owner_uuid
+                             AND current_intent.account_link_hash = account_link_tokens.link_token_hash
+                             AND current_intent.state = 'PRE_CHECKOUT'
+                             AND account_link_tokens.stripe_checkout_session_id IS NULL
+                             AND NOT EXISTS (
+                                 SELECT 1 FROM pending_adoptions newer
+                                 WHERE newer.owner_uuid = current_intent.owner_uuid
+                                   AND (newer.created_at > current_intent.created_at
+                                        OR (newer.created_at = current_intent.created_at
+                                            AND newer.intent_id > current_intent.intent_id)))
+                       )
+                     """)) {
+            select.setString(1, checkoutAliasHash);
+            select.setTimestamp(2, Timestamp.from(checkedAt));
+            try (ResultSet rows = select.executeQuery()) {
+                if (!rows.next()) return Optional.empty();
+                return Optional.of(new AccountLinkTarget(
+                        UUID.fromString(rows.getString("owner_uuid")),
+                        rows.getString("link_token_hash")));
+            }
+        } catch (SQLException failure) {
+            throw new PetPersistenceException("Could not resolve checkout alias", failure);
+        }
+    }
+
+    @Override
     public Optional<PendingAdoption> find(UUID ownerUuid) {
         Objects.requireNonNull(ownerUuid, "ownerUuid");
         try (Connection connection = dataSource.getConnection();
              PreparedStatement select = connection.prepareStatement(pendingSelect()
-                     + " WHERE owner_uuid = ?")) {
+                     + " WHERE p.owner_uuid = ? ORDER BY p.created_at DESC, p.intent_id DESC LIMIT 1")) {
             select.setString(1, ownerUuid.toString());
             try (ResultSet rows = select.executeQuery()) {
                 return rows.next() ? Optional.of(readPending(rows)) : Optional.empty();
@@ -226,24 +232,77 @@ public final class JdbcAccountLinkRepository
     }
 
     @Override
-    public void cancelPreCheckout(UUID ownerUuid, Instant cancelledAt) {
+    public Optional<PendingAdoption> beginReplacement(UUID ownerUuid, Instant replacementAt) {
+        Objects.requireNonNull(ownerUuid, "ownerUuid");
+        Objects.requireNonNull(replacementAt, "replacementAt");
+        try (Connection connection = dataSource.getConnection()) {
+            boolean autoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try {
+                lockSubscriptionIdentity(connection, ownerUuid);
+                PendingAdoption current = selectPendingForUpdate(connection, ownerUuid).orElse(null);
+                if (current == null || switch (current.state()) {
+                    case PRE_CHECKOUT, CHECKOUT_STARTED, REPLACEMENT_PENDING,
+                            WAITING_FOR_ENTITLEMENT -> false;
+                    default -> true;
+                }) {
+                    connection.commit();
+                    return Optional.empty();
+                }
+                if (current.state() == PendingAdoptionState.PRE_CHECKOUT) {
+                    invalidateUnstartedLinks(connection, ownerUuid, replacementAt);
+                }
+                String nextState = current.state() == PendingAdoptionState.PRE_CHECKOUT
+                        ? "CANCELLED" : "REPLACEMENT_PENDING";
+                try (PreparedStatement update = connection.prepareStatement("""
+                        UPDATE pending_adoptions
+                        SET state = ?, updated_at = ?
+                        WHERE owner_uuid = ? AND intent_id = ?
+                        """)) {
+                    update.setString(1, nextState);
+                    update.setTimestamp(2, Timestamp.from(replacementAt));
+                    update.setString(3, ownerUuid.toString());
+                    update.setString(4, current.intentId().toString());
+                    if (update.executeUpdate() != 1) {
+                        connection.rollback();
+                        return Optional.empty();
+                    }
+                }
+                connection.commit();
+                return Optional.of(current);
+            } catch (SQLException | RuntimeException failure) {
+                rollback(connection, failure);
+                throw failure;
+            } finally {
+                connection.setAutoCommit(autoCommit);
+            }
+        } catch (SQLException failure) {
+            throw new PetPersistenceException("Could not begin pending-adoption replacement", failure);
+        }
+    }
+
+    @Override
+    public void cancelUnfinished(UUID ownerUuid, Instant cancelledAt) {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement update = connection.prepareStatement("""
                      UPDATE pending_adoptions
                      SET state = 'CANCELLED', updated_at = ?
-                     WHERE owner_uuid = ? AND state = 'PRE_CHECKOUT'
+                     WHERE owner_uuid = ? AND state IN (
+                         'PRE_CHECKOUT', 'CHECKOUT_STARTED', 'REPLACEMENT_PENDING',
+                         'WAITING_FOR_ENTITLEMENT')
                      """)) {
             update.setTimestamp(1, Timestamp.from(cancelledAt));
             update.setString(2, ownerUuid.toString());
             update.executeUpdate();
         } catch (SQLException failure) {
-            throw new PetPersistenceException("Could not cancel pre-checkout adoption", failure);
+            throw new PetPersistenceException("Could not cancel unfinished adoption", failure);
         }
     }
 
     @Override
     public PendingAdoptionLinkStatus createWithLink(
             UUID ownerUuid, UUID intentId, PetSpecies species, String name, String tokenHash,
+            String checkoutAliasHash,
             Instant createdAt, Instant expiresAt, Instant generationWindowStart,
             int maximumGenerations) {
         Objects.requireNonNull(ownerUuid, "ownerUuid");
@@ -251,49 +310,45 @@ public final class JdbcAccountLinkRepository
         Objects.requireNonNull(species, "species");
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(tokenHash, "tokenHash");
+        Objects.requireNonNull(checkoutAliasHash, "checkoutAliasHash");
         try (Connection connection = dataSource.getConnection()) {
             boolean autoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
             try {
                 lockSubscriptionIdentity(connection, ownerUuid);
-                PendingAdoption existing = selectPendingForUpdate(connection, ownerUuid).orElse(null);
-                if (blocksReplacement(existing, createdAt)) {
-                    connection.rollback();
-                    return PendingAdoptionLinkStatus.CHECKOUT_IN_PROGRESS;
-                }
                 if (generationCount(connection, ownerUuid, generationWindowStart)
                         >= maximumGenerations) {
                     connection.rollback();
                     return PendingAdoptionLinkStatus.RATE_LIMITED;
                 }
                 invalidateUnstartedLinks(connection, ownerUuid, createdAt);
-                insertAccountLink(connection, ownerUuid, tokenHash, expiresAt, createdAt);
-                try (PreparedStatement upsert = connection.prepareStatement("""
+                insertAccountLink(connection, ownerUuid, tokenHash, checkoutAliasHash, expiresAt, createdAt);
+                try (PreparedStatement cancel = connection.prepareStatement("""
+                        UPDATE pending_adoptions
+                        SET state = 'CANCELLED', updated_at = ?
+                        WHERE owner_uuid = ? AND state IN (
+                            'PRE_CHECKOUT', 'CHECKOUT_STARTED', 'REPLACEMENT_PENDING',
+                            'WAITING_FOR_ENTITLEMENT')
+                        """)) {
+                    cancel.setTimestamp(1, Timestamp.from(createdAt));
+                    cancel.setString(2, ownerUuid.toString());
+                    cancel.executeUpdate();
+                }
+                try (PreparedStatement insert = connection.prepareStatement("""
                         INSERT INTO pending_adoptions
                             (owner_uuid, intent_id, species, pet_name, state, created_at, expires_at,
                              account_link_hash, updated_at)
                         VALUES (?, ?, ?, ?, 'PRE_CHECKOUT', ?, ?, ?, ?)
-                        ON DUPLICATE KEY UPDATE
-                            intent_id = VALUES(intent_id), species = VALUES(species),
-                            pet_name = VALUES(pet_name), state = 'PRE_CHECKOUT',
-                            created_at = VALUES(created_at), expires_at = VALUES(expires_at),
-                            checkout_started_at = NULL, hard_expires_at = NULL,
-                            account_link_hash = VALUES(account_link_hash),
-                            stripe_checkout_session_id = NULL,
-                            checkout_launch_claimed_at = NULL, checkout_completed_at = NULL,
-                            completed_pet_id = NULL, completed_at = NULL,
-                            notification_pending = FALSE, notification_acknowledged_at = NULL,
-                            updated_at = VALUES(updated_at)
                         """)) {
-                    upsert.setString(1, ownerUuid.toString());
-                    upsert.setString(2, intentId.toString());
-                    upsert.setString(3, species.name());
-                    upsert.setString(4, name);
-                    upsert.setTimestamp(5, Timestamp.from(createdAt));
-                    upsert.setTimestamp(6, Timestamp.from(expiresAt));
-                    upsert.setString(7, tokenHash);
-                    upsert.setTimestamp(8, Timestamp.from(createdAt));
-                    upsert.executeUpdate();
+                    insert.setString(1, ownerUuid.toString());
+                    insert.setString(2, intentId.toString());
+                    insert.setString(3, species.name());
+                    insert.setString(4, name);
+                    insert.setTimestamp(5, Timestamp.from(createdAt));
+                    insert.setTimestamp(6, Timestamp.from(expiresAt));
+                    insert.setString(7, tokenHash);
+                    insert.setTimestamp(8, Timestamp.from(createdAt));
+                    insert.executeUpdate();
                 }
                 connection.commit();
                 return PendingAdoptionLinkStatus.CREATED;
@@ -309,8 +364,49 @@ public final class JdbcAccountLinkRepository
     }
 
     @Override
+    public PendingAdoptionLinkStatus createWaitingForEntitlement(
+            UUID ownerUuid, UUID intentId, PetSpecies species, String name,
+            Instant createdAt, Instant expiresAt) {
+        Objects.requireNonNull(ownerUuid, "ownerUuid");
+        Objects.requireNonNull(intentId, "intentId");
+        Objects.requireNonNull(species, "species");
+        Objects.requireNonNull(name, "name");
+        try (Connection connection = dataSource.getConnection()) {
+            boolean autoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try {
+                lockSubscriptionIdentity(connection, ownerUuid);
+                cancelCurrentIntent(connection, ownerUuid, createdAt);
+                try (PreparedStatement insert = connection.prepareStatement("""
+                        INSERT INTO pending_adoptions
+                            (owner_uuid, intent_id, species, pet_name, state, created_at, expires_at, updated_at)
+                        VALUES (?, ?, ?, ?, 'WAITING_FOR_ENTITLEMENT', ?, ?, ?)
+                        """)) {
+                    insert.setString(1, ownerUuid.toString());
+                    insert.setString(2, intentId.toString());
+                    insert.setString(3, species.name());
+                    insert.setString(4, name);
+                    insert.setTimestamp(5, Timestamp.from(createdAt));
+                    insert.setTimestamp(6, Timestamp.from(expiresAt));
+                    insert.setTimestamp(7, Timestamp.from(createdAt));
+                    insert.executeUpdate();
+                }
+                connection.commit();
+                return PendingAdoptionLinkStatus.CREATED;
+            } catch (SQLException | RuntimeException failure) {
+                rollback(connection, failure);
+                throw failure;
+            } finally {
+                connection.setAutoCommit(autoCommit);
+            }
+        } catch (SQLException failure) {
+            throw new PetPersistenceException("Could not create entitlement-waiting adoption", failure);
+        }
+    }
+
+    @Override
     public PendingAdoptionLinkStatus rotatePreCheckoutLink(
-            UUID ownerUuid, UUID intentId, String tokenHash, Instant createdAt,
+            UUID ownerUuid, UUID intentId, String tokenHash, String checkoutAliasHash, Instant createdAt,
             Instant linkExpiresAt, Instant generationWindowStart, int maximumGenerations) {
         Objects.requireNonNull(ownerUuid, "ownerUuid");
         Objects.requireNonNull(intentId, "intentId");
@@ -333,7 +429,7 @@ public final class JdbcAccountLinkRepository
                     return PendingAdoptionLinkStatus.RATE_LIMITED;
                 }
                 invalidateUnstartedLinks(connection, ownerUuid, createdAt);
-                insertAccountLink(connection, ownerUuid, tokenHash, linkExpiresAt, createdAt);
+                insertAccountLink(connection, ownerUuid, tokenHash, checkoutAliasHash, linkExpiresAt, createdAt);
                 try (PreparedStatement update = connection.prepareStatement("""
                         UPDATE pending_adoptions
                         SET account_link_hash = ?, updated_at = ?
@@ -452,8 +548,9 @@ public final class JdbcAccountLinkRepository
     public void expireUnstarted(Instant now) {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement update = connection.prepareStatement("""
-                     UPDATE pending_adoptions SET state = 'EXPIRED', updated_at = ?
-                     WHERE (state = 'PRE_CHECKOUT' AND expires_at <= ?)
+                        UPDATE pending_adoptions SET state = 'EXPIRED', updated_at = ?
+                        WHERE (state = 'PRE_CHECKOUT' AND expires_at <= ?)
+                        OR (state = 'WAITING_FOR_ENTITLEMENT' AND expires_at <= ?)
                         OR (state = 'CHECKOUT_STARTED' AND hard_expires_at <= ?
                             AND NOT (checkout_completed_at IS NOT NULL
                                 AND checkout_completed_at <= hard_expires_at
@@ -465,6 +562,7 @@ public final class JdbcAccountLinkRepository
             update.setTimestamp(1, Timestamp.from(now));
             update.setTimestamp(2, Timestamp.from(now));
             update.setTimestamp(3, Timestamp.from(now));
+            update.setTimestamp(4, Timestamp.from(now));
             update.executeUpdate();
         } catch (SQLException failure) {
             throw new PetPersistenceException("Could not expire pending adoptions", failure);
@@ -472,13 +570,24 @@ public final class JdbcAccountLinkRepository
     }
 
     @Override
-    public List<PendingAdoption> findCheckoutCompleted(int limit) {
+    public List<PendingAdoption> findEligibleForCompletion(int limit) {
         if (limit < 1 || limit > 500) throw new IllegalArgumentException("limit out of range");
         try (Connection connection = dataSource.getConnection();
              PreparedStatement select = connection.prepareStatement(pendingSelect() + """
-                     WHERE state = 'CHECKOUT_STARTED' AND checkout_completed_at IS NOT NULL
-                       AND hard_expires_at IS NOT NULL AND checkout_completed_at <= hard_expires_at
-                     ORDER BY checkout_completed_at, owner_uuid LIMIT ?
+                     JOIN subscriptions s ON s.owner_uuid = p.owner_uuid
+                     WHERE ((p.state = 'CHECKOUT_STARTED' AND p.checkout_completed_at IS NOT NULL
+                                AND p.hard_expires_at IS NOT NULL
+                                AND p.checkout_completed_at <= p.hard_expires_at)
+                        OR (p.state IN ('PRE_CHECKOUT', 'WAITING_FOR_ENTITLEMENT')
+                            AND s.ai_access_enabled = TRUE))
+                       AND NOT EXISTS (
+                            SELECT 1 FROM pending_adoptions newer
+                            WHERE newer.owner_uuid = p.owner_uuid
+                              AND (newer.created_at > p.created_at
+                                   OR (newer.created_at = p.created_at
+                                       AND newer.intent_id > p.intent_id)))
+                     ORDER BY p.checkout_completed_at IS NULL, p.checkout_completed_at, p.created_at
+                     LIMIT ?
                      """)) {
             select.setInt(1, limit);
             try (ResultSet rows = select.executeQuery()) {
@@ -499,9 +608,11 @@ public final class JdbcAccountLinkRepository
                      SET state = 'COMPLETED', completed_pet_id = ?, completed_at = ?,
                          notification_pending = TRUE, notification_acknowledged_at = NULL,
                          updated_at = ?
-                     WHERE owner_uuid = ? AND intent_id = ? AND state = 'CHECKOUT_STARTED'
-                       AND checkout_completed_at IS NOT NULL
-                       AND checkout_completed_at <= hard_expires_at
+                     WHERE owner_uuid = ? AND intent_id = ?
+                       AND ((state = 'CHECKOUT_STARTED'
+                             AND checkout_completed_at IS NOT NULL
+                             AND checkout_completed_at <= hard_expires_at)
+                            OR state IN ('PRE_CHECKOUT', 'WAITING_FOR_ENTITLEMENT'))
                      """)) {
             update.setString(1, petId.toString());
             update.setTimestamp(2, Timestamp.from(completedAt));
@@ -554,11 +665,11 @@ public final class JdbcAccountLinkRepository
 
     private static String pendingSelect() {
         return """
-                SELECT owner_uuid, intent_id, species, pet_name, state, created_at, expires_at,
-                       checkout_started_at, hard_expires_at, account_link_hash,
-                       stripe_checkout_session_id, checkout_launch_claimed_at,
-                       checkout_completed_at, completed_pet_id, completed_at, notification_pending
-                FROM pending_adoptions
+                SELECT p.owner_uuid, p.intent_id, p.species, p.pet_name, p.state, p.created_at, p.expires_at,
+                       p.checkout_started_at, p.hard_expires_at, p.account_link_hash,
+                       p.stripe_checkout_session_id, p.checkout_launch_claimed_at,
+                       p.checkout_completed_at, p.completed_pet_id, p.completed_at, p.notification_pending
+                FROM pending_adoptions p
                 """;
     }
 
@@ -586,7 +697,7 @@ public final class JdbcAccountLinkRepository
     private static Optional<PendingAdoption> selectPendingForUpdate(
             Connection connection, UUID ownerUuid) throws SQLException {
         try (PreparedStatement select = connection.prepareStatement(
-                pendingSelect() + " WHERE owner_uuid = ? FOR UPDATE")) {
+                pendingSelect() + " WHERE p.owner_uuid = ? ORDER BY p.created_at DESC, p.intent_id DESC LIMIT 1 FOR UPDATE")) {
             select.setString(1, ownerUuid.toString());
             try (ResultSet rows = select.executeQuery()) {
                 return rows.next() ? Optional.of(readPending(rows)) : Optional.empty();
@@ -594,16 +705,23 @@ public final class JdbcAccountLinkRepository
         }
     }
 
-    private static boolean blocksReplacement(PendingAdoption pending, Instant now) {
-        if (pending == null) return false;
-        if (pending.checkoutStillActive(now)) return true;
-        return pending.state() == PendingAdoptionState.PRE_CHECKOUT
-                && pending.expiresAt().isAfter(now)
-                && claimIsFresh(pending.checkoutLaunchClaimedAt(), now);
-    }
-
     private static boolean claimIsFresh(Instant claimedAt, Instant now) {
         return claimedAt != null && claimedAt.isAfter(now.minusSeconds(60));
+    }
+
+    private static void cancelCurrentIntent(
+            Connection connection, UUID ownerUuid, Instant cancelledAt) throws SQLException {
+        try (PreparedStatement update = connection.prepareStatement("""
+                UPDATE pending_adoptions
+                SET state = 'CANCELLED', updated_at = ?
+                WHERE owner_uuid = ? AND state IN (
+                    'PRE_CHECKOUT', 'CHECKOUT_STARTED', 'REPLACEMENT_PENDING',
+                    'WAITING_FOR_ENTITLEMENT')
+                """)) {
+            update.setTimestamp(1, Timestamp.from(cancelledAt));
+            update.setString(2, ownerUuid.toString());
+            update.executeUpdate();
+        }
     }
 
     private static void lockSubscriptionIdentity(Connection connection, UUID ownerUuid)
@@ -632,18 +750,28 @@ public final class JdbcAccountLinkRepository
     }
 
     private static void insertAccountLink(
-            Connection connection, UUID ownerUuid, String tokenHash,
+            Connection connection, UUID ownerUuid, String tokenHash, String checkoutAliasHash,
             Instant expiresAt, Instant createdAt) throws SQLException {
         try (PreparedStatement insert = connection.prepareStatement("""
                 INSERT INTO account_link_tokens
-                    (link_token_hash, owner_uuid, expires_at, created_at)
-                VALUES (?, ?, ?, ?)
+                    (link_token_hash, checkout_alias_hash, owner_uuid, expires_at, created_at)
+                VALUES (?, ?, ?, ?, ?)
                 """)) {
             insert.setString(1, tokenHash);
-            insert.setString(2, ownerUuid.toString());
-            insert.setTimestamp(3, Timestamp.from(expiresAt));
-            insert.setTimestamp(4, Timestamp.from(createdAt));
-            insert.executeUpdate();
+            insert.setString(2, checkoutAliasHash);
+            insert.setString(3, ownerUuid.toString());
+            insert.setTimestamp(4, Timestamp.from(expiresAt));
+            insert.setTimestamp(5, Timestamp.from(createdAt));
+            try {
+                insert.executeUpdate();
+            } catch (SQLIntegrityConstraintViolationException collision) {
+                if (collision.getMessage() != null
+                        && collision.getMessage().toLowerCase(java.util.Locale.ROOT)
+                        .contains("uq_account_link_checkout_alias")) {
+                    throw new CheckoutAliasCollisionException(collision);
+                }
+                throw collision;
+            }
         }
     }
 

@@ -9,7 +9,10 @@ import com.silver.aipets.common.domain.PetSpecies;
 public interface PendingAdoptionRepository {
     Optional<PendingAdoption> find(UUID ownerUuid);
 
-    void cancelPreCheckout(UUID ownerUuid, Instant cancelledAt);
+    /** Invalidates the current player-facing alias and returns the intent needing replacement. */
+    Optional<PendingAdoption> beginReplacement(UUID ownerUuid, Instant replacementAt);
+
+    void cancelUnfinished(UUID ownerUuid, Instant cancelledAt);
 
     PendingAdoptionLinkStatus createWithLink(
             UUID ownerUuid,
@@ -17,15 +20,25 @@ public interface PendingAdoptionRepository {
             PetSpecies species,
             String name,
             String tokenHash,
+            String checkoutAliasHash,
             Instant createdAt,
             Instant expiresAt,
             Instant generationWindowStart,
             int maximumGenerations);
 
+    PendingAdoptionLinkStatus createWaitingForEntitlement(
+            UUID ownerUuid,
+            UUID intentId,
+            PetSpecies species,
+            String name,
+            Instant createdAt,
+            Instant expiresAt);
+
     PendingAdoptionLinkStatus rotatePreCheckoutLink(
             UUID ownerUuid,
             UUID intentId,
             String tokenHash,
+            String checkoutAliasHash,
             Instant createdAt,
             Instant linkExpiresAt,
             Instant generationWindowStart,
@@ -38,7 +51,7 @@ public interface PendingAdoptionRepository {
 
     void expireUnstarted(Instant now);
 
-    List<PendingAdoption> findCheckoutCompleted(int limit);
+    List<PendingAdoption> findEligibleForCompletion(int limit);
 
     boolean complete(UUID ownerUuid, UUID intentId, UUID petId, Instant completedAt);
 

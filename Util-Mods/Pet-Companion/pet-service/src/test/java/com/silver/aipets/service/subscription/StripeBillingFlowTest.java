@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -150,22 +151,25 @@ class StripeBillingFlowTest {
         AccountLinkWireResult generated = links.generate(OWNER);
         assertEquals(AccountLinkWireStatus.CREATED, generated.status());
         URI checkoutUrl = URI.create(generated.checkoutUrl().orElseThrow());
-        String token = checkoutUrl.getPath().substring("/checkout/".length());
+        String alias = checkoutUrl.getPath().substring("/checkout/".length());
         assertEquals("pets.example.test", checkoutUrl.getHost());
-        assertEquals(43, token.length());
+        assertEquals(8, alias.length());
+        assertTrue(alias.matches("[23456789ABCDEFGHJKMNPQRSTVWXYZ]{8}"));
         assertEquals(64, repository.tokens.getFirst().hash.length());
-        assertNotEquals(token, repository.tokens.getFirst().hash);
-        assertEquals(OWNER, links.resolve(token).orElseThrow().ownerUuid());
+        assertEquals(64, repository.tokens.getFirst().aliasHash.length());
+        assertNotEquals(alias, repository.tokens.getFirst().hash);
+        assertEquals(OWNER, links.resolve(alias).orElseThrow().ownerUuid());
+        assertEquals(OWNER, links.resolve(alias.toLowerCase(Locale.ROOT)).orElseThrow().ownerUuid());
         assertThrows(IllegalArgumentException.class,
-                () -> links.resolve(token.substring(0, 42) + "!"));
+                () -> links.resolve(alias.substring(0, 7) + "!"));
 
         assertEquals(AccountLinkWireStatus.CREATED, links.generate(OWNER).status());
         AccountLinkWireResult expiring = links.generate(OWNER);
         assertEquals(AccountLinkWireStatus.RATE_LIMITED, links.generate(OWNER).status());
         clock.set(clock.instant().plus(Duration.ofMinutes(11)));
-        String expiringToken = URI.create(expiring.checkoutUrl().orElseThrow())
+        String expiringAlias = URI.create(expiring.checkoutUrl().orElseThrow())
                 .getPath().substring("/checkout/".length());
-        assertEquals(Optional.empty(), links.resolve(expiringToken));
+        assertEquals(Optional.empty(), links.resolve(expiringAlias));
     }
 
     @Test
@@ -177,13 +181,13 @@ class StripeBillingFlowTest {
                 repository, clock, Duration.ofMinutes(10), new SecureRandom(),
                 "a-test-only-account-link-pepper-at-least-32-characters", publicBase);
         String generatedUrl = links.generate(OWNER).checkoutUrl().orElseThrow();
-        String token = URI.create(generatedUrl).getPath().substring("/checkout/".length());
+        String alias = URI.create(generatedUrl).getPath().substring("/checkout/".length());
         RecordingCheckoutClient stripe = new RecordingCheckoutClient();
         CheckoutLaunchService checkout = new CheckoutLaunchService(
                 links, stripe, PRICE, publicBase);
 
-        StripeCheckoutSession first = checkout.launch(token);
-        StripeCheckoutSession retry = checkout.launch(token);
+        StripeCheckoutSession first = checkout.launch(alias);
+        StripeCheckoutSession retry = checkout.launch(alias);
 
         assertEquals(first, retry);
         assertEquals(2, stripe.calls);
@@ -191,32 +195,27 @@ class StripeBillingFlowTest {
         assertEquals(OWNER, stripe.lastRequest.ownerUuid());
         assertEquals(repository.tokens.getFirst().hash, stripe.lastRequest.accountLinkHash());
         assertEquals("cs_test_linked", repository.tokens.getFirst().checkoutSessionId);
-        char replacement = token.charAt(42) == 'A' ? 'B' : 'A';
-        String altered = token.substring(0, 42) + replacement;
+        char replacement = alias.charAt(7) == '2' ? '3' : '2';
+        String altered = alias.substring(0, 7) + replacement;
         assertThrows(InvalidAccountLinkException.class, () -> checkout.launch(altered));
     }
 
     @Test
-    void creatingAnotherLinkDoesNotInvalidateAnAlreadyStartedCheckout() {
+    void retriesWhenDatabaseRejectsAnAliasCollision() {
         MutableClock clock = new MutableClock(Instant.parse("2026-09-01T12:00:00Z"));
         MemoryLinkRepository repository = new MemoryLinkRepository();
+        repository.aliasCollisionsRemaining = 1;
         AccountLinkService links = new AccountLinkService(
-                repository, clock, Duration.ofMinutes(15), new SecureRandom(),
+                repository, clock, Duration.ofMinutes(10), new SecureRandom(),
                 "a-test-only-account-link-pepper-at-least-32-characters",
                 URI.create("https://pets.example.test"));
 
-        String firstUrl = links.generate(OWNER).checkoutUrl().orElseThrow();
-        String firstToken = URI.create(firstUrl).getPath().substring("/checkout/".length());
-        var started = links.resolve(firstToken).orElseThrow();
-        assertTrue(links.attachCheckout(started, "cs_test_started"));
-        clock.set(clock.instant().plusSeconds(1));
-        assertEquals(AccountLinkWireStatus.CREATED, links.generate(OWNER).status());
+        AccountLinkWireResult generated = links.generate(OWNER);
 
-        assertTrue(links.resolve(firstToken).isPresent(),
-                "a started Stripe session must remain associated with its original token");
-        assertEquals("cs_test_started", repository.tokens.getFirst().checkoutSessionId);
-        assertEquals(15, Duration.between(
-                repository.tokens.get(1).createdAt, repository.tokens.get(1).expiresAt).toMinutes());
+        assertEquals(AccountLinkWireStatus.CREATED, generated.status());
+        assertEquals(1, repository.tokens.size());
+        assertEquals(8, URI.create(generated.checkoutUrl().orElseThrow())
+                .getPath().substring("/checkout/".length()).length());
     }
 
     @Test
@@ -322,11 +321,13 @@ class StripeBillingFlowTest {
 
     private static final class MemoryLinkRepository implements AccountLinkRepository {
         private final List<Token> tokens = new ArrayList<>();
+        private int aliasCollisionsRemaining;
 
         @Override
         public boolean create(
                 UUID ownerUuid,
                 String tokenHash,
+                String checkoutAliasHash,
                 Instant createdAt,
                 Instant expiresAt,
                 Instant windowStart,
@@ -336,18 +337,22 @@ class StripeBillingFlowTest {
                     .filter(token -> !token.createdAt.isBefore(windowStart))
                     .count();
             if (count >= maximumGenerations) return false;
+            if (aliasCollisionsRemaining > 0) {
+                aliasCollisionsRemaining--;
+                throw new CheckoutAliasCollisionException(null);
+            }
             tokens.stream().filter(token -> token.owner.equals(ownerUuid))
                     .filter(token -> token.consumedAt == null)
                     .filter(token -> token.checkoutSessionId == null)
                     .forEach(token -> token.consumedAt = createdAt);
-            tokens.add(new Token(ownerUuid, tokenHash, createdAt, expiresAt));
+            tokens.add(new Token(ownerUuid, tokenHash, checkoutAliasHash, createdAt, expiresAt));
             return true;
         }
 
         @Override
-        public Optional<AccountLinkTarget> findValid(String tokenHash, Instant checkedAt) {
+        public Optional<AccountLinkTarget> findValidAlias(String checkoutAliasHash, Instant checkedAt) {
             for (Token token : tokens) {
-                if (token.hash.equals(tokenHash) && token.consumedAt == null
+                if (token.aliasHash.equals(checkoutAliasHash) && token.consumedAt == null
                         && token.expiresAt.isAfter(checkedAt)) {
                     return Optional.of(new AccountLinkTarget(token.owner, token.hash));
                 }
@@ -391,14 +396,16 @@ class StripeBillingFlowTest {
     private static final class Token {
         private final UUID owner;
         private final String hash;
+        private final String aliasHash;
         private final Instant createdAt;
         private final Instant expiresAt;
         private Instant consumedAt;
         private String checkoutSessionId;
 
-        private Token(UUID owner, String hash, Instant createdAt, Instant expiresAt) {
+        private Token(UUID owner, String hash, String aliasHash, Instant createdAt, Instant expiresAt) {
             this.owner = owner;
             this.hash = hash;
+            this.aliasHash = aliasHash;
             this.createdAt = createdAt;
             this.expiresAt = expiresAt;
         }

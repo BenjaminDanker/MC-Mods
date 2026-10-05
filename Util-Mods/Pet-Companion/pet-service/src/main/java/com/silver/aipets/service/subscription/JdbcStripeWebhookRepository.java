@@ -246,6 +246,7 @@ public final class JdbcStripeWebhookRepository implements StripeWebhookRepositor
                 UPDATE pending_adoptions
                 SET checkout_completed_at = ?,
                     state = CASE
+                        WHEN state = 'REPLACEMENT_PENDING' THEN 'REPLACEMENT_PENDING'
                         WHEN ? >= checkout_started_at AND ? <= hard_expires_at
                             THEN 'CHECKOUT_STARTED'
                         ELSE 'EXPIRED'
@@ -253,7 +254,7 @@ public final class JdbcStripeWebhookRepository implements StripeWebhookRepositor
                     updated_at = ?
                 WHERE owner_uuid = ? AND account_link_hash = ?
                   AND stripe_checkout_session_id = ?
-                  AND state IN ('CHECKOUT_STARTED', 'EXPIRED')
+                  AND state IN ('CHECKOUT_STARTED', 'EXPIRED', 'REPLACEMENT_PENDING')
                 """)) {
             update.setTimestamp(1, Timestamp.from(event.createdAt()));
             update.setTimestamp(2, Timestamp.from(event.createdAt()));

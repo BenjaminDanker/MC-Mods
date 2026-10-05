@@ -10,12 +10,13 @@ public interface AccountLinkRepository {
     boolean create(
             UUID ownerUuid,
             String tokenHash,
+            String checkoutAliasHash,
             Instant createdAt,
             Instant expiresAt,
             Instant generationWindowStart,
             int maximumGenerations);
 
-    Optional<AccountLinkTarget> findValid(String tokenHash, Instant checkedAt);
+    Optional<AccountLinkTarget> findValidAlias(String checkoutAliasHash, Instant checkedAt);
 
     boolean attachCheckout(
             String tokenHash, String checkoutSessionId, Instant checkoutStartedAt);

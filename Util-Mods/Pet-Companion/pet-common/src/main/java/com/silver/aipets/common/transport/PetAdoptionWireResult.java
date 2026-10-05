@@ -20,7 +20,9 @@ public record PetAdoptionWireResult(
                 || status == PetAdoptionWireStatus.SPECIES_UNAVAILABLE
                 || status == PetAdoptionWireStatus.CHECKOUT_RATE_LIMITED
                 || status == PetAdoptionWireStatus.CHECKOUT_REQUIRED
-                || status == PetAdoptionWireStatus.CHECKOUT_IN_PROGRESS;
+                || status == PetAdoptionWireStatus.CHECKOUT_IN_PROGRESS
+                || status == PetAdoptionWireStatus.CHECKOUT_CLOSING
+                || status == PetAdoptionWireStatus.SUBSCRIPTION_PENDING;
         if (denied == pet.isPresent()) {
             throw new IllegalArgumentException("Adoption result pet presence does not match status");
         }
@@ -28,7 +30,8 @@ public record PetAdoptionWireResult(
                 != (checkoutUrl.isPresent() && checkoutExpiresAt.isPresent())) {
             throw new IllegalArgumentException("Checkout URL presence does not match status");
         }
-        if (status != PetAdoptionWireStatus.CHECKOUT_REQUIRED && status != PetAdoptionWireStatus.CHECKOUT_IN_PROGRESS
+        if (status != PetAdoptionWireStatus.CHECKOUT_REQUIRED
+                && status != PetAdoptionWireStatus.CHECKOUT_IN_PROGRESS
                 && (checkoutUrl.isPresent() || checkoutExpiresAt.isPresent())) {
             throw new IllegalArgumentException("Unexpected checkout URL on adoption result");
         }

@@ -46,6 +46,12 @@ public final class CheckoutLaunchService {
         if (claim == CheckoutLaunchClaim.INVALID) {
             throw new InvalidAccountLinkException("invalid or expired link");
         }
+        // Entitlement may have become active after the first guard and before the
+        // Stripe request. Never create a second payable subscription session.
+        if (subscriptionAccess.canAdopt(target.ownerUuid())) {
+            if (claim == CheckoutLaunchClaim.CLAIMED) links.releaseCheckoutStart(target.tokenHash());
+            throw new ActiveSubscriptionException("owner already has an active subscription");
+        }
         final StripeCheckoutSession session;
         try {
             session = stripe.create(

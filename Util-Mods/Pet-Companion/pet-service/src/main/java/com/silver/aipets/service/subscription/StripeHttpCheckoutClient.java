@@ -80,7 +80,21 @@ public final class StripeHttpCheckoutClient implements StripeCheckoutClient {
     }
 
     @Override
-    public void expire(String checkoutSessionId) {
+    public StripeCheckoutState retrieve(String checkoutSessionId) {
+        validateSessionId(checkoutSessionId);
+        URI retrieveEndpoint = URI.create(endpoint.toString() + "/" + checkoutSessionId);
+        HttpRequest request = HttpRequest.newBuilder(retrieveEndpoint)
+                .timeout(timeout)
+                .header("Accept", "application/json")
+                .header("Authorization", "Bearer " + secretKey)
+                .GET()
+                .build();
+        return parseState(send(request));
+    }
+
+    @Override
+    public StripeCheckoutState expire(String checkoutSessionId) {
+        validateSessionId(checkoutSessionId);
         if (checkoutSessionId == null || !checkoutSessionId.matches("cs_[A-Za-z0-9_]+")) {
             throw new IllegalArgumentException("checkoutSessionId is invalid");
         }
@@ -92,18 +106,51 @@ public final class StripeHttpCheckoutClient implements StripeCheckoutClient {
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .POST(HttpRequest.BodyPublishers.noBody())
                 .build();
-        final HttpResponse<Void> response;
+        final HttpResponse<String> response;
         try {
-            response = client.send(request, HttpResponse.BodyHandlers.discarding());
+            response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Stripe Checkout expiration was interrupted", interrupted);
         } catch (java.io.IOException failure) {
             throw new IllegalStateException("Stripe Checkout expiration failed", failure);
         }
-        if (response.statusCode() != 200) {
+        if (response.statusCode() != 200 || response.body() == null
+                || response.body().length() > MAX_RESPONSE_CHARS) {
             throw new IllegalStateException("Stripe Checkout expiration returned HTTP "
                     + response.statusCode());
+        }
+        return parseState(response);
+    }
+
+    private StripeCheckoutState parseState(HttpResponse<String> response) {
+        if (response.statusCode() != 200 || response.body() == null
+                || response.body().length() > MAX_RESPONSE_CHARS) {
+            throw new IllegalStateException("Stripe Checkout retrieval returned HTTP "
+                    + response.statusCode());
+        }
+        try {
+            JsonObject json = JsonParser.parseString(response.body()).getAsJsonObject();
+            return StripeCheckoutState.fromStripeStatus(json.get("status").getAsString());
+        } catch (RuntimeException malformed) {
+            throw new IllegalStateException("Stripe Checkout returned an invalid status", malformed);
+        }
+    }
+
+    private HttpResponse<String> send(HttpRequest request) {
+        try {
+            return client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Stripe Checkout request was interrupted", interrupted);
+        } catch (java.io.IOException failure) {
+            throw new IllegalStateException("Stripe Checkout request failed", failure);
+        }
+    }
+
+    private static void validateSessionId(String checkoutSessionId) {
+        if (checkoutSessionId == null || !checkoutSessionId.matches("cs_[A-Za-z0-9_]+")) {
+            throw new IllegalArgumentException("checkoutSessionId is invalid");
         }
     }
 

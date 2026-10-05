@@ -27,6 +27,9 @@ import java.util.UUID;
 /** Generates opaque URL tokens while persisting only HMAC digests. */
 public final class AccountLinkService {
     private static final int TOKEN_BYTES = 32;
+    private static final int CHECKOUT_ALIAS_LENGTH = 8;
+    private static final String CHECKOUT_ALIAS_ALPHABET = "23456789ABCDEFGHJKMNPQRSTVWXYZ";
+    private static final int MAX_ALIAS_COLLISION_RETRIES = 5;
     private static final int MAX_GENERATIONS = 3;
     private static final Duration GENERATION_WINDOW = Duration.ofMinutes(10);
 
@@ -69,34 +72,51 @@ public final class AccountLinkService {
                 if (intent.state() == PendingAdoptionState.PRE_CHECKOUT
                         && intent.expiresAt().isAfter(now)) {
                     Instant linkExpiry = min(now.plus(timeToLive), intent.expiresAt());
-                    String token = randomToken();
-                    PendingAdoptionLinkStatus status = pendingRepository.rotatePreCheckoutLink(
-                            ownerUuid, intent.intentId(), digest(token), now, linkExpiry,
-                            now.minus(GENERATION_WINDOW), MAX_GENERATIONS);
-                    return switch (status) {
-                        case CREATED -> AccountLinkWireResult.created(
-                                checkoutUrl(token).toString(), linkExpiry);
-                        case RATE_LIMITED -> AccountLinkWireResult.rateLimited();
-                        case CHECKOUT_IN_PROGRESS -> AccountLinkWireResult.checkoutInProgress();
-                    };
+                    for (int attempt = 0; attempt < MAX_ALIAS_COLLISION_RETRIES; attempt++) {
+                        String token = randomToken();
+                        String alias = randomAlias();
+                        try {
+                            PendingAdoptionLinkStatus status = pendingRepository.rotatePreCheckoutLink(
+                                    ownerUuid, intent.intentId(), digest(token), digest(alias), now, linkExpiry,
+                                    now.minus(GENERATION_WINDOW), MAX_GENERATIONS);
+                            return switch (status) {
+                                case CREATED -> AccountLinkWireResult.created(
+                                        checkoutUrl(alias).toString(), linkExpiry);
+                                case RATE_LIMITED -> AccountLinkWireResult.rateLimited();
+                                case CHECKOUT_IN_PROGRESS -> AccountLinkWireResult.checkoutInProgress();
+                            };
+                        } catch (CheckoutAliasCollisionException collision) {
+                            if (attempt + 1 == MAX_ALIAS_COLLISION_RETRIES) throw collision;
+                        }
+                    }
+                    throw new IllegalStateException("Unable to allocate a unique checkout alias");
                 }
-                if (intent.checkoutStillActive(now)) {
+                if (intent.state() == PendingAdoptionState.REPLACEMENT_PENDING
+                        || intent.state() == PendingAdoptionState.WAITING_FOR_ENTITLEMENT
+                        || intent.checkoutStillActive(now)) {
                     return AccountLinkWireResult.checkoutInProgress();
                 }
             }
         }
         Instant expiresAt = now.plus(timeToLive);
-        String token = randomToken();
-        boolean created = repository.create(
-                ownerUuid,
-                digest(token),
-                now,
-                expiresAt,
-                now.minus(GENERATION_WINDOW),
-                MAX_GENERATIONS);
-        return created
-                ? AccountLinkWireResult.created(checkoutUrl(token).toString(), expiresAt)
-                : AccountLinkWireResult.rateLimited();
+        for (int attempt = 0; attempt < MAX_ALIAS_COLLISION_RETRIES; attempt++) {
+            String token = randomToken();
+            String alias = randomAlias();
+            try {
+                boolean created = repository.create(
+                        ownerUuid, digest(token), digest(alias),
+                        now,
+                        expiresAt,
+                        now.minus(GENERATION_WINDOW),
+                        MAX_GENERATIONS);
+                return created
+                        ? AccountLinkWireResult.created(checkoutUrl(alias).toString(), expiresAt)
+                        : AccountLinkWireResult.rateLimited();
+            } catch (CheckoutAliasCollisionException collision) {
+                if (attempt + 1 == MAX_ALIAS_COLLISION_RETRIES) throw collision;
+            }
+        }
+        throw new IllegalStateException("Unable to allocate a unique checkout alias");
     }
 
     public PendingAdoptionLinkResult generateForPendingAdoption(
@@ -110,21 +130,29 @@ public final class AccountLinkService {
         }
         Instant now = clock.instant();
         Instant expiresAt = now.plus(timeToLive);
-        String token = randomToken();
-        PendingAdoptionLinkStatus status = pendingRepository.createWithLink(
-                ownerUuid, intentId, species, name, digest(token), now, expiresAt,
-                now.minus(GENERATION_WINDOW), MAX_GENERATIONS);
-        return switch (status) {
-            case CREATED -> new PendingAdoptionLinkResult(
-                    com.silver.aipets.service.adoption.PendingAdoptionStartStatus.CREATED,
-                    Optional.of(checkoutUrl(token).toString()), Optional.of(expiresAt));
-            case RATE_LIMITED -> new PendingAdoptionLinkResult(
-                    com.silver.aipets.service.adoption.PendingAdoptionStartStatus.RATE_LIMITED,
-                    Optional.empty(), Optional.empty());
-            case CHECKOUT_IN_PROGRESS -> new PendingAdoptionLinkResult(
-                    com.silver.aipets.service.adoption.PendingAdoptionStartStatus.CHECKOUT_IN_PROGRESS,
-                    Optional.empty(), Optional.empty());
-        };
+        for (int attempt = 0; attempt < MAX_ALIAS_COLLISION_RETRIES; attempt++) {
+            String token = randomToken();
+            String alias = randomAlias();
+            try {
+                PendingAdoptionLinkStatus status = pendingRepository.createWithLink(
+                        ownerUuid, intentId, species, name, digest(token), digest(alias), now, expiresAt,
+                        now.minus(GENERATION_WINDOW), MAX_GENERATIONS);
+                return switch (status) {
+                    case CREATED -> new PendingAdoptionLinkResult(
+                            com.silver.aipets.service.adoption.PendingAdoptionStartStatus.CREATED,
+                            Optional.of(checkoutUrl(alias).toString()), Optional.of(expiresAt));
+                    case RATE_LIMITED -> new PendingAdoptionLinkResult(
+                            com.silver.aipets.service.adoption.PendingAdoptionStartStatus.RATE_LIMITED,
+                            Optional.empty(), Optional.empty());
+                    case CHECKOUT_IN_PROGRESS -> new PendingAdoptionLinkResult(
+                            com.silver.aipets.service.adoption.PendingAdoptionStartStatus.CHECKOUT_IN_PROGRESS,
+                            Optional.empty(), Optional.empty());
+                };
+            } catch (CheckoutAliasCollisionException collision) {
+                if (attempt + 1 == MAX_ALIAS_COLLISION_RETRIES) throw collision;
+            }
+        }
+        throw new IllegalStateException("Unable to allocate a unique checkout alias");
     }
 
     public CheckoutLaunchClaim claimCheckoutStart(String tokenHash) {
@@ -137,9 +165,17 @@ public final class AccountLinkService {
     }
 
     public Optional<AccountLinkTarget> resolve(String submittedToken) {
-        String token = validateToken(submittedToken);
-        String tokenHash = digest(token);
-        return repository.findValid(tokenHash, clock.instant());
+        String code = validateCode(submittedToken);
+        return repository.findValidAlias(digest(code), clock.instant());
+    }
+
+    public static boolean isValidPublicCode(String submittedCode) {
+        try {
+            validateCode(submittedCode);
+            return true;
+        } catch (IllegalArgumentException invalid) {
+            return false;
+        }
     }
 
     public boolean attachCheckout(AccountLinkTarget target, String checkoutSessionId) {
@@ -157,6 +193,15 @@ public final class AccountLinkService {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
+    private String randomAlias() {
+        StringBuilder alias = new StringBuilder(CHECKOUT_ALIAS_LENGTH);
+        for (int i = 0; i < CHECKOUT_ALIAS_LENGTH; i++) {
+            alias.append(CHECKOUT_ALIAS_ALPHABET.charAt(
+                    random.nextInt(CHECKOUT_ALIAS_ALPHABET.length())));
+        }
+        return alias.toString();
+    }
+
     private String digest(String normalizedCode) {
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
@@ -168,12 +213,14 @@ public final class AccountLinkService {
         }
     }
 
-    private static String validateToken(String submittedToken) {
-        if (submittedToken == null || submittedToken.length() != 43
-                || !submittedToken.matches("[A-Za-z0-9_-]{43}")) {
-            throw new IllegalArgumentException("token is malformed");
+    private static String validateCode(String submittedToken) {
+        if (submittedToken == null) throw new IllegalArgumentException("checkout code is malformed");
+        if (submittedToken.length() == CHECKOUT_ALIAS_LENGTH
+                && submittedToken.matches(
+                "[23456789ABCDEFGHJKMNPQRSTVWXYZabcdefghjkmnpqrstvwxyz]{8}")) {
+            return submittedToken.toUpperCase(java.util.Locale.ROOT);
         }
-        return submittedToken;
+        throw new IllegalArgumentException("checkout code is malformed");
     }
 
     private URI checkoutUrl(String token) {

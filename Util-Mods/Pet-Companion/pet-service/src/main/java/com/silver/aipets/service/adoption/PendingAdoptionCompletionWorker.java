@@ -26,7 +26,7 @@ public final class PendingAdoptionCompletionWorker {
     public int processBatch() {
         pending.expireUnstarted(clock.instant());
         int completed = 0;
-        for (PendingAdoption intent : pending.findCheckoutCompleted(100)) {
+        for (PendingAdoption intent : pending.findEligibleForCompletion(100)) {
             if (!subscriptions.canAdopt(intent.ownerUuid())) continue;
             AdoptionResult adoption = adoptions.adopt(
                     intent.ownerUuid(), intent.species(), intent.name());
