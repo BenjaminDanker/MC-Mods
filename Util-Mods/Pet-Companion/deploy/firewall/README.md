@@ -20,7 +20,7 @@ does not manage it. If IPv6 is used, add explicit private IPv6 source/destinatio
 binding an IPv6 address. Wildcard IPv6 remains rejected by service configuration.
 
 The public internet should reach nginx on TLS 443, not port 8787. The nginx example publishes only
-the exact signed `/v1/stripe/webhook`, opaque `/checkout/{token}`, and inert result paths while
+the exact signed `/v1/stripe/webhook`, opaque `/checkout/{alias}`, and inert result paths while
 returning 404 for all bearer-authenticated routes.
 Do not enable body transforms, decompression, or filters: Stripe verification uses the exact raw
 request bytes. Validate with `nginx -t`, then test that `/health/ready` and `/v1/pets` are 404 from

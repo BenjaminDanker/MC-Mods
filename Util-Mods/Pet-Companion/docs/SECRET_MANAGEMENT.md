@@ -29,7 +29,7 @@ Every Fabric backend resolves the environment names configured by
 service token and private origin from its process environment. Model/vector secrets follow the
 same pattern. On the current Pi, the selected embedding/vector endpoint is staged. Dialogue uses
 the same `PET_OPENAI_API_KEY` when `PET_DIALOGUE_ENABLED=true`; its selected model settings are
-`PET_DIALOGUE_MODEL=gpt-5.6-luna` (reasoning disabled) and `PET_MODERATION_MODEL=omni-moderation-latest`. Do not add
+`PET_DIALOGUE_MODEL=gpt-6-luna` (reasoning disabled) and `PET_MODERATION_MODEL=omni-moderation-latest`. Do not add
 placeholder live keys, and leave the dialogue switch false until paid traffic is intentionally
 staged.
 
@@ -51,7 +51,7 @@ secret, link pepper, database password, and future provider keys must all be dis
    new value, verify a signed test event, and remove the old secret. Never infer success from a
    browser redirect.
 7. Rotating the account-link pepper intentionally invalidates all unconsumed short-lived links;
-   players can request another with `/pet link`.
+   players can request another by retrying `/pet adopt <cat|dog> <name>`.
 
 After each rotation, search service logs only for bounded failure categories. Never paste secret
 values into diagnostic commands or tickets. If a secret is committed, revoke it first, then remove

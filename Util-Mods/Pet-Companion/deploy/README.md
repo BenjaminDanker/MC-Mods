@@ -27,7 +27,7 @@ Build the application distribution without embedding secrets:
 
 Copy the contents of `pet-service/build/install/pet-service/` to `/opt/pet-companion/`. Create a dedicated `pet-companion` system user with no interactive login. Copy `config/pet-service.env.example` to `/etc/pet-companion/pet-service.env`, set mode `0600`, ownership `pet-companion:pet-companion`, and supply secrets through the approved host mechanism.
 
-Apply every migration in `db/migrations/` in version order, including V001 through V005, using the operator-controlled process in `db/README.md`. The service never changes schema on startup.
+Apply every migration in `db/migrations/` in version order, including V001 through V011, using the operator-controlled process in `db/README.md`. The service never changes schema on startup.
 
 Install `deploy/systemd/pet-companion.service`, run `systemd-analyze verify` and
 `systemctl daemon-reload`, then stage with `systemctl enable --now pet-companion`. Wildcard IPv4
@@ -65,8 +65,9 @@ and HTTPS reverse-proxy addresses.
 - `PET_OPENAI_API_KEY`: required when the OpenAI embedding worker is enabled; never place it in properties, logs, or Qdrant payloads.
 - `PET_OPENAI_BASE_URL`, `PET_EMBEDDING_MODEL`, `PET_EMBEDDING_DIMENSION`: bounded OpenAI endpoint/model/dimension settings; the default model is `text-embedding-3-small` at 1536 dimensions.
 - `PET_CONSOLIDATION_ENABLED`: separately opt-in sleep consolidation model calls; defaults to `false` and requires `PET_OPENAI_API_KEY` when enabled.
-- `PET_CONSOLIDATION_MODEL`: structured consolidation model name; defaults to `gpt-5.6-luna` and is independent of the dialogue model setting.
-- `PET_DIALOGUE_ENABLED`: explicit paid-chat switch; set `true` only after staging approval. The selected defaults are `PET_DIALOGUE_MODEL=gpt-5.6-luna` with reasoning disabled and `PET_MODERATION_MODEL=omni-moderation-latest`. `PET_SUBSCRIPTION_GROSS_USD`, `PET_STRIPE_PAYMENT_PERCENT`, `PET_STRIPE_FIXED_FEE_USD`, and `PET_STRIPE_BILLING_PERCENT` derive the per-period AI allowance after Stripe fees; dialogue, consolidation, and embedding tokens all consume that allowance. `PET_DIALOGUE_DAILY_REPLY_CAP` remains only as a legacy compatibility ceiling.
+- `PET_CONSOLIDATION_MODEL`: structured consolidation model name; defaults to `gpt-6-luna` and is independent of the dialogue model setting.
+- `PET_SLEEP_*`: bounded need-based sleep durations, fatigue rates, and thresholds; defaults are in `config/pet-service.env.example`. V011 is required before starting this service build.
+- `PET_DIALOGUE_ENABLED`: explicit paid-chat switch; set `true` only after staging approval. The selected defaults are `PET_DIALOGUE_MODEL=gpt-6-luna` with reasoning disabled and `PET_MODERATION_MODEL=omni-moderation-latest`. `PET_SUBSCRIPTION_GROSS_USD`, `PET_STRIPE_PAYMENT_PERCENT`, `PET_STRIPE_FIXED_FEE_USD`, and `PET_STRIPE_BILLING_PERCENT` derive the per-period AI allowance after Stripe fees; dialogue, sparse planning, consolidation, and embedding tokens all consume that allowance. `PET_DIALOGUE_DAILY_REPLY_CAP` remains only as a legacy compatibility ceiling.
 
 On a deployed host, keep these values in the protected environment file selected by the operator
 (mode `0600`, or stricter). Readiness reports configuration state only; it does not prove that
@@ -77,14 +78,18 @@ Install the service environment as `root:pet-companion` mode `0640` or stricter.
 
 Fabric backends use `config/pet-companion.properties` and name their token environment variable with `authority.token-environment`. Set that variable to the same internal token without writing the token into the properties file. Also set the environment variable named by `authority.compass-signing-environment` to one persistent, distinct 32+ character signing secret shared by every pet-enabled backend; rotating it invalidates existing compasses, which `/pet compass` can replace. Configure every backend's player-facing label in `authority.backend-friendly-names`.
 
+When replacing a Fabric jar on a running backend, first copy the new jar to a temporary filename **in that backend's `mods` directory**, verify its hash, and atomically rename it over the installed jar on the same filesystem. Then attach to that backend's `screen` session with `screen -r`, enter `stop`, and let its existing automatic restart start the new jar. Copying bytes directly over an open jar pathname can corrupt lazy class reads in the old JVM during shutdown.
+
 Conversation startup is controlled by `conversation.mode`. Use `staging` only on a test backend: it installs the private-chat/session/Text Display path and returns a deterministic local reply without calling an AI provider. Use `service` on a backend only after the authenticated central dialogue endpoint is enabled; it sends bounded requests to the central service and preserves the same private-chat/Text Display path. `disabled` keeps the input path installed but reports an unavailable transport instead of silently consuming right-clicks.
 
 ## Health and rollback
 
 All health routes require the bearer token. `/health/live` reports process liveness.
-`/health/ready` reports database reachability and requires all 17 V001/V005 InnoDB tables plus
-V002's recall replay, V003's Checkout-link columns, V004's dialogue context-accounting column,
-and V005's pending-adoption columns. Stripe, vector, and model report
+`/health/ready` reports database reachability and requires all 18 V001/V010 InnoDB tables plus
+the V002–V012 schema changes, including V010's `pet_decisions` table, V011's fatigue columns,
+and V012's bounded-intention motivation/entity/version columns.
+The service database account needs CRUD privileges on `pet_decisions`; otherwise the schema is
+present but invisible to its readiness probe and sparse decisions cannot persist. Stripe, vector, and model report
 `CONFIGURED` only when their validated local configuration is enabled; these are configuration
 states, not provider-reachability probes. `/health/metrics` exports Prometheus text with bounded names and no owner, pet,
 conversation, authorization, or raw-text labels. Keep it on the same backend-only network
@@ -132,15 +137,19 @@ runtime budget additionally includes consolidation and embedding rows in `ai_usa
 selects owner UUIDs, pet UUIDs, prompts, or replies. Stripe's exact net can be reconciled later from
 balance transactions without changing this configuration formula.
 
-When Stripe is enabled, Fabric `/pet link` calls authenticated
+When Stripe is enabled, Fabric adoption calls the authenticated
 `POST /v1/account-links/{minecraft-uuid}`. The service returns a clickable HTTPS URL containing a
-256-bit opaque token, stores only its HMAC digest, invalidates prior unconsumed tokens for that
-UUID, expires link opening after the configured TTL, and permits at most three generations per
-ten minutes. The player types nothing: public `GET /checkout/{token}` resolves the UUID
+256-bit internal token plus an 8-character, 30-symbol case-insensitive checkout alias, stores
+HMAC digests for both, invalidates prior unconsumed tokens for that UUID, expires link opening
+after the configured TTL, and permits at most three generations per ten minutes. The player types
+nothing: public `GET /checkout/{alias}` resolves the alias to the internal token and UUID
 server-side, creates an idempotent subscription-mode Stripe Checkout Session using the configured
 Price, persists its session ID, and redirects with HTTP 303 to `checkout.stripe.com`. Never expose
-the service bearer token or raw UUID in the public link. Reopening a valid link reuses Stripe's
-digest-derived idempotency key; the signed Checkout webhook atomically consumes the matching link.
+the service bearer token or raw UUID in the public link. The alias is only a temporary doorway for
+starting checkout and is invalid once that session starts or the pending intent is superseded;
+the durable token/session association and signed webhook handle the rest of the payment lifecycle.
+Replacing a started adoption retrieves the Stripe session and explicitly expires it before any new
+payable session is created.
 
 Stripe sends raw JSON to `POST /v1/stripe/webhook`. It requires a current valid
 `Stripe-Signature` HMAC. Keep port 8787 private and publish only that exact path, the bounded
@@ -158,9 +167,9 @@ without AI access until a verified lifecycle event is applied. Stripe retries fa
 an operator can also resend the event from Stripe after confirming the endpoint, and a later valid
 delivery still converges the same subscription. Never treat the browser redirect or a `200` for
 `checkout.session.completed` alone as proof of payment.
-The recommended player entry point is `/pet billing`: it performs one entitlement read and shows
-only the next valid action (`/pet link` for checkout or `/pet portal` for management). The legacy
-`/pet link` and `/pet portal` commands remain available and are guarded against duplicate checkout.
+The recommended player entry point is `/pet adopt <cat|dog> <name>`: it adopts immediately for
+subscribers or creates the exact pending adoption checkout for everyone else. `/pet billing`
+reports subscription state and `/pet portal` manages an existing Stripe subscription.
 The pet service now creates hosted subscription-mode Checkout and attaches the server-resolved
 UUID as trusted Session/subscription metadata; no website form, account, or manual code entry is
 required. Before generating a link, Fabric reads the authenticated

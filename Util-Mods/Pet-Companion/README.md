@@ -1,6 +1,6 @@
 # Pet Companion
 
-Implementation of the persistent AI pet system specified by `minecraft_ai_pet_system_implementation_handoff.md`. The handoff is binding; completion evidence and any newly discovered decisions are tracked in `IMPLEMENTATION_PROGRESS.md`.
+Persistent AI companions for a Fabric/Velocity Minecraft network. SQL is authoritative for pet identity, placement, sleep, events, and memories; model and vector services are bounded optional components.
 
 ## Modules
 
@@ -41,8 +41,9 @@ The baseline is Java 21, Gradle 8.14, Minecraft 1.21.10, Yarn `1.21.10+build.1`,
 
 ## Documentation map
 
-- `minecraft_ai_pet_system_implementation_handoff.md` — binding product and acceptance specification; do not edit requirements casually.
-- `IMPLEMENTATION_PROGRESS.md` — live checklist and verification evidence.
+- `docs/AGENTS.md` — repository-specific build, isolation, and deployment safety instructions.
+- `docs/DEV_PLAYER.md` — isolated synthetic operator CLI and diagnostics.
+- `docs/EXPERIENCE_UPGRADE.md` — experience/action behavior, model-call rules, and in-game checks.
 - `db/README.md` — MariaDB migrations, schema checks, and rollback boundaries.
 - `deploy/README.md` — service installation, environment, health, and production rollout.
 - `docs/` — focused operational runbooks for local verification, dialogue/consolidation, retention, vectors, secrets, and database backup/restore.
@@ -50,11 +51,11 @@ The baseline is Java 21, Gradle 8.14, Minecraft 1.21.10, Yarn `1.21.10+build.1`,
 The repository intentionally keeps operational topics separate where the commands or safety boundaries differ. Generated caches, local MariaDB data, build output, and deployment archives do not belong in the source tree.
 
 Implemented player commands currently include `/pet` (grouped clickable help; `/pet help` reopens it),
-`/pet status`, `/pet billing`, `/pet link`, `/pet portal`, `/pet adopt <cat|dog> <name>`, `/pet place`, `/pet pickup`, `/pet recall`, and
+`/pet status`, `/pet billing`, `/pet portal`, `/pet adopt <cat|dog> <name>`, `/pet place`, `/pet pickup`, `/pet recall`, and
 `/pet compass`. Operators additionally have permission-separated `/pet admin inspect <ownerUuid>`,
 `recover <ownerUuid>`, `recall-reset <ownerUuid>`, and loaded-only `reconcile` operations. Stripe
-Checkout and the Customer Portal are hosted directly from the server; no website account or
-manual `/pet link` code entry is required. The deployed permission boundary uses the documented
+Checkout and the Customer Portal are hosted directly from the server; adoption starts checkout
+when needed and no website account or manual code entry is required. The deployed permission boundary uses the documented
 vanilla level-3 admin fallback when no external provider adapter is installed.
 
 Command gates use explicit nodes: `aipets.use`, `aipets.adopt`, `aipets.chat`,
@@ -64,8 +65,9 @@ Without a permission-provider adapter, player nodes default to allowed and admin
 vanilla permission level 3. A provider adapter can install a checker through `PetPermissions`.
 
 The central service evaluates persisted sleep deadlines in bounded batches every 30 seconds.
-Its state machine uses UTC instants and fixed rules (30-minute whole-network absence,
-23-hour maximum awake time, and one-hour sleep). Install the built `pet-velocity` JAR on the
+Its state machine uses UTC instants, persisted fatigue, a 30-minute whole-network absence
+nap, and a 16-hour maximum awake interval. Normal naps last 12 minutes and deeper sleep
+lasts 40 minutes. Held and unloaded pets advance through sleep on the service. Install the built `pet-velocity` JAR on the
 proxy and configure its environment as described in `config/pet-velocity.env.example`; backend
 switch events are intentionally not subscribed and therefore do not start logout sleep.
 
@@ -102,7 +104,7 @@ staging validation are configured for the selected Raspberry Pi deployment; see
 The bounded service-side dialogue core is also implemented: pre-call access/sleep/safety gates,
 token-budgeted prompts, strict structured output, admission/cost/circuit controls, and transactional
 event/usage/trait auditing. Fabric private-chat input and the bounded billboard-like speech display
-are implemented; the opt-in central dialogue gateway now uses OpenAI `gpt-5.6-luna` structured
+are implemented; the opt-in central dialogue gateway now uses OpenAI `gpt-6-luna` structured
 outputs plus `omni-moderation-latest`, with MariaDB-authoritative context and a strict bounded
 fallback when `PET_DIALOGUE_ENABLED=false`. See `docs/DIALOGUE_CORE.md`.
 

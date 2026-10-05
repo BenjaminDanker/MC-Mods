@@ -8,7 +8,7 @@ mc-multi-world.space {
         reverse_proxy 127.0.0.1:18788
     }
 
-    @checkout path_regexp checkout ^/checkout/[A-Za-z0-9_-]{43}$
+    @checkout path_regexp checkout ^/checkout/[23456789A-HJKMNP-TV-Za-hjkmnp-tv-z]{8}$
     handle @checkout {
         reverse_proxy 127.0.0.1:18788
     }

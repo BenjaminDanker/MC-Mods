@@ -32,9 +32,10 @@ server {
         proxy_set_header X-Forwarded-Proto https;
     }
 
-    # Tokens are 256-bit base64url values. Disable access logging so an unconsumed
-    # bearer URL does not enter ordinary proxy logs or analytics.
-    location ~ ^/checkout/[A-Za-z0-9_-]{43}$ {
+    # Checkout aliases are exactly 8 case-insensitive values from the
+    # ambiguous-character-free alphabet. Disable access logging so an
+    # unconsumed bearer URL does not enter ordinary logs.
+    location ~* ^/checkout/[23456789A-HJKMNP-TV-Z]{8}$ {
         limit_except GET { deny all; }
         limit_req zone=pet_checkout_launch burst=10 nodelay;
         access_log off;
