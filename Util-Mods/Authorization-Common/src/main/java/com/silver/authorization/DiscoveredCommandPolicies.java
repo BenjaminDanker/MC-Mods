@@ -8,10 +8,10 @@ public final class DiscoveredCommandPolicies {
         CommandPolicyRegistry.Builder policies = CommandPolicyRegistry.builder();
 
         add(policies, CommandClassification.PUBLIC, null, "minecraft", "minecraft",
-                "/help", "/list", "/me", "/msg", "/tell", "/w", "/teammsg", "/tm",
-                "/random roll", "/random value", "/trigger");
+                "/help", "/list", "/msg");
         add(policies, CommandClassification.PERMISSION, "commands.admin.vanilla", "minecraft", "minecraft",
-                "/list uuids", "/random reset");
+                "/me", "/tell", "/w", "/teammsg", "/tm", "/random", "/trigger",
+                "/list uuids");
 
         add(policies, CommandClassification.PUBLIC, null, "chronicle", "chronicle",
                 "/history", "/history mine", "/history privacy", "/history privacy public",
@@ -27,8 +27,6 @@ public final class DiscoveredCommandPolicies {
 
         // Ordinary gameplay/information commands are public. Management and world-mutating
         // vanilla command families are explicitly centralized below instead of inheriting OP.
-        add(policies, CommandClassification.PUBLIC, null, "minecraft", "minecraft",
-                "/random");
         add(policies, CommandClassification.PERMISSION, "commands.admin.vanilla", "minecraft", "minecraft",
                 "/advancement", "/attribute", "/ban", "/ban-ip", "/banlist", "/bossbar",
                 "/clear", "/clone", "/damage", "/data", "/datapack", "/debug", "/defaultgamemode",

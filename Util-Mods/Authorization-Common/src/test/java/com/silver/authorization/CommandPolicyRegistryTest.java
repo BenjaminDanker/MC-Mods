@@ -167,8 +167,7 @@ class CommandPolicyRegistryTest {
             assertTrue(owner.allowed(), path);
         }
 
-        for (String path : new String[]{"/trigger", "/trigger objective", "/list", "/random", "/random roll",
-                "/random value", "/mpdsremovecustomidself", "/mpdsremovecustomidself key value"}) {
+        for (String path : new String[]{"/list", "/msg", "/mpdsremovecustomidself", "/mpdsremovecustomidself key value"}) {
             var player = decide(path, true, false, false, false, ignored -> false);
             if (path.startsWith("/mpdsremovecustomidself")) {
                 assertEquals(CommandClassification.PERMISSION, player.classification(), path);
@@ -179,6 +178,19 @@ class CommandPolicyRegistryTest {
                 assertTrue(player.visible(), path);
                 assertTrue(player.allowed(), path);
             }
+        }
+
+        for (String path : new String[]{"/me", "/tell", "/tell target message", "/w", "/w target message",
+                "/teammsg", "/teammsg message", "/tm message", "/random", "/random roll 1 6",
+                "/random value 1 6", "/random reset", "/trigger", "/trigger objective"}) {
+            var player = decide(path, true, false, false, false, ignored -> false);
+            assertEquals(CommandClassification.PERMISSION, player.classification(), path);
+            assertEquals("commands.admin.vanilla", player.requiredPermission().orElseThrow().value(), path);
+            assertFalse(player.visible(), path);
+            assertFalse(player.allowed(), path);
+            assertTrue(decide(path, true, false, false, false,
+                    permission -> permission.value().equals("commands.admin.vanilla")).allowed(), path);
+            assertTrue(decide(path, true, true, false, false, ignored -> false).allowed(), path);
         }
 
         for (String path : new String[]{"/list uuids", "/locate structure", "/locate biome",
