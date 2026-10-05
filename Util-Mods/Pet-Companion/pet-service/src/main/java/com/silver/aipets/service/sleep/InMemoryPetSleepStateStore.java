@@ -84,6 +84,16 @@ public final class InMemoryPetSleepStateStore implements PetSleepStateStore {
         }
     }
 
+    @Override
+    public List<UUID> findSleepingPetIdsAfter(String lastPetId, int limit) {
+        synchronized (monitor) {
+            return states.values().stream().filter(PetSleepState::sleeping)
+                    .map(PetSleepState::petId).sorted(java.util.Comparator.comparing(UUID::toString))
+                    .filter(id -> id.toString().compareTo(lastPetId) > 0)
+                    .limit(limit).toList();
+        }
+    }
+
     private PetSleepTransition updateLocked(
             UUID petId, Function<PetSleepState, PetSleepTransition> transition) {
         PetSleepState current = states.get(petId);
@@ -105,11 +115,8 @@ public final class InMemoryPetSleepStateStore implements PetSleepStateStore {
         if (state.sleeping()) {
             return !now.isBefore(state.sleepEndsAt().orElseThrow());
         }
-        if (!state.ownerNetworkOnline() && state.absenceSleepTriggered()) {
-            return false;
-        }
         return !now.isBefore(state.forcedSleepDueAt())
-                || state.ownerLastLogoutAt()
+                || !state.absenceSleepTriggered() && state.ownerLastLogoutAt()
                 .map(logout -> !logout.isAfter(logoutDueAtOrBefore))
                 .orElse(false);
     }

@@ -60,6 +60,31 @@ public final class InMemoryEmbeddingJobStore implements EmbeddingJobStore {
     }
 
     @Override
+    public List<EmbeddingJob> claimDueForPet(UUID petId, String workerId, Instant now,
+            Duration leaseDuration, int limit) {
+        Objects.requireNonNull(petId, "petId");
+        Objects.requireNonNull(workerId, "workerId");
+        Objects.requireNonNull(now, "now");
+        Objects.requireNonNull(leaseDuration, "leaseDuration");
+        if (workerId.isBlank() || leaseDuration.isZero() || leaseDuration.isNegative()
+                || limit < 1 || limit > 100) throw new IllegalArgumentException("Invalid claim bounds");
+        synchronized (monitor) {
+            List<EmbeddingJob> due = byId.values().stream()
+                    .filter(job -> job.petId().equals(petId) && isDue(job, now))
+                    .sorted(Comparator.comparing(EmbeddingJob::notBefore)
+                            .thenComparing(job -> job.jobId().toString()))
+                    .limit(limit).toList();
+            return due.stream().map(job -> {
+                EmbeddingJob claimed = copy(job, EmbeddingJobStatus.RUNNING,
+                        job.attemptCount() + 1, job.notBefore(), Optional.of(workerId),
+                        Optional.of(now.plus(leaseDuration)), job.lastErrorSanitized());
+                byId.put(claimed.jobId(), claimed);
+                return claimed;
+            }).toList();
+        }
+    }
+
+    @Override
     public void succeeded(UUID jobId, String workerId, Instant completedAt) {
         terminal(jobId, workerId, EmbeddingJobStatus.SUCCEEDED, Optional.empty());
     }
@@ -75,6 +100,19 @@ public final class InMemoryEmbeddingJobStore implements EmbeddingJobStore {
             byId.put(jobId, copy(current, EmbeddingJobStatus.RETRY,
                     current.attemptCount(), notBefore, Optional.empty(), Optional.empty(),
                     Optional.of(sanitizedError)));
+        }
+    }
+
+    @Override
+    public void defer(UUID jobId, String workerId, Instant attemptedAt,
+            Instant notBefore, String sanitizedReason) {
+        Objects.requireNonNull(attemptedAt, "attemptedAt");
+        Objects.requireNonNull(notBefore, "notBefore");
+        synchronized (monitor) {
+            EmbeddingJob current = requireLock(jobId, workerId);
+            byId.put(jobId, copy(current, EmbeddingJobStatus.RETRY,
+                    Math.max(0, current.attemptCount() - 1), notBefore,
+                    Optional.empty(), Optional.empty(), Optional.of(sanitizedReason)));
         }
     }
 

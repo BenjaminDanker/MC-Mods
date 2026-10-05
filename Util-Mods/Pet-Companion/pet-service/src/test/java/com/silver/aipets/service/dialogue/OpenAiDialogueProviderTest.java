@@ -10,6 +10,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class OpenAiDialogueProviderTest {
     private static final String TOKEN = "test-openai-key";
@@ -26,8 +27,18 @@ class OpenAiDialogueProviderTest {
         server.createContext("/v1/chat/completions", exchange -> {
             String body = new String(exchange.getRequestBody().readAllBytes());
             assertTrue(body.contains("json_schema"));
+            assertTrue(body.contains("\"model\":\"gpt-6-luna\""));
+            assertTrue(body.contains("\"reasoning_effort\":\"none\""));
+            assertTrue(body.contains("\"max_completion_tokens\":2000"));
+            var messages = com.google.gson.JsonParser.parseString(body).getAsJsonObject().getAsJsonArray("messages");
+            assertEquals(2, messages.size());
+            assertEquals("system", messages.get(0).getAsJsonObject().get("role").getAsString());
+            assertEquals("Pet context and instructions", messages.get(0).getAsJsonObject().get("content").getAsString());
+            assertEquals("user", messages.get(1).getAsJsonObject().get("role").getAsString());
+            assertEquals("I was thinking about going back there.", messages.get(1).getAsJsonObject().get("content").getAsString());
+            assertFalse(body.contains("\"stream\":true"));
             assertEquals("Bearer " + TOKEN, exchange.getRequestHeaders().getFirst("Authorization"));
-            String responseJson = "{\"id\":\"chatcmpl_test\",\"choices\":[{\"message\":{\"content\":"
+            String responseJson = "{\"id\":\"chatcmpl_test\",\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":"
                     + quote(OUTPUT) + "}}],\"usage\":{\"prompt_tokens\":42,\"completion_tokens\":12,"
                     + "\"prompt_tokens_details\":{\"cached_tokens\":4}}}";
             byte[] response = responseJson.getBytes();
@@ -39,15 +50,20 @@ class OpenAiDialogueProviderTest {
         try {
             OpenAiDialogueModelClient client = new OpenAiDialogueModelClient(
                     URI.create("http://127.0.0.1:" + server.getAddress().getPort()),
-                    "gpt-5.6-luna", TOKEN, Duration.ofSeconds(2));
+                    "gpt-6-luna", TOKEN, Duration.ofSeconds(2));
             DialogueModelResponse result = client.complete(
-                    UUID.randomUUID(), new DialoguePrompt("hello", 5),
+                    UUID.randomUUID(), new DialoguePrompt("Pet context and instructions", 5,
+                            com.silver.aipets.common.transport.DialogueContextUsageWire.empty(),
+                            java.util.Optional.of("I was thinking about going back there.")),
                     DialogueStructuredSchema.JSON_SCHEMA, Duration.ofSeconds(2));
             assertEquals(OUTPUT, result.structuredJson());
             assertEquals(42, result.inputTokens());
             assertEquals(4, result.cachedInputTokens());
             assertEquals(12, result.outputTokens());
-            assertTrue(result.estimatedCost().signum() > 0);
+            assertEquals("stop", result.finishReason());
+            assertEquals(2000, result.configuredCompletionLimit());
+            assertEquals(0, result.estimatedCost().compareTo(
+                    new java.math.BigDecimal("0.00000984")));
         } finally {
             server.stop(0);
         }
@@ -77,7 +93,7 @@ class OpenAiDialogueProviderTest {
     }
 
     @Test
-    void moderationOutageAllowsLocallySafeMessage() throws Exception {
+    void moderationOutageFailsClosedForLocallySafeMessage() throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1/moderations", exchange -> {
             exchange.sendResponseHeaders(503, 0);
@@ -90,8 +106,8 @@ class OpenAiDialogueProviderTest {
                     "omni-moderation-latest", TOKEN, Duration.ofSeconds(2));
             DialogueSafety.SafetyResult result = new ModeratedDialogueSafety(client)
                     .preprocess("hello pet", 500);
-            assertTrue(result.allowed());
-            assertEquals("hello pet", result.normalizedText());
+            assertFalse(result.allowed());
+            assertEquals("MODERATION_UNAVAILABLE", result.category());
         } finally {
             server.stop(0);
         }

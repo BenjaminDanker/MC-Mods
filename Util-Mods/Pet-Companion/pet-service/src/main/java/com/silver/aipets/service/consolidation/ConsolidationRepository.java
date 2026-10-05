@@ -15,6 +15,12 @@ public interface ConsolidationRepository {
 
     List<ConsolidationJob> claimDue(String workerId, Instant now, Duration lease, int limit);
 
+    /** Claim before filtering/limiting, without consuming another pet's work. */
+    default List<ConsolidationJob> claimDueForPet(
+            UUID petId, String workerId, Instant now, Duration lease, int limit) {
+        throw new UnsupportedOperationException("Pet-scoped consolidation claims are required");
+    }
+
     Optional<Pet> findPet(UUID petId);
 
     List<ConsolidationEvent> pendingEvents(UUID petId);
@@ -35,6 +41,10 @@ public interface ConsolidationRepository {
     void retry(
             ConsolidationJob job, String workerId, Instant attemptedAt,
             Instant notBefore, String errorCategory);
+
+    /** Postpone while absent without using a model attempt. */
+    void defer(ConsolidationJob job, String workerId, Instant attemptedAt,
+            Instant notBefore, String reason);
 
     void failed(
             ConsolidationJob job, String workerId, Instant at, String errorCategory);

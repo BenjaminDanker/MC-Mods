@@ -4,6 +4,10 @@ import com.silver.aipets.common.observability.StructuredPetEvent;
 import com.silver.aipets.fabric.PetCompanionMod;
 import com.silver.aipets.fabric.entity.PetEntityController;
 import com.silver.aipets.fabric.entity.PetEntityData;
+import com.silver.aipets.fabric.ai.PetActionCapabilities;
+import com.silver.aipets.fabric.ai.PetActionController;
+import com.silver.aipets.fabric.ai.PetIntentionState;
+import com.silver.aipets.fabric.ai.PetIntent;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -12,6 +16,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.UUID;
+import java.time.Instant;
 import net.minecraft.world.entity.EntityReference;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.TamableAnimal;
@@ -26,6 +31,7 @@ public abstract class TameableEntityMixin implements PetEntityData {
     @Unique private static final String OWNER_ID_KEY = "pet_companion:owner_uuid";
     @Unique private static final String RECORD_VERSION_KEY = "pet_companion:record_version";
     @Unique private static final String SLEEPING_KEY = "pet_companion:sleeping";
+    @Unique private static final String INTENTION_KEY = "pet_companion:intention";
 
     @Unique private UUID aipets$petId;
     @Unique private UUID aipets$ownerUuid;
@@ -42,6 +48,15 @@ public abstract class TameableEntityMixin implements PetEntityData {
         view.putString(OWNER_ID_KEY, aipets$ownerUuid.toString());
         view.putLong(RECORD_VERSION_KEY, aipets$recordVersion);
         view.putBoolean(SLEEPING_KEY, aipets$sleeping);
+        PetIntentionState intention = PetActionController.snapshot((TamableAnimal) (Object) this);
+        if (!aipets$sleeping && intention != null && intention.resumable(Instant.now())) {
+            view.putString(INTENTION_KEY, intention.intent().name());
+            view.putString(INTENTION_KEY + ":reason", intention.reason().name());
+            view.putLong(INTENTION_KEY + ":began", intention.beganAt().toEpochMilli());
+            view.putLong(INTENTION_KEY + ":reconsider", intention.reconsiderAt().toEpochMilli());
+            view.putLong(INTENTION_KEY + ":expires", intention.expiresAt().toEpochMilli());
+            view.putLong(INTENTION_KEY + ":version", intention.version());
+        }
     }
 
     @Inject(method = "readAdditionalSaveData(Lnet/minecraft/world/level/storage/ValueInput;)V", at = @At("TAIL"))
@@ -62,6 +77,25 @@ public abstract class TameableEntityMixin implements PetEntityData {
             aipets$recordVersion = version;
             aipets$sleeping = view.getBooleanOr(SLEEPING_KEY, false);
             PetEntityController.configure((TamableAnimal) (Object) this);
+            aipets$setSleeping(aipets$sleeping);
+            String savedIntent = view.getStringOr(INTENTION_KEY, "");
+            if (!aipets$sleeping && !savedIntent.isBlank()) {
+                try {
+                    PetActionController.restore((TamableAnimal) (Object) this,
+                            new PetIntentionState(PetIntent.valueOf(savedIntent),
+                                    PetIntentionState.Reason.valueOf(view.getStringOr(
+                                            INTENTION_KEY + ":reason", "STANCE")),
+                                    null, null, null,
+                                    Instant.ofEpochMilli(view.getLongOr(INTENTION_KEY + ":began", 0)),
+                                    Instant.ofEpochMilli(view.getLongOr(INTENTION_KEY + ":reconsider", 0)),
+                                    Instant.ofEpochMilli(view.getLongOr(INTENTION_KEY + ":expires", 0)),
+                                    view.getLongOr(INTENTION_KEY + ":version", 0)));
+                } catch (RuntimeException malformedIntention) {
+                    PetCompanionMod.LOGGER.warn(StructuredPetEvent
+                            .operation("entity_intention_nbt_read")
+                            .failure(malformedIntention).outcome("intention_dropped").toJson());
+                }
+            }
         } catch (IllegalArgumentException malformed) {
             clearIdentity();
             PetCompanionMod.LOGGER.warn(StructuredPetEvent
@@ -160,6 +194,11 @@ public abstract class TameableEntityMixin implements PetEntityData {
         aipets$ownerUuid = java.util.Objects.requireNonNull(ownerUuid, "ownerUuid");
         aipets$recordVersion = recordVersion;
         aipets$sleeping = sleeping;
+        if (sleeping) {
+            ((TamableAnimal) (Object) this).getNavigation().stop();
+            PetActionCapabilities.forEntity((TamableAnimal) (Object) this)
+                    .sit((TamableAnimal) (Object) this, true);
+        }
     }
 
     @Override
@@ -176,8 +215,11 @@ public abstract class TameableEntityMixin implements PetEntityData {
             throw new IllegalStateException("Cannot update an unmarked entity");
         }
         aipets$sleeping = sleeping;
+        PetActionCapabilities.forEntity((TamableAnimal) (Object) this)
+                .sit((TamableAnimal) (Object) this, sleeping);
         if (sleeping) {
             ((TamableAnimal) (Object) this).getNavigation().stop();
+            PetActionController.invalidate((TamableAnimal) (Object) this);
         }
     }
 

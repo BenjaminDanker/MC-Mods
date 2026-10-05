@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PetSpeechPolicyTest {
     @Test
-    void sanitizesWrapsCapsSentencesAndClampsLifetime() {
+    void sanitizesWrapsCapsCharactersAndClampsLifetime() {
         PetSpeechPolicy policy = new PetSpeechPolicy(
                 80, 20, Duration.ofSeconds(5), Duration.ofSeconds(12),
                 0.35F, 180.0F, 1.0F);
@@ -20,11 +20,15 @@ class PetSpeechPolicyTest {
 
         assertFalse(prepared.plainText().contains("§"));
         assertFalse(prepared.plainText().contains("http"));
-        assertFalse(prepared.plainText().contains("Third"));
         assertTrue(prepared.plainText().codePointCount(0, prepared.plainText().length()) <= 80);
         assertTrue(prepared.wrappedText().contains("\n"));
         assertTrue(prepared.lifetime().compareTo(Duration.ofSeconds(5)) >= 0);
         assertTrue(prepared.lifetime().compareTo(Duration.ofSeconds(12)) <= 0);
         assertEquals(180.0F, policy.yawOffsetDegrees());
+    }
+
+    @Test void renderingPreservesShortSentencesRatherThanJudgingConversation() {
+        String text="Yes. Sit with me. No questions.";
+        assertEquals(text,PetSpeechPolicy.defaults().prepare(text).plainText());
     }
 }

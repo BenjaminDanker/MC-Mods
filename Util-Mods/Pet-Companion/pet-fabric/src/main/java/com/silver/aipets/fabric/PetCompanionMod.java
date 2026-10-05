@@ -21,6 +21,7 @@ import com.silver.aipets.fabric.metrics.HttpPetMetricsReporter;
 import com.silver.aipets.fabric.metrics.PetMetricsReporter;
 import com.silver.aipets.fabric.interaction.PetInteractionRouter;
 import com.silver.aipets.fabric.entity.PetEntityFactory;
+import com.silver.aipets.fabric.experience.PetExperienceTracker;
 import com.silver.aipets.fabric.placement.PetPickupCoordinator;
 import com.silver.aipets.fabric.placement.PetPlacementCoordinator;
 import com.silver.aipets.fabric.placement.SafePlacementFinder;
@@ -45,6 +46,8 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
+import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
+import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import org.slf4j.Logger;
@@ -85,6 +88,8 @@ public final class PetCompanionMod implements ModInitializer {
             new AtomicReference<>();
     private static final AtomicReference<PetTransferCoordinator> TRANSFER_COORDINATOR =
             new AtomicReference<>();
+    private static final AtomicReference<PetExperienceTracker> EXPERIENCE_TRACKER =
+            new AtomicReference<>();
     private static final PrivateChatPetTextInputUi PRIVATE_CHAT_INPUT =
             PrivateChatPetTextInputUi.systemClock();
     private static final PetSpeechDisplayManager SPEECH_DISPLAY_MANAGER =
@@ -112,8 +117,14 @@ public final class PetCompanionMod implements ModInitializer {
             }
             return result;
         });
-        ServerEntityEvents.ENTITY_LOAD.register(PERIODIC_RECONCILIATION::onEntityLoad);
+        ServerEntityEvents.ENTITY_LOAD.register((entity, world) -> {
+            PERIODIC_RECONCILIATION.onEntityLoad(entity, world);
+            PetExperienceTracker tracker = EXPERIENCE_TRACKER.get();
+            if (tracker != null) tracker.onLoad(entity);
+        });
         ServerEntityEvents.ENTITY_UNLOAD.register((entity, world) -> {
+            PetExperienceTracker tracker = EXPERIENCE_TRACKER.get();
+            if (tracker != null) tracker.onUnload(entity);
             SPEECH_DISPLAY_MANAGER.onPetUnloaded(entity);
             conversationCoordinator().ifPresent(coordinator -> coordinator.onPetUnloaded(entity));
             if (entity instanceof com.silver.aipets.fabric.entity.PetEntityData data
@@ -121,8 +132,20 @@ public final class PetCompanionMod implements ModInitializer {
                 PRIVATE_CHAT_INPUT.cancelPet(data.aipets$getPetId());
             }
         });
+        PlayerBlockBreakEvents.AFTER.register((world, player, pos, state, blockEntity) -> {
+            PetExperienceTracker tracker = EXPERIENCE_TRACKER.get();
+            if (tracker != null && player instanceof net.minecraft.server.level.ServerPlayer owner) {
+                tracker.ownerBrokeBlock(owner, pos, state);
+            }
+        });
+        ServerLivingEntityEvents.AFTER_DEATH.register((entity, source) -> {
+            PetExperienceTracker tracker = EXPERIENCE_TRACKER.get();
+            if (tracker != null) tracker.ownerDefeatedMob(entity, source);
+        });
         ServerTickEvents.END_LEVEL_TICK.register(PERIODIC_RECONCILIATION::onEndWorldTick);
         ServerTickEvents.END_SERVER_TICK.register(server -> {
+            PetExperienceTracker tracker = EXPERIENCE_TRACKER.get();
+            if (tracker != null) tracker.tick(server);
             petCompassManager().ifPresent(manager -> manager.onEndServerTick(server));
             entityRecoveryCoordinator().ifPresent(manager -> manager.tick(server));
             conversationCoordinator().ifPresent(PetConversationCoordinator::tick);
@@ -159,6 +182,8 @@ public final class PetCompanionMod implements ModInitializer {
             conversationCoordinator().ifPresent(PetConversationCoordinator::clear);
             PRIVATE_CHAT_INPUT.clear();
             SPEECH_DISPLAY_MANAGER.clear();
+            PetExperienceTracker tracker = EXPERIENCE_TRACKER.getAndSet(null);
+            if (tracker != null) tracker.clear();
             PetMetricsReporter reporter = METRICS_REPORTER.getAndSet(null);
             closeMetricsReporter(reporter);
         });
@@ -379,6 +404,10 @@ public final class PetCompanionMod implements ModInitializer {
         return SPEECH_DISPLAY_MANAGER;
     }
 
+    public static Optional<PetExperienceTracker> experienceTracker() {
+        return Optional.ofNullable(EXPERIENCE_TRACKER.get());
+    }
+
     /** Shared by inventory mixins; unsigned or wrong-owner candidates are never accepted. */
     public static boolean isPetCompassAllowed(Inventory inventory, ItemStack stack) {
         if (!PetCompassItem.isCandidate(stack)) {
@@ -400,6 +429,7 @@ public final class PetCompanionMod implements ModInitializer {
                 return;
             }
             PetServiceClientConfig config = configured.orElseThrow();
+            EXPERIENCE_TRACKER.set(new PetExperienceTracker(config));
             HttpPetMetricsReporter metricsReporter = new HttpPetMetricsReporter(config);
             installAuthorityGateway(
                     config.backendId(),

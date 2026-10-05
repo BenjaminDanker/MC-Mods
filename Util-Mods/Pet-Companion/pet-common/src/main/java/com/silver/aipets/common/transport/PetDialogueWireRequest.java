@@ -12,7 +12,13 @@ public record PetDialogueWireRequest(
         UUID petId,
         BackendId backendId,
         String dimensionId,
-        String message) {
+        String message,
+        PetSceneSnapshot scene) {
+    public PetDialogueWireRequest(UUID requestId, UUID sessionId, UUID ownerUuid,
+            UUID petId, BackendId backendId, String dimensionId, String message) {
+        this(requestId, sessionId, ownerUuid, petId, backendId, dimensionId,
+                message, PetSceneSnapshot.unknown());
+    }
     public PetDialogueWireRequest {
         Objects.requireNonNull(requestId, "requestId");
         Objects.requireNonNull(sessionId, "sessionId");
@@ -21,6 +27,7 @@ public record PetDialogueWireRequest(
         Objects.requireNonNull(backendId, "backendId");
         dimensionId = bounded(dimensionId, 191, "dimensionId");
         message = bounded(message, 500, "message");
+        Objects.requireNonNull(scene, "scene");
     }
 
     private static String bounded(String value, int maximum, String name) {

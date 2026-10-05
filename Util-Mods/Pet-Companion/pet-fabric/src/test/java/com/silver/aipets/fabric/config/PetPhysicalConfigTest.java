@@ -10,6 +10,8 @@ class PetPhysicalConfigTest {
     void choosesAdaptiveSpeedByDistanceBand() {
         PetPhysicalConfig config = PetPhysicalConfig.defaults();
 
+        assertEquals(3.5, config.followStopDistance());
+
         assertEquals(config.nearSpeed(), config.speedForSquaredDistance(8.99 * 8.99));
         assertEquals(config.mediumSpeed(), config.speedForSquaredDistance(9.0 * 9.0));
         assertEquals(config.farSpeed(), config.speedForSquaredDistance(16.0 * 16.0));

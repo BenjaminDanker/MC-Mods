@@ -2,6 +2,7 @@ package com.silver.aipets.service.http;
 
 import com.silver.aipets.service.subscription.CheckoutLaunchService;
 import com.silver.aipets.service.subscription.ActiveSubscriptionException;
+import com.silver.aipets.service.subscription.AccountLinkService;
 import com.silver.aipets.service.subscription.InvalidAccountLinkException;
 import com.silver.aipets.service.subscription.StripeCheckoutSession;
 import com.sun.net.httpserver.HttpExchange;
@@ -58,7 +59,7 @@ public final class CheckoutHttpHandler implements HttpHandler {
                 return;
             }
             String token = path.substring(PREFIX.length());
-            if (token.contains("/")) {
+            if (token.contains("/") || !AccountLinkService.isValidPublicCode(token)) {
                 page(exchange, 404, "Link not found", "Request a new link in Minecraft.");
                 return;
             }

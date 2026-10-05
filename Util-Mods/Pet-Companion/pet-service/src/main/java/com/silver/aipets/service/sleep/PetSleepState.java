@@ -18,7 +18,10 @@ public record PetSleepState(
         Optional<UUID> ownerAbsenceSessionId,
         boolean absenceSleepTriggered,
         Instant lastPresenceUpdateAt,
-        Instant updatedAt) {
+        Instant updatedAt,
+        double fatigue,
+        Instant fatigueUpdatedAt,
+        Instant awakeSince) {
 
     public PetSleepState {
         Objects.requireNonNull(petId, "petId");
@@ -30,6 +33,11 @@ public record PetSleepState(
         Objects.requireNonNull(ownerAbsenceSessionId, "ownerAbsenceSessionId");
         Objects.requireNonNull(lastPresenceUpdateAt, "lastPresenceUpdateAt");
         Objects.requireNonNull(updatedAt, "updatedAt");
+        Objects.requireNonNull(fatigueUpdatedAt, "fatigueUpdatedAt");
+        Objects.requireNonNull(awakeSince, "awakeSince");
+        if (!Double.isFinite(fatigue) || fatigue < 0 || fatigue > 100) {
+            throw new IllegalArgumentException("fatigue must be within 0-100");
+        }
         if (sleeping != (sleepStartedAt.isPresent() && sleepEndsAt.isPresent())) {
             throw new IllegalArgumentException("sleeping requires both sleep timestamps and awake requires neither");
         }
@@ -55,7 +63,8 @@ public record PetSleepState(
         Objects.requireNonNull(policy, "policy");
         return new PetSleepState(
                 petId, false, Optional.empty(), Optional.empty(), Optional.empty(),
-                createdAt.plus(policy.maximumAwake()), false, Optional.empty(), Optional.empty(),
-                false, createdAt, createdAt);
+                PetSleepTransitions.dueAt(createdAt, createdAt, 0, false, policy),
+                false, Optional.empty(), Optional.empty(),
+                false, createdAt, createdAt, 0, createdAt, createdAt);
     }
 }

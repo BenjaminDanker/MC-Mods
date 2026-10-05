@@ -79,6 +79,27 @@ public final class InMemoryLongTermMemoryStore implements LongTermMemoryStore {
     }
 
     @Override
+    public MemoryPage listPendingEmbeddingsForPet(UUID petId, int limit) {
+        Objects.requireNonNull(petId, "petId");
+        if (limit < 1 || limit > 1_000) throw new IllegalArgumentException("Invalid page limit");
+        synchronized (monitor) {
+            List<LongTermMemoryCard> pending = cards.values().stream()
+                    .filter(card -> card.active() && card.petId().equals(petId))
+                    .filter(card -> !"READY".equals(embeddings.getOrDefault(card.memoryId(),
+                            new EmbeddingState("PENDING", null, null)).status())
+                            && !"FAILED".equals(embeddings.getOrDefault(card.memoryId(),
+                            new EmbeddingState("PENDING", null, null)).status()))
+                    .sorted(Comparator.comparing(card -> card.memoryId().toString()))
+                    .limit(limit + 1).toList();
+            boolean hasMore = pending.size() > limit;
+            List<LongTermMemoryCard> page = hasMore
+                    ? new ArrayList<>(pending.subList(0, limit)) : pending;
+            return new MemoryPage(page, hasMore && !page.isEmpty()
+                    ? Optional.of(page.getLast().memoryId()) : Optional.empty());
+        }
+    }
+
+    @Override
     public void markEmbeddingReady(
             UUID petId, UUID memoryId, long expectedVersion,
             String model, String reference, Instant at) {

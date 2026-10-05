@@ -6,7 +6,9 @@ import com.silver.aipets.common.domain.PetTraits;
 import com.silver.aipets.common.domain.TraitCategory;
 import com.silver.aipets.common.domain.TraitName;
 import com.silver.aipets.common.transport.DialogueContextUsageWireCodec;
+import com.silver.aipets.common.transport.PetDialogueAction;
 import com.silver.aipets.service.persistence.PetPersistenceException;
+import com.google.gson.JsonArray;
 
 import javax.sql.DataSource;
 import java.math.BigDecimal;
@@ -28,12 +30,16 @@ import java.util.function.Supplier;
 
 /** MariaDB atomic event/usage/state/audit adapter using V001 tables and UTC daily budgets. */
 public final class JdbcDialogueStateStore implements DialogueStateStore {
+    private static final System.Logger LOGGER=System.getLogger(JdbcDialogueStateStore.class.getName());
     private static final String LOCK_STATE = """
             SELECT t.curiosity, t.boldness, t.playfulness, t.expressiveness,
                    t.independence, t.attachment, t.trust, t.security,
-                   t.relationship_summary, t.summary_version, t.updated_at,
+                   t.relationship_summary, t.summary_version, t.updated_at,t.self_model_json,t.self_model_version,
                    m.content, m.excited, m.anxious, m.tired,
-                   m.last_decay_at, m.updated_at AS mood_updated_at
+                   m.last_decay_at, m.updated_at AS mood_updated_at,
+                   m.affect_valence,m.affect_valence_intensity,m.affect_alertness,
+                   m.affect_alertness_intensity,m.affect_social_stance,m.affect_social_intensity,
+                   m.affect_trigger,m.affect_target_uuid,m.affect_updated_at,m.affect_event_id
             FROM pet_traits t JOIN pet_mood m ON m.pet_id = t.pet_id
             WHERE t.pet_id = ? FOR UPDATE
             """;
@@ -48,8 +54,16 @@ public final class JdbcDialogueStateStore implements DialogueStateStore {
                 event_id, pet_id, owner_uuid, event_type, occurred_at,
                 source_server, source_dimension, importance, summary,
                 raw_player_text, raw_pet_reply, short_term_expires_at,
-                prompt_eligible, consolidation_status, created_at)
-            VALUES (?, ?, ?, 'DIALOGUE', ?, ?, ?, ?, ?, ?, ?, ?, TRUE, 'PENDING', ?)
+                prompt_eligible, consolidation_status, created_at,memory_kind,source_provenance,
+                confidence,salience,emotional_significance,participants_json,location_json,metadata_json,
+                memory_candidate_text,memory_candidate_confidence)
+            VALUES (?, ?, ?, 'DIALOGUE', ?, ?, ?, ?, ?, ?, ?, ?, TRUE, 'PENDING', ?,
+                'EPISODE','OWNER_STATEMENT',1.000,?,?,?, ?,?,?,?)
+            """;
+    private static final String INSERT_RELATIONSHIP_EVIDENCE = """
+            INSERT INTO pet_relationship_evidence (
+                interaction_id,event_id,pet_id,relationship_type,strength,occurred_at)
+            VALUES (?,?,?,?,?,?)
             """;
     private static final String UPDATE_TRAITS = """
             UPDATE pet_traits SET curiosity=?, boldness=?, playfulness=?, expressiveness=?,
@@ -57,7 +71,14 @@ public final class JdbcDialogueStateStore implements DialogueStateStore {
             WHERE pet_id=?
             """;
     private static final String UPDATE_MOOD = """
-            UPDATE pet_mood SET content=?, excited=?, anxious=?, tired=?, updated_at=?
+            UPDATE pet_mood SET content=?, excited=?, anxious=?, tired=?, last_decay_at=?, updated_at=?,
+                affect_valence=?,affect_valence_intensity=?,affect_alertness=?,affect_alertness_intensity=?,
+                affect_social_stance=?,affect_social_intensity=?,affect_trigger=?,affect_target_uuid=?,affect_updated_at=?,affect_event_id=?
+                ,owner_intent_guess=CASE WHEN ? THEN NULL WHEN ? THEN ? ELSE owner_intent_guess END,
+                owner_emotion_guess=CASE WHEN ? THEN NULL WHEN ? THEN ? ELSE owner_emotion_guess END,
+                owner_interpretation_confidence=CASE WHEN ? THEN NULL WHEN ? THEN ? ELSE owner_interpretation_confidence END,
+                owner_interpretation_event_id=CASE WHEN ? THEN NULL WHEN ? THEN ? ELSE owner_interpretation_event_id END,
+                owner_interpretation_updated_at=CASE WHEN ? THEN NULL WHEN ? THEN ? ELSE owner_interpretation_updated_at END
             WHERE pet_id=?
             """;
     private static final String INSERT_AUDIT = """
@@ -85,32 +106,48 @@ public final class JdbcDialogueStateStore implements DialogueStateStore {
     @Override
     public DialoguePersistResult commit(DialoguePersistRequest request) {
         Objects.requireNonNull(request, "request");
+        String operation = "connection";
         try (Connection connection = dataSource.getConnection()) {
             boolean autoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
             try {
+                operation = "lock_state";
                 LockedState locked = lock(connection, request.expectedPet().petId());
                 validateExpected(request, locked);
+                operation = "daily_trait_budget";
                 Map<TraitName, Integer> dailyUsed = dailyChanges(
                         connection, request.expectedPet().petId(), request.occurredAt());
                 Applied applied = apply(request, locked, dailyUsed);
-                insertEvent(connection, request);
-                updateTraits(connection, request, applied.traits());
-                updateMood(connection, request, applied.mood());
-                insertAudits(connection, request, locked.traits(), applied);
-                insertUsage(connection, request.usage());
-                connection.commit();
+                operation = "insert_event"; insertEvent(connection, request);
+                operation = "insert_relationship_evidence"; insertRelationshipEvidence(connection, request);
+                operation = "record_owner_memory";
+                if (request.output().ownerMemory().isPresent()) {
+                    OwnerMemoryWriter.write(connection, request, request.output().ownerMemory().orElseThrow());
+                }
+                operation = "update_traits"; updateTraits(connection, request, applied.traits());
+                operation = "update_mood"; updateMood(connection, request, applied.mood(), applied.affect());
+                operation = "update_self_model_candidate"; updateSelfModelCandidate(connection, request, locked);
+                operation = "insert_trait_audits"; insertAudits(connection, request, locked.traits(), applied);
+                operation = "insert_usage"; insertUsage(connection, request.usage());
+                operation = "commit"; connection.commit();
                 return new DialoguePersistResult(
                         applied.traits(), applied.mood(), applied.traitDeltas(),
                         applied.moodDeltas(), request.output().importance()
                         .expiresAt(request.occurredAt()));
             } catch (SQLException | RuntimeException failure) {
+                if (failure instanceof SQLException sqlFailure) {
+                    LOGGER.log(System.Logger.Level.WARNING, "dialogue_persistence_operation_failed operation="
+                            + operation + " sql_state=" + safeSqlState(sqlFailure.getSQLState())
+                            + " vendor_code=" + sqlFailure.getErrorCode());
+                }
                 connection.rollback();
                 throw failure;
             } finally {
                 connection.setAutoCommit(autoCommit);
             }
         } catch (SQLException failure) {
+            LOGGER.log(System.Logger.Level.WARNING,"dialogue_persistence_sql_failure operation="+operation+" sql_state="
+                    + safeSqlState(failure.getSQLState())+" vendor_code="+failure.getErrorCode());
             throw new PetPersistenceException("Could not commit dialogue state", failure);
         }
     }
@@ -146,10 +183,19 @@ public final class JdbcDialogueStateStore implements DialogueStateStore {
                         rows.getInt("content"), rows.getInt("excited"),
                         rows.getInt("anxious"), rows.getInt("tired"),
                         instant(rows, "last_decay_at"), instant(rows, "mood_updated_at"));
+                String target = rows.getString("affect_target_uuid");
+                BehavioralAffect affect = new BehavioralAffect(
+                        rows.getInt("affect_valence"), rows.getInt("affect_valence_intensity"),
+                        rows.getInt("affect_alertness"), rows.getInt("affect_alertness_intensity"),
+                        rows.getInt("affect_social_stance"), rows.getInt("affect_social_intensity"),
+                        rows.getString("affect_trigger"), target == null ? null : UUID.fromString(target),
+                        instant(rows, "affect_updated_at"), uuidOrNull(rows.getString("affect_event_id")));
+                String selfModelJson = rows.getString("self_model_json");
+                long selfModelVersion = rows.getLong("self_model_version");
                 if (rows.next()) {
                     throw new SQLException("Pet trait/mood uniqueness invariant is violated");
                 }
-                return new LockedState(traits, mood);
+                return new LockedState(traits, mood, affect, selfModelJson, selfModelVersion);
             }
         }
     }
@@ -200,8 +246,10 @@ public final class JdbcDialogueStateStore implements DialogueStateStore {
             traits[trait.ordinal()] = next;
             appliedTraits.put(trait, next - old);
         }
+        PetMood decayed = locked.mood().decay(request.expectedPet().appearance().species(),
+                locked.traits(), request.occurredAt());
         int[] mood = java.util.Arrays.stream(MoodDimension.values())
-                .mapToInt(locked.mood()::value).toArray();
+                .mapToInt(decayed::value).toArray();
         Map<MoodDimension, Integer> appliedMood = new EnumMap<>(MoodDimension.class);
         for (MoodDimension dimension : MoodDimension.values()) {
             int old = mood[dimension.ordinal()];
@@ -215,9 +263,14 @@ public final class JdbcDialogueStateStore implements DialogueStateStore {
                 locked.traits().relationshipSummary(), locked.traits().summaryVersion(),
                 request.occurredAt());
         PetMood updatedMood = new PetMood(
-                mood[0], mood[1], mood[2], mood[3], locked.mood().lastDecayAt(),
+                mood[0], mood[1], mood[2], mood[3], decayed.lastDecayAt(),
                 request.occurredAt());
-        return new Applied(updatedTraits, updatedMood, appliedTraits, appliedMood);
+        BehavioralAffect affect = locked.affect().apply(request.output().affectDelta(),
+                request.output().affectStrength(), request.output().relationshipSignal(), updatedTraits,
+                request.output().relationshipSignal().meaningful() ? .90
+                        : request.output().affectDelta()==DialogueAffect.NONE ? 0 : .55,
+                request.expectedPet().ownerUuid(), request.eventId(), request.occurredAt());
+        return new Applied(updatedTraits, updatedMood, affect, appliedTraits, appliedMood);
     }
 
     private static void insertEvent(Connection connection, DialoguePersistRequest request)
@@ -230,8 +283,11 @@ public final class JdbcDialogueStateStore implements DialogueStateStore {
             statement.setString(5, request.gameContext().backend());
             statement.setString(6, request.gameContext().dimension());
             statement.setString(7, request.output().importance().name());
-            statement.setString(8, request.output().memoryCandidate()
-                    .orElse(request.output().reply()));
+            // The event summary represents the owner-authored side of the turn.
+            // Keep the model's optional candidate separately with its lower
+            // confidence so an assistant reply can never be mislabeled as an
+            // owner statement or silently promoted into witnessed fact.
+            statement.setString(8, request.normalizedPlayerMessage());
             statement.setString(9, request.normalizedPlayerMessage());
             statement.setString(10, request.output().reply());
             Optional<Instant> expiry = request.output().importance().expiresAt(request.occurredAt());
@@ -241,7 +297,49 @@ public final class JdbcDialogueStateStore implements DialogueStateStore {
                 statement.setNull(11, Types.TIMESTAMP);
             }
             statement.setObject(12, utc(request.occurredAt()));
+            statement.setInt(13, salience(request.output().importance()));
+            statement.setInt(14, request.output().relationshipSignal().meaningful() ? 2
+                    : request.output().affectDelta() == DialogueAffect.NONE ? 0 : 1);
+            com.google.gson.JsonObject participants = new com.google.gson.JsonObject();
+            participants.addProperty("owner_uuid", request.expectedPet().ownerUuid().toString());
+            participants.addProperty("pet_id", request.expectedPet().petId().toString());
+            com.google.gson.JsonObject metadata = new com.google.gson.JsonObject();
+            metadata.addProperty("action", request.output().action().name());
+            metadata.addProperty("attention", request.output().attention().name());
+            metadata.addProperty("affect", request.output().affectDelta().name());
+            metadata.addProperty("affect_strength", request.output().affectStrength());
+            metadata.addProperty("relationship", request.output().relationshipSignal().type().name());
+            metadata.addProperty("conversation_mode", request.output().conversationMode().name());
+            statement.setString(15, participants.toString());
+            statement.setNull(16, Types.LONGVARCHAR); // Chat position is not the reported event's location.
+            statement.setString(17, metadata.toString());
+            if(request.output().memoryCandidate().isPresent() || request.output().ownerMemory().isPresent()) {
+                statement.setString(18,request.output().ownerMemory().map(OwnerMemoryProposal::summary)
+                        .orElseGet(() -> request.output().memoryCandidate().orElseThrow()));
+                statement.setBigDecimal(19,new BigDecimal("0.500"));
+            } else {
+                statement.setNull(18,Types.VARCHAR); statement.setNull(19,Types.DECIMAL);
+            }
             requireOne(statement.executeUpdate(), "dialogue event insert");
+        }
+    }
+
+    private static int salience(DialogueImportance importance) {
+        return switch (importance) { case LOW -> 1; case MEDIUM -> 2; case HIGH -> 4; };
+    }
+
+    private static void insertRelationshipEvidence(Connection connection,
+            DialoguePersistRequest request) throws SQLException {
+        var signal = request.output().relationshipSignal();
+        if (!signal.meaningful()) return;
+        try (PreparedStatement statement = connection.prepareStatement(INSERT_RELATIONSHIP_EVIDENCE)) {
+            statement.setString(1, request.usage().requestId().toString());
+            statement.setString(2, request.eventId().toString());
+            statement.setString(3, request.expectedPet().petId().toString());
+            statement.setString(4, signal.type().name());
+            statement.setInt(5, signal.strength());
+            statement.setObject(6, utc(request.occurredAt()));
+            requireOne(statement.executeUpdate(), "relationship evidence insert");
         }
     }
 
@@ -258,16 +356,72 @@ public final class JdbcDialogueStateStore implements DialogueStateStore {
         }
     }
 
-    private static void updateMood(
-            Connection connection, DialoguePersistRequest request, PetMood mood) throws SQLException {
+    private static void updateMood(Connection connection, DialoguePersistRequest request,
+            PetMood mood, BehavioralAffect affect) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(UPDATE_MOOD)) {
             int index = 1;
             for (MoodDimension dimension : MoodDimension.values()) {
                 statement.setInt(index++, mood.value(dimension));
             }
+            statement.setObject(index++, utc(mood.lastDecayAt()));
             statement.setObject(index++, utc(request.occurredAt()));
+            statement.setInt(index++, affect.valence());
+            statement.setInt(index++, affect.valenceIntensity());
+            statement.setInt(index++, affect.alertness());
+            statement.setInt(index++, affect.alertnessIntensity());
+            statement.setInt(index++, affect.socialStance());
+            statement.setInt(index++, affect.socialIntensity());
+            statement.setString(index++, affect.trigger());
+            if (affect.target() == null) statement.setNull(index++, Types.CHAR);
+            else statement.setString(index++, affect.target().toString());
+            statement.setObject(index++, utc(affect.updatedAt()));
+            if (affect.eventId() == null) statement.setNull(index++, Types.CHAR);
+            else statement.setString(index++, affect.eventId().toString());
+            OwnerInterpretationCandidate interpretation=request.output().ownerInterpretation();
+            boolean clearInterpretation=OwnerInterpretationMapper.isOwnerCorrection(request.normalizedPlayerMessage());
+            boolean replaceInterpretation=interpretation.meaningful();
+            statement.setBoolean(index++, clearInterpretation);
+            statement.setBoolean(index++, replaceInterpretation);
+            if (interpretation.intent().isPresent()) statement.setString(index++, interpretation.intent().orElseThrow());
+            else statement.setNull(index++, Types.VARCHAR);
+            statement.setBoolean(index++, clearInterpretation);
+            statement.setBoolean(index++, replaceInterpretation);
+            if (interpretation.emotion().isPresent()) statement.setString(index++, interpretation.emotion().orElseThrow());
+            else statement.setNull(index++, Types.VARCHAR);
+            statement.setBoolean(index++, clearInterpretation);
+            statement.setBoolean(index++, replaceInterpretation);
+            if (replaceInterpretation) statement.setBigDecimal(index++, BigDecimal.valueOf(interpretation.confidence()));
+            else statement.setNull(index++, Types.DECIMAL);
+            statement.setBoolean(index++, clearInterpretation);
+            statement.setBoolean(index++, replaceInterpretation);
+            if (replaceInterpretation) statement.setString(index++, request.eventId().toString());
+            else statement.setNull(index++, Types.CHAR);
+            statement.setBoolean(index++, clearInterpretation);
+            statement.setBoolean(index++, replaceInterpretation);
+            if (replaceInterpretation) statement.setObject(index++, utc(request.occurredAt()));
+            else statement.setNull(index++, Types.TIMESTAMP);
             statement.setString(index, request.expectedPet().petId().toString());
             requireOne(statement.executeUpdate(), "mood update");
+        }
+    }
+
+    private static void updateSelfModelCandidate(Connection connection,
+            DialoguePersistRequest request, LockedState locked) throws SQLException {
+        DialogueSelfModelCandidate candidate = request.output().selfModelCandidate();
+        if (!candidate.meaningful()) return;
+        String next = PetSelfModel.recordCandidate(locked.selfModelJson(), candidate,
+                request.eventId(), request.occurredAt(), false);
+        if (Objects.equals(locked.selfModelJson(), next)) return;
+        try (PreparedStatement update = connection.prepareStatement("""
+                UPDATE pet_traits SET self_model_json=?,self_model_version=self_model_version+1,
+                    self_model_updated_at=?,updated_at=GREATEST(updated_at,?)
+                WHERE pet_id=? AND self_model_version=?
+                """)) {
+            update.setString(1, next); update.setObject(2, utc(request.occurredAt()));
+            update.setObject(3, utc(request.occurredAt()));
+            update.setString(4, request.expectedPet().petId().toString());
+            update.setLong(5, locked.selfModelVersion());
+            requireOne(update.executeUpdate(), "versioned self model candidate update");
         }
     }
 
@@ -331,6 +485,10 @@ public final class JdbcDialogueStateStore implements DialogueStateStore {
         return value.toInstant(ZoneOffset.UTC);
     }
 
+    private static UUID uuidOrNull(String value) {
+        return value == null ? null : UUID.fromString(value);
+    }
+
     private static LocalDateTime utc(Instant value) {
         return LocalDateTime.ofInstant(value, ZoneOffset.UTC);
     }
@@ -343,16 +501,24 @@ public final class JdbcDialogueStateStore implements DialogueStateStore {
         return failure.getSQLState() != null && failure.getSQLState().startsWith("23");
     }
 
+    private static String safeSqlState(String state) {
+        if(state==null)return "UNKNOWN";
+        String safe=state.replaceAll("[^A-Za-z0-9]","_");
+        return safe.isBlank()?"UNKNOWN":safe.substring(0,Math.min(16,safe.length()));
+    }
+
     private static void requireOne(int rows, String operation) throws SQLException {
         if (rows != 1) throw new SQLException(operation + " did not affect exactly one row");
     }
 
-    private record LockedState(PetTraits traits, PetMood mood) {
+    private record LockedState(PetTraits traits, PetMood mood, BehavioralAffect affect,
+            String selfModelJson, long selfModelVersion) {
     }
 
     private record Applied(
             PetTraits traits,
             PetMood mood,
+            BehavioralAffect affect,
             Map<TraitName, Integer> traitDeltas,
             Map<MoodDimension, Integer> moodDeltas) {
     }

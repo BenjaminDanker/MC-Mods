@@ -44,5 +44,10 @@ public final class PetEntityController {
             goals.addGoal(0, new FloatGoal(entity));
             goals.addGoal(1, new PetFollowOwnerGoal(entity, PetCompanionMod.physicalConfig()));
         }
+        // Reconciliation strips goals installed later by another mod without rebuilding follow.
+        var selectors = (MobEntityAccessor) entity;
+        selectors.aipets$getGoalSelector().removeAllGoals(goal ->
+                !(goal instanceof FloatGoal) && !(goal instanceof PetFollowOwnerGoal));
+        selectors.aipets$getTargetSelector().removeAllGoals(goal -> true);
     }
 }

@@ -80,6 +80,17 @@ public final class InMemoryConsolidationRepository implements ConsolidationRepos
     @Override
     public List<ConsolidationJob> claimDue(
             String workerId, Instant now, Duration lease, int limit) {
+        return claimDue(Optional.empty(), workerId, now, lease, limit);
+    }
+
+    @Override
+    public List<ConsolidationJob> claimDueForPet(
+            UUID petId, String workerId, Instant now, Duration lease, int limit) {
+        return claimDue(Optional.of(Objects.requireNonNull(petId, "petId")), workerId, now, lease, limit);
+    }
+
+    private List<ConsolidationJob> claimDue(
+            Optional<UUID> petId, String workerId, Instant now, Duration lease, int limit) {
         Objects.requireNonNull(workerId, "workerId");
         Objects.requireNonNull(now, "now");
         Objects.requireNonNull(lease, "lease");
@@ -89,6 +100,7 @@ public final class InMemoryConsolidationRepository implements ConsolidationRepos
         }
         synchronized (monitor) {
             List<ConsolidationJob> due = jobs.values().stream()
+                    .filter(job -> petId.isEmpty() || job.petId().equals(petId.orElseThrow()))
                     .filter(job -> (job.status() == ConsolidationJobStatus.PENDING
                             || job.status() == ConsolidationJobStatus.RETRY
                             || (job.status() == ConsolidationJobStatus.RUNNING
@@ -178,7 +190,10 @@ public final class InMemoryConsolidationRepository implements ConsolidationRepos
                 }
                 LongTermMemoryCard card = new LongTermMemoryCard(
                         memoryId, job.petId(), 1, proposal.text(), proposal.importance(),
-                        proposal.emotionTags(), proposal.entityTags(), proposal.locationTags(), true);
+                        proposal.emotionTags(), proposal.entityTags(),
+                        ConsolidationLocationTags.from(proposal, selection.selected().stream().collect(
+                                java.util.stream.Collectors.toMap(ConsolidationEvent::eventId,
+                                        java.util.function.Function.identity()))), true);
                 created.add(card);
             }
             AppliedTraits applied = applyTraits(current.traits(), output, job, at);
@@ -227,6 +242,19 @@ public final class InMemoryConsolidationRepository implements ConsolidationRepos
                     job.jobId(), job.petId(), job.sleepCycleId(), job.idempotencyKey(),
                     ConsolidationJobStatus.RETRY, job.attemptCount(), notBefore,
                     Optional.empty(), Optional.empty(), Optional.of(boundedError(errorCategory))));
+        }
+    }
+
+    @Override
+    public void defer(ConsolidationJob job, String workerId, Instant attemptedAt,
+            Instant notBefore, String reason) {
+        synchronized (monitor) {
+            requireLock(job, workerId);
+            jobs.put(job.jobId(), new ConsolidationJob(
+                    job.jobId(), job.petId(), job.sleepCycleId(), job.idempotencyKey(),
+                    ConsolidationJobStatus.RETRY, Math.max(0, job.attemptCount() - 1),
+                    notBefore, Optional.empty(), Optional.empty(),
+                    Optional.of(boundedError(reason))));
         }
     }
 

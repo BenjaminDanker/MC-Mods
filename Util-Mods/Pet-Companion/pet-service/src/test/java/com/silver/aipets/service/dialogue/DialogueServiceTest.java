@@ -1,6 +1,8 @@
 package com.silver.aipets.service.dialogue;
 
 import com.silver.aipets.common.domain.AppearanceRules;
+import com.silver.aipets.common.domain.BackendId;
+import com.silver.aipets.common.domain.DimensionId;
 import com.silver.aipets.common.domain.HeldPlacement;
 import com.silver.aipets.common.domain.MoodDimension;
 import com.silver.aipets.common.domain.Pet;
@@ -8,7 +10,9 @@ import com.silver.aipets.common.domain.PetAppearance;
 import com.silver.aipets.common.domain.PetMood;
 import com.silver.aipets.common.domain.PetSpecies;
 import com.silver.aipets.common.domain.PetTraits;
+import com.silver.aipets.common.domain.PlacedPlacement;
 import com.silver.aipets.common.domain.TraitName;
+import com.silver.aipets.common.domain.WorldPosition;
 import com.silver.aipets.service.memory.LongTermMemoryCard;
 import com.silver.aipets.service.memory.MemoryImportance;
 import org.junit.jupiter.api.Test;
@@ -30,6 +34,10 @@ import java.util.OptionalLong;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -42,8 +50,96 @@ final class DialogueServiceTest {
     private static final UUID PET_ID = UUID.fromString("20000000-0000-0000-0000-000000000001");
 
     @Test
+    void speculativeModerationOverlapsLunaAndFlaggedResultIsCancelledAndNeverCommitted() throws Exception {
+        DialogueLimits limits = limits(4_000, 8, 4, 8, new BigDecimal("50"));
+        MutableClock clock = new MutableClock(START);
+        InMemoryDialogueStateStore state = new InMemoryDialogueStateStore();
+        state.put(pet(START));
+        CompletableFuture<DialogueSafety.SafetyResult> moderation = new CompletableFuture<>();
+        CountDownLatch lunaStarted = new CountDownLatch(1);
+        AtomicBoolean cancellationAttempted = new AtomicBoolean();
+        DialogueSafety safety = new DialogueSafety() {
+            @Override public SafetyResult preprocess(String input, int maximum) {
+                return preprocessLocal(input, maximum);
+            }
+            @Override public SafetyResult preprocessLocal(String input, int maximum) {
+                return new SafetyResult(true, input.strip(), "ALLOWED");
+            }
+            @Override public java.util.concurrent.CompletionStage<SafetyResult> moderateAsync(
+                    String input, java.util.concurrent.Executor executor) { return moderation; }
+        };
+        DialogueModelClient model = new DialogueModelClient() {
+            @Override public String model() { return "test-model"; }
+            @Override public DialogueModelResponse complete(UUID id, DialoguePrompt prompt,
+                    String schema, Duration timeout) { throw new AssertionError("async path expected"); }
+            @Override public CompletableFuture<DialogueModelResponse> completeAsync(UUID id,
+                    DialoguePrompt prompt, String schema, Duration timeout,
+                    java.util.concurrent.Executor executor) {
+                lunaStarted.countDown();
+                return new CompletableFuture<>() {
+                    @Override public boolean cancel(boolean interrupt) {
+                        cancellationAttempted.set(true);
+                        return super.cancel(interrupt);
+                    }
+                };
+            }
+        };
+        DialogueService service = new DialogueService(limits, safety,
+                new DialoguePromptBuilder(limits, new WordTokenCounter()), model,
+                new DialogueOutputCodec(), new DialogueResponseMapper(limits),
+                new DialogueAdmissionController(limits), state, clock,
+                UUID::randomUUID, UUID::randomUUID);
+        CompletableFuture<DialogueResult> result = CompletableFuture.supplyAsync(() ->
+                service.respond(UUID.randomUUID(), OWNER,
+                        context(state.pet(PET_ID), false, true, START), "tell me about today"));
+        assertTrue(lunaStarted.await(2, TimeUnit.SECONDS), "Luna should start while moderation is pending");
+        moderation.complete(new DialogueSafety.SafetyResult(false, "", "MODERATION_FLAGGED"));
+        assertEquals(DialogueResultStatus.UNSAFE_INPUT, result.get(2, TimeUnit.SECONDS).status());
+        assertTrue(cancellationAttempted.get());
+        assertEquals(0, state.eventCount());
+        assertEquals(0, state.usageCount());
+        assertEquals(50, state.pet(PET_ID).traits().curiosity());
+    }
+
+    @Test
+    void compactOutputKeepsImmediateActionAndCueWithoutDurableDeltas() {
+        String json = "{\"reply\":\"The rain has eased.\",\"action\":\"LOOK_AT_INTEREST\","
+                + "\"attention\":\"CURIOUS\",\"memory_candidate\":null}";
+        DialogueModelOutput decoded = new DialogueOutputCodec().decode(json);
+        ValidatedDialogueOutput output = new DialogueResponseMapper(
+                limits(4_000, 8, 4, 8, new BigDecimal("50")))
+                .map(decoded, "What did you see?");
+        assertEquals(com.silver.aipets.common.transport.PetDialogueAction.LOOK_AT_INTEREST,
+                output.action());
+        assertEquals(com.silver.aipets.common.transport.PetDialogueAttention.CURIOUS,
+                output.attention());
+        assertTrue(output.proposedTraitDeltas().values().stream().allMatch(delta -> delta == 0));
+        assertTrue(output.proposedMoodDeltas().values().stream().allMatch(delta -> delta == 0));
+    }
+
+    @Test
+    void compactAffectIsBoundedAndChangesMoodWithoutTraitOrRelationshipFields() {
+        String json = "{\"reply\":\"That was a rough climb.\",\"action\":\"LOOK_AT_OWNER\","
+                + "\"attention\":\"CONCERNED\",\"memory_candidate\":null,"
+                + "\"affect_delta\":\"WARY\"}";
+        DialogueModelOutput decoded = new DialogueOutputCodec().decode(json);
+        ValidatedDialogueOutput output = new DialogueResponseMapper(
+                limits(4_000, 8, 4, 8, new BigDecimal("50")))
+                .map(decoded, "That was difficult.");
+        assertEquals(DialogueAffect.WARY, output.affectDelta());
+        assertEquals(2, output.proposedMoodDeltas().get(com.silver.aipets.common.domain.MoodDimension.ANXIOUS));
+        assertEquals(-1, output.proposedMoodDeltas().get(com.silver.aipets.common.domain.MoodDimension.EXCITED));
+        assertTrue(output.proposedTraitDeltas().values().stream().allMatch(delta -> delta == 0));
+        assertTrue(DialogueStructuredSchema.JSON_SCHEMA.contains("affect_delta"));
+        assertFalse(DialogueStructuredSchema.COMPACT_AFFECT_JSON_SCHEMA.contains("relationship_event"));
+        assertTrue(DialogueStructuredSchema.JSON_SCHEMA.contains("relationship_event"));
+        assertTrue(DialogueStructuredSchema.JSON_SCHEMA.contains("\"strength\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":2}"));
+        assertFalse(DialogueStructuredSchema.COMPACT_JSON_SCHEMA.contains("affect_delta"));
+    }
+
+    @Test
     void promptDropsByPriorityNeverSendsFullHistoryAndStaysUnderHardCap() {
-        DialogueLimits limits = limits(220, 100, 4, 8, new BigDecimal("50"));
+        DialogueLimits limits = limits(900, 100, 4, 8, new BigDecimal("50"));
         WordTokenCounter counter = new WordTokenCounter();
         DialoguePromptBuilder builder = new DialoguePromptBuilder(limits, counter);
         Pet pet = pet(START);
@@ -77,11 +173,12 @@ final class DialogueServiceTest {
                 pet, false, true, shortTerm, longTerm, turns,
                 new DialogueGameContext("survival", "minecraft:overworld", "dialogue"), START);
 
-        DialoguePrompt prompt = builder.build(context, "current-owner-message must remain");
-        assertTrue(prompt.inputTokens() <= 220);
+        DialoguePrompt prompt = builder.build(context, "current-owner-message must remain; what happened in memory marker11?");
+        assertTrue(prompt.inputTokens() <= 900);
         assertTrue(prompt.text().contains("IDENTITY_AND_STATE"));
         assertTrue(prompt.text().contains(PET_ID.toString()));
-        assertTrue(prompt.text().contains("current-owner-message must remain"));
+        assertTrue(prompt.currentOwnerMessage().orElseThrow().contains("current-owner-message must remain"));
+        assertFalse(prompt.text().contains("current-owner-message must remain"));
         assertTrue(prompt.text().contains("memory marker11"));
         assertFalse(prompt.text().contains("memory marker0"));
         assertFalse(prompt.text().contains("turn-marker-0"));
@@ -99,6 +196,15 @@ final class DialogueServiceTest {
         AtomicInteger calls = new AtomicInteger();
         AtomicInteger events = new AtomicInteger();
         DialogueService service = service(limits, model, state, clock, calls, events);
+
+        Pet present = state.pet(PET_ID);
+        Pet held = new Pet(present.petId(), present.ownerUuid(), present.name(),
+                present.appearance(), present.traits(), present.mood(), HeldPlacement.INSTANCE,
+                present.recordVersion(), present.createdAt(), present.updatedAt());
+        assertEquals(DialogueResultStatus.NOT_PRESENT,
+                service.respond(UUID.randomUUID(), OWNER, context(held, false, true, START),
+                        "hello").status());
+        assertEquals(0, model.calls);
 
         DialogueService globallyDisabled = service(
                 limits, model, state, clock, calls, events, () -> false);
@@ -129,6 +235,14 @@ final class DialogueServiceTest {
         assertEquals(1, state.usageCount());
         assertEquals(0, state.eventCount());
 
+        model.nextFinishReason = "length";
+        model.responses.add(validJson(DialogueImportance.HIGH, 0, 0, "This JSON is complete but truncated."));
+        assertEquals(DialogueResultStatus.INVALID_MODEL_OUTPUT,
+                service.respond(UUID.randomUUID(), OWNER,
+                        context(state.pet(PET_ID), false, true, START), "tell me something else").status());
+        assertEquals(0, state.eventCount(), "token-limited output must not commit an event");
+        assertEquals(50, state.pet(PET_ID).traits().curiosity(), "token-limited output must not change traits");
+
         DialogueImportance[] importances = {
                 DialogueImportance.LOW, DialogueImportance.MEDIUM,
                 DialogueImportance.HIGH, DialogueImportance.HIGH
@@ -145,9 +259,11 @@ final class DialogueServiceTest {
                     context(state.pet(PET_ID), false, true, clock.instant()),
                     "meaningful interaction " + index);
             assertEquals(DialogueResultStatus.SUCCEEDED, result.status());
+            assertEquals("stop", model.lastResponse.finishReason());
+            assertEquals(2000, model.lastResponse.configuredCompletionLimit());
             assertFalse(result.playerMessage().contains("§"));
             assertFalse(result.playerMessage().contains("https://"));
-            assertFalse(result.playerMessage().contains("Third removed"));
+            assertTrue(result.playerMessage().contains("Third removed"));
         }
 
         assertEquals(START.plusSeconds(6).plus(Duration.ofHours(2)),
@@ -163,9 +279,9 @@ final class DialogueServiceTest {
                 .filter(audit -> audit.trait() == TraitName.CURIOSITY).count());
         assertEquals(3, state.audits().stream()
                 .filter(audit -> audit.trait() == TraitName.ATTACHMENT).count());
-        assertEquals(5, state.usageCount());
+        assertEquals(6, state.usageCount());
         assertEquals(4, state.eventCount());
-        assertEquals(5, model.calls);
+        assertEquals(6, model.calls);
     }
 
     @Test
@@ -230,7 +346,7 @@ final class DialogueServiceTest {
         return new DialogueService(
                 limits, new RuleBasedDialogueSafety(),
                 new DialoguePromptBuilder(limits, counter), model,
-                new DialogueOutputCodec(), new DialogueOutputValidator(limits),
+                new DialogueOutputCodec(), new DialogueResponseMapper(limits),
                 new DialogueAdmissionController(limits), state, clock,
                 () -> new UUID(0, calls.incrementAndGet()),
                 () -> new UUID(0, events.incrementAndGet()), aiEnabled);
@@ -263,7 +379,10 @@ final class DialogueServiceTest {
                 "A cautious new friendship.", 0, at);
         PetMood mood = PetMood.initial(95, 50, 50, 50, at);
         return new Pet(
-                PET_ID, OWNER, "Mochi", appearance, traits, mood, HeldPlacement.INSTANCE,
+                PET_ID, OWNER, "Mochi", appearance, traits, mood,
+                PlacedPlacement.materialized(new BackendId("survival"),
+                        DimensionId.parse("minecraft:overworld"),
+                        new WorldPosition(0, 64, 0), UUID.randomUUID()),
                 0, at, at);
     }
 
@@ -306,6 +425,8 @@ final class DialogueServiceTest {
     private static final class QueueModel implements DialogueModelClient {
         private final Deque<String> responses = new ArrayDeque<>();
         private int calls;
+        private String nextFinishReason = "stop";
+        private DialogueModelResponse lastResponse;
 
         @Override
         public String model() {
@@ -320,10 +441,13 @@ final class DialogueServiceTest {
                 Duration timeout) {
             calls++;
             assertTrue(requiredJsonSchema.contains("\"additionalProperties\":false"));
-            assertTrue(requiredJsonSchema.contains("\"trait_deltas\""));
-            return new DialogueModelResponse(
+            assertTrue(requiredJsonSchema.contains("\"action\""));
+            lastResponse = new DialogueModelResponse(
                     responses.removeFirst(), Optional.of("provider-" + calls),
-                    prompt.inputTokens(), 0, 50, new BigDecimal("0.01"), 25);
+                    prompt.inputTokens(), 0, 50, new BigDecimal("0.01"), 25,
+                    nextFinishReason, 2000, Optional.of("request-" + calls));
+            nextFinishReason = "stop";
+            return lastResponse;
         }
     }
 

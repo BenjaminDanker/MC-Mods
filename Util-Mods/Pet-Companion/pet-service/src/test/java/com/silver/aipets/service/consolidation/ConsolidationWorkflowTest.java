@@ -2,6 +2,10 @@ package com.silver.aipets.service.consolidation;
 
 import com.silver.aipets.common.domain.AppearanceRules;
 import com.silver.aipets.common.domain.HeldPlacement;
+import com.silver.aipets.common.domain.BackendId;
+import com.silver.aipets.common.domain.DimensionId;
+import com.silver.aipets.common.domain.PlacedPlacement;
+import com.silver.aipets.common.domain.WorldPosition;
 import com.silver.aipets.common.domain.Pet;
 import com.silver.aipets.common.domain.PetAppearance;
 import com.silver.aipets.common.domain.PetMood;
@@ -44,6 +48,121 @@ final class ConsolidationWorkflowTest {
     private static final UUID OWNER = UUID.fromString("10000000-0000-0000-0000-000000000001");
     private static final UUID PET_ID = UUID.fromString("20000000-0000-0000-0000-000000000001");
     private static final WordTokens TOKENS = new WordTokens();
+
+    @Test
+    void petScopedWorkerLeavesEarlierForeignJobPendingAndUnclaimed() {
+        MutableClock clock = new MutableClock(START);
+        AtomicInteger ids = new AtomicInteger(250);
+        InMemoryConsolidationRepository repository = repository(ids);
+        Pet primary = pet(START);
+        repository.putPet(primary);
+        UUID otherId = id(251), otherOwner = id(252), otherCycle = id(253);
+        repository.putPet(new Pet(otherId, otherOwner, primary.name(), primary.appearance(),
+                primary.traits(), primary.mood(), HeldPlacement.INSTANCE,
+                primary.recordVersion(), primary.createdAt(), primary.updatedAt()));
+        QueueModel model = new QueueModel();
+        ConsolidationWorker worker = worker(repository, model, clock, owner -> true, card -> { }, ids);
+        var foreign = worker.enqueueAtSleepStart(otherId, otherCycle).job();
+        clock.advance(Duration.ofSeconds(1));
+        var own = worker.enqueueAtSleepStart(PET_ID, id(254)).job();
+        assertEquals(1, worker.processDueForPet(PET_ID, "named-session", 1));
+        assertEquals(ConsolidationJobStatus.SUCCEEDED, repository.findByKey(own.idempotencyKey()).orElseThrow().status());
+        var untouched = repository.findByKey(foreign.idempotencyKey()).orElseThrow();
+        assertEquals(ConsolidationJobStatus.PENDING, untouched.status());
+        assertEquals(0, untouched.attemptCount());
+        assertTrue(untouched.lockedBy().isEmpty());
+        assertEquals(0, worker.processDueForPet(PET_ID, "named-session", 1));
+        assertEquals(1, worker.processDue("normal-global-worker", 1));
+        assertEquals(0, model.calls);
+    }
+
+    @Test
+    void scopedRetryRecoveryCannotClaimAnotherPetsExpiredLease() {
+        MutableClock clock = new MutableClock(START);
+        AtomicInteger ids = new AtomicInteger(260);
+        InMemoryConsolidationRepository repository = repository(ids);
+        Pet primary = pet(START);
+        repository.putPet(primary);
+        UUID otherId = id(261);
+        repository.putPet(new Pet(otherId, id(262), primary.name(), primary.appearance(),
+                primary.traits(), primary.mood(), HeldPlacement.INSTANCE,
+                primary.recordVersion(), START, START));
+        QueueModel model = new QueueModel();
+        ConsolidationWorker worker = worker(repository, model, clock, owner -> true, card -> { }, ids);
+        var foreign = worker.enqueueAtSleepStart(otherId, id(263)).job();
+        repository.claimDueForPet(otherId, "other-session", START, Duration.ofSeconds(1), 1);
+        clock.advance(Duration.ofSeconds(2));
+        assertEquals(0, worker.processDueForPet(PET_ID, "named-session", 10));
+        var untouched = repository.findByKey(foreign.idempotencyKey()).orElseThrow();
+        assertEquals(1, untouched.attemptCount());
+        assertEquals(Optional.of("other-session"), untouched.lockedBy());
+        assertEquals(1, worker.processDueForPet(otherId, "retry-own-session", 10));
+    }
+
+    @Test
+    void sleepCanGroundARecurringPatternInDistinctRepeatedWitnesses() {
+        MutableClock clock = new MutableClock(START);
+        AtomicInteger ids = new AtomicInteger(220);
+        InMemoryConsolidationRepository repository = repository(ids);
+        repository.putPet(pet(START));
+        List<UUID> sources = List.of(id(221), id(222), id(223));
+        for (int i = 0; i < sources.size(); i++) repository.addEvent(new ConsolidationEvent(
+                sources.get(i), PET_ID, DialogueImportance.MEDIUM,
+                "We crossed a spruce bridge in rain", "ARRIVED_TOGETHER", START.plusSeconds(i * 86400L),
+                com.silver.aipets.service.memory.MemoryProvenance.VERIFIED_OBSERVATION,
+                "gametest", "minecraft:overworld"));
+        QueueModel model = new QueueModel();
+        model.responses.add(validJson(sources.getFirst())
+                .replace("Owner rescued Mochi from lava near the village.", "We often crossed a spruce bridge in rain")
+                .replace("Mochi trusts the owner after the lava rescue.", "")
+                .replace(":100", ":0")
+                .replace("\"" + sources.getFirst() + "\"]", "\"" + String.join("\",\"",
+                        sources.stream().map(UUID::toString).toList()) + "\"]"));
+        List<LongTermMemoryCard> indexed = new ArrayList<>();
+        ConsolidationWorker worker = worker(repository, model, clock, owner -> true, indexed::add, ids);
+        UUID cycle = id(224);
+        worker.enqueueAtSleepStart(PET_ID, cycle);
+        assertEquals(1, worker.processDue("repeated-witnesses", 10));
+        var card = repository.memories(PET_ID).getFirst();
+        assertEquals("We often crossed a spruce bridge in rain", card.text());
+        assertEquals(java.util.Set.copyOf(sources), repository.memorySources(card.memoryId()));
+        sources.forEach(source -> assertEquals(ConsolidationEventStatus.CONSOLIDATED,
+                repository.eventStatus(source)));
+        assertEquals(List.of(card), indexed);
+        assertEquals(1, model.calls);
+        assertFalse(worker.enqueueAtSleepStart(PET_ID, cycle).created());
+        assertEquals(0, worker.processDue("repeated-retry", 10));
+        assertEquals(1, indexed.size());
+    }
+
+    @Test
+    void sleepConsolidationPreservesWitnessedXYZSourceAndIdempotentEmbeddingHandoff() {
+        MutableClock clock = new MutableClock(START);
+        AtomicInteger ids = new AtomicInteger(190);
+        InMemoryConsolidationRepository repository = repository(ids);
+        repository.putPet(pet(START));
+        UUID eventId = id(191), cycle = id(192);
+        var place = new com.silver.aipets.common.transport.SpatialLocation("gametest", "world",
+                "minecraft:overworld", 140.5, 72, -300.5);
+        repository.addEvent(new ConsolidationEvent(eventId, PET_ID, DialogueImportance.HIGH,
+                "Owner rescued Mochi from lava near the village", "SURVIVED_DANGER", START,
+                com.silver.aipets.service.memory.MemoryProvenance.VERIFIED_OBSERVATION,
+                "gametest", "minecraft:overworld", Optional.of(place)));
+        QueueModel model = new QueueModel(); model.responses.add(validJson(eventId));
+        List<LongTermMemoryCard> indexed = new ArrayList<>();
+        ConsolidationWorker worker = worker(repository, model, clock, owner -> true, indexed::add, ids);
+        worker.enqueueAtSleepStart(PET_ID, cycle);
+        assertEquals(1, worker.processDue("spatial-sleep", 10));
+        assertEquals(List.of(place), com.silver.aipets.service.memory.WitnessedLocations.from(
+                repository.memories(PET_ID).getFirst().locationTags()));
+        assertEquals(ConsolidationEventStatus.CONSOLIDATED, repository.eventStatus(eventId));
+        assertEquals(1, indexed.size());
+        assertEquals(List.of(place), com.silver.aipets.service.memory.WitnessedLocations.from(indexed.getFirst().locationTags()));
+        assertFalse(worker.enqueueAtSleepStart(PET_ID, cycle).created());
+        assertEquals(0, worker.processDue("spatial-retry", 10));
+        assertEquals(1, indexed.size());
+        assertEquals(1, model.calls);
+    }
 
     @Test
     void selectionIsDeterministicHighDistinctMediumRepeatedLowAndNoiseAware() {
@@ -109,6 +228,113 @@ final class ConsolidationWorkflowTest {
     }
 
     @Test
+    void heldPetConsolidatesVerifiedEventsWithoutAnEntity() {
+        MutableClock clock = new MutableClock(START);
+        AtomicInteger ids = new AtomicInteger(180);
+        InMemoryConsolidationRepository repository = repository(ids);
+        Pet present = pet(START);
+        repository.putPet(new Pet(present.petId(), present.ownerUuid(), present.name(),
+                present.appearance(), present.traits(), present.mood(), HeldPlacement.INSTANCE,
+                present.recordVersion(), present.createdAt(), present.updatedAt()));
+        UUID eventId = id(181), cycle = id(182);
+        repository.addEvent(event(eventId, DialogueImportance.HIGH,
+                "Owner rescued Mochi from lava near the village", "DIALOGUE", 1));
+        QueueModel model = new QueueModel();
+        model.responses.add(validJson(eventId));
+        ConsolidationWorker worker = worker(repository, model, clock,
+                owner -> true, card -> { }, ids);
+        InMemoryPetSleepStateStore sleepStore = new InMemoryPetSleepStateStore();
+        sleepStore.put(OWNER, PetSleepState.initial(PET_ID, START, PetSleepPolicy.defaults()));
+        PetSleepService sleep = new PetSleepService(sleepStore, PetSleepPolicy.defaults(),
+                clock, new SleepConsolidationTrigger(worker));
+        sleep.ownerOnline(OWNER);
+        clock.advance(Duration.ofHours(10));
+        assertEquals(PetSleepEvent.SLEEP_STARTED_FORCED, sleep.processDue(10).getFirst().event());
+        assertTrue(sleepStore.find(PET_ID).orElseThrow().sleeping());
+        assertEquals(1, sleep.recoverSleepingCycles());
+        cycle = UUID.nameUUIDFromBytes((PET_ID + ":" + clock.instant())
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        assertEquals(1, worker.processDue("worker-held", 10));
+        assertEquals(1, model.calls);
+        assertEquals(ConsolidationJobStatus.SUCCEEDED,
+                repository.findByKey(key(cycle)).orElseThrow().status());
+        assertEquals(ConsolidationEventStatus.CONSOLIDATED, repository.eventStatus(eventId));
+        assertEquals(1, repository.memories(PET_ID).size());
+        clock.advance(Duration.ofMinutes(12));
+        assertEquals(PetSleepEvent.SLEEP_COMPLETED, sleep.processDue(10).getFirst().event());
+    }
+
+    @Test
+    void sleepWithoutNewMeaningfulEventsNeverEnqueuesConsolidation() {
+        MutableClock clock = new MutableClock(START);
+        AtomicInteger ids = new AtomicInteger(170);
+        InMemoryConsolidationRepository repository = repository(ids);
+        repository.putPet(pet(START));
+        QueueModel model = new QueueModel();
+        ConsolidationWorker worker = worker(repository, model, clock,
+                owner -> true, card -> { }, ids);
+        InMemoryPetSleepStateStore sleepStore = new InMemoryPetSleepStateStore();
+        sleepStore.put(OWNER, PetSleepState.initial(PET_ID, START, PetSleepPolicy.defaults()));
+        PetSleepService sleep = new PetSleepService(sleepStore, PetSleepPolicy.defaults(),
+                clock, new SleepConsolidationTrigger(worker));
+        sleep.ownerOnline(OWNER);
+        clock.advance(Duration.ofHours(10));
+        assertEquals(PetSleepEvent.SLEEP_STARTED_FORCED, sleep.processDue(10).getFirst().event());
+        assertEquals(0, worker.processDue("worker-empty", 10));
+        assertEquals(0, model.calls);
+        assertEquals(0, repository.usageCount());
+    }
+
+    @Test
+    void tokenLimitedConsolidationCannotCommitModelOutputOrGroundingFallback() {
+        MutableClock clock = new MutableClock(START);
+        AtomicInteger ids = new AtomicInteger(186);
+        InMemoryConsolidationRepository repository = repository(ids);
+        repository.putPet(pet(START));
+        UUID eventId = id(187), cycle = id(188);
+        repository.addEvent(event(eventId, DialogueImportance.HIGH,
+                "Owner rescued Mochi from lava near the village", "DIALOGUE", 1));
+        QueueModel model = new QueueModel();
+        model.responses.add(validJson(eventId));
+        model.finishReason = "length";
+        List<LongTermMemoryCard> embeddings = new ArrayList<>();
+        ConsolidationWorker worker = worker(repository, model, clock,
+                owner -> true, embeddings::add, ids);
+        worker.enqueueAtSleepStart(PET_ID, cycle);
+
+        assertEquals(1, worker.processDue("worker-limited", 10));
+        assertEquals(ConsolidationJobStatus.RETRY, repository.findByKey(key(cycle)).orElseThrow().status());
+        assertEquals(ConsolidationEventStatus.PENDING, repository.eventStatus(eventId));
+        assertTrue(repository.memories(PET_ID).isEmpty());
+        assertTrue(embeddings.isEmpty());
+    }
+
+    @Test
+    void virtualizedPlacementDoesNotBlockSleepConsolidation() {
+        MutableClock clock = new MutableClock(START);
+        AtomicInteger ids = new AtomicInteger(183);
+        InMemoryConsolidationRepository repository = repository(ids);
+        Pet present = pet(START);
+        repository.putPet(new Pet(present.petId(), present.ownerUuid(), present.name(),
+                present.appearance(), present.traits(), present.mood(),
+                PlacedPlacement.virtualized(new BackendId("survival"),
+                        DimensionId.parse("minecraft:overworld"), new WorldPosition(0, 64, 0)),
+                present.recordVersion(), present.createdAt(), present.updatedAt()));
+        UUID eventId = id(184), cycle = id(185);
+        repository.addEvent(event(eventId, DialogueImportance.HIGH,
+                "Owner rescued Mochi from lava near the village", "DIALOGUE", 1));
+        QueueModel model = new QueueModel();
+        model.responses.add(validJson(eventId));
+        ConsolidationWorker worker = worker(repository, model, clock,
+                owner -> true, card -> { }, ids);
+        worker.enqueueAtSleepStart(PET_ID, cycle);
+        assertEquals(1, worker.processDue("worker-unloaded", 10));
+        assertEquals(ConsolidationJobStatus.SUCCEEDED,
+                repository.findByKey(key(cycle)).orElseThrow().status());
+        assertEquals(1, model.calls);
+    }
+
+    @Test
     void meaningfulCycleCommitsBoundedGroundedStateAndFailureCannotExtendSleep() {
         MutableClock clock = new MutableClock(START);
         AtomicInteger ids = new AtomicInteger(200);
@@ -133,9 +359,9 @@ final class ConsolidationWorkflowTest {
         PetSleepService sleep = new PetSleepService(
                 sleepStore, PetSleepPolicy.defaults(), clock, new SleepConsolidationTrigger(worker));
         sleep.ownerOnline(OWNER);
-        clock.advance(Duration.ofHours(23));
+        clock.advance(Duration.ofHours(10));
         assertEquals(PetSleepEvent.SLEEP_STARTED_FORCED, sleep.processDue(10).getFirst().event());
-        Instant exactEnd = START.plus(Duration.ofHours(24));
+        Instant exactEnd = START.plus(Duration.ofHours(10)).plus(Duration.ofMinutes(12));
         assertEquals(exactEnd, sleepStore.find(PET_ID).orElseThrow().sleepEndsAt().orElseThrow());
 
         assertEquals(1, worker.processDue("worker-a", 10));
@@ -170,7 +396,7 @@ final class ConsolidationWorkflowTest {
         assertEquals(42, repository.pet(PET_ID).traits().attachment());
         assertEquals(8, repository.audits().size());
 
-        clock.advance(Duration.ofMinutes(59));
+        clock.advance(Duration.ofMinutes(11));
         assertEquals(PetSleepEvent.SLEEP_COMPLETED, sleep.processDue(10).getFirst().event());
         assertFalse(sleepStore.find(PET_ID).orElseThrow().sleeping());
         assertEquals(exactEnd, sleepStore.find(PET_ID).orElseThrow().lastSleepCompletedAt().orElseThrow());
@@ -210,7 +436,10 @@ final class ConsolidationWorkflowTest {
                         AppearanceRules.defaults()),
                 new PetTraits(50, 50, 50, 50, 50, 40, 45, 40,
                         "A cautious new friendship.", 0, at),
-                PetMood.initial(80, 40, 20, 10, at), HeldPlacement.INSTANCE,
+                PetMood.initial(80, 40, 20, 10, at),
+                PlacedPlacement.materialized(new BackendId("gametest"),
+                        DimensionId.parse("minecraft:overworld"),
+                        new WorldPosition(0, 64, 0), UUID.randomUUID()),
                 0, at, at);
     }
 
@@ -233,7 +462,7 @@ final class ConsolidationWorkflowTest {
     }
 
     private static String repositoryKey() {
-        String identity = PET_ID + ":" + START.plus(Duration.ofHours(23));
+        String identity = PET_ID + ":" + START.plus(Duration.ofHours(10));
         UUID cycle = UUID.nameUUIDFromBytes(identity.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         return key(cycle);
     }
@@ -244,6 +473,7 @@ final class ConsolidationWorkflowTest {
         private final Deque<String> responses = new ArrayDeque<>();
         private final Deque<RuntimeException> failures = new ArrayDeque<>();
         private int calls;
+        private String finishReason = "stop";
 
         @Override public String model() { return "mock-consolidation"; }
 
@@ -257,7 +487,8 @@ final class ConsolidationWorkflowTest {
             if (!failures.isEmpty()) throw failures.removeFirst();
             return new DialogueModelResponse(
                     responses.removeFirst(), Optional.of("provider-" + calls),
-                    prompt.inputTokens(), 0, 80, new BigDecimal("0.02"), 20);
+                    prompt.inputTokens(), 0, 80, new BigDecimal("0.02"), 20,
+                    finishReason, 2000, Optional.of("request-" + calls));
         }
     }
 

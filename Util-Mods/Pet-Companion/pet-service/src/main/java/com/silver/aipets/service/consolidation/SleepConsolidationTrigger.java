@@ -23,6 +23,7 @@ public final class SleepConsolidationTrigger implements Consumer<PetSleepTransit
                 && transition.event() != PetSleepEvent.SLEEP_STARTED_FORCED) {
             return;
         }
+        if (!worker.hasMeaningfulPendingEvents(transition.state().petId())) return;
         String identity = transition.state().petId() + ":"
                 + transition.state().sleepStartedAt().orElseThrow();
         UUID cycleId = UUID.nameUUIDFromBytes(identity.getBytes(StandardCharsets.UTF_8));

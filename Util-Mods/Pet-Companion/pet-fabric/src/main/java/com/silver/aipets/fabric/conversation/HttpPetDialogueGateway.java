@@ -37,7 +37,7 @@ public final class HttpPetDialogueGateway implements PetDialogueGateway {
         Objects.requireNonNull(request, "request");
         PetDialogueWireRequest wire = new PetDialogueWireRequest(
                 request.requestId(), request.sessionId(), request.ownerUuid(), request.petId(),
-                request.backendId(), request.dimensionId(), request.message());
+                request.backendId(), request.dimensionId(), request.message(), request.scene());
         URI uri = config.baseUri().resolve("v1/dialogue");
         HttpRequest http = HttpRequest.newBuilder(uri)
                 .timeout(config.requestTimeout())
@@ -69,6 +69,6 @@ public final class HttpPetDialogueGateway implements PetDialogueGateway {
                 result.requestId(), result.sessionId(), result.petId(),
                 result.status() == PetDialogueWireResult.Status.SUCCEEDED
                         ? PetDialogueResponse.Status.SUCCEEDED : PetDialogueResponse.Status.DENIED,
-                result.message());
+                result.message(), result.action(), result.attention());
     }
 }

@@ -24,7 +24,7 @@ public final class JdbcPetSleepStateStore implements PetSleepStateStore {
             s.pet_id, s.sleeping, s.sleep_started_at, s.sleep_ends_at,
             s.last_sleep_completed_at, s.forced_sleep_due_at, s.owner_network_online,
             s.owner_last_logout_at, s.owner_absence_session_id, s.absence_sleep_triggered,
-            s.last_presence_update_at, s.updated_at
+            s.last_presence_update_at, s.updated_at, s.fatigue, s.fatigue_updated_at, s.awake_since
             """;
     private static final String SELECT_BY_PET = "SELECT " + COLUMNS + """
              FROM pet_sleep_state s WHERE s.pet_id = ?
@@ -38,8 +38,7 @@ public final class JdbcPetSleepStateStore implements PetSleepStateStore {
     private static final String SELECT_DUE = """
             SELECT pet_id FROM pet_sleep_state
             WHERE (sleeping = TRUE AND sleep_ends_at <= ?)
-               OR (sleeping = FALSE AND forced_sleep_due_at <= ?
-                   AND NOT (owner_network_online = FALSE AND absence_sleep_triggered = TRUE))
+               OR (sleeping = FALSE AND forced_sleep_due_at <= ?)
                OR (sleeping = FALSE AND owner_network_online = FALSE
                    AND absence_sleep_triggered = FALSE AND owner_last_logout_at <= ?)
             ORDER BY updated_at, pet_id
@@ -51,7 +50,8 @@ public final class JdbcPetSleepStateStore implements PetSleepStateStore {
                 last_sleep_completed_at = ?, forced_sleep_due_at = ?,
                 owner_network_online = ?, owner_last_logout_at = ?,
                 owner_absence_session_id = ?, absence_sleep_triggered = ?,
-                last_presence_update_at = ?, updated_at = ?
+                last_presence_update_at = ?, updated_at = ?, fatigue = ?,
+                fatigue_updated_at = ?, awake_since = ?
             WHERE pet_id = ?
             """;
 
@@ -147,6 +147,23 @@ public final class JdbcPetSleepStateStore implements PetSleepStateStore {
         }
     }
 
+    @Override
+    public List<UUID> findSleepingPetIdsAfter(String lastPetId, int limit) {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT pet_id FROM pet_sleep_state WHERE sleeping=TRUE AND pet_id>? ORDER BY pet_id LIMIT ?")) {
+            statement.setString(1, lastPetId);
+            statement.setInt(2, limit);
+            try (ResultSet rows = statement.executeQuery()) {
+                List<UUID> ids = new ArrayList<>();
+                while (rows.next()) ids.add(UUID.fromString(rows.getString(1)));
+                return List.copyOf(ids);
+            }
+        } catch (SQLException failure) {
+            throw new PetPersistenceException("Could not recover active sleep cycles", failure);
+        }
+    }
+
     private static PetSleepTransition apply(
             Connection connection,
             PetSleepState current,
@@ -158,8 +175,8 @@ public final class JdbcPetSleepStateStore implements PetSleepStateStore {
         if (!result.changed()) {
             return result;
         }
+        PetSleepState next = result.state();
         try (PreparedStatement statement = connection.prepareStatement(UPDATE)) {
-            PetSleepState next = result.state();
             statement.setBoolean(1, next.sleeping());
             setInstant(statement, 2, next.sleepStartedAt());
             setInstant(statement, 3, next.sleepEndsAt());
@@ -175,9 +192,24 @@ public final class JdbcPetSleepStateStore implements PetSleepStateStore {
             statement.setBoolean(9, next.absenceSleepTriggered());
             statement.setObject(10, utc(next.lastPresenceUpdateAt()));
             statement.setObject(11, utc(next.updatedAt()));
-            statement.setString(12, next.petId().toString());
+            statement.setDouble(12, next.fatigue());
+            statement.setObject(13, utc(next.fatigueUpdatedAt()));
+            statement.setObject(14, utc(next.awakeSince()));
+            statement.setString(15, next.petId().toString());
             if (statement.executeUpdate() != 1) {
                 throw new SQLException("Sleep-state update did not affect exactly one row");
+            }
+        }
+        if (result.event() == PetSleepEvent.SLEEP_COMPLETED
+                || result.event() == PetSleepEvent.SLEEP_STARTED_FORCED
+                || result.event() == PetSleepEvent.SLEEP_STARTED_AFTER_LOGOUT
+                || result.event() == PetSleepEvent.FATIGUE_UPDATED) {
+            try (PreparedStatement mood = connection.prepareStatement(
+                    "UPDATE pet_mood SET tired=?, updated_at=GREATEST(updated_at, last_decay_at, ?) WHERE pet_id=?")) {
+                mood.setInt(1, (int) Math.round(result.state().fatigue()));
+                mood.setObject(2, utc(next.updatedAt()));
+                mood.setString(3, next.petId().toString());
+                mood.executeUpdate();
             }
         }
         return result;
@@ -209,7 +241,8 @@ public final class JdbcPetSleepStateStore implements PetSleepStateStore {
                 Optional.ofNullable(rows.getString("owner_absence_session_id")).map(UUID::fromString),
                 rows.getBoolean("absence_sleep_triggered"),
                 requiredInstant(rows, "last_presence_update_at"),
-                requiredInstant(rows, "updated_at"));
+                requiredInstant(rows, "updated_at"), rows.getDouble("fatigue"),
+                requiredInstant(rows, "fatigue_updated_at"), requiredInstant(rows, "awake_since"));
     }
 
     private <T> T inTransaction(SqlWork<T> work) {

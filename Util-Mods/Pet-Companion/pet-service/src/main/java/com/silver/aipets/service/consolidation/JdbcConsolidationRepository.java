@@ -11,6 +11,10 @@ import com.silver.aipets.common.domain.TraitName;
 import com.silver.aipets.service.dialogue.DialogueImportance;
 import com.silver.aipets.service.dialogue.DialogueUsage;
 import com.silver.aipets.service.memory.LongTermMemoryCard;
+import com.silver.aipets.service.memory.MemoryImportance;
+import com.silver.aipets.service.dialogue.PetSelfModel;
+import com.silver.aipets.service.memory.MemoryProvenance;
+import com.silver.aipets.service.memory.MemoryFactKey;
 import com.silver.aipets.service.persistence.PetPersistenceException;
 import com.silver.aipets.service.persistence.PetRepository;
 
@@ -58,15 +62,26 @@ public final class JdbcConsolidationRepository implements ConsolidationRepositor
                 (status='RUNNING' AND locked_until<=?))
              ORDER BY not_before, job_id LIMIT ? FOR UPDATE
             """;
+    private static final String CLAIM_DUE_PET = "SELECT " + JOB_COLUMNS + """
+             FROM jobs WHERE job_type=? AND pet_id=? AND (
+                (status IN ('PENDING','RETRY') AND not_before<=?) OR
+                (status='RUNNING' AND locked_until<=?))
+             ORDER BY not_before, job_id LIMIT ? FOR UPDATE
+            """;
     private static final String CLAIM = """
             UPDATE jobs SET status='RUNNING', attempt_count=attempt_count+1,
                 locked_by=?, locked_until=?, updated_at=?, completed_at=NULL
             WHERE job_id=?
             """;
     private static final String PENDING_EVENTS = """
-            SELECT event_id, pet_id, importance, summary, event_type, occurred_at
-            FROM pet_events WHERE pet_id=? AND consolidation_status='PENDING'
-            ORDER BY occurred_at, event_id
+            SELECT e.event_id, e.pet_id, e.importance, COALESCE(e.memory_candidate_text,e.summary) AS summary,
+                   e.event_type, e.occurred_at, e.raw_player_text, e.source_server, e.source_dimension,
+                   e.source_provenance,e.memory_candidate_text,e.memory_candidate_confidence,e.location_json,
+                   r.interaction_id, r.relationship_type, r.strength
+            FROM pet_events e LEFT JOIN pet_relationship_evidence r
+              ON r.event_id=e.event_id AND r.pet_id=e.pet_id
+            WHERE e.pet_id=? AND e.consolidation_status='PENDING'
+            ORDER BY e.occurred_at, e.event_id
             """;
     private static final String LOCK_JOB = """
             SELECT status, locked_by, attempt_count FROM jobs
@@ -88,9 +103,11 @@ public final class JdbcConsolidationRepository implements ConsolidationRepositor
             """;
     private static final String INSERT_MEMORY = """
             INSERT INTO long_term_memories (memory_id,pet_id,memory_text,memory_version,
-                importance,emotion_tags,entity_tags,location_tags,embedding_status,active,
+                importance,emotion_tags,entity_tags,location_tags,provenance,fact_key,
+                memory_kind,confidence,salience,emotional_significance,
+                embedding_status,active,
                 created_at,updated_at)
-            VALUES (?,?,?,1,?,?,?,?, 'PENDING',TRUE,?,?)
+            VALUES (?,?,?,1,?,?,?,?,?,?,?,?,?,?,'PENDING',TRUE,?,?)
             """;
     private static final String INSERT_SOURCE = """
             INSERT INTO long_term_memory_source_events
@@ -117,6 +134,12 @@ public final class JdbcConsolidationRepository implements ConsolidationRepositor
             """;
     private static final String RETRY = """
             UPDATE jobs SET status='RETRY',not_before=?,locked_by=NULL,locked_until=NULL,
+                last_error_sanitized=?,updated_at=?,completed_at=NULL
+            WHERE job_id=? AND status='RUNNING' AND locked_by=?
+            """;
+    private static final String DEFER = """
+            UPDATE jobs SET status='RETRY', attempt_count=GREATEST(0,attempt_count-1),
+                not_before=?,locked_by=NULL,locked_until=NULL,
                 last_error_sanitized=?,updated_at=?,completed_at=NULL
             WHERE job_id=? AND status='RUNNING' AND locked_by=?
             """;
@@ -181,6 +204,17 @@ public final class JdbcConsolidationRepository implements ConsolidationRepositor
     @Override
     public List<ConsolidationJob> claimDue(
             String workerId, Instant now, Duration lease, int limit) {
+        return claimDue(Optional.empty(), workerId, now, lease, limit);
+    }
+
+    @Override
+    public List<ConsolidationJob> claimDueForPet(
+            UUID petId, String workerId, Instant now, Duration lease, int limit) {
+        return claimDue(Optional.of(Objects.requireNonNull(petId, "petId")), workerId, now, lease, limit);
+    }
+
+    private List<ConsolidationJob> claimDue(
+            Optional<UUID> petId, String workerId, Instant now, Duration lease, int limit) {
         Objects.requireNonNull(workerId, "workerId");
         Objects.requireNonNull(now, "now");
         Objects.requireNonNull(lease, "lease");
@@ -190,11 +224,14 @@ public final class JdbcConsolidationRepository implements ConsolidationRepositor
         }
         return transaction("claim consolidation jobs", connection -> {
             List<ConsolidationJob> due = new ArrayList<>();
-            try (PreparedStatement statement = connection.prepareStatement(CLAIM_DUE)) {
-                statement.setString(1, JOB_TYPE);
-                statement.setObject(2, utc(now));
-                statement.setObject(3, utc(now));
-                statement.setInt(4, limit);
+            try (PreparedStatement statement = connection.prepareStatement(
+                    petId.isPresent() ? CLAIM_DUE_PET : CLAIM_DUE)) {
+                int index = 1;
+                statement.setString(index++, JOB_TYPE);
+                if (petId.isPresent()) statement.setString(index++, petId.orElseThrow().toString());
+                statement.setObject(index++, utc(now));
+                statement.setObject(index++, utc(now));
+                statement.setInt(index, limit);
                 try (ResultSet rows = statement.executeQuery()) {
                     while (rows.next()) due.add(mapJob(rows));
                 }
@@ -228,12 +265,32 @@ public final class JdbcConsolidationRepository implements ConsolidationRepositor
             try (ResultSet rows = statement.executeQuery()) {
                 List<ConsolidationEvent> result = new ArrayList<>();
                 while (rows.next()) {
+                    String ownerText = rows.getString("raw_player_text");
+                    String candidate = rows.getString("memory_candidate_text");
+                    String summary = "DIALOGUE".equals(rows.getString("event_type")) && ownerText != null
+                            ? "Owner said: " + ownerText.substring(0, Math.min(1250, ownerText.length()))
+                                    + (candidate == null ? "" : " Tentative, unverified model memory candidate (confidence "
+                                            + rows.getBigDecimal("memory_candidate_confidence") + "): " + candidate)
+                            : rows.getString("summary");
+                    if (rows.getString("relationship_type") != null) {
+                        summary += " Relationship evidence type=" + rows.getString("relationship_type")
+                                + " strength=" + rows.getInt("strength")
+                                + " interaction_id=" + rows.getString("interaction_id") + ".";
+                    }
                     result.add(new ConsolidationEvent(
                             UUID.fromString(rows.getString("event_id")),
                             UUID.fromString(rows.getString("pet_id")),
                             DialogueImportance.valueOf(rows.getString("importance")),
-                            rows.getString("summary"),rows.getString("event_type"),
-                            instant(rows,"occurred_at")));
+                            summary,
+                            rows.getString("event_type"), instant(rows,"occurred_at"),
+                            rows.getBigDecimal("memory_candidate_confidence") != null
+                                    ? MemoryProvenance.INFERENCE
+                                    : MemoryProvenance.valueOf(rows.getString("source_provenance")),
+                            rows.getString("source_server") == null ? ""
+                                    : rows.getString("source_server"),
+                            rows.getString("source_dimension") == null ? ""
+                                    : rows.getString("source_dimension"),
+                            com.silver.aipets.common.transport.SpatialLocationCodec.readStored(rows.getString("location_json"))));
                 }
                 return List.copyOf(result);
             }
@@ -251,6 +308,8 @@ public final class JdbcConsolidationRepository implements ConsolidationRepositor
                 lockPendingEvent(connection, id, job.petId());
                 updateEvent(connection, id, job.petId(), job.jobId(), "DISCARDED");
             }
+            decayUnusedInferenceMemories(connection,job.petId(),at);
+            forgetExpiredThreads(connection,job.petId(),at);
             finishSuccess(connection, job.jobId(), workerId, at);
             return null;
         });
@@ -272,8 +331,13 @@ public final class JdbcConsolidationRepository implements ConsolidationRepositor
             }
             for (UUID id : selection.discardedEventIds()) lockPendingEvent(connection,id,job.petId());
             Applied applied = apply(current,output,job.petId(),at,dailyChanges(connection,job.petId(),at));
-            List<LongTermMemoryCard> cards = insertMemories(connection,job,selection,output,at);
+            List<UUID> retired = new ArrayList<>();
+            List<LongTermMemoryCard> cards = insertMemories(
+                    connection,job,selection,output,at,retired);
+            promoteSelfModelCandidates(connection, job.petId(), at);
             updateTraits(connection,job.petId(),applied.traits(),at);
+            decayUnusedInferenceMemories(connection,job.petId(),at);
+            forgetExpiredThreads(connection,job.petId(),at);
             insertAudits(connection,job,current,output,applied,at);
             insertUsage(connection,usage);
             for (ConsolidationEvent event : selection.selected()) {
@@ -284,8 +348,37 @@ public final class JdbcConsolidationRepository implements ConsolidationRepositor
             }
             finishSuccess(connection,job.jobId(),workerId,at);
             return new ConsolidationCommitResult(
-                    cards,applied.traits(),selection.selected().size(),selection.discardedEventIds().size());
+                    cards,applied.traits(),selection.selected().size(),
+                    selection.discardedEventIds().size(),retired);
         });
+    }
+
+    private static void forgetExpiredThreads(Connection connection,UUID petId,Instant at) throws SQLException {
+        try(PreparedStatement pause=connection.prepareStatement("""
+              UPDATE pet_open_threads SET state='PAUSED',updated_at=?,version=version+1
+                WHERE pet_id=? AND state='ACTIVE' AND expires_at IS NOT NULL AND expires_at<=?
+                """)) {
+            pause.setObject(1,utc(at));pause.setString(2,petId.toString());pause.setObject(3,utc(at));pause.executeUpdate();
+        }
+        try(PreparedStatement forget=connection.prepareStatement("""
+              UPDATE pet_open_threads SET state='FORGOTTEN',last_referenced_at=?,updated_at=?,version=version+1
+                WHERE pet_id=? AND state IN ('OPEN','PAUSED') AND expires_at IS NOT NULL AND expires_at<=?
+                """)) {
+            forget.setObject(1,utc(at));forget.setObject(2,utc(at));forget.setString(3,petId.toString());forget.setObject(4,utc(at));forget.executeUpdate();
+        }
+    }
+
+    private static void decayUnusedInferenceMemories(Connection connection,UUID petId,Instant at) throws SQLException {
+        try(PreparedStatement q=connection.prepareStatement("""
+                UPDATE long_term_memories SET salience=GREATEST(0,salience-1),
+                    active=CASE WHEN salience<=1 THEN FALSE ELSE active END,updated_at=?
+                WHERE pet_id=? AND active=TRUE AND provenance IN ('INFERENCE','CONSOLIDATED')
+                  AND importance='MEDIUM' AND last_recalled_at IS NULL
+                  AND created_at<=? AND salience>0
+                """)) {
+            q.setObject(1,utc(at));q.setString(2,petId.toString());
+            q.setObject(3,utc(at.minus(java.time.Duration.ofDays(30))));q.executeUpdate();
+        }
     }
 
     @Override
@@ -337,24 +430,58 @@ public final class JdbcConsolidationRepository implements ConsolidationRepositor
 
     private List<LongTermMemoryCard> insertMemories(
             Connection connection,ConsolidationJob job,CandidateSelection selection,
-            ValidatedConsolidationOutput output,Instant at) throws SQLException {
+            ValidatedConsolidationOutput output,Instant at,List<UUID> retired) throws SQLException {
         Set<UUID> selected=selection.selected().stream().map(ConsolidationEvent::eventId)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
         List<LongTermMemoryCard> result=new ArrayList<>();
+        Map<UUID, ConsolidationEvent> eventById=selection.selected().stream()
+                .collect(java.util.stream.Collectors.toMap(ConsolidationEvent::eventId,
+                        java.util.function.Function.identity()));
         for (ConsolidationCardProposal proposal:output.memoryCards()) {
             if (!selected.containsAll(proposal.sourceEventIds())) {
                 throw new SQLException("Memory source is not selected for this pet/job");
             }
             UUID memoryId=Objects.requireNonNull(memoryIds.get(),"memoryIds returned null");
+            MemoryProvenance provenance = proposal.sourceEventIds().size() > 1
+                    ? MemoryProvenance.INFERENCE : proposal.sourceEventIds().stream()
+                    .map(id -> eventById.get(id).provenance()).distinct().count() == 1
+                    ? eventById.get(proposal.sourceEventIds().getFirst()).provenance()
+                    : MemoryProvenance.INFERENCE;
+            String factKey = provenance == MemoryProvenance.OWNER_STATEMENT
+                    ? MemoryFactKey.fromOwnerStatement(proposal.text()).orElse(null) : null;
+            if (factKey != null) {
+                Instant latestSource = proposal.sourceEventIds().stream()
+                        .map(id -> eventById.get(id).occurredAt())
+                        .max(Instant::compareTo).orElseThrow();
+                // An explicit owner correction may have been committed since this sleep job
+                // selected its events. Never resurrect an older conflicting preference.
+                if (hasAtLeastAsRecentFact(connection, job.petId(), factKey, latestSource))
+                    continue;
+            }
+            if (factKey != null) retireFact(connection, job.petId(), factKey, at, retired);
+            double confidence = provenance == MemoryProvenance.OWNER_STATEMENT ? 1.0
+                    : provenance == MemoryProvenance.VERIFIED_OBSERVATION ? .9
+                    : Math.min(.9, .5 + proposal.sourceEventIds().size() * .08);
             LongTermMemoryCard card=new LongTermMemoryCard(
                     memoryId,job.petId(),1,proposal.text(),proposal.importance(),
-                    proposal.emotionTags(),proposal.entityTags(),proposal.locationTags(),true);
+                    proposal.emotionTags(),proposal.entityTags(),
+                    ConsolidationLocationTags.from(proposal, eventById),true,
+                    at,provenance,factKey!=null?com.silver.aipets.service.memory.MemoryKind.PREFERENCE
+                            :com.silver.aipets.service.memory.MemoryKind.SUMMARY,
+                    confidence,cardSalience(proposal.importance()),proposal.emotionTags().isEmpty()?0:2,
+                    java.util.Optional.empty());
             try (PreparedStatement statement=connection.prepareStatement(INSERT_MEMORY)) {
                 statement.setString(1,memoryId.toString()); statement.setString(2,job.petId().toString());
                 statement.setString(3,card.text()); statement.setString(4,card.importance().name());
                 statement.setString(5,tags(card.emotionTags())); statement.setString(6,tags(card.entityTags()));
-                statement.setString(7,tags(card.locationTags())); statement.setObject(8,utc(at));
-                statement.setObject(9,utc(at)); requireOne(statement.executeUpdate(),"memory insert");
+                statement.setString(7,tags(card.locationTags()));
+                statement.setString(8,provenance.name()); statement.setString(9,factKey);
+                statement.setString(10,factKey != null ? "PREFERENCE" : "SUMMARY");
+                statement.setBigDecimal(11, java.math.BigDecimal.valueOf(confidence));
+                statement.setInt(12, card.importance() == MemoryImportance.HIGH ? 4 : 2);
+                statement.setInt(13, proposal.emotionTags().isEmpty() ? 0 : 2);
+                statement.setObject(14,utc(at));
+                statement.setObject(15,utc(at)); requireOne(statement.executeUpdate(),"memory insert");
             }
             for (UUID source:proposal.sourceEventIds()) {
                 try (PreparedStatement statement=connection.prepareStatement(INSERT_SOURCE)) {
@@ -363,9 +490,129 @@ public final class JdbcConsolidationRepository implements ConsolidationRepositor
                     requireOne(statement.executeUpdate(),"memory source insert");
                 }
             }
+            if (provenance != MemoryProvenance.OWNER_STATEMENT) {
+                SelfModelSupport support = witnessedSelfModelSupport(
+                        connection, job.petId(), proposal.sourceEventIds());
+                PetSelfModel.fromConsolidatedEvidence(card.text(), support.events(), support.days())
+                        .ifPresent(update -> {
+                            try { applySelfModelEvidence(connection, job.petId(), update, at); }
+                            catch (SQLException failure) { throw new IllegalStateException(failure); }
+                        });
+            }
             result.add(card);
         }
         return List.copyOf(result);
+    }
+
+    private static int cardSalience(MemoryImportance importance) {
+        return importance==MemoryImportance.HIGH?4:2;
+    }
+
+    private static SelfModelSupport witnessedSelfModelSupport(Connection connection, UUID petId,
+            List<UUID> sourceEventIds) throws SQLException {
+        if (sourceEventIds.isEmpty()) return new SelfModelSupport(0, 0);
+        String placeholders = String.join(",", java.util.Collections.nCopies(sourceEventIds.size(), "?"));
+        String sql = "SELECT COUNT(DISTINCT e.event_id),COUNT(DISTINCT DATE(e.occurred_at)) "
+                + "FROM pet_events e WHERE e.pet_id=? AND e.source_provenance='VERIFIED_OBSERVATION' "
+                + "AND e.event_id IN (" + placeholders + ")";
+        try (PreparedStatement query = connection.prepareStatement(sql)) {
+            query.setString(1, petId.toString());
+            for (int i = 0; i < sourceEventIds.size(); i++) query.setString(i + 2, sourceEventIds.get(i).toString());
+            try (ResultSet row = query.executeQuery()) {
+                if (!row.next()) return new SelfModelSupport(0, 0);
+                return new SelfModelSupport(row.getInt(1), row.getInt(2));
+            }
+        }
+    }
+
+    private record SelfModelSupport(int events, int days) { }
+
+    private static void applySelfModelEvidence(Connection c, UUID petId,
+            PetSelfModel.Update evidence, Instant at) throws SQLException {
+        String prior;
+        try (PreparedStatement q=c.prepareStatement(
+                "SELECT self_model_json FROM pet_traits WHERE pet_id=? FOR UPDATE")) {
+            q.setString(1,petId.toString());
+            try(ResultSet r=q.executeQuery()) { if(!r.next()) throw new SQLException("Pet self model missing"); prior=r.getString(1); }
+        }
+        String next=PetSelfModel.add(prior,evidence);
+        if (java.util.Objects.equals(prior,next)) return;
+        try(PreparedStatement q=c.prepareStatement("""
+                UPDATE pet_traits SET self_model_json=?,self_model_version=self_model_version+1,
+                    self_model_updated_at=?,updated_at=GREATEST(updated_at,?) WHERE pet_id=?
+                """)) {
+            q.setString(1,next); q.setObject(2,utc(at)); q.setObject(3,utc(at)); q.setString(4,petId.toString());
+            requireOne(q.executeUpdate(),"self model update");
+        }
+    }
+
+    private static void promoteSelfModelCandidates(Connection c, UUID petId, Instant at) throws SQLException {
+        String prior; long version;
+        try (PreparedStatement query = c.prepareStatement(
+                "SELECT self_model_json,self_model_version FROM pet_traits WHERE pet_id=? FOR UPDATE")) {
+            query.setString(1, petId.toString());
+            try (ResultSet row = query.executeQuery()) {
+                if (!row.next()) throw new SQLException("Pet self model missing");
+                prior = row.getString(1); version = row.getLong(2);
+            }
+        }
+        String next = PetSelfModel.promoteEligible(prior);
+        if (Objects.equals(prior, next)) return;
+        try (PreparedStatement update = c.prepareStatement("""
+                UPDATE pet_traits SET self_model_json=?,self_model_version=self_model_version+1,
+                    self_model_updated_at=?,updated_at=GREATEST(updated_at,?)
+                WHERE pet_id=? AND self_model_version=?
+                """)) {
+            update.setString(1, next); update.setObject(2, utc(at)); update.setObject(3, utc(at));
+            update.setString(4, petId.toString()); update.setLong(5, version);
+            requireOne(update.executeUpdate(), "versioned sleep self-model promotion");
+        }
+    }
+
+    private static boolean hasAtLeastAsRecentFact(Connection connection, UUID petId,
+            String key, Instant sourceAt) throws SQLException {
+        try (PreparedStatement q = connection.prepareStatement("""
+                SELECT created_at FROM long_term_memories
+                WHERE pet_id=? AND fact_key=? AND active=TRUE
+                ORDER BY created_at DESC LIMIT 1 FOR UPDATE
+                """)) {
+            q.setString(1, petId.toString());
+            q.setString(2, key);
+            try (ResultSet row = q.executeQuery()) {
+                return row.next() && !row.getObject(1, LocalDateTime.class)
+                        .toInstant(ZoneOffset.UTC).isBefore(sourceAt);
+            }
+        }
+    }
+
+    @Override
+    public void defer(ConsolidationJob job,String workerId,Instant attemptedAt,
+            Instant notBefore,String reason) {
+        executeLocked(DEFER, statement -> {
+            statement.setObject(1,utc(notBefore)); statement.setString(2,bounded(reason));
+            statement.setObject(3,utc(attemptedAt)); statement.setString(4,job.jobId().toString());
+            statement.setString(5,workerId);
+        }, "defer consolidation");
+    }
+
+    private static void retireFact(Connection connection, UUID petId, String key,
+            Instant at, List<UUID> retired) throws SQLException {
+        try (PreparedStatement find = connection.prepareStatement("""
+                SELECT memory_id FROM long_term_memories
+                WHERE pet_id=? AND fact_key=? AND active=TRUE FOR UPDATE
+                """)) {
+            find.setString(1,petId.toString()); find.setString(2,key);
+            try (ResultSet rows=find.executeQuery()) {
+                while (rows.next()) retired.add(UUID.fromString(rows.getString(1)));
+            }
+        }
+        try (PreparedStatement update=connection.prepareStatement("""
+                UPDATE long_term_memories SET active=FALSE,updated_at=?
+                WHERE pet_id=? AND fact_key=? AND active=TRUE
+                """)) {
+            update.setObject(1,utc(at)); update.setString(2,petId.toString());
+            update.setString(3,key); update.executeUpdate();
+        }
     }
 
     private static PetTraits lockTraits(Connection connection,UUID petId) throws SQLException {

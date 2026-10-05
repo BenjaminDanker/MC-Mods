@@ -4,7 +4,7 @@ import java.time.Duration;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
-/** Pure rendering policy: bounded, non-clickable, two-sentence speech only. */
+/** Pure rendering policy: bounded, non-clickable speech; conversational wording belongs to Luna. */
 public record PetSpeechPolicy(
         int maximumCharacters, int wrapColumns,
         Duration minimumLifetime, Duration maximumLifetime,
@@ -40,7 +40,6 @@ public record PetSpeechPolicy(
                 .replace('\n', ' ').replace('\t', ' ')
                 .replaceAll("\\s+", " ").strip();
         normalized = URL.matcher(normalized).replaceAll("").replaceAll("\\s+", " ").strip();
-        normalized = firstSentences(normalized, 2);
         if (normalized.codePointCount(0, normalized.length()) > maximumCharacters) {
             int end = normalized.offsetByCodePoints(0, maximumCharacters - 1);
             normalized = normalized.substring(0, end).stripTrailing() + "…";
@@ -51,18 +50,6 @@ public record PetSpeechPolicy(
         long max = maximumLifetime.toMillis();
         long calculated = min + normalized.codePointCount(0, normalized.length()) * 35L;
         return new PreparedSpeech(normalized, wrapped, Duration.ofMillis(Math.min(max, calculated)));
-    }
-
-    private static String firstSentences(String value, int maximum) {
-        int sentences = 0;
-        for (int index = 0; index < value.length(); index++) {
-            char current = value.charAt(index);
-            if ((current == '.' || current == '!' || current == '?')
-                    && (index + 1 == value.length() || Character.isWhitespace(value.charAt(index + 1)))) {
-                if (++sentences == maximum) return value.substring(0, index + 1).strip();
-            }
-        }
-        return value;
     }
 
     private static String wrap(String value, int columns) {

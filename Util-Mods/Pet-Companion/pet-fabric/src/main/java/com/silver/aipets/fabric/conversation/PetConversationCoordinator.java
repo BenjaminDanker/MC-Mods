@@ -5,7 +5,9 @@ import com.silver.aipets.common.observability.StructuredPetEvent;
 import com.silver.aipets.common.domain.Pet;
 import com.silver.aipets.common.domain.PlacedPlacement;
 import com.silver.aipets.common.transport.SubscriptionAccessWireResult;
+import com.silver.aipets.common.transport.PetDialogueAction;
 import com.silver.aipets.fabric.PetCompanionMod;
+import com.silver.aipets.fabric.ai.PetActionController;
 import com.silver.aipets.fabric.authority.PetAuthorityGateway;
 import com.silver.aipets.fabric.authority.PetAuthoritySnapshot;
 import com.silver.aipets.fabric.entity.PetEntityData;
@@ -301,16 +303,20 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
         PetDialogueRequest request = new PetDialogueRequest(
                 requestId, session.sessionId(), session.ownerUuid(), session.petId(),
                 session.petEntityUuid(), session.backendId(), session.dimensionId(),
-                normalizedMessage);
+                normalizedMessage, PetSceneCapture.capture(owner, pet, session.backendId().value()));
+        long sceneVersion = PetActionController.sceneVersion(pet);
         CompletableFuture<PetDialogueResponse> response = dialogueRequests.submit(request);
         response.whenComplete((result, requestFailure) -> server.execute(() ->
-                finishResponse(server, session, requestId, result, requestFailure)));
+                finishResponse(server, session, requestId, normalizedMessage,
+                        sceneVersion, result, requestFailure)));
     }
 
     private void finishResponse(
             MinecraftServer server,
             PetConversationSession session,
             UUID requestId,
+            String ownerMessage,
+            long sceneVersion,
             PetDialogueResponse response,
             Throwable failure) {
         if (sessions.current(session.sessionId(), requestId, clock.instant()).isEmpty()) return;
@@ -339,6 +345,11 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
                     "Your pet's reply could not be matched safely.", null);
             return;
         }
+        if (PetActionController.sceneVersion(pet) != sceneVersion) {
+            endConversation(server, session, requestId,
+                    "Your pet's attention shifted before it could answer.", null);
+            return;
+        }
         if (!sessions.complete(session.sessionId(), requestId, clock.instant())) return;
         if (response.status() == PetDialogueResponse.Status.DENIED) {
             feedback(owner, response.message());
@@ -346,6 +357,10 @@ public final class PetConversationCoordinator implements PetInteractionHandler {
         }
         try {
             displays.show(pet, response.message());
+            if (response.action() != PetDialogueAction.VOCALIZE) PetActionController.outputSound(pet);
+            PetDialogueActionMapping.intent(response.action())
+                    .ifPresent(intent -> PetActionController.suggest(
+                            pet, intent, clock.instant().plusSeconds(45)));
         } catch (RuntimeException displayFailure) {
             feedback(owner, "Your pet replied, but its words could not be shown. You can keep talking or type !exit.");
             logFailure("speech-display", session.ownerUuid(), session.petId(), requestId, displayFailure);

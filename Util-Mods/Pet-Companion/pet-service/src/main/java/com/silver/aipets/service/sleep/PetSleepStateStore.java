@@ -19,4 +19,7 @@ public interface PetSleepStateStore {
             UUID petId, Function<PetSleepState, PetSleepTransition> transition);
 
     List<UUID> findDuePetIds(Instant now, Instant logoutDueAtOrBefore, int limit);
+
+    /** Page active SQL sleep cycles so a lost post-commit enqueue can be replayed. */
+    List<UUID> findSleepingPetIdsAfter(String lastPetId, int limit);
 }

@@ -16,17 +16,32 @@ public final class ModeratedDialogueSafety implements DialogueSafety {
 
     @Override
     public SafetyResult preprocess(String playerInput, int maximumCharacters) {
-        SafetyResult localResult = local.preprocess(playerInput, maximumCharacters);
+        SafetyResult localResult = preprocessLocal(playerInput, maximumCharacters);
         if (!localResult.allowed()) return localResult;
-        OpenAiModerationClient.ModerationResult result = moderation.moderate(localResult.normalizedText());
+        return moderate(localResult.normalizedText());
+    }
+
+    @Override
+    public SafetyResult preprocessLocal(String playerInput, int maximumCharacters) {
+        return local.preprocess(playerInput, maximumCharacters);
+    }
+
+    @Override
+    public java.util.concurrent.CompletionStage<SafetyResult> moderateAsync(
+            String normalizedInput, java.util.concurrent.Executor executor) {
+        return java.util.concurrent.CompletableFuture.supplyAsync(
+                () -> moderate(normalizedInput), executor);
+    }
+
+    private SafetyResult moderate(String normalizedInput) {
+        OpenAiModerationClient.ModerationResult result = moderation.moderate(normalizedInput);
         if (!result.available()) {
-            LOGGER.log(System.Logger.Level.WARNING,
-                    "dialogue moderation unavailable; continuing with local safety ({0})",
+            LOGGER.log(System.Logger.Level.WARNING, "dialogue moderation unavailable; denying interaction ({0})",
                     result.category());
-            return localResult;
+            return new SafetyResult(false, "", result.category());
         }
         return result.allowed()
-                ? localResult
+                ? new SafetyResult(true, normalizedInput, "ALLOWED")
                 : new SafetyResult(false, "", result.category());
     }
 }

@@ -18,7 +18,7 @@ final class PetSleepServiceTest {
     private static final Instant START = Instant.parse("2026-08-31T00:00:00Z");
 
     @Test
-    void logoutSleepIsExactRestartSafeAndDoesNotRepeatDuringOneAbsence() {
+    void logoutSleepIsExactRestartSafeAndLaterOfflineRestDoesNotRepeatAbsenceEvent() {
         UUID ownerId = UUID.fromString("10000000-0000-0000-0000-000000000001");
         UUID petId = UUID.fromString("20000000-0000-0000-0000-000000000001");
         InMemoryPetSleepStateStore store = new InMemoryPetSleepStateStore();
@@ -40,45 +40,74 @@ final class PetSleepServiceTest {
         PetSleepTransition started = service(store, START.plus(Duration.ofMinutes(31)))
                 .processDue(10).getFirst();
         assertEquals(PetSleepEvent.SLEEP_STARTED_AFTER_LOGOUT, started.event());
-        assertEquals(START.plus(Duration.ofMinutes(91)), started.state().sleepEndsAt().orElseThrow());
+        assertEquals(START.plus(Duration.ofMinutes(43)), started.state().sleepEndsAt().orElseThrow());
         assertEquals(absenceId, started.state().ownerAbsenceSessionId().orElseThrow());
 
-        assertTrue(service(store, START.plus(Duration.ofMinutes(90))).processDue(10).isEmpty());
-        PetSleepTransition completed = service(store, START.plus(Duration.ofMinutes(91)))
+        assertTrue(service(store, START.plus(Duration.ofMinutes(42))).processDue(10).isEmpty());
+        PetSleepTransition completed = service(store, START.plus(Duration.ofMinutes(43)))
                 .processDue(10).getFirst();
         assertEquals(PetSleepEvent.SLEEP_COMPLETED, completed.event());
         assertFalse(completed.state().sleeping());
-        assertEquals(START.plus(Duration.ofHours(24)).plus(Duration.ofMinutes(31)),
-                completed.state().forcedSleepDueAt());
+        assertTrue(completed.state().forcedSleepDueAt().isAfter(START.plus(Duration.ofHours(16))));
 
-        assertTrue(service(store, START.plus(Duration.ofDays(10))).processDue(10).isEmpty());
+        assertEquals(PetSleepEvent.SLEEP_STARTED_FORCED,
+                service(store, START.plus(Duration.ofHours(17)))
+                        .processDue(10).getFirst().event());
         assertTrue(store.find(petId).orElseThrow().absenceSleepTriggered());
     }
 
     @Test
-    void forcedSleepAndEarlyOwnerReturnPreserveTheOneHourWindow() {
+    void fatigueCausesMultipleMeaningfulNapsWithoutRapidLoops() {
         UUID ownerId = UUID.fromString("10000000-0000-0000-0000-000000000002");
         UUID petId = UUID.fromString("20000000-0000-0000-0000-000000000002");
         InMemoryPetSleepStateStore store = new InMemoryPetSleepStateStore();
         store.put(ownerId, PetSleepState.initial(petId, START, POLICY));
         service(store, START).ownerOnline(ownerId);
 
-        assertTrue(service(store, START.plus(Duration.ofHours(23)).minusMillis(1))
+        assertTrue(service(store, START.plus(Duration.ofHours(10)).minusMillis(1))
                 .processDue(10).isEmpty());
-        PetSleepTransition started = service(store, START.plus(Duration.ofHours(23)))
+        PetSleepTransition started = service(store, START.plus(Duration.ofHours(10)))
                 .processDue(10).getFirst();
         assertEquals(PetSleepEvent.SLEEP_STARTED_FORCED, started.event());
-        Instant exactEnd = START.plus(Duration.ofHours(24));
+        Instant exactEnd = START.plus(Duration.ofHours(10)).plus(Duration.ofMinutes(12));
         assertEquals(exactEnd, started.state().sleepEndsAt().orElseThrow());
 
         // Presence changes and physical placement operations do not participate in sleep timing.
-        service(store, START.plus(Duration.ofHours(23)).plus(Duration.ofMinutes(10)))
+        service(store, START.plus(Duration.ofHours(10)).plus(Duration.ofMinutes(10)))
                 .ownerOnline(ownerId);
         assertTrue(store.find(petId).orElseThrow().sleeping());
         assertTrue(service(store, exactEnd.minusMillis(1)).processDue(10).isEmpty());
         PetSleepTransition completed = service(store, exactEnd).processDue(10).getFirst();
         assertEquals(PetSleepEvent.SLEEP_COMPLETED, completed.event());
-        assertEquals(exactEnd.plus(Duration.ofHours(23)), completed.state().forcedSleepDueAt());
+        assertEquals(exactEnd.plus(Duration.ofHours(7)).plus(Duration.ofMinutes(30)),
+                completed.state().forcedSleepDueAt());
+        assertTrue(service(store, exactEnd.plus(Duration.ofMinutes(74))).processDue(10).isEmpty());
+        assertTrue(service(store, completed.state().forcedSleepDueAt().minusMillis(1))
+                .processDue(10).isEmpty());
+        assertEquals(PetSleepEvent.SLEEP_STARTED_FORCED,
+                service(store, completed.state().forcedSleepDueAt())
+                        .processDue(10).getFirst().event());
+        assertTrue(completed.state().forcedSleepDueAt().isBefore(START.plus(Duration.ofDays(1))));
+    }
+
+    @Test
+    void activityCanRequireLongSleepButMinimumAwakePreventsLoop() {
+        UUID owner = UUID.randomUUID(), pet = UUID.randomUUID();
+        InMemoryPetSleepStateStore store = new InMemoryPetSleepStateStore();
+        store.put(owner, PetSleepState.initial(pet, START, POLICY));
+        service(store, START).ownerOnline(owner);
+        for (int hour = 1; hour <= 6; hour++) {
+            assertEquals(PetSleepEvent.FATIGUE_UPDATED,
+                    service(store, START.plus(Duration.ofHours(hour)))
+                            .recordActivity(pet, START.plus(Duration.ofHours(hour)), 10).event());
+        }
+        Instant began = START.plus(Duration.ofHours(6));
+        PetSleepTransition sleep = service(store, began).processDue(10).getFirst();
+        assertEquals(began.plus(Duration.ofMinutes(40)), sleep.state().sleepEndsAt().orElseThrow());
+        assertTrue(service(store, began.plus(Duration.ofMinutes(39))).processDue(10).isEmpty());
+        PetSleepTransition woke = service(store, sleep.state().sleepEndsAt().orElseThrow())
+                .processDue(10).getFirst();
+        assertTrue(woke.state().forcedSleepDueAt().isAfter(woke.state().updatedAt().plus(Duration.ofMinutes(74))));
     }
 
     @Test

@@ -41,6 +41,12 @@ public final class DialogueAdmissionController {
     }
 
     public synchronized Admission acquire(UUID petId, UUID ownerUuid, Instant now) {
+        return acquire(petId, ownerUuid, now, false);
+    }
+
+    /** Queue-accepted turns retain FIFO order and therefore do not re-fail the owner cooldown. */
+    public synchronized Admission acquire(UUID petId, UUID ownerUuid, Instant now,
+            boolean alreadyQueued) {
         Objects.requireNonNull(petId, "petId");
         Objects.requireNonNull(ownerUuid, "ownerUuid");
         Objects.requireNonNull(now, "now");
@@ -61,7 +67,7 @@ public final class DialogueAdmissionController {
             return Admission.denied(Denial.DAILY_REPLY_CAP);
         }
         Instant lastSuccess = lastSuccessByOwner.get(ownerUuid);
-        if (lastSuccess != null && now.isBefore(lastSuccess.plus(limits.cooldown()))) {
+        if (!alreadyQueued && lastSuccess != null && now.isBefore(lastSuccess.plus(limits.cooldown()))) {
             return Admission.denied(Denial.COOLDOWN);
         }
         if (activePets.contains(petId)) {

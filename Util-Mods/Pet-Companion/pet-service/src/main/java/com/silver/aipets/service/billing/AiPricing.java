@@ -43,12 +43,12 @@ public record AiPricing(
         }
     }
 
-    /** Defaults for GPT-5.6 Luna and text-embedding-3-small. */
+    /** Standard short-context GPT-6 Luna and text-embedding-3-small prices, per 1M tokens. */
     public static AiPricing defaults() {
         return new AiPricing(
                 new BigDecimal("2.00"), new BigDecimal("2.9"), new BigDecimal("0.30"),
-                new BigDecimal("0.7"), new BigDecimal("0.20"), new BigDecimal("0.02"),
-                new BigDecimal("1.20"), new BigDecimal("0.02"));
+                new BigDecimal("0.7"), new BigDecimal("0.10"), new BigDecimal("0.01"),
+                new BigDecimal("0.50"), new BigDecimal("0.02"));
     }
 
     /** Gross minus the configured payment percentage, fixed fee, and Billing percentage. */

@@ -88,8 +88,9 @@ public final class JdbcPetRepository implements PetRepository {
     private static final String INSERT_SLEEP_STATE = """
             INSERT INTO pet_sleep_state (
                 pet_id, sleeping, forced_sleep_due_at, owner_network_online,
-                absence_sleep_triggered, last_presence_update_at, updated_at
-            ) VALUES (?, FALSE, ?, FALSE, FALSE, ?, ?)
+                absence_sleep_triggered, last_presence_update_at, updated_at,
+                fatigue, fatigue_updated_at, awake_since
+            ) VALUES (?, FALSE, ?, FALSE, FALSE, ?, ?, 0, ?, ?)
             """;
     private static final String UPDATE_PET = """
             UPDATE pets SET
@@ -767,9 +768,11 @@ public final class JdbcPetRepository implements PetRepository {
         }
         try (PreparedStatement statement = connection.prepareStatement(INSERT_SLEEP_STATE)) {
             statement.setString(1, pet.petId().toString());
-            statement.setObject(2, utc(pet.createdAt().plus(Duration.ofHours(23))));
+            statement.setObject(2, utc(pet.createdAt().plus(Duration.ofHours(16))));
             statement.setObject(3, utc(pet.createdAt()));
             statement.setObject(4, utc(pet.createdAt()));
+            statement.setObject(5, utc(pet.createdAt()));
+            statement.setObject(6, utc(pet.createdAt()));
             requireOne(statement.executeUpdate(), "pet_sleep_state insert");
         }
     }

@@ -77,8 +77,7 @@ public final class InMemoryVectorMemoryRepository implements VectorMemoryReposit
                 && java.util.Collections.disjoint(card.entityTags(), query.namedEntities())) {
             return false;
         }
-        return query.dimension().isEmpty()
-                || card.locationTags().contains(query.dimension().orElseThrow());
+        return true;
     }
 
     private static double cosine(float[] left, float[] right) {

@@ -1,0 +1,7 @@
+{
+  "required": true,
+  "package": "com.silver.aipets.fabric.gametest.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "mixins": ["GameTestCommandPolicyMixin", "GameTestEntityLoadReconciliationMixin"],
+  "injectors": {"defaultRequire": 1}
+}

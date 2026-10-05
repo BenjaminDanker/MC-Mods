@@ -204,6 +204,8 @@ public final class PetEntityRecoveryCoordinator {
             if (!dimension.equals(placed.dimensionId())) continue;
             BlockPos block = BlockPos.containing(
                     placed.position().x(), placed.position().y(), placed.position().z());
+            if (block.getY() < world.getMinY() || block.getY() >= world.getMaxY()
+                    || !world.getWorldBorder().isWithinBounds(block)) return Optional.empty();
             ChunkPos chunk = ChunkPos.containing(block);
             if (world.getChunkSource().hasChunk(chunk.x(), chunk.z())) {
                 return Optional.of(new LocalPlacement(world, placed));

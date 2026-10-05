@@ -11,14 +11,20 @@ public interface DialogueHistoryReader {
 
     record DialogueHistory(
             List<ShortTermMemorySnippet> shortTermMemories,
-            List<DialogueTurn> recentTurns) {
+            List<DialogueTurn> recentTurns,
+            List<RelationshipEvidence> relationshipEvidence) {
+        public DialogueHistory(List<ShortTermMemorySnippet> shortTermMemories,
+                List<DialogueTurn> recentTurns) {
+            this(shortTermMemories, recentTurns, List.of());
+        }
         public DialogueHistory {
             shortTermMemories = List.copyOf(shortTermMemories);
             recentTurns = List.copyOf(recentTurns);
+            relationshipEvidence = List.copyOf(relationshipEvidence);
         }
 
         public static DialogueHistory empty() {
-            return new DialogueHistory(List.of(), List.of());
+            return new DialogueHistory(List.of(), List.of(), List.of());
         }
     }
 }

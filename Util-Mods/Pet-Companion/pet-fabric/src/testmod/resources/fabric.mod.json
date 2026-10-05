@@ -4,7 +4,9 @@
   "version": "1.0.0",
   "name": "Pet Companion Game Tests",
   "environment": "server",
+  "mixins": ["pet_companion_test.mixins.json"],
   "entrypoints": {
+    "main": ["com.silver.aipets.fabric.gametest.PetGameTestBootstrap"],
     "fabric-gametest": [
       "com.silver.aipets.fabric.gametest.PetPhysicalGameTests",
       "com.silver.aipets.fabric.gametest.PetConversationGameTests"

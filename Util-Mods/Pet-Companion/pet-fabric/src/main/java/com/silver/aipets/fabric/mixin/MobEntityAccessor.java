@@ -9,4 +9,7 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 public interface MobEntityAccessor {
     @Accessor("goalSelector")
     GoalSelector aipets$getGoalSelector();
+
+    @Accessor("targetSelector")
+    GoalSelector aipets$getTargetSelector();
 }

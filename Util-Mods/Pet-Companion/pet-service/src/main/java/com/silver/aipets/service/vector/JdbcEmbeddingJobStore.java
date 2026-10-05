@@ -48,6 +48,13 @@ public final class JdbcEmbeddingJobStore implements EmbeddingJobStore {
              ORDER BY not_before, job_id
              LIMIT ? FOR UPDATE
             """;
+    private static final String CLAIM_DUE_PET = "SELECT " + COLUMNS + """
+            FROM jobs
+            WHERE job_type = ? AND pet_id = ? AND (
+                 (status IN ('PENDING', 'RETRY') AND not_before <= ?)
+                 OR (status = 'RUNNING' AND locked_until <= ?))
+            ORDER BY not_before, job_id LIMIT ? FOR UPDATE
+            """;
     private static final String CLAIM = """
             UPDATE jobs SET status = 'RUNNING', attempt_count = attempt_count + 1,
                 locked_by = ?, locked_until = ?, updated_at = ?,
@@ -62,6 +69,12 @@ public final class JdbcEmbeddingJobStore implements EmbeddingJobStore {
     private static final String RETRY = """
             UPDATE jobs SET status = 'RETRY', not_before = ?, locked_by = NULL,
                 locked_until = NULL, last_error_sanitized = ?, updated_at = ?, completed_at = NULL
+            WHERE job_id = ? AND status = 'RUNNING' AND locked_by = ?
+            """;
+    private static final String DEFER = """
+            UPDATE jobs SET status = 'RETRY', attempt_count = GREATEST(0, attempt_count - 1),
+                not_before = ?, locked_by = NULL, locked_until = NULL,
+                last_error_sanitized = ?, updated_at = ?, completed_at = NULL
             WHERE job_id = ? AND status = 'RUNNING' AND locked_by = ?
             """;
     private static final String TERMINAL_ERROR = """
@@ -112,9 +125,7 @@ public final class JdbcEmbeddingJobStore implements EmbeddingJobStore {
         Objects.requireNonNull(workerId, "workerId");
         Objects.requireNonNull(now, "now");
         Objects.requireNonNull(leaseDuration, "leaseDuration");
-        if (workerId.isBlank() || workerId.length() > 191 || limit < 1 || limit > 100) {
-            throw new IllegalArgumentException("Invalid embedding claim bounds");
-        }
+        validateClaim(workerId, now, leaseDuration, limit);
         return transaction(connection -> {
             List<EmbeddingJob> due = new ArrayList<>();
             try (PreparedStatement statement = connection.prepareStatement(CLAIM_DUE)) {
@@ -149,6 +160,43 @@ public final class JdbcEmbeddingJobStore implements EmbeddingJobStore {
     }
 
     @Override
+    public List<EmbeddingJob> claimDueForPet(UUID petId, String workerId, Instant now,
+            Duration leaseDuration, int limit) {
+        Objects.requireNonNull(petId, "petId");
+        validateClaim(workerId, now, leaseDuration, limit);
+        try (Connection connection = dataSource.getConnection()) {
+            connection.setAutoCommit(false);
+            try (PreparedStatement select = connection.prepareStatement(CLAIM_DUE_PET)) {
+                select.setString(1, JOB_TYPE); select.setString(2, petId.toString());
+                select.setObject(3, utc(now)); select.setObject(4, utc(now)); select.setInt(5, limit);
+                List<EmbeddingJob> due = new ArrayList<>();
+                try (ResultSet rows = select.executeQuery()) {
+                    while (rows.next()) due.add(map(rows));
+                }
+                List<EmbeddingJob> claimed = new ArrayList<>(due.size());
+                for (EmbeddingJob job : due) {
+                    Instant until = now.plus(leaseDuration);
+                    try (PreparedStatement update = connection.prepareStatement(CLAIM)) {
+                        update.setString(1, workerId); update.setObject(2, utc(until));
+                        update.setObject(3, utc(now)); update.setString(4, job.jobId().toString());
+                        update.executeUpdate();
+                    }
+                    claimed.add(new EmbeddingJob(job.jobId(), job.petId(), job.memoryId(),
+                            job.memoryVersion(), job.embeddingModel(), job.idempotencyKey(),
+                            EmbeddingJobStatus.RUNNING, job.attemptCount() + 1, job.notBefore(),
+                            Optional.of(workerId), Optional.of(until), job.lastErrorSanitized()));
+                }
+                connection.commit();
+                return List.copyOf(claimed);
+            } catch (SQLException | RuntimeException failure) {
+                connection.rollback(); throw failure;
+            }
+        } catch (SQLException failure) {
+            throw new PetPersistenceException("Could not claim pet memory embedding jobs", failure);
+        }
+    }
+
+    @Override
     public void succeeded(UUID jobId, String workerId, Instant completedAt) {
         executeLocked(SUCCEEDED, statement -> {
             statement.setObject(1, utc(completedAt));
@@ -169,6 +217,18 @@ public final class JdbcEmbeddingJobStore implements EmbeddingJobStore {
             statement.setString(4, jobId.toString());
             statement.setString(5, workerId);
         }, "retry embedding job");
+    }
+
+    @Override
+    public void defer(UUID jobId, String workerId, Instant attemptedAt,
+            Instant notBefore, String sanitizedReason) {
+        executeLocked(DEFER, statement -> {
+            statement.setObject(1, utc(notBefore));
+            statement.setString(2, boundedError(sanitizedReason));
+            statement.setObject(3, utc(attemptedAt));
+            statement.setString(4, jobId.toString());
+            statement.setString(5, workerId);
+        }, "defer embedding job");
     }
 
     @Override
@@ -263,6 +323,17 @@ public final class JdbcEmbeddingJobStore implements EmbeddingJobStore {
                 Optional.ofNullable(rows.getString("locked_by")),
                 nullableInstant(rows, "locked_until"),
                 Optional.ofNullable(rows.getString("last_error_sanitized")));
+    }
+
+    private static void validateClaim(String workerId, Instant now, Duration leaseDuration,
+            int limit) {
+        Objects.requireNonNull(workerId, "workerId");
+        Objects.requireNonNull(now, "now");
+        Objects.requireNonNull(leaseDuration, "leaseDuration");
+        if (workerId.isBlank() || workerId.length() > 191 || leaseDuration.isNegative()
+                || leaseDuration.isZero() || limit < 1 || limit > 100) {
+            throw new IllegalArgumentException("Invalid embedding claim bounds");
+        }
     }
 
     private static String payload(EmbeddingJob job) {

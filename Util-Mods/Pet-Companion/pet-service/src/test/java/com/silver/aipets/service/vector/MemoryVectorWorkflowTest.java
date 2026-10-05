@@ -1,5 +1,6 @@
 package com.silver.aipets.service.vector;
 
+import com.silver.aipets.service.billing.AiBudgetService;
 import com.silver.aipets.service.memory.InMemoryLongTermMemoryStore;
 import com.silver.aipets.service.memory.LongTermMemoryCard;
 import com.silver.aipets.service.memory.MemoryImportance;
@@ -26,6 +27,81 @@ final class MemoryVectorWorkflowTest {
     private static final Instant START = Instant.parse("2026-08-31T12:00:00Z");
     private static final UUID PET_A = UUID.fromString("10000000-0000-0000-0000-000000000001");
     private static final UUID PET_B = UUID.fromString("10000000-0000-0000-0000-000000000002");
+
+    @Test
+    void emptyPetSkipsEmbeddingAndQdrantWithoutDegradingRecall() {
+        InMemoryLongTermMemoryStore memories = new InMemoryLongTermMemoryStore();
+        CapturingEmbeddingModel model = new CapturingEmbeddingModel();
+        MemoryRetrievalService retrieval = new MemoryRetrievalService(memories,
+                new InMemoryVectorMemoryRepository(), model, Runnable::run,
+                Clock.fixed(START, ZoneOffset.UTC));
+        MemorySearchQuery query = new MemorySearchQuery(PET_A, "Do you remember the bridge?",
+                Optional.empty(), Optional.empty(), Optional.empty(), Set.of(), .35, 3);
+        MemoryRetrievalResult result = retrieval.retrieve(query);
+        assertFalse(result.vectorDegraded());
+        assertTrue(result.cards().isEmpty());
+        assertTrue(model.inputs.isEmpty());
+    }
+
+    @Test
+    void heldPetEmbedsDurableCardWithoutAnEntity() {
+        InMemoryLongTermMemoryStore memories = new InMemoryLongTermMemoryStore();
+        LongTermMemoryCard memory = card(40, PET_A, true);
+        memories.put(memory);
+        InMemoryEmbeddingJobStore jobs = new InMemoryEmbeddingJobStore();
+        CapturingEmbeddingModel model = new CapturingEmbeddingModel();
+        MemoryEmbeddingWorker worker = new MemoryEmbeddingWorker(
+                memories, jobs, model, new InMemoryVectorMemoryRepository(),
+                Clock.fixed(START, ZoneOffset.UTC), UUID::randomUUID, 3,
+                Duration.ofMinutes(2), Duration.ofSeconds(30),
+                EmbeddingUsageRecorder.NOOP, AiBudgetService.UNLIMITED,
+                ignored -> Optional.empty());
+        worker.enqueue(memory);
+        assertEquals(1, worker.processDue("worker-held", 10));
+        assertEquals(List.of(memory.text()), model.inputs);
+        EmbeddingJob deferred = jobs.findByIdempotencyKey(EmbeddingJobKeys.forMemory(
+                memory.petId(), memory.memoryId(), memory.version(), model.model()))
+                .orElseThrow();
+        assertEquals(EmbeddingJobStatus.SUCCEEDED, deferred.status());
+    }
+
+    @Test
+    void staleEmbeddingCompletionCannotOverwriteNewerMemoryVersion() {
+        InMemoryLongTermMemoryStore memories = new InMemoryLongTermMemoryStore();
+        LongTermMemoryCard old = card(41, PET_A, true);
+        memories.put(old);
+        LongTermMemoryCard newer = new LongTermMemoryCard(old.memoryId(), old.petId(), 2,
+                "newer compact card", old.importance(), old.emotionTags(), old.entityTags(),
+                old.locationTags(), true, START.plusSeconds(1), old.provenance());
+        InMemoryEmbeddingJobStore jobs = new InMemoryEmbeddingJobStore();
+        AtomicInteger qdrantWrites = new AtomicInteger();
+        VectorMemoryRepository vectors = new VectorMemoryRepository() {
+            @Override public String upsert(VectorMemoryDocument document) {
+                qdrantWrites.incrementAndGet(); return document.card().memoryId().toString();
+            }
+            @Override public void delete(UUID petId, UUID memoryId) { }
+            @Override public List<VectorMemoryMatch> search(MemorySearchQuery query,
+                    EmbeddingVector vector) { return List.of(); }
+        };
+        EmbeddingModelClient changesDuringEmbedding = new EmbeddingModelClient() {
+            @Override public String model() { return "test-embedding"; }
+            @Override public EmbeddingVector embed(String text) {
+                memories.put(newer); // Simulate a newer consolidation winning during provider work.
+                return new EmbeddingVector(model(), new float[]{1.0f, 0.0f});
+            }
+        };
+        MemoryEmbeddingWorker worker = new MemoryEmbeddingWorker(memories, jobs,
+                changesDuringEmbedding, vectors, Clock.fixed(START, ZoneOffset.UTC),
+                UUID::randomUUID, 3, Duration.ofMinutes(2), Duration.ofSeconds(30));
+        worker.enqueue(old);
+
+        assertEquals(1, worker.processDueForPet(PET_A, "dialogue-post-test", 10));
+        EmbeddingJob stale = jobs.findByIdempotencyKey(EmbeddingJobKeys.forMemory(
+                PET_A, old.memoryId(), old.version(), changesDuringEmbedding.model())).orElseThrow();
+        assertEquals(EmbeddingJobStatus.CANCELED, stale.status());
+        assertEquals(0, qdrantWrites.get());
+        assertEquals(2, memories.findActive(PET_A, old.memoryId()).orElseThrow().version());
+    }
 
     @Test
     void fullReindexIsCardOnlyIdempotentAndRetriesAnUnavailableVectorStore() {
@@ -82,7 +158,7 @@ final class MemoryVectorWorkflowTest {
     }
 
     @Test
-    void retrievalScopesBeforeRankingFiltersMetadataCapsThreeAndDegradesOnOutage() {
+    void retrievalScopesToPetButKeepsOtherWorldMemoriesAndDegradesOnOutage() {
         InMemoryLongTermMemoryStore memories = new InMemoryLongTermMemoryStore();
         InMemoryVectorMemoryRepository vectors = new InMemoryVectorMemoryRepository();
         for (int index = 1; index <= 5; index++) {
@@ -118,8 +194,8 @@ final class MemoryVectorWorkflowTest {
         assertFalse(result.vectorDegraded());
         assertEquals(3, result.cards().size());
         assertTrue(result.cards().stream().allMatch(card -> card.petId().equals(PET_A)));
-        assertTrue(result.cards().stream()
-                .allMatch(card -> card.locationTags().contains("minecraft:the_nether")));
+        assertTrue(result.cards().contains(wrongLocation));
+        assertEquals(1.0, result.scores().get(wrongLocation.memoryId()), 0.0001);
         assertEquals(List.of(query.deterministicSearchText()), model.inputs);
         assertEquals(3L, result.cards().stream().mapToLong(
                 card -> memories.recallCount(card.memoryId())).sum());

@@ -60,7 +60,7 @@ public final class PetConversationGameTests {
         BackendId backend = new BackendId("survival");
         UUID petId = UUID.fromString("10000000-0000-0000-0000-0000000000f2");
         UUID entityId = UUID.fromString("30000000-0000-0000-0000-0000000000f2");
-        Instant now = Instant.parse("2026-08-31T12:00:00Z");
+        Instant now = Instant.now();
         Vec3 near = context.absoluteVec(new Vec3(1.5, 1.0, 1.5));
         owner.snapTo(near.x + 1, near.y, near.z, 0, 0);
 
@@ -189,12 +189,24 @@ public final class PetConversationGameTests {
             context.assertValueEqual(petId, request.petId(), Component.literal("Request pet mismatch"));
             context.assertValueEqual(backend, request.backendId(), Component.literal("Request backend mismatch"));
             context.assertValueEqual(dimension, request.dimensionId(), Component.literal("Request dimension mismatch"));
+            var location = request.scene().location().orElseThrow();
+            context.assertValueEqual(backend.value(), location.server(), Component.literal("Scene server mismatch"));
+            context.assertValueEqual(dimension, location.dimension(), Component.literal("Scene dimension mismatch"));
+            context.assertFalse(location.world().isBlank(), Component.literal("Server save identity was not captured"));
+            context.assertTrue(Math.abs(location.x() - pet.getX()) < 2
+                    && Math.abs(location.y() - pet.getY()) < 2 && Math.abs(location.z() - pet.getZ()) < 2,
+                    Component.literal("Scene coordinates were not sampled from the loaded pet"));
             pendingReply.complete(new PetDialogueResponse(
                     request.requestId(), request.sessionId(), request.petId(),
                     PetDialogueResponse.Status.SUCCEEDED,
-                    "I am happy to see you. Let's explore together! Third sentence is removed."));
+                    "I'll sit here.",
+                    com.silver.aipets.common.transport.PetDialogueAction.SIT,
+                    com.silver.aipets.common.transport.PetDialogueAttention.CALM));
         });
         context.runAtTickTime(18, () -> {
+            com.silver.aipets.fabric.ai.PetActionController.updateState(pet,placed);
+            com.silver.aipets.fabric.ai.PetActionController.tick(pet);
+            context.assertTrue(pet.isOrderedToSit(), Component.literal("Luna's SIT action was not executed"));
             Display.TextDisplay first = displays.active(petId).orElseThrow(() ->
                     context.assertionException("Valid correlated reply did not create a Text Display"));
             context.assertValueEqual(1, displays.activeCount(),

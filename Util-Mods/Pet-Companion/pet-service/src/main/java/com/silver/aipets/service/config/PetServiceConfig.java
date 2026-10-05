@@ -235,8 +235,8 @@ public final class PetServiceConfig {
                 decimal(environment, STRIPE_PAYMENT_PERCENT_ENV, "2.9"),
                 decimal(environment, STRIPE_FIXED_FEE_USD_ENV, "0.30"),
                 decimal(environment, STRIPE_BILLING_PERCENT_ENV, "0.7"),
-                new BigDecimal("0.20"), new BigDecimal("0.02"),
-                new BigDecimal("1.20"), new BigDecimal("0.02"));
+                new BigDecimal("0.10"), new BigDecimal("0.01"),
+                new BigDecimal("0.50"), new BigDecimal("0.02"));
         String stripeSecretKey = stripeEnabled ? required(environment, STRIPE_SECRET_KEY_ENV) : "";
         String stripeWebhookSecret = stripeEnabled
                 ? required(environment, STRIPE_WEBHOOK_SECRET_ENV) : "";
@@ -301,7 +301,7 @@ public final class PetServiceConfig {
                     QDRANT_DIMENSION_ENV + " must equal " + EMBEDDING_DIMENSION_ENV);
         }
         boolean dialogueEnabled = booleanValue(environment, DIALOGUE_ENABLED_ENV, false);
-        String dialogueModel = optional(environment, DIALOGUE_MODEL_ENV, "gpt-5.6-luna");
+        String dialogueModel = optional(environment, DIALOGUE_MODEL_ENV, "gpt-6-luna");
         String moderationModel = optional(
                 environment, MODERATION_MODEL_ENV, "omni-moderation-latest");
         long dialogueTimeoutMs = longValue(
@@ -316,7 +316,7 @@ public final class PetServiceConfig {
         }
         boolean consolidationEnabled = booleanValue(environment, CONSOLIDATION_ENABLED_ENV, false);
         String consolidationModel = optional(
-                environment, CONSOLIDATION_MODEL_ENV, "gpt-5.6-luna");
+                environment, CONSOLIDATION_MODEL_ENV, "gpt-6-luna");
         validateModelName(consolidationModel, CONSOLIDATION_MODEL_ENV);
         if (consolidationEnabled && openAiApiKey.isBlank()) {
             throw new IllegalArgumentException(

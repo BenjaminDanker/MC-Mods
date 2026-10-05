@@ -12,6 +12,7 @@ import com.silver.aipets.fabric.authority.PetAuthorityGateway;
 import com.silver.aipets.fabric.authority.PetAuthoritySnapshot;
 import com.silver.aipets.fabric.entity.PetEntityController;
 import com.silver.aipets.fabric.entity.PetEntityData;
+import com.silver.aipets.fabric.ai.PetActionController;
 import com.silver.aipets.fabric.metrics.PetMetricsReporter;
 import com.silver.aipets.fabric.metrics.PetMetricsClassifier;
 import net.minecraft.server.MinecraftServer;
@@ -129,6 +130,7 @@ public final class PetEntityReconciler {
         data.aipets$setRecordVersion(pet.recordVersion());
         data.aipets$setSleeping(authoritative.sleeping());
         PetEntityController.configure(entity);
+        PetActionController.updateState(entity, pet);
         result.complete(PetEntityReconciliationResult.decided(
                 PetEntityReconciliationStatus.AUTHORITATIVE_REUSED,
                 decision));

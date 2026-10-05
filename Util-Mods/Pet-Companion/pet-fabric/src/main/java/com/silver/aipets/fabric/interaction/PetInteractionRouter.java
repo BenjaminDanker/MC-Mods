@@ -54,7 +54,9 @@ public final class PetInteractionRouter {
         if (!(player instanceof ServerPlayer serverPlayer)) {
             return InteractionResult.FAIL;
         }
-        if (!PetPermissions.check(serverPlayer.createCommandSourceStack(), PetPermission.CHAT)) {
+        if (serverPlayer.isShiftKeyDown()
+                ? !PetPermissions.check(serverPlayer.createCommandSourceStack(), PetPermission.USE)
+                : !PetPermissions.check(serverPlayer.createCommandSourceStack(), PetPermission.CHAT)) {
             return InteractionResult.FAIL;
         }
         long serverTick = serverPlayer.level().getServer().getTickCount();
@@ -65,6 +67,7 @@ public final class PetInteractionRouter {
         if (previousTick != null && serverTick - previousTick <= 1) {
             return InteractionResult.SUCCESS_SERVER;
         }
+        PetCompanionMod.experienceTracker().ifPresent(tracker -> tracker.interaction(tameable));
         if (serverPlayer.isShiftKeyDown()) {
             return pickup(serverPlayer);
         }

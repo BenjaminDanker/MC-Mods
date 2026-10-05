@@ -7,9 +7,15 @@ import java.util.List;
 import java.util.Objects;
 
 public record ConsolidationCommitResult(
-        List<LongTermMemoryCard> cards, PetTraits traits, int consolidatedEvents, int discardedEvents) {
+        List<LongTermMemoryCard> cards, PetTraits traits, int consolidatedEvents,
+        int discardedEvents, List<java.util.UUID> retiredMemoryIds) {
+    public ConsolidationCommitResult(List<LongTermMemoryCard> cards, PetTraits traits,
+            int consolidatedEvents, int discardedEvents) {
+        this(cards,traits,consolidatedEvents,discardedEvents,List.of());
+    }
     public ConsolidationCommitResult {
         cards = List.copyOf(Objects.requireNonNull(cards, "cards"));
+        retiredMemoryIds = List.copyOf(Objects.requireNonNull(retiredMemoryIds,"retiredMemoryIds"));
         Objects.requireNonNull(traits, "traits");
         if (consolidatedEvents < 0 || discardedEvents < 0) {
             throw new IllegalArgumentException("Event counts cannot be negative");

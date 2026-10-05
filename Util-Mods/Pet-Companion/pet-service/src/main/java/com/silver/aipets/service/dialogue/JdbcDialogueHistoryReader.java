@@ -18,12 +18,19 @@ import java.util.UUID;
 /** MariaDB reader for bounded, non-expired prompt-eligible dialogue events. */
 public final class JdbcDialogueHistoryReader implements DialogueHistoryReader {
     private static final String EVENTS = """
-            SELECT event_id, occurred_at, importance, summary, raw_player_text,
-                   raw_pet_reply, short_term_expires_at
+            SELECT event_id, event_type, occurred_at, importance, summary, raw_player_text,
+                   raw_pet_reply, short_term_expires_at, source_server, source_dimension,
+                   source_provenance, location_json
             FROM pet_events
             WHERE pet_id=? AND prompt_eligible=TRUE
               AND (short_term_expires_at IS NULL OR short_term_expires_at>?)
             ORDER BY occurred_at DESC, event_id DESC LIMIT ?
+            """;
+    private static final String RELATIONSHIP_EVIDENCE = """
+            SELECT interaction_id,event_id,relationship_type,strength,occurred_at
+            FROM pet_relationship_evidence
+            WHERE pet_id=? AND occurred_at>=?
+            ORDER BY occurred_at DESC,event_id DESC LIMIT ?
             """;
     private final DataSource dataSource;
 
@@ -53,9 +60,16 @@ public final class JdbcDialogueHistoryReader implements DialogueHistoryReader {
             List<ShortTermMemorySnippet> shortTerm = new ArrayList<>(events.size());
             List<DialogueTurn> turns = new ArrayList<>(events.size() * 2);
             for (Event event : events) {
-                shortTerm.add(new ShortTermMemorySnippet(
-                        event.eventId(), event.importance(), event.summary(), event.occurredAt(),
-                        event.expiresAt(), 1.0D));
+                // DIALOGUE.summary is the model's previous reply, not evidence.
+                // Its owner and pet turns appear below with their actual roles.
+                if (!event.eventType().equals("DIALOGUE")) {
+                    shortTerm.add(new ShortTermMemorySnippet(
+                            event.eventId(), event.importance(),
+                            event.eventType() + " on " + event.sourceServer() + " / "
+                                    + event.sourceDimension() + ": " + event.summary(),
+                            event.occurredAt(), event.expiresAt(),
+                            relevance(event.eventType(), event.importance()), event.provenance(), event.location()));
+                }
                 if (event.playerText() != null) {
                     turns.add(new DialogueTurn(
                             DialogueTurn.Role.OWNER, event.playerText(), event.occurredAt()));
@@ -65,7 +79,25 @@ public final class JdbcDialogueHistoryReader implements DialogueHistoryReader {
                             DialogueTurn.Role.PET, event.petReply(), event.occurredAt()));
                 }
             }
-            return new DialogueHistory(shortTerm, turns);
+            List<RelationshipEvidence> relationship = new ArrayList<>();
+            try (PreparedStatement evidenceQuery = connection.prepareStatement(RELATIONSHIP_EVIDENCE)) {
+                evidenceQuery.setString(1, petId.toString());
+                evidenceQuery.setObject(2, utc(now.minus(java.time.Duration.ofDays(30))));
+                evidenceQuery.setInt(3, Math.min(maximumEvents, 12));
+                try (ResultSet rows = evidenceQuery.executeQuery()) {
+                    while (rows.next()) {
+                        relationship.add(new RelationshipEvidence(
+                                UUID.fromString(rows.getString("interaction_id")),
+                                UUID.fromString(rows.getString("event_id")),
+                                new RelationshipSignal(
+                                        RelationshipSignal.Type.valueOf(rows.getString("relationship_type")),
+                                        rows.getInt("strength")),
+                                instant(rows, "occurred_at")));
+                    }
+                }
+            }
+            relationship.sort(java.util.Comparator.comparing(RelationshipEvidence::occurredAt));
+            return new DialogueHistory(shortTerm, turns, relationship);
         } catch (SQLException | RuntimeException failure) {
             throw failure instanceof PetPersistenceException existing
                     ? existing
@@ -76,12 +108,19 @@ public final class JdbcDialogueHistoryReader implements DialogueHistoryReader {
     private static Event map(ResultSet rows) throws SQLException {
         return new Event(
                 UUID.fromString(rows.getString("event_id")),
+                rows.getString("event_type"),
                 importance(rows.getString("importance")),
                 ShortTermMemorySnippet.bounded(rows.getString("summary"), 2_000, "summary"),
                 instant(rows, "occurred_at"),
                 optionalInstant(rows, "short_term_expires_at"),
                 nullableBounded(rows.getString("raw_player_text")),
-                nullableBounded(rows.getString("raw_pet_reply")));
+                nullableBounded(rows.getString("raw_pet_reply")),
+                rows.getString("source_server") == null ? "unknown"
+                        : rows.getString("source_server"),
+                rows.getString("source_dimension") == null ? "unknown"
+                        : rows.getString("source_dimension"),
+                rows.getString("source_provenance"),
+                com.silver.aipets.common.transport.SpatialLocationCodec.readStored(rows.getString("location_json")));
     }
 
     private static DialogueImportance importance(String value) throws SQLException {
@@ -90,6 +129,16 @@ public final class JdbcDialogueHistoryReader implements DialogueHistoryReader {
         } catch (RuntimeException failure) {
             throw new SQLException("Invalid dialogue importance", failure);
         }
+    }
+
+    private static double relevance(String type, DialogueImportance importance) {
+        if ("ACTION_COMPLETED".equals(type) || "DIRECT_INTERACTION".equals(type)) return .35;
+        if ("NEW_AREA".equals(type) || "OWNER_RETURNED".equals(type)) return .7;
+        return switch (importance) {
+            case HIGH -> .9;
+            case MEDIUM -> .65;
+            case LOW -> .25;
+        };
     }
 
     private static String nullableBounded(String value) throws SQLException {
@@ -121,11 +170,15 @@ public final class JdbcDialogueHistoryReader implements DialogueHistoryReader {
 
     private record Event(
             UUID eventId,
+            String eventType,
             DialogueImportance importance,
             String summary,
             Instant occurredAt,
             java.util.Optional<Instant> expiresAt,
             String playerText,
-            String petReply) {
+            String petReply,
+            String sourceServer,
+            String sourceDimension,
+            String provenance, java.util.Optional<com.silver.aipets.common.transport.SpatialLocation> location) {
     }
 }

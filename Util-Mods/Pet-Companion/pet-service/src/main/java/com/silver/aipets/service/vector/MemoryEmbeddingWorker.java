@@ -3,6 +3,7 @@ package com.silver.aipets.service.vector;
 import com.silver.aipets.service.memory.LongTermMemoryCard;
 import com.silver.aipets.service.memory.LongTermMemoryStore;
 import com.silver.aipets.service.billing.AiBudgetService;
+import com.silver.aipets.service.billing.AiPricing;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -29,6 +30,7 @@ public final class MemoryEmbeddingWorker {
     private final EmbeddingUsageRecorder usageRecorder;
     private final AiBudgetService budget;
     private final Function<UUID, Optional<UUID>> ownerResolver;
+    private final AiPricing pricing;
 
     public MemoryEmbeddingWorker(
             LongTermMemoryStore memories,
@@ -58,6 +60,25 @@ public final class MemoryEmbeddingWorker {
             EmbeddingUsageRecorder usageRecorder,
             AiBudgetService budget,
             Function<UUID, Optional<UUID>> ownerResolver) {
+        this(memories, jobs, model, vectors, clock, jobIds, maximumAttempts,
+                leaseDuration, initialRetryDelay, usageRecorder, budget, ownerResolver,
+                AiPricing.defaults());
+    }
+
+    public MemoryEmbeddingWorker(
+            LongTermMemoryStore memories,
+            EmbeddingJobStore jobs,
+            EmbeddingModelClient model,
+            VectorMemoryRepository vectors,
+            Clock clock,
+            Supplier<UUID> jobIds,
+            int maximumAttempts,
+            Duration leaseDuration,
+            Duration initialRetryDelay,
+            EmbeddingUsageRecorder usageRecorder,
+            AiBudgetService budget,
+            Function<UUID, Optional<UUID>> ownerResolver,
+            AiPricing pricing) {
         this.memories = Objects.requireNonNull(memories, "memories");
         this.jobs = Objects.requireNonNull(jobs, "jobs");
         this.model = Objects.requireNonNull(model, "model");
@@ -73,6 +94,7 @@ public final class MemoryEmbeddingWorker {
         this.usageRecorder = Objects.requireNonNull(usageRecorder, "usageRecorder");
         this.budget = Objects.requireNonNull(budget, "budget");
         this.ownerResolver = Objects.requireNonNull(ownerResolver, "ownerResolver");
+        this.pricing = Objects.requireNonNull(pricing, "pricing");
     }
 
     public EmbeddingJobStore.EnqueueResult enqueue(LongTermMemoryCard card) {
@@ -94,10 +116,31 @@ public final class MemoryEmbeddingWorker {
         }
         Instant now = clock.instant();
         List<EmbeddingJob> claimed = jobs.claimDue(workerId, now, leaseDuration, limit);
-        for (EmbeddingJob job : claimed) {
-            processOne(workerId, job, now);
+        processClaimed(workerId, claimed, now);
+        for (LongTermMemoryCard inactive : memories.inactiveForVectorDeletion(10)) {
+            try {
+                vectors.delete(inactive.petId(),inactive.memoryId());
+                memories.markVectorDeleted(inactive.petId(),inactive.memoryId(),now);
+            } catch (RuntimeException ignored) {
+                // The tombstone remains in SQL for the next bounded cleanup pass.
+            }
         }
         return claimed.size();
+    }
+
+    /** Process jobs for a dialogue pet without consuming unrelated pets' queue entries. */
+    public int processDueForPet(UUID petId, String workerId, int limit) {
+        Objects.requireNonNull(petId, "petId");
+        if (limit < 1 || limit > 100) throw new IllegalArgumentException("Invalid worker batch size");
+        Instant now = clock.instant();
+        List<EmbeddingJob> claimed = jobs.claimDueForPet(
+                petId, workerId, now, leaseDuration, limit);
+        processClaimed(workerId, claimed, now);
+        return claimed.size();
+    }
+
+    private void processClaimed(String workerId, List<EmbeddingJob> claimed, Instant now) {
+        for (EmbeddingJob job : claimed) processOne(workerId, job, now);
     }
 
     private void processOne(String workerId, EmbeddingJob job, Instant now) {
@@ -113,7 +156,7 @@ public final class MemoryEmbeddingWorker {
             Optional<UUID> owner = ownerResolver.apply(card.petId());
             if (owner.isPresent()) {
                 reservation = budget.tryReserve(
-                        owner.orElseThrow(), new BigDecimal("0.00016384"), now).orElse(null);
+                        owner.orElseThrow(), pricing.maximumEmbeddingCost(8192), now).orElse(null);
                 if (reservation == null) {
                     jobs.retry(job.jobId(), workerId, now, now.plus(Duration.ofHours(1)),
                             "AI_BUDGET_EXHAUSTED");
@@ -125,6 +168,11 @@ public final class MemoryEmbeddingWorker {
             EmbeddingVector embedding = response.embedding();
             if (!embedding.model().equals(model.model())) {
                 throw new IllegalStateException("Embedding client returned an unexpected model");
+            }
+            LongTermMemoryCard current = memories.findActive(card.petId(), card.memoryId()).orElse(null);
+            if (current == null || current.version() != card.version()) {
+                jobs.canceled(job.jobId(), workerId, now, "memory version changed during embedding");
+                return;
             }
             recordUsage(card.petId(), response, now, "SUCCEEDED", null);
             String reference = vectors.upsert(new VectorMemoryDocument(card, embedding));

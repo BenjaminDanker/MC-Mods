@@ -1,5 +1,6 @@
 package com.silver.aipets.service.dialogue;
 
+import com.silver.aipets.common.domain.PlacedPlacement;
 import com.silver.aipets.common.observability.StructuredPetEvent;
 import com.silver.aipets.service.metrics.PetOperationalMetrics;
 import java.math.BigDecimal;
@@ -19,7 +20,7 @@ public final class DialogueService {
     private final DialoguePromptBuilder prompts;
     private final DialogueModelClient model;
     private final DialogueOutputCodec codec;
-    private final DialogueOutputValidator outputValidator;
+    private final DialogueResponseMapper responseMapper;
     private final DialogueAdmissionController admission;
     private final DialogueStateStore state;
     private final Clock clock;
@@ -34,14 +35,14 @@ public final class DialogueService {
             DialoguePromptBuilder prompts,
             DialogueModelClient model,
             DialogueOutputCodec codec,
-            DialogueOutputValidator outputValidator,
+            DialogueResponseMapper responseMapper,
             DialogueAdmissionController admission,
             DialogueStateStore state,
             Clock clock,
             Supplier<UUID> callIds,
             Supplier<UUID> eventIds) {
         this(
-                limits, safety, prompts, model, codec, outputValidator, admission, state,
+                limits, safety, prompts, model, codec, responseMapper, admission, state,
                 clock, callIds, eventIds, () -> true, new PetOperationalMetrics());
     }
 
@@ -51,14 +52,14 @@ public final class DialogueService {
             DialoguePromptBuilder prompts,
             DialogueModelClient model,
             DialogueOutputCodec codec,
-            DialogueOutputValidator outputValidator,
+            DialogueResponseMapper responseMapper,
             DialogueAdmissionController admission,
             DialogueStateStore state,
             Clock clock,
             Supplier<UUID> callIds,
             Supplier<UUID> eventIds,
             BooleanSupplier aiEnabled) {
-        this(limits, safety, prompts, model, codec, outputValidator, admission, state,
+        this(limits, safety, prompts, model, codec, responseMapper, admission, state,
                 clock, callIds, eventIds, aiEnabled, new PetOperationalMetrics());
     }
 
@@ -68,7 +69,7 @@ public final class DialogueService {
             DialoguePromptBuilder prompts,
             DialogueModelClient model,
             DialogueOutputCodec codec,
-            DialogueOutputValidator outputValidator,
+            DialogueResponseMapper responseMapper,
             DialogueAdmissionController admission,
             DialogueStateStore state,
             Clock clock,
@@ -81,7 +82,7 @@ public final class DialogueService {
         this.prompts = Objects.requireNonNull(prompts, "prompts");
         this.model = Objects.requireNonNull(model, "model");
         this.codec = Objects.requireNonNull(codec, "codec");
-        this.outputValidator = Objects.requireNonNull(outputValidator, "outputValidator");
+        this.responseMapper = Objects.requireNonNull(responseMapper, "responseMapper");
         this.admission = Objects.requireNonNull(admission, "admission");
         this.state = Objects.requireNonNull(state, "state");
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -93,10 +94,44 @@ public final class DialogueService {
 
     public DialogueResult respond(
             UUID requestId, UUID ownerUuid, DialogueContext context, String playerInput) {
+        DialogueSafety.SafetyResult safe = preprocessLocally(playerInput);
+        if (!safe.allowed()) return deniedUnsafe();
+        java.util.concurrent.CompletableFuture<DialogueSafety.SafetyResult> moderation =
+                moderateAsync(safe, java.util.concurrent.ForkJoinPool.commonPool());
+        return respondPrepared(requestId, ownerUuid, context, safe, moderation);
+    }
+
+    /** Local gate called before any context or memory retrieval. */
+    public DialogueSafety.SafetyResult preprocessLocally(String playerInput) {
+        return safety.preprocessLocal(Objects.requireNonNull(playerInput), limits.maximumMessageCharacters());
+    }
+
+    /** Begins remote moderation without blocking; its result is not committed to pet state. */
+    public java.util.concurrent.CompletableFuture<DialogueSafety.SafetyResult> moderateAsync(
+            DialogueSafety.SafetyResult local, java.util.concurrent.Executor executor) {
+        Objects.requireNonNull(local, "local");
+        if (!local.allowed()) return java.util.concurrent.CompletableFuture.completedFuture(local);
+        return safety.moderateAsync(local.normalizedText(), executor).toCompletableFuture();
+    }
+
+    /** Runs after speculative context retrieval. Luna output remains private until moderation passes. */
+    public DialogueResult respondPrepared(
+            UUID requestId, UUID ownerUuid, DialogueContext context,
+            DialogueSafety.SafetyResult safe,
+            java.util.concurrent.CompletableFuture<DialogueSafety.SafetyResult> moderation) {
+        return respondPrepared(requestId, ownerUuid, context, safe, moderation, false);
+    }
+
+    public DialogueResult respondPrepared(
+            UUID requestId, UUID ownerUuid, DialogueContext context,
+            DialogueSafety.SafetyResult safe,
+            java.util.concurrent.CompletableFuture<DialogueSafety.SafetyResult> moderation,
+            boolean alreadyQueued) {
         Objects.requireNonNull(requestId, "requestId");
         Objects.requireNonNull(ownerUuid, "ownerUuid");
         Objects.requireNonNull(context, "context");
-        Objects.requireNonNull(playerInput, "playerInput");
+        Objects.requireNonNull(safe, "safe");
+        Objects.requireNonNull(moderation, "moderation");
         if (!aiEnabled.getAsBoolean()) {
             return DialogueResult.denied(
                     DialogueResultStatus.NO_AI_ACCESS, "Your pet is quiet right now. Please try again later.");
@@ -104,6 +139,11 @@ public final class DialogueService {
         if (!context.pet().ownerUuid().equals(ownerUuid)) {
             return DialogueResult.denied(
                     DialogueResultStatus.UNSAFE_INPUT, "That is not your pet.");
+        }
+        if (!(context.pet().placement() instanceof PlacedPlacement placed)
+                || !placed.isMaterialized()) {
+            return DialogueResult.denied(
+                    DialogueResultStatus.NOT_PRESENT, "Your pet is not present right now.");
         }
         if (!context.aiAccessEnabled()) {
             return DialogueResult.denied(
@@ -113,15 +153,14 @@ public final class DialogueService {
             return DialogueResult.denied(
                     DialogueResultStatus.SLEEPING, "Your pet is sleeping.");
         }
-        DialogueSafety.SafetyResult safe = safety.preprocess(
-                playerInput, limits.maximumMessageCharacters());
         if (!safe.allowed()) {
-            return DialogueResult.denied(
-                    DialogueResultStatus.UNSAFE_INPUT, "That message cannot be sent.");
+            return deniedUnsafe();
         }
         Instant startedAt = clock.instant();
+        long admissionStart=System.nanoTime();
         DialogueAdmissionController.Admission acquired = admission.acquire(
-                context.pet().petId(), ownerUuid, startedAt);
+                context.pet().petId(), ownerUuid, startedAt, alreadyQueued);
+        DialogueDiagnostics.elapsed("admission_no_queue",admissionStart);
         if (acquired.permit().isEmpty()) {
             String message = acquired.denial().orElse(null)
                     == DialogueAdmissionController.Denial.BUDGET_EXHAUSTED
@@ -133,7 +172,9 @@ public final class DialogueService {
         DialogueAdmissionController.Permit permit = acquired.permit().orElseThrow();
         DialoguePrompt prompt;
         try {
+            long promptStart=System.nanoTime();
             prompt = prompts.build(context, safe.normalizedText());
+            DialogueDiagnostics.elapsed("prompt_assembly",promptStart);
         } catch (RuntimeException failure) {
             permit.rejected();
             return DialogueResult.denied(
@@ -142,10 +183,28 @@ public final class DialogueService {
 
         UUID callId = Objects.requireNonNull(callIds.get(), "callIds returned null");
         DialogueModelResponse response;
+        java.util.concurrent.CompletableFuture<DialogueModelResponse> modelCall = null;
+        long modelWaitStart = System.nanoTime();
         try {
             metrics.increment(PetOperationalMetrics.Counter.DIALOGUE_CALLS);
-            response = model.complete(
-                    requestId, prompt, DialogueStructuredSchema.JSON_SCHEMA, limits.modelTimeout());
+            modelCall = model.completeAsync(
+                    requestId, prompt, DialogueStructuredSchema.JSON_SCHEMA, limits.modelTimeout(),
+                    java.util.concurrent.ForkJoinPool.commonPool());
+            java.util.concurrent.CompletableFuture.anyOf(modelCall, moderation)
+                    .get(limits.modelTimeout().toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
+            if (moderation.isDone()) {
+                DialogueSafety.SafetyResult completedModeration = null;
+                try { completedModeration = moderation.join(); }
+                catch (java.util.concurrent.CompletionException | java.util.concurrent.CancellationException ignored) { }
+                if (completedModeration == null || !completedModeration.allowed()) {
+                    cancelSpeculative(requestId, modelCall, "MODERATION_DENIED_OR_UNAVAILABLE");
+                    permit.rejected(BigDecimal.ZERO, clock.instant());
+                    return DialogueResult.denied(DialogueResultStatus.UNSAFE_INPUT,
+                            "That message cannot be sent.");
+                }
+            }
+            response = modelCall.get(limits.modelTimeout().toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
+            DialogueDiagnostics.elapsed("model_request_to_complete_body", modelWaitStart);
         } catch (RuntimeException failure) {
             metrics.increment(PetOperationalMetrics.Counter.DIALOGUE_FAILED);
             Instant failedAt = clock.instant();
@@ -156,16 +215,91 @@ public final class DialogueService {
             logModelCall(requestId, context, null, "provider_failure", failure);
             return DialogueResult.denied(
                     DialogueResultStatus.PROVIDER_FAILURE, "Your pet cannot find the words right now.");
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            permit.providerFailed(clock.instant());
+            return DialogueResult.denied(DialogueResultStatus.PROVIDER_FAILURE,
+                    "Your pet cannot find the words right now.");
+        } catch (java.util.concurrent.ExecutionException failure) {
+            if (moderation.isCompletedExceptionally() || moderation.isCancelled()) {
+                cancelSpeculative(requestId, modelCall, "MODERATION_FAILED");
+                permit.rejected(BigDecimal.ZERO, clock.instant());
+                return DialogueResult.denied(DialogueResultStatus.UNSAFE_INPUT,
+                        "That message cannot be sent.");
+            }
+            metrics.increment(PetOperationalMetrics.Counter.DIALOGUE_FAILED);
+            Instant failedAt = clock.instant();
+            permit.providerFailed(failedAt);
+            state.recordUsage(failedUsage(callId, requestId, context, failedAt,
+                    DialogueUsage.Status.FAILED, failure.getClass().getSimpleName()));
+            logModelCall(requestId, context, null, "provider_failure", new RuntimeException(failure));
+            return DialogueResult.denied(DialogueResultStatus.PROVIDER_FAILURE,
+                    "Your pet cannot find the words right now.");
+        } catch (java.util.concurrent.TimeoutException failure) {
+            cancelSpeculative(requestId, modelCall, "SPECULATIVE_TIMEOUT");
+            moderation.cancel(true);
+            metrics.increment(PetOperationalMetrics.Counter.DIALOGUE_FAILED);
+            Instant failedAt = clock.instant();
+            permit.providerFailed(failedAt);
+            state.recordUsage(failedUsage(callId, requestId, context, failedAt,
+                    DialogueUsage.Status.FAILED, failure.getClass().getSimpleName()));
+            logModelCall(requestId, context, null, "provider_failure", new RuntimeException(failure));
+            return DialogueResult.denied(DialogueResultStatus.PROVIDER_FAILURE,
+                    "Your pet cannot find the words right now.");
+        }
+
+        DialogueSafety.SafetyResult moderationResult;
+        try {
+            moderationResult = moderation.get(limits.modelTimeout().toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            moderationResult = new DialogueSafety.SafetyResult(false, "", "MODERATION_INTERRUPTED");
+        } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException failure) {
+            moderationResult = new DialogueSafety.SafetyResult(false, "", "MODERATION_UNAVAILABLE");
+        }
+        if (!moderationResult.allowed()) {
+            boolean cancelled = modelCall != null && modelCall.cancel(true);
+            DialogueDiagnostics.event("speculative_dialogue_discarded", requestId,
+                    "moderation=" + moderationResult.category() + " cancel_attempted=" + (modelCall != null)
+                            + " cancel_reported=" + cancelled);
+            permit.rejected(BigDecimal.ZERO, clock.instant());
+            return DialogueResult.denied(DialogueResultStatus.UNSAFE_INPUT,
+                    "That message cannot be sent.");
         }
 
         ValidatedDialogueOutput output;
         try {
+            long validationStart=System.nanoTime();
+            DialogueDiagnostics.event("dialogue_provider_completion", requestId,
+                    "configured_completion_limit=" + response.configuredCompletionLimit()
+                            + " finish_reason=" + safeCategory(response.finishReason())
+                            + " completion_tokens=" + response.outputTokens()
+                            + " token_limit_hit=" + response.finishReason().equals("length")
+                            + " provider_request_id=" + response.providerRequestId().orElse("<absent>")
+                            + " http_elapsed_ms=" + response.latencyMillis());
+            if (!response.finishReason().equals("stop")) {
+                throw new DialogueOutputException(response.finishReason().equals("length")
+                        ? "Provider response hit the configured completion token limit"
+                        : "Provider response did not finish normally", null);
+            }
             if (response.inputTokens() > limits.hardInputTokens()) {
                 throw new DialogueOutputException("Provider input usage exceeded hard cap", null);
             }
-            output = outputValidator.validate(
-                    codec.decode(response.structuredJson()), safe.normalizedText());
+            output = responseMapper.map(
+                    codec.decode(response.structuredJson()), safe.normalizedText(), context);
+            DialogueDiagnostics.event("dialogue_schema_validation", requestId,
+                    "result=passed configured_completion_limit=" + response.configuredCompletionLimit()
+                            + " finish_reason=" + safeCategory(response.finishReason())
+                            + " completion_tokens=" + response.outputTokens()
+                            + " provider_request_id=" + response.providerRequestId().orElse("<absent>"));
+            DialogueDiagnostics.elapsed("model_decode_and_validation",validationStart);
         } catch (RuntimeException failure) {
+            DialogueDiagnostics.event("dialogue_schema_validation", requestId,
+                    "result=failed configured_completion_limit=" + response.configuredCompletionLimit()
+                            + " finish_reason=" + safeCategory(response.finishReason())
+                            + " completion_tokens=" + response.outputTokens()
+                            + " token_limit_hit=" + response.finishReason().equals("length")
+                            + " provider_request_id=" + response.providerRequestId().orElse("<absent>"));
             recordUsageMetrics(response);
             metrics.increment(PetOperationalMetrics.Counter.DIALOGUE_FAILED);
             Instant failedAt = clock.instant();
@@ -183,10 +317,12 @@ public final class DialogueService {
                 callId, requestId, context, response, completedAt,
                 DialogueUsage.Status.SUCCEEDED, Optional.empty(), prompt);
         try {
+            long persistenceStart = System.nanoTime();
             DialoguePersistResult persisted = state.commit(new DialoguePersistRequest(
                     Objects.requireNonNull(eventIds.get(), "eventIds returned null"),
                     context.pet(), safe.normalizedText(), output, usage,
                     context.gameContext(), completedAt));
+            DialogueDiagnostics.elapsed("mariadb_dialogue_commit", persistenceStart);
             permit.succeeded(response.estimatedCost(), completedAt);
             recordUsageMetrics(response);
             metrics.increment(PetOperationalMetrics.Counter.DIALOGUE_SUCCEEDED);
@@ -201,6 +337,19 @@ public final class DialogueService {
             return DialogueResult.denied(
                     DialogueResultStatus.PERSISTENCE_FAILURE, "Your pet's reply could not be saved safely.");
         }
+    }
+
+    private static DialogueResult deniedUnsafe() {
+        return DialogueResult.denied(DialogueResultStatus.UNSAFE_INPUT, "That message cannot be sent.");
+    }
+
+    private static void cancelSpeculative(UUID requestId,
+            java.util.concurrent.CompletableFuture<?> modelCall, String reason) {
+        boolean attempted = modelCall != null && !modelCall.isDone();
+        boolean cancelled = attempted && modelCall.cancel(true);
+        DialogueDiagnostics.event("speculative_dialogue_discarded", requestId,
+                "reason=" + reason + " cancel_attempted=" + attempted
+                        + " cancel_reported=" + cancelled + " result_always_discarded=true");
     }
 
     private void recordUsageMetrics(DialogueModelResponse response) {

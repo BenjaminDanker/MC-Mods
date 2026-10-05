@@ -54,6 +54,7 @@ public final class PetFollowOwnerGoal extends Goal {
 
     @Override
     public void start() {
+        PetActionController.cancelForFollow(pet);
         refreshCountdown = 0;
         stuckDetector.reset(pet.position());
     }
@@ -85,10 +86,9 @@ public final class PetFollowOwnerGoal extends Goal {
         // otherwise clear diagonal run look like a sequence of block-to-block corrections.
         // The coordinate overload still uses the mob navigation/pathfinder, so collision
         // handling and the existing stuck recovery remain unchanged.
-        pet.getNavigation().moveTo(
-                owner.getX(),
-                owner.getY(),
-                owner.getZ(),
+        var target = PetOwnerApproachTarget.target(pet.position(), owner.position(),
+                config.followStopDistance());
+        pet.getNavigation().moveTo(target.x, target.y, target.z,
                 config.speedForSquaredDistance(squaredDistance));
     }
 

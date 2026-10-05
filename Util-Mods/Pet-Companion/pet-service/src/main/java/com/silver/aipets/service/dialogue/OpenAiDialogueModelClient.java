@@ -10,8 +10,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -19,6 +19,8 @@ import com.silver.aipets.service.billing.AiPricing;
 
 /** OpenAI Chat Completions client using strict JSON Schema structured output. */
 public final class OpenAiDialogueModelClient implements DialogueModelClient {
+    private static final System.Logger LOGGER = System.getLogger(OpenAiDialogueModelClient.class.getName());
+    public static final int MAX_COMPLETION_TOKENS = 2000;
     private final HttpClient client;
     private final URI endpoint;
     private final String model;
@@ -26,6 +28,7 @@ public final class OpenAiDialogueModelClient implements DialogueModelClient {
     private final Duration defaultTimeout;
     private final String schemaName;
     private final AiPricing pricing;
+    private final String reasoningEffort;
 
     public OpenAiDialogueModelClient(
             URI baseUri, String model, String apiKey, Duration timeout) {
@@ -40,6 +43,13 @@ public final class OpenAiDialogueModelClient implements DialogueModelClient {
     public OpenAiDialogueModelClient(
             URI baseUri, String model, String apiKey, Duration timeout,
             String schemaName, AiPricing pricing) {
+        this(baseUri, model, apiKey, timeout, schemaName, pricing, "none");
+    }
+
+    /** Explicit effort override is for isolated diagnostic calls only. */
+    public OpenAiDialogueModelClient(
+            URI baseUri, String model, String apiKey, Duration timeout,
+            String schemaName, AiPricing pricing, String reasoningEffort) {
         Objects.requireNonNull(baseUri, "baseUri");
         if (baseUri.getHost() == null || !("http".equalsIgnoreCase(baseUri.getScheme())
                 || "https".equalsIgnoreCase(baseUri.getScheme()))) {
@@ -51,6 +61,10 @@ public final class OpenAiDialogueModelClient implements DialogueModelClient {
         this.defaultTimeout = positive(timeout, "timeout");
         this.schemaName = bounded(schemaName, "schemaName", 64);
         this.pricing = Objects.requireNonNull(pricing, "pricing");
+        if (!java.util.Set.of("none", "low", "medium", "high").contains(reasoningEffort)) {
+            throw new IllegalArgumentException("reasoningEffort is invalid");
+        }
+        this.reasoningEffort = reasoningEffort;
         this.client = HttpClient.newBuilder().connectTimeout(defaultTimeout).build();
     }
 
@@ -66,11 +80,12 @@ public final class OpenAiDialogueModelClient implements DialogueModelClient {
         Objects.requireNonNull(prompt, "prompt");
         Objects.requireNonNull(requiredJsonSchema, "requiredJsonSchema");
         Duration effectiveTimeout = positive(timeout, "timeout");
+        long serializationStart = System.nanoTime();
         JsonObject body = new JsonObject();
         body.addProperty("model", model);
-        body.addProperty("reasoning_effort", "none");
-        body.add("messages", messages(prompt.text()));
-        body.addProperty("max_completion_tokens", 800);
+        body.addProperty("reasoning_effort", reasoningEffort);
+        body.add("messages", messages(prompt));
+        body.addProperty("max_completion_tokens", MAX_COMPLETION_TOKENS);
         JsonObject responseFormat = new JsonObject();
         responseFormat.addProperty("type", "json_schema");
         JsonObject schema = new JsonObject();
@@ -79,15 +94,24 @@ public final class OpenAiDialogueModelClient implements DialogueModelClient {
         schema.add("schema", parseObject(requiredJsonSchema));
         responseFormat.add("json_schema", schema);
         body.add("response_format", responseFormat);
+        String requestBody = body.toString();
         HttpRequest request = HttpRequest.newBuilder(endpoint)
                 .timeout(effectiveTimeout)
                 .header("Authorization", "Bearer " + apiKey)
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
                 .header("X-Client-Request-Id", requestId.toString())
-                .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                 .build();
-        Instant started = Instant.now();
+        DialogueProviderDiagnostics.emit("Request serialization complete: elapsed_ms="
+                + ((System.nanoTime() - serializationStart) / 1_000_000));
+        DialogueProviderDiagnostics.emit("Provider request: client_request_id=" + requestId
+                + " endpoint=" + endpoint.getScheme() + "://" + endpoint.getHost()
+                + endpoint.getPath() + " model=" + model + " reasoning_effort="
+                + reasoningEffort + " max_completion_tokens=" + MAX_COMPLETION_TOKENS + " stream=false"
+                + " request_bytes=" + requestBody.getBytes(StandardCharsets.UTF_8).length
+                + " timeout_ms=" + effectiveTimeout.toMillis());
+        long transportStarted = System.nanoTime();
         final HttpResponse<String> response;
         try {
             response = client.send(request, HttpResponse.BodyHandlers.ofString());
@@ -97,7 +121,15 @@ public final class OpenAiDialogueModelClient implements DialogueModelClient {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Dialogue provider request interrupted", failure);
         }
-        long latency = Math.max(0L, Duration.between(started, Instant.now()).toMillis());
+        long transportMs = (System.nanoTime() - transportStarted) / 1_000_000;
+        long latency = transportMs;
+        int responseBytes = response.body().getBytes(StandardCharsets.UTF_8).length;
+        DialogueProviderDiagnostics.emit("Provider HTTP: status=" + response.statusCode()
+                + " blocking_send_complete_ms=" + transportMs
+                + " response_bytes=" + responseBytes
+                + " x_request_id=" + response.headers().firstValue("x-request-id").orElse("<absent>")
+                + " openai_processing_ms=" + response.headers().firstValue("openai-processing-ms")
+                        .orElse("<absent>"));
         if (response.statusCode() / 100 != 2 || response.body().length() > 1_000_000) {
             throw new IllegalStateException("Dialogue provider returned a bounded failure");
         }
@@ -119,22 +151,60 @@ public final class OpenAiDialogueModelClient implements DialogueModelClient {
             if (input < 0 || cached < 0 || cached > input || output < 0) {
                 throw new IllegalArgumentException("usage is invalid");
             }
+            JsonObject completionDetails = usage == null ? null
+                    : usage.getAsJsonObject("completion_tokens_details");
+            String reasoningTokens = completionDetails == null
+                    || !completionDetails.has("reasoning_tokens")
+                    ? "<absent>" : completionDetails.get("reasoning_tokens").toString();
+            JsonElement finishReason = choices.get(0).getAsJsonObject().get("finish_reason");
+            if (finishReason == null || !finishReason.isJsonPrimitive()
+                    || !finishReason.getAsJsonPrimitive().isString()) {
+                throw new IllegalArgumentException("provider finish_reason is missing");
+            }
+            String finish = finishReason.getAsString();
+            Optional<String> providerId = Optional.ofNullable(root.get("id"))
+                    .filter(JsonElement::isJsonPrimitive).map(JsonElement::getAsString);
+            Optional<String> providerRequestId = response.headers().firstValue("x-request-id")
+                    .or(() -> providerId);
+            DialogueProviderDiagnostics.emit("Provider result: id="
+                    + providerId.orElse("<absent>")
+                    + " provider_request_id=" + providerRequestId.orElse("<absent>")
+                    + " configured_completion_limit=" + MAX_COMPLETION_TOKENS
+                    + " finish_reason=" + finish
+                    + " token_limit_hit=" + finish.equals("length")
+                    + " prompt_tokens=" + input + " cached_prompt_tokens=" + cached
+                    + " completion_tokens=" + output + " reasoning_tokens=" + reasoningTokens
+                    + " http_elapsed_ms=" + latency
+                    + " structured_json_bytes=" + content.getBytes(StandardCharsets.UTF_8).length);
+            LOGGER.log(System.Logger.Level.INFO, "pet_model_completion model=" + model
+                    + " request_id=" + providerRequestId.orElse("<absent>")
+                    + " configured_completion_limit=" + MAX_COMPLETION_TOKENS
+                    + " finish_reason=" + finish + " token_limit_hit=" + finish.equals("length")
+                    + " prompt_tokens=" + input + " cached_prompt_tokens=" + cached
+                    + " completion_tokens=" + output + " reasoning_tokens=" + reasoningTokens
+                    + " http_elapsed_ms=" + latency);
             return new DialogueModelResponse(
                     content,
-                    Optional.ofNullable(root.get("id")).filter(JsonElement::isJsonPrimitive)
-                            .map(JsonElement::getAsString),
-                    input, cached, output, pricing.dialogueCost(input, cached, output), latency);
+                    providerId, input, cached, output,
+                    pricing.dialogueCost(input, cached, output), latency, finish,
+                    MAX_COMPLETION_TOKENS, providerRequestId);
         } catch (RuntimeException malformed) {
             throw new IllegalStateException("Dialogue provider response was invalid", malformed);
         }
     }
 
-    private static JsonArray messages(String prompt) {
+    private static JsonArray messages(DialoguePrompt prompt) {
         JsonArray messages = new JsonArray();
         JsonObject system = new JsonObject();
         system.addProperty("role", "system");
-        system.addProperty("content", prompt);
+        system.addProperty("content", prompt.text());
         messages.add(system);
+        prompt.currentOwnerMessage().ifPresent(text -> {
+            JsonObject owner = new JsonObject();
+            owner.addProperty("role", "user");
+            owner.addProperty("content", text);
+            messages.add(owner);
+        });
         return messages;
     }
 

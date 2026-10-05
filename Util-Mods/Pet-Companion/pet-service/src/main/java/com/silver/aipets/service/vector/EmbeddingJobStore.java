@@ -13,11 +13,20 @@ public interface EmbeddingJobStore {
     List<EmbeddingJob> claimDue(
             String workerId, Instant now, Duration leaseDuration, int limit);
 
+    default List<EmbeddingJob> claimDueForPet(UUID petId, String workerId, Instant now,
+            Duration leaseDuration, int limit) {
+        return List.of();
+    }
+
     void succeeded(UUID jobId, String workerId, Instant completedAt);
 
     void retry(
             UUID jobId, String workerId, Instant attemptedAt,
             Instant notBefore, String sanitizedError);
+
+    /** Postpone while absent without using a provider attempt. */
+    void defer(UUID jobId, String workerId, Instant attemptedAt,
+            Instant notBefore, String sanitizedReason);
 
     void failed(UUID jobId, String workerId, Instant completedAt, String sanitizedError);
 

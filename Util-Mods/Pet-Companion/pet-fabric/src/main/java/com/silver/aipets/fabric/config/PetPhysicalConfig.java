@@ -39,7 +39,7 @@ public record PetPhysicalConfig(
     }
 
     public static PetPhysicalConfig defaults() {
-        return new PetPhysicalConfig(5.0, 2.0, 10, 1.0, 1.25, 1.5, 9.0, 16.0, 60, 0.10);
+        return new PetPhysicalConfig(6.0, 3.5, 10, 1.0, 1.25, 1.5, 9.0, 16.0, 60, 0.10);
     }
 
     public double speedForSquaredDistance(double squaredDistance) {

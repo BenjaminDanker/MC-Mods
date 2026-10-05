@@ -36,12 +36,12 @@ final class DialogueMemoryRetrieverTest {
                 fallback);
 
         assertEquals(List.of(card), retriever.retrieve(
-                PET, "remember this", "vanilla1", "minecraft:overworld", 3)
+                PET, "remembered card", "vanilla1", "minecraft:overworld", 3)
                 .stream().map(LongTermMemorySnippet::card).toList());
 
         vectors.setAvailable(false);
         assertEquals(List.of(card), retriever.retrieve(
-                PET, "remember this", "vanilla1", "minecraft:overworld", 3)
+                PET, "remembered card", "vanilla1", "minecraft:overworld", 3)
                 .stream().map(LongTermMemorySnippet::card).toList());
     }
 

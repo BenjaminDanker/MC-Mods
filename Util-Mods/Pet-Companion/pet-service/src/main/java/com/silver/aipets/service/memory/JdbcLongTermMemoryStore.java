@@ -24,7 +24,8 @@ import java.util.UUID;
 public final class JdbcLongTermMemoryStore implements LongTermMemoryStore {
     private static final String COLUMNS = """
             memory_id, pet_id, memory_text, memory_version, importance,
-            emotion_tags, entity_tags, location_tags, active
+            emotion_tags, entity_tags, location_tags, active, created_at, provenance,
+            memory_kind,confidence,salience,emotional_significance,supersedes_memory_id
             """;
     private static final String FIND_ACTIVE = "SELECT " + COLUMNS + """
              FROM long_term_memories
@@ -43,7 +44,12 @@ public final class JdbcLongTermMemoryStore implements LongTermMemoryStore {
     private static final String LIST_PET = "SELECT " + COLUMNS + """
              FROM long_term_memories
              WHERE pet_id = ? AND active = TRUE
-             ORDER BY memory_id LIMIT ?
+             ORDER BY created_at DESC, memory_id DESC LIMIT ?
+            """;
+    private static final String LIST_PENDING_PET = "SELECT " + COLUMNS + """
+            FROM long_term_memories
+            WHERE pet_id = ? AND active = TRUE AND embedding_status = 'PENDING'
+            ORDER BY created_at, memory_id LIMIT ?
             """;
     private static final String READY = """
             UPDATE long_term_memories
@@ -61,6 +67,10 @@ public final class JdbcLongTermMemoryStore implements LongTermMemoryStore {
             UPDATE long_term_memories
             SET last_recalled_at = ?, recall_count = recall_count + 1
             WHERE pet_id = ? AND memory_id = ? AND active = TRUE
+            """;
+    private static final String VECTOR_TOMBSTONES = "SELECT " + COLUMNS + """
+             FROM long_term_memories WHERE active=FALSE AND embedding_reference IS NOT NULL
+             ORDER BY updated_at, memory_id LIMIT ?
             """;
 
     private final DataSource dataSource;
@@ -150,6 +160,28 @@ public final class JdbcLongTermMemoryStore implements LongTermMemoryStore {
     }
 
     @Override
+    public MemoryPage listPendingEmbeddingsForPet(UUID petId, int limit) {
+        Objects.requireNonNull(petId, "petId");
+        if (limit < 1 || limit > 1_000) throw new IllegalArgumentException("Invalid page limit");
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(LIST_PENDING_PET)) {
+            statement.setString(1, petId.toString());
+            statement.setInt(2, limit + 1);
+            List<LongTermMemoryCard> cards = new ArrayList<>();
+            try (ResultSet rows = statement.executeQuery()) {
+                while (rows.next()) cards.add(map(rows));
+            }
+            boolean hasMore = cards.size() > limit;
+            if (hasMore) cards.removeLast();
+            Optional<UUID> next = hasMore && !cards.isEmpty()
+                    ? Optional.of(cards.getLast().memoryId()) : Optional.empty();
+            return new MemoryPage(cards, next);
+        } catch (SQLException | RuntimeException failure) {
+            throw persistence("Could not page pending pet embeddings", failure);
+        }
+    }
+
+    @Override
     public void markEmbeddingReady(
             UUID petId, UUID memoryId, long expectedVersion,
             String model, String reference, Instant at) {
@@ -192,6 +224,34 @@ public final class JdbcLongTermMemoryStore implements LongTermMemoryStore {
         }
     }
 
+    @Override
+    public List<LongTermMemoryCard> inactiveForVectorDeletion(int limit) {
+        if (limit < 1 || limit > 100) throw new IllegalArgumentException("limit out of range");
+        try (Connection c=dataSource.getConnection();
+             PreparedStatement q=c.prepareStatement(VECTOR_TOMBSTONES)) {
+            q.setInt(1,limit);
+            List<LongTermMemoryCard> result=new ArrayList<>();
+            try (ResultSet rows=q.executeQuery()) { while (rows.next()) result.add(map(rows)); }
+            return List.copyOf(result);
+        } catch (SQLException failure) {
+            throw new PetPersistenceException("Could not read vector tombstones",failure);
+        }
+    }
+
+    @Override
+    public void markVectorDeleted(UUID petId, UUID memoryId, Instant at) {
+        try (Connection c=dataSource.getConnection(); PreparedStatement q=c.prepareStatement("""
+                UPDATE long_term_memories SET embedding_status='FAILED',
+                    embedding_model=NULL, embedding_reference=NULL, updated_at=?
+                WHERE pet_id=? AND memory_id=? AND active=FALSE
+                """)) {
+            q.setObject(1,utc(at)); q.setString(2,petId.toString());
+            q.setString(3,memoryId.toString()); q.executeUpdate();
+        } catch (SQLException failure) {
+            throw new PetPersistenceException("Could not mark vector deleted",failure);
+        }
+    }
+
     private void executeVersioned(String sql, Binder binder, String operation) {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -214,7 +274,13 @@ public final class JdbcLongTermMemoryStore implements LongTermMemoryStore {
                 tags(rows.getString("emotion_tags"), "emotion_tags"),
                 tags(rows.getString("entity_tags"), "entity_tags"),
                 tags(rows.getString("location_tags"), "location_tags"),
-                rows.getBoolean("active"));
+                rows.getBoolean("active"),
+                rows.getObject("created_at", LocalDateTime.class).toInstant(ZoneOffset.UTC),
+                MemoryProvenance.valueOf(rows.getString("provenance")),
+                MemoryKind.valueOf(rows.getString("memory_kind")),
+                rows.getBigDecimal("confidence").doubleValue(),rows.getInt("salience"),
+                rows.getInt("emotional_significance"),
+                Optional.ofNullable(rows.getString("supersedes_memory_id")).map(UUID::fromString));
     }
 
     private static Set<String> tags(String json, String column) throws SQLException {

@@ -40,6 +40,11 @@ public final class PetSleepScheduler implements AutoCloseable {
         if (!started.compareAndSet(false, true)) {
             return;
         }
+        try { service.recoverSleepingCycles(); }
+        catch (RuntimeException failure) {
+            System.getLogger(PetSleepScheduler.class.getName()).log(
+                    System.Logger.Level.WARNING, "Sleep job recovery will retry after restart", failure);
+        }
         executor.scheduleWithFixedDelay(
                 this::processSafely, 0, interval.toMillis(), TimeUnit.MILLISECONDS);
     }

@@ -14,7 +14,15 @@ public record PetDialogueRequest(
         UUID petEntityUuid,
         BackendId backendId,
         String dimensionId,
-        String message) {
+        String message,
+        com.silver.aipets.common.transport.PetSceneSnapshot scene) {
+    public PetDialogueRequest(UUID requestId, UUID sessionId, UUID ownerUuid,
+            UUID petId, UUID petEntityUuid, BackendId backendId,
+            String dimensionId, String message) {
+        this(requestId, sessionId, ownerUuid, petId, petEntityUuid, backendId,
+                dimensionId, message,
+                com.silver.aipets.common.transport.PetSceneSnapshot.unknown());
+    }
     public PetDialogueRequest {
         Objects.requireNonNull(requestId, "requestId");
         Objects.requireNonNull(sessionId, "sessionId");
@@ -24,6 +32,7 @@ public record PetDialogueRequest(
         Objects.requireNonNull(backendId, "backendId");
         Objects.requireNonNull(dimensionId, "dimensionId");
         Objects.requireNonNull(message, "message");
+        Objects.requireNonNull(scene, "scene");
         if (dimensionId.isBlank() || message.isBlank()) {
             throw new IllegalArgumentException("dimensionId and message must not be blank");
         }

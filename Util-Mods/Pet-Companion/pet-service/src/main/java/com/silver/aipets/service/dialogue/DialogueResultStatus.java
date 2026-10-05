@@ -2,6 +2,7 @@ package com.silver.aipets.service.dialogue;
 
 public enum DialogueResultStatus {
     SUCCEEDED,
+    NOT_PRESENT,
     NO_AI_ACCESS,
     SLEEPING,
     UNSAFE_INPUT,

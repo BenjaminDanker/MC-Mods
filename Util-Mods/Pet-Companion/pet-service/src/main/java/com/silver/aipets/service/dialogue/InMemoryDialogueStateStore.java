@@ -25,6 +25,7 @@ public final class InMemoryDialogueStateStore implements DialogueStateStore {
     private final Map<DailyTraitKey, Integer> dailyAbsoluteChanges = new HashMap<>();
     private final Map<UUID, DialogueEvent> events = new HashMap<>();
     private final Map<UUID, DialogueUsage> usageByRequest = new HashMap<>();
+    private final Map<UUID, RelationshipEvidence> relationshipEvidence = new HashMap<>();
     private final List<TraitAudit> audits = new ArrayList<>();
 
     public void put(Pet pet) {
@@ -81,7 +82,9 @@ public final class InMemoryDialogueStateStore implements DialogueStateStore {
             }
 
             Map<MoodDimension, Integer> appliedMood = new EnumMap<>(MoodDimension.class);
-            int[] moodValues = moodValues(current.mood());
+            PetMood decayed = current.mood().decay(
+                    current.appearance().species(), current.traits(), request.occurredAt());
+            int[] moodValues = moodValues(decayed);
             for (MoodDimension dimension : MoodDimension.values()) {
                 int proposed = request.output().proposedMoodDeltas().get(dimension);
                 int bounded = clamp(proposed, -10, 10);
@@ -98,7 +101,7 @@ public final class InMemoryDialogueStateStore implements DialogueStateStore {
                     request.occurredAt());
             PetMood mood = new PetMood(
                     moodValues[0], moodValues[1], moodValues[2], moodValues[3],
-                    current.mood().lastDecayAt(), request.occurredAt());
+                    decayed.lastDecayAt(), request.occurredAt());
             Pet updated = new Pet(
                     current.petId(), current.ownerUuid(), current.name(), current.appearance(),
                     traits, mood, current.placement(), current.recordVersion(),
@@ -109,6 +112,11 @@ public final class InMemoryDialogueStateStore implements DialogueStateStore {
             events.put(request.eventId(), new DialogueEvent(
                     request.eventId(), current.petId(), current.ownerUuid(),
                     request.output().importance(), request.output().memoryCandidate(), expiry));
+            if (request.output().relationshipSignal().meaningful()) {
+                relationshipEvidence.put(request.usage().requestId(), new RelationshipEvidence(
+                        request.usage().requestId(), request.eventId(),
+                        request.output().relationshipSignal(), request.occurredAt()));
+            }
             usageByRequest.put(request.usage().requestId(), request.usage());
             pets.put(current.petId(), updated);
             return new DialoguePersistResult(traits, mood, appliedTraits, appliedMood, expiry);
@@ -145,6 +153,19 @@ public final class InMemoryDialogueStateStore implements DialogueStateStore {
     public List<TraitAudit> audits() {
         synchronized (monitor) {
             return List.copyOf(audits);
+        }
+    }
+
+    public List<RelationshipEvidence> relationshipEvidence(UUID petId) {
+        synchronized (monitor) {
+            return relationshipEvidence.values().stream()
+                    .filter(evidence -> {
+                        DialogueEvent event = events.get(evidence.eventId());
+                        return event != null && event.petId().equals(petId);
+                    })
+                    .sorted(java.util.Comparator.comparing(RelationshipEvidence::occurredAt)
+                            .thenComparing(RelationshipEvidence::eventId))
+                    .toList();
         }
     }
 

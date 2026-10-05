@@ -51,7 +51,7 @@ public final class PetSleepService {
     public Optional<PetSleepTransition> ownerOnline(UUID ownerUuid, Instant occurredAt) {
         Objects.requireNonNull(occurredAt, "occurredAt");
         Optional<PetSleepTransition> transition = store.updateForOwner(ownerUuid,
-                state -> PetSleepTransitions.networkPresence(state, true, null, occurredAt));
+                state -> PetSleepTransitions.networkPresence(state, true, null, occurredAt, policy));
         transition.ifPresent(transitionListener);
         return transition;
     }
@@ -66,7 +66,7 @@ public final class PetSleepService {
         Objects.requireNonNull(occurredAt, "occurredAt");
         Optional<PetSleepTransition> transition = store.updateForOwner(ownerUuid,
                 state -> PetSleepTransitions.networkPresence(
-                        state, false, absenceSessionId, occurredAt));
+                        state, false, absenceSessionId, occurredAt, policy));
         transition.ifPresent(transitionListener);
         return transition;
     }
@@ -95,6 +95,12 @@ public final class PetSleepService {
         return transition;
     }
 
+    /** A verified, deduplicated world event contributes a small bounded activity cost. */
+    public PetSleepTransition recordActivity(UUID petId, Instant occurredAt, int points) {
+        return store.update(petId, state -> PetSleepTransitions.activity(
+                state, occurredAt, points, policy));
+    }
+
     public List<PetSleepTransition> processDue(int limit) {
         if (limit < 1 || limit > 1_000) {
             throw new IllegalArgumentException("limit must be between 1 and 1000");
@@ -110,5 +116,22 @@ public final class PetSleepService {
             }
         }
         return List.copyOf(changed);
+    }
+
+    /** Replays active cycle IDs after a crash between SQL commit and job enqueue. */
+    public int recoverSleepingCycles() {
+        String after = "";
+        int recovered = 0;
+        while (true) {
+            List<UUID> page = store.findSleepingPetIdsAfter(after, 100);
+            for (UUID petId : page) {
+                store.find(petId).filter(PetSleepState::sleeping).ifPresent(state ->
+                        transitionListener.accept(new PetSleepTransition(state,
+                                PetSleepEvent.SLEEP_STARTED_FORCED)));
+                recovered++;
+            }
+            if (page.size() < 100) return recovered;
+            after = page.getLast().toString();
+        }
     }
 }

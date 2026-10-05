@@ -74,17 +74,18 @@ final class MariaDbAcceptanceTest {
             try (Connection connection = dataSource.getConnection()) {
                 assertEquals("MariaDB", connection.getMetaData().getDatabaseProductName());
                 assertTrue(connection.getMetaData().getDatabaseProductVersion().startsWith("11.4.10"));
-                try (PreparedStatement statement = connection.prepareStatement("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
+                try (PreparedStatement statement = connection.prepareStatement("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
                     List<String> tables = List.of(
                             "pets", "pet_traits", "pet_mood", "pet_sleep_state", "pet_events",
                             "long_term_memories", "long_term_memory_source_events",
                             "long_term_memory_revisions", "trait_change_audit", "subscriptions",
                             "stripe_webhook_events", "pet_recall_usage", "ai_usage", "jobs",
-                            "account_link_tokens", "idempotency_requests", "pending_adoptions");
+                            "account_link_tokens", "idempotency_requests", "pending_adoptions",
+                            "pet_decisions", "pet_relationship_evidence", "pet_open_threads");
                     for (int index = 0; index < tables.size(); index++) statement.setString(index + 1, tables.get(index));
                     try (var rows = statement.executeQuery()) {
                         assertTrue(rows.next());
-                        assertEquals(17, rows.getInt(1));
+                        assertEquals(20, rows.getInt(1));
                     }
                 }
                 resetDisposableSchema(connection);
@@ -310,7 +311,8 @@ final class MariaDbAcceptanceTest {
     private static void resetDisposableSchema(Connection connection) throws SQLException {
         List<String> tables = List.of(
                 "long_term_memory_source_events", "long_term_memory_revisions", "long_term_memories", "trait_change_audit",
-                "pet_events", "jobs", "ai_usage", "pet_recall_usage", "stripe_webhook_events",
+                "pet_relationship_evidence", "pet_open_threads", "pet_events", "jobs", "ai_usage", "pet_recall_usage", "stripe_webhook_events",
+                "pet_decisions",
                 "pending_adoptions", "account_link_tokens", "idempotency_requests", "pet_sleep_state", "pet_mood",
                 "pet_traits", "subscriptions", "pets");
         try (var statement = connection.createStatement()) {

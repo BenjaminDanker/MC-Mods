@@ -33,17 +33,14 @@ public record MemorySearchQuery(
                 || minimumSimilarity < -1.0 || minimumSimilarity > 1.0) {
             throw new IllegalArgumentException("minimumSimilarity must be within [-1, 1]");
         }
-        if (maximumResults < 1 || maximumResults > 3) {
-            throw new IllegalArgumentException("maximumResults must be between 1 and 3");
+        if (maximumResults < 1 || maximumResults > 12) {
+            throw new IllegalArgumentException("maximumResults must be between 1 and 12");
         }
     }
 
     public String deterministicSearchText() {
         StringBuilder text = new StringBuilder(originalPlayerMessage);
-        backend.ifPresent(value -> text.append(" | server:").append(value));
-        dimension.ifPresent(value -> text.append(" | dimension:").append(value));
-        eventType.ifPresent(value -> text.append(" | event:").append(value));
-        namedEntities.stream().sorted().forEach(value -> text.append(" | entity:").append(value));
+        // Current location is a ranking hint, never part of the semantic question.
         return text.toString();
     }
 

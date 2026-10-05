@@ -83,7 +83,9 @@ public final class PetAdoptionHttpHandler implements HttpHandler {
                     : workflowService.adopt(request);
             int status = wire.pet().isPresent() ? 200
                     : wire.status() == PetAdoptionWireStatus.CHECKOUT_REQUIRED
-                            || wire.status() == PetAdoptionWireStatus.CHECKOUT_IN_PROGRESS ? 200 : 403;
+                            || wire.status() == PetAdoptionWireStatus.CHECKOUT_IN_PROGRESS
+                            || wire.status() == PetAdoptionWireStatus.CHECKOUT_CLOSING
+                            || wire.status() == PetAdoptionWireStatus.SUBSCRIPTION_PENDING ? 200 : 403;
             send(exchange, status,
                     codec.encodeResult(wire).getBytes(StandardCharsets.UTF_8));
         } catch (PetWireFormatException | IllegalArgumentException malformed) {
