@@ -9,4 +9,4 @@ pluginManagement {
     }
 }
 
-rootProject.name = 'Ender-Fight'
+rootProject.name = 'Entity-Pruner'

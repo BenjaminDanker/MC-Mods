@@ -18,7 +18,9 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.function.BooleanSupplier;
 
 @Mixin(ServerLevel.class)
@@ -138,6 +140,14 @@ public class ServerWorldMixin implements EntityCountAccessor {
         }
     }
 
+    // The live entity list changes between ticks and its iterator can then return null, so each pass walks a copy.
+    @Unique
+    private static Iterator<Entity> snapshot(ServerLevel world) {
+        List<Entity> entities = new ArrayList<>();
+        world.getAllEntities().forEach(entities::add);
+        return entities.iterator();
+    }
+
     @Unique
     private static long getChunkKey(Entity entity) {
         return ChunkPos.pack(entity.blockPosition());
@@ -164,7 +174,7 @@ public class ServerWorldMixin implements EntityCountAccessor {
 
     @Unique
     private void beginResync(ServerLevel world) {
-        this.resyncIterator = world.getAllEntities().iterator();
+        this.resyncIterator = snapshot(world);
         this.resyncMobCountsByChunk = new Long2IntOpenHashMap();
         this.resyncItemCountsByChunk = new Long2IntOpenHashMap();
         this.resyncMobDeltaByChunk = new Long2IntOpenHashMap();
@@ -184,6 +194,10 @@ public class ServerWorldMixin implements EntityCountAccessor {
 
         while (processed < maxPerTick && this.resyncIterator.hasNext()) {
             Entity entity = this.resyncIterator.next();
+            processed++;
+            if (entity == null || entity.isRemoved()) {
+                continue;
+            }
             long chunkKey = getChunkKey(entity);
             if (entity instanceof Mob) {
                 if (!EntityProtection.isProtectedMob(entity)) {
@@ -192,7 +206,6 @@ public class ServerWorldMixin implements EntityCountAccessor {
             } else if (entity instanceof ItemEntity) {
                 this.resyncItemCountsByChunk.addTo(chunkKey, 1);
             }
-            processed++;
         }
 
         if (!this.resyncIterator.hasNext()) {
@@ -231,7 +244,7 @@ public class ServerWorldMixin implements EntityCountAccessor {
 
     @Unique
     private void beginPrune(ServerLevel world) {
-        this.pruneIterator = world.getAllEntities().iterator();
+        this.pruneIterator = snapshot(world);
         this.pruneInProgress = true;
     }
 
@@ -258,7 +271,7 @@ public class ServerWorldMixin implements EntityCountAccessor {
             Entity entity = this.pruneIterator.next();
             scanned++;
 
-            if (!(entity instanceof ItemEntity itemEntity)) {
+            if (!(entity instanceof ItemEntity itemEntity) || itemEntity.isRemoved()) {
                 continue;
             }
 

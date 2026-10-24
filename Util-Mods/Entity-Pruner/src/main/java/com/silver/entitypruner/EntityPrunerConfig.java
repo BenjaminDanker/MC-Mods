@@ -39,7 +39,11 @@ public class EntityPrunerConfig {
         if (CONFIG_FILE.exists()) {
             try (FileReader reader = new FileReader(CONFIG_FILE)) {
                 instance = GSON.fromJson(reader, EntityPrunerConfig.class);
-            } catch (IOException e) {
+                if (instance == null) {
+                    EntityPruner.LOGGER.error("Config file {} is empty; using defaults", CONFIG_FILE);
+                    instance = new EntityPrunerConfig();
+                }
+            } catch (IOException | RuntimeException e) {
                 EntityPruner.LOGGER.error("Failed to load config", e);
                 instance = new EntityPrunerConfig();
             }
