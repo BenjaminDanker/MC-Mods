@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "structure-reset",
+  "version": "${version}",
+  "name": "Structure Reset",
+  "description": "Restores beaten structures to their original state after a day: blocks, loot chests and mobs, ejecting anyone still inside.",
+  "authors": [
+    "BenjaminDanker"
+  ],
+  "license": "MIT",
+  "environment": "server",
+  "entrypoints": {
+    "main": [
+      "com.silver.structurereset.StructureResetMod"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "fabric-api": "*",
+    "minecraft": "~26.2",
+    "java": ">=25"
+  }
+}
