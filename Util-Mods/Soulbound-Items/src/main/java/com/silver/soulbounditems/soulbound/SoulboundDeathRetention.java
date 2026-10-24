@@ -3,20 +3,18 @@ package com.silver.soulbounditems.soulbound;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-
-/** Carries crafted Soulbound stacks across the old-player/new-player death transition. */
+/**
+ * Keeps crafted Soulbound stacks out of the death drop. They stay in the dead player's inventory, so a logout on the
+ * death screen saves them (and MPDS sees them), and are copied to the new player when it respawns.
+ */
 public final class SoulboundDeathRetention {
-    private static final Map<UUID, ItemStack[]> PENDING_RETENTION = new ConcurrentHashMap<>();
-
     private SoulboundDeathRetention() {
     }
 
-    public static void captureAndRemove(ServerPlayer player) {
+    /** Takes Soulbound stacks out of the inventory before the death drop; returns null when there are none. */
+    public static ItemStack[] holdBack(ServerPlayer player) {
         int size = player.getInventory().getContainerSize();
-        ItemStack[] retained = new ItemStack[size];
+        ItemStack[] held = new ItemStack[size];
         boolean found = false;
 
         for (int slot = 0; slot < size; slot++) {
@@ -24,29 +22,37 @@ public final class SoulboundDeathRetention {
             if (!SoulboundRules.isSoulboundItem(stack)) {
                 continue;
             }
-            retained[slot] = stack.copy();
+            held[slot] = stack;
             player.getInventory().setItem(slot, ItemStack.EMPTY);
             found = true;
         }
-
-        if (found) {
-            PENDING_RETENTION.put(player.getUUID(), retained);
-            player.getInventory().setChanged();
-        }
+        return found ? held : null;
     }
 
-    public static void restore(ServerPlayer player, ServerPlayer previousPlayer) {
-        ItemStack[] retained = PENDING_RETENTION.remove(previousPlayer.getUUID());
-        if (retained == null) {
-            return;
-        }
-
-        int size = Math.min(retained.length, player.getInventory().getContainerSize());
+    /** Puts the held stacks back into their slots once the death drop is done. */
+    public static void putBack(ServerPlayer player, ItemStack[] held) {
+        int size = Math.min(held.length, player.getInventory().getContainerSize());
         for (int slot = 0; slot < size; slot++) {
-            if (retained[slot] != null) {
-                player.getInventory().setItem(slot, retained[slot]);
+            if (held[slot] != null) {
+                player.getInventory().setItem(slot, held[slot]);
             }
         }
         player.getInventory().setChanged();
+    }
+
+    /** Copies the dead player's Soulbound stacks to the respawned player. */
+    public static void restore(ServerPlayer player, ServerPlayer previousPlayer) {
+        int size = Math.min(previousPlayer.getInventory().getContainerSize(), player.getInventory().getContainerSize());
+        boolean changed = false;
+        for (int slot = 0; slot < size; slot++) {
+            ItemStack stack = previousPlayer.getInventory().getItem(slot);
+            if (SoulboundRules.isSoulboundItem(stack)) {
+                player.getInventory().setItem(slot, stack.copy());
+                changed = true;
+            }
+        }
+        if (changed) {
+            player.getInventory().setChanged();
+        }
     }
 }

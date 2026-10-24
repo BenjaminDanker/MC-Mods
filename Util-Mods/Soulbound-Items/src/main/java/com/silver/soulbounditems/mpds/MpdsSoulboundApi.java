@@ -7,14 +7,16 @@ import java.util.concurrent.ConcurrentMap;
 
 public final class MpdsSoulboundApi {
     private static final long CACHE_TTL_MILLIS = 300_000L;
-    private static final int DEFAULT_SOULBOUND_MAX = 4;
+    private static final long RETRY_AFTER_FAILURE_MILLIS = 30_000L;
     private static final ConcurrentMap<String, CacheEntry> CACHE = new ConcurrentHashMap<>();
+    private static final ConcurrentMap<String, Long> FAILED_AT = new ConcurrentHashMap<>();
     private static volatile Class<?> SQL_CLASS;
     private static volatile Method GET_SOULBOUND_MAX_METHOD;
 
     private MpdsSoulboundApi() {
     }
 
+    /** Throws when MPDS can't answer and nothing is cached, so each caller picks its own fallback. */
     public static int getSoulboundMax(String playerName, String uuid) throws Exception {
         String cacheKey = toCacheKey(playerName, uuid);
         long now = System.currentTimeMillis();
@@ -24,15 +26,25 @@ public final class MpdsSoulboundApi {
             return cached.value();
         }
 
-        try {
-            int freshValue = fetchSoulboundMax(playerName, uuid);
-            CACHE.put(cacheKey, new CacheEntry(freshValue, now));
-            return freshValue;
-        } catch (Exception ex) {
+        Long failedAt = FAILED_AT.get(cacheKey);
+        if (failedAt != null && now - failedAt < RETRY_AFTER_FAILURE_MILLIS) {
             if (cached != null) {
                 return cached.value();
             }
-            return DEFAULT_SOULBOUND_MAX;
+            throw new RecentFailureException();
+        }
+
+        try {
+            int freshValue = fetchSoulboundMax(playerName, uuid);
+            CACHE.put(cacheKey, new CacheEntry(freshValue, now));
+            FAILED_AT.remove(cacheKey);
+            return freshValue;
+        } catch (Exception ex) {
+            FAILED_AT.put(cacheKey, now);
+            if (cached != null) {
+                return cached.value();
+            }
+            throw ex;
         }
     }
 
@@ -85,5 +97,12 @@ public final class MpdsSoulboundApi {
     }
 
     private record CacheEntry(int value, long loadedAtMillis) {
+    }
+
+    /** The lookup failed less than 30 seconds ago; the failure itself was already reported. */
+    public static final class RecentFailureException extends IllegalStateException {
+        RecentFailureException() {
+            super("MPDS SoulboundMax lookup failed recently; retrying later", null);
+        }
     }
 }

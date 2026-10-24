@@ -94,6 +94,8 @@ public final class SoulboundRules {
     public static int getSoulboundMaxOrUnlimited(ServerPlayer player) {
         try {
             return Math.max(0, MpdsSoulboundApi.getSoulboundMax(player.getName().getString(), player.getStringUUID()));
+        } catch (MpdsSoulboundApi.RecentFailureException e) {
+            return Integer.MAX_VALUE;
         } catch (Exception e) {
             SoulboundItemsMod.LOGGER.error("Failed to read MPDS SoulboundMax for {}", player.getName().getString(), e);
             return Integer.MAX_VALUE;
