@@ -10,3 +10,4 @@ pluginManagement {
 }
 
 rootProject.name = 'mc-portal-protocol'
+includeBuild('../Authorization-Common')
