@@ -19,13 +19,16 @@ final class StructureMobCandidatePositionService {
             return null;
         }
 
-        Path protectionFile = ProtectionPaths.activeProtectionFile();
-        if (!Files.exists(protectionFile)) {
-            return null;
-        }
-
         try {
-            ProtectionEntry entry = ProtectionFileIO.read(protectionFile);
+            // The active protection is already in memory; reading its file (tens of MB) would stall the tick.
+            ProtectionEntry entry = com.silver.atlantis.protect.ProtectionManager.INSTANCE.activeEntry();
+            if (entry == null) {
+                Path protectionFile = ProtectionPaths.activeProtectionFile();
+                if (!Files.exists(protectionFile)) {
+                    return null;
+                }
+                entry = ProtectionFileIO.read(protectionFile);
+            }
             if (entry == null || entry.placedPositions() == null || entry.placedPositions().isEmpty()) {
                 return null;
             }
@@ -53,7 +56,7 @@ final class StructureMobCandidatePositionService {
 
             return candidates;
         } catch (Exception exception) {
-            AtlantisMod.LOGGER.warn("[SpawnDiag] failed reading placed positions for runId={}: {}", bounds.runId(), exception.getMessage());
+            AtlantisMod.LOGGER.warn("[SpawnDiag] failed reading placed positions for runId={}", bounds.runId(), exception);
             return null;
         }
     }

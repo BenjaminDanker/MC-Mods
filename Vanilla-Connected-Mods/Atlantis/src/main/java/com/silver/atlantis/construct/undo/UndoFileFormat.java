@@ -44,7 +44,7 @@ public final class UndoFileFormat {
             }
         }
 
-        try (var raw = Files.newOutputStream(file);
+        try (var raw = com.silver.atlantis.util.AtomicFiles.openReplacing(file);
              var gzip = new GZIPOutputStream(new BufferedOutputStream(raw));
              var out = new DataOutputStream(gzip)) {
 
@@ -129,7 +129,14 @@ public final class UndoFileFormat {
 
             int version = in.readInt();
             if (version == VERSION_STREAMING) {
-                return readIndexedStreamingV2(in);
+                boolean[] truncated = new boolean[1];
+                UndoDataIndexed data = readIndexedStreamingV2(in, truncated);
+                if (truncated[0]) {
+                    com.silver.atlantis.AtlantisMod.LOGGER.warn(
+                        "[undo] {} ends mid-record (the build was interrupted); using the {} complete record(s) before that",
+                        file, data.entryCount());
+                }
+                return data;
             }
             if (version != VERSION) {
                 throw new IOException("Unsupported undo file version: " + version);
@@ -191,6 +198,10 @@ public final class UndoFileFormat {
         }
     }
 
+    /**
+     * A new undo file. Written in place, not through a temporary file: records already written survive a crash, and
+     * the reader keeps everything before a cut-off.
+     */
     public static StreamWriter openStreamWriter(Path file, String dimension) throws IOException {
         Files.createDirectories(file.getParent());
         var raw = Files.newOutputStream(file);
@@ -198,10 +209,63 @@ public final class UndoFileFormat {
         var out = new DataOutputStream(gzip);
         out.writeInt(VERSION_STREAMING);
         writeString(out, dimension);
-        return new StreamWriter(out);
+        return new StreamWriter(out, null);
     }
 
-    private static UndoDataIndexed readIndexedStreamingV2(DataInputStream in) throws IOException {
+    /**
+     * Continues the undo file of an earlier, unfinished attempt of the same run. Its records are kept (the file is
+     * rewritten cleanly first if it was cut off), new records go into an appended gzip member, and positions that
+     * already have a record are skipped, so the block from before the first attempt is the one an undo restores.
+     */
+    public static StreamWriter openStreamWriterContinuing(Path file, String dimension) throws IOException {
+        TolerantRead existing = readStreamingTolerant(file);
+        if (existing.truncated()) {
+            rewrite(file, existing.data());
+        }
+        it.unimi.dsi.fastutil.longs.LongOpenHashSet recorded =
+            new it.unimi.dsi.fastutil.longs.LongOpenHashSet(Math.max(16, existing.data().entryCount()));
+        UndoDataIndexed data = existing.data();
+        for (int i = 0; i < data.entryCount(); i++) {
+            recorded.add(net.minecraft.core.BlockPos.asLong(data.xs()[i], data.ys()[i], data.zs()[i]));
+        }
+        var raw = Files.newOutputStream(file, java.nio.file.StandardOpenOption.APPEND);
+        var out = new DataOutputStream(new GZIPOutputStream(new BufferedOutputStream(raw)));
+        return new StreamWriter(out, recorded);
+    }
+
+    private record TolerantRead(UndoDataIndexed data, boolean truncated) {
+    }
+
+    private static TolerantRead readStreamingTolerant(Path file) throws IOException {
+        try (var raw = Files.newInputStream(file);
+             var gzip = new GZIPInputStream(new BufferedInputStream(raw));
+             var in = new DataInputStream(gzip)) {
+            int version = in.readInt();
+            if (version != VERSION_STREAMING) {
+                throw new IOException("Cannot continue undo file of version " + version + ": " + file);
+            }
+            boolean[] truncated = new boolean[1];
+            UndoDataIndexed data = readIndexedStreamingV2(in, truncated);
+            return new TolerantRead(data, truncated[0]);
+        }
+    }
+
+    /** Rewrites the records of a cut-off file as a clean, complete file (temporary file, then rename). */
+    private static void rewrite(Path file, UndoDataIndexed data) throws IOException {
+        try (var raw = com.silver.atlantis.util.AtomicFiles.openReplacing(file);
+             var out = new DataOutputStream(new GZIPOutputStream(new BufferedOutputStream(raw)))) {
+            out.writeInt(VERSION_STREAMING);
+            writeString(out, data.dimension());
+            StreamWriter writer = new StreamWriter(out, null);
+            for (int i = 0; i < data.entryCount(); i++) {
+                int nbt = data.nbtIdx()[i];
+                writer.write(new UndoEntry(data.xs()[i], data.ys()[i], data.zs()[i], data.blocks()[data.blockIdx()[i]],
+                    nbt < 0 ? null : data.nbts()[nbt]));
+            }
+        }
+    }
+
+    private static UndoDataIndexed readIndexedStreamingV2(DataInputStream in, boolean[] truncated) throws IOException {
         String dimension = readString(in);
 
         int capacity = 8_192;
@@ -229,14 +293,28 @@ public final class UndoFileFormat {
             try {
                 x = in.readInt();
             } catch (java.io.EOFException eof) {
+                // A clean end of file, or a file cut off exactly between records (an interrupted write).
+                truncated[0] = eof.getMessage() != null;
+                break;
+            } catch (java.util.zip.ZipException corrupt) {
+                truncated[0] = true;
                 break;
             }
 
-            int y = in.readInt();
-            int z = in.readInt();
-            String block = readString(in);
-            boolean hasNbt = in.readBoolean();
-            String nbt = hasNbt ? readString(in) : null;
+            int y;
+            int z;
+            String block;
+            String nbt;
+            try {
+                y = in.readInt();
+                z = in.readInt();
+                block = readString(in);
+                boolean hasNbt = in.readBoolean();
+                nbt = hasNbt ? readString(in) : null;
+            } catch (java.io.EOFException | java.util.zip.ZipException cutOff) {
+                truncated[0] = true;
+                break;
+            }
 
             if (size >= capacity) {
                 capacity *= 2;
@@ -310,13 +388,19 @@ public final class UndoFileFormat {
 
     public static final class StreamWriter implements AutoCloseable {
         private final DataOutputStream out;
+        /** Positions an earlier attempt already recorded; their first record is the one to keep. Null for a new file. */
+        private final it.unimi.dsi.fastutil.longs.LongOpenHashSet recorded;
         private int entryCount;
 
-        private StreamWriter(DataOutputStream out) {
+        private StreamWriter(DataOutputStream out, it.unimi.dsi.fastutil.longs.LongOpenHashSet recorded) {
             this.out = out;
+            this.recorded = recorded;
         }
 
         public void write(UndoEntry entry) {
+            if (recorded != null && !recorded.add(net.minecraft.core.BlockPos.asLong(entry.x(), entry.y(), entry.z()))) {
+                return;
+            }
             try {
                 out.writeInt(entry.x());
                 out.writeInt(entry.y());

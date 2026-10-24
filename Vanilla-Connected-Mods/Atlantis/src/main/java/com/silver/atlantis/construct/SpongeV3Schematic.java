@@ -268,13 +268,14 @@ final class SpongeV3Schematic {
 
             int processedChunks = 0;
             int totalChunks = spoolFiles.size();
+            LoadedChunkProbe probe = new LoadedChunkProbe(world, new java.util.ArrayList<>(spoolFiles.keySet()));
             for (Map.Entry<Long, Path> entry : spoolFiles.entrySet()) {
                 long chunkKey = entry.getKey();
                 int chunkX = ChunkPos.getX(chunkKey);
                 int chunkZ = ChunkPos.getZ(chunkKey);
                 ChunkPos chunkPos = new ChunkPos(chunkX, chunkZ);
 
-                boolean mutated = UnloadedChunkNbtEditor.mutateChunk(world, chunkPos, context -> {
+                boolean mutated = UnloadedChunkNbtEditor.mutateChunk(world, chunkPos, probe, context -> {
                     try (var raw = Files.newInputStream(entry.getValue());
                          var in = new java.io.DataInputStream(new java.io.BufferedInputStream(raw))) {
 

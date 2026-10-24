@@ -205,6 +205,11 @@ final class UnloadedChunkNbtEditor {
         return Optional.of(chunkNbt);
     }
 
+    /** Starts reading a chunk's saved NBT without waiting; the future completes on the chunk IO worker. */
+    static java.util.concurrent.CompletableFuture<Optional<CompoundTag>> readChunkNbtAsync(ServerLevel world, ChunkPos chunkPos) {
+        return world.getChunkSource().chunkMap.read(chunkPos).orTimeout(CHUNK_NBT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+    }
+
     static void saveChunkNbt(ServerLevel world, ChunkPos chunkPos, CompoundTag chunkNbt) {
         ChunkMap loadingManager = world.getChunkSource().chunkMap;
         loadingManager.write(chunkPos, () -> chunkNbt)
@@ -225,8 +230,9 @@ final class UnloadedChunkNbtEditor {
         }
     }
 
-    static boolean mutateChunk(ServerLevel world, ChunkPos chunkPos, MutationConsumer consumer) {
-        if (world.getChunkSource().hasChunk(chunkPos.x(), chunkPos.z())) {
+    /** Runs on the IO thread; {@code probe} asks the server thread whether the chunk is loaded (batched). */
+    static boolean mutateChunk(ServerLevel world, ChunkPos chunkPos, LoadedChunkProbe probe, MutationConsumer consumer) {
+        if (probe.isLoaded(chunkPos)) {
             return false;
         }
 
@@ -240,7 +246,7 @@ final class UnloadedChunkNbtEditor {
         consumer.accept(context);
         context.finish();
 
-        if (world.getChunkSource().hasChunk(chunkPos.x(), chunkPos.z())) {
+        if (probe.isLoaded(chunkPos)) {
             return false;
         }
 
@@ -251,11 +257,6 @@ final class UnloadedChunkNbtEditor {
             AtlantisMod.LOGGER.warn("Timed out saving chunk NBT for {}:{}", chunkPos.x(), chunkPos.z());
             return false;
         }
-    }
-
-    static BlockStateSpec fromBlockString(String blockString, String blockEntitySnbt) {
-        String normalized = normalizeBlockString(blockString);
-        return new BlockStateSpec(normalized, blockEntitySnbt);
     }
 
     static String normalizeBlockString(String input) {

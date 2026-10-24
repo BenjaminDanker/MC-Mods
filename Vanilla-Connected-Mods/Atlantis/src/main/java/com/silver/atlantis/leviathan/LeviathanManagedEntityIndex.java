@@ -41,6 +41,9 @@ final class LeviathanManagedEntityIndex {
         if (!bootstrapped) {
             bootstrap(world);
         }
+        if (managedLoadedByIdIndex.isEmpty()) {
+            return new HashMap<>(); // called every tick; mutable: callers add materialized leviathans
+        }
 
         Map<UUID, Entity> loaded = new HashMap<>();
         List<UUID> staleIds = new ArrayList<>();

@@ -28,11 +28,12 @@ public final class ProtectionService {
     }
 
     private void checkInnerAirEntry(MinecraftServer server) {
-        Set<UUID> online = new HashSet<>();
+        // Runs every tick: nothing to do while no build is protected and nobody still shows the inside message.
+        if (playersInsideInnerAir.isEmpty() && ProtectionManager.INSTANCE.activeEntry() == null) {
+            return;
+        }
 
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            online.add(player.getUUID());
-
             ServerLevel world = player.level();
             BlockPos feetPos = player.blockPosition();
             BlockPos headPos = feetPos.above();
@@ -53,6 +54,8 @@ public final class ProtectionService {
             }
         }
 
-        playersInsideInnerAir.retainAll(online);
+        if (!playersInsideInnerAir.isEmpty()) {
+            playersInsideInnerAir.removeIf(id -> server.getPlayerList().getPlayer(id) == null);
+        }
     }
 }

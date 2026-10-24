@@ -2,26 +2,32 @@ package com.silver.atlantis.construct;
 
 import com.silver.atlantis.AtlantisMod;
 import java.util.ArrayDeque;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.TicketType;
 import net.minecraft.world.level.ChunkPos;
 
+/**
+ * Generates missing target chunks before a build or undo. Each chunk is requested with a load ticket and generated
+ * by the server between ticks; this class only polls for completion, so a slow chunk never stalls a tick. Finished
+ * chunks lose their ticket at once so they can unload again for the region edit.
+ */
 final class ConstructChunkGenerationScheduler {
 
-    private static final long LIGHT_FORCE_NANOS = 12_000_000L;
-    private static final long HEAVY_FORCE_NANOS = 35_000_000L;
-    private static final int MAX_ADAPTIVE_COOLDOWN_TICKS = 8;
+    private static final TicketType TICKET = TicketType.FORCED;
 
     private final Deque<ChunkPos> pending = new ArrayDeque<>();
     private final Set<Long> pendingKeys = new HashSet<>();
+    private final Map<Long, CompletableFuture<?>> active = new HashMap<>();
     private final Set<Long> observedLoadedChunkKeys = new HashSet<>();
     private final Set<Long> recentlyGeneratedChunkKeys = new HashSet<>();
-    private int cooldownTicksRemaining;
-    private int cooldownTicksTarget;
-    private long forceLatencyEwmaNanos;
 
     ConstructChunkGenerationScheduler(int ticketLevel) {
     }
@@ -31,9 +37,6 @@ final class ConstructChunkGenerationScheduler {
         pendingKeys.clear();
         observedLoadedChunkKeys.clear();
         recentlyGeneratedChunkKeys.clear();
-        cooldownTicksRemaining = 0;
-        cooldownTicksTarget = 0;
-        forceLatencyEwmaNanos = 0L;
 
         for (ChunkPos pos : chunks) {
             long key = ChunkPos.pack(pos.x(), pos.z());
@@ -47,57 +50,54 @@ final class ConstructChunkGenerationScheduler {
         AtlantisMod.LOGGER.info("[construct-chunk-prep] queued {} chunk(s).", pending.size());
     }
 
+    /** Polls finished chunks and starts new ones, keeping at most twice {@code budgetPerTick} in flight. */
     boolean tickGenerate(ServerLevel world, int budgetPerTick) {
-        if (pending.isEmpty()) {
-            return true;
-        }
-
-        if (cooldownTicksRemaining > 0) {
-            cooldownTicksRemaining--;
-            return false;
-        }
-
-        int budget = Math.max(1, budgetPerTick);
-        int started = 0;
-        while (started < budget && !pending.isEmpty()) {
-            ChunkPos pos = pending.pollFirst();
-            if (pos == null) {
-                break;
+        Iterator<Map.Entry<Long, CompletableFuture<?>>> it = active.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<Long, CompletableFuture<?>> entry = it.next();
+            if (!entry.getValue().isDone()) {
+                continue;
             }
-
-            long key = ChunkPos.pack(pos.x(), pos.z());
-            pendingKeys.remove(key);
-
-            long startedAt = System.nanoTime();
-            forceChunkGeneration(world, pos);
-            long elapsedNanos = System.nanoTime() - startedAt;
-
-            updateAdaptiveCooldown(elapsedNanos);
-
-            boolean loadedNow = world.getChunkSource().hasChunk(pos.x(), pos.z());
-            if (loadedNow) {
+            it.remove();
+            long key = entry.getKey();
+            ChunkPos pos = new ChunkPos(ChunkPos.getX(key), ChunkPos.getZ(key));
+            world.getChunkSource().removeTicketWithRadius(TICKET, pos, 0);
+            if (entry.getValue().isCompletedExceptionally()) {
+                AtlantisMod.LOGGER.warn("[construct-chunk-prep] chunk ({}, {}) failed to generate", pos.x(), pos.z());
+                continue;
+            }
+            if (world.getChunkSource().hasChunk(pos.x(), pos.z())) {
                 recentlyGeneratedChunkKeys.add(key);
                 observeLoadedNeighborhood(world, pos);
             }
-            AtlantisMod.LOGGER.debug("[construct-chunk-prep] chunk prep chunk=({}, {}), pending={}, loadedNow={}", pos.x(), pos.z(), pending.size(), loadedNow);
-            started++;
+        }
 
-            if (elapsedNanos >= HEAVY_FORCE_NANOS) {
-                break;
+        int maxInFlight = Math.max(1, budgetPerTick) * 2;
+        while (active.size() < maxInFlight && !pending.isEmpty()) {
+            ChunkPos pos = pending.pollFirst();
+            long key = ChunkPos.pack(pos.x(), pos.z());
+            pendingKeys.remove(key);
+            try {
+                active.put(key, world.getChunkSource().addTicketAndLoadWithRadius(TICKET, pos, 0));
+            } catch (Exception e) {
+                AtlantisMod.LOGGER.warn("[construct-chunk-prep] could not request chunk ({}, {}): {}", pos.x(), pos.z(), e.toString());
             }
         }
 
-        if (!pending.isEmpty() && cooldownTicksTarget > 0) {
-            cooldownTicksRemaining = cooldownTicksTarget;
-        }
-
-        return pending.isEmpty();
+        return pending.isEmpty() && active.isEmpty();
     }
 
+    /** Drops the queue and the load tickets of chunks still being generated. */
     void releaseTickets(ServerLevel world) {
         pending.clear();
         pendingKeys.clear();
-        AtlantisMod.LOGGER.info("[construct-chunk-prep] released prep scheduler state (observedLoadedChunks={}).", observedLoadedChunkKeys.size());
+        for (long key : active.keySet()) {
+            world.getChunkSource().removeTicketWithRadius(TICKET, new ChunkPos(ChunkPos.getX(key), ChunkPos.getZ(key)), 0);
+        }
+        int released = active.size();
+        active.clear();
+        AtlantisMod.LOGGER.info("[construct-chunk-prep] released prep scheduler (in-flight tickets released={}, observedLoadedChunks={}).",
+            released, observedLoadedChunkKeys.size());
     }
 
     Set<Long> consumeObservedLoadedChunkKeys() {
@@ -117,39 +117,7 @@ final class ConstructChunkGenerationScheduler {
     }
 
     int activeCount() {
-        return 0;
-    }
-
-    private void updateAdaptiveCooldown(long elapsedNanos) {
-        if (elapsedNanos <= 0L) {
-            return;
-        }
-
-        if (forceLatencyEwmaNanos <= 0L) {
-            forceLatencyEwmaNanos = elapsedNanos;
-        } else {
-            forceLatencyEwmaNanos = (forceLatencyEwmaNanos * 7L + elapsedNanos) / 8L;
-        }
-
-        if (forceLatencyEwmaNanos >= HEAVY_FORCE_NANOS) {
-            cooldownTicksTarget = Math.min(MAX_ADAPTIVE_COOLDOWN_TICKS, cooldownTicksTarget + 2);
-            return;
-        }
-
-        if (forceLatencyEwmaNanos >= LIGHT_FORCE_NANOS) {
-            cooldownTicksTarget = Math.min(MAX_ADAPTIVE_COOLDOWN_TICKS, cooldownTicksTarget + 1);
-            return;
-        }
-
-        cooldownTicksTarget = Math.max(0, cooldownTicksTarget - 1);
-    }
-
-    private void forceChunkGeneration(ServerLevel world, ChunkPos pos) {
-        try {
-            world.getChunk(pos.x(), pos.z());
-        } catch (Exception e) {
-            AtlantisMod.LOGGER.warn("[construct-chunk-prep] failed forcing full chunk generation for ({}, {}): {}", pos.x(), pos.z(), e.toString());
-        }
+        return active.size();
     }
 
     private void observeLoadedNeighborhood(ServerLevel world, ChunkPos center) {

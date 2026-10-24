@@ -28,6 +28,20 @@ public final class OfflineChunkBlockReader {
         return Optional.of(new ChunkSnapshot(chunkPos, context));
     }
 
+    /** Starts reading the chunk's saved data; pair with {@link #fromNbt} once the future is done. */
+    public static java.util.concurrent.CompletableFuture<Optional<net.minecraft.nbt.CompoundTag>> readAsync(ServerLevel world, ChunkPos chunkPos) {
+        return UnloadedChunkNbtEditor.readChunkNbtAsync(world, chunkPos);
+    }
+
+    public static Optional<ChunkSnapshot> fromNbt(ChunkPos chunkPos, Optional<net.minecraft.nbt.CompoundTag> chunkNbt) {
+        if (chunkNbt == null || chunkNbt.isEmpty()) {
+            return Optional.empty();
+        }
+        UnloadedChunkNbtEditor.ChunkMutationContext context =
+            new UnloadedChunkNbtEditor.ChunkMutationContext(chunkPos, chunkNbt.get().copy());
+        return Optional.of(new ChunkSnapshot(chunkPos, context));
+    }
+
     public static final class ChunkSnapshot {
         private final ChunkPos chunkPos;
         private final UnloadedChunkNbtEditor.ChunkMutationContext context;

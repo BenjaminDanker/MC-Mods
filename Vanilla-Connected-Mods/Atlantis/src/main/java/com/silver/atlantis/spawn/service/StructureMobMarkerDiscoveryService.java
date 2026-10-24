@@ -18,6 +18,8 @@ final class StructureMobMarkerDiscoveryService {
         OUT_OF_BOUNDS,
         FLOOR_OUT_OF_BOUNDS,
         CHUNK_NBT_UNAVAILABLE,
+        /** The chunk's saved data is still being read; try the same candidate again on a later tick. */
+        CHUNK_PENDING,
         UNSUPPORTED_FLOOR,
         NO_HEADROOM
     }
@@ -37,6 +39,7 @@ final class StructureMobMarkerDiscoveryService {
                                    int easyY,
                                    ServerLevel world,
                                    Map<Long, Optional<OfflineChunkBlockReader.ChunkSnapshot>> offlineChunkCache,
+                                   Map<Long, java.util.concurrent.CompletableFuture<Optional<net.minecraft.nbt.CompoundTag>>> pendingReads,
                                    AirSpawnStats airStats) {
         BlockPos floorPos = BlockPos.of(candidatePosKey);
         if (!bounds.contains(floorPos)) {
@@ -53,7 +56,10 @@ final class StructureMobMarkerDiscoveryService {
         int z = floorPos.getZ();
         long chunkKey = ChunkPos.pack(x >> 4, z >> 4);
 
-        Optional<OfflineChunkBlockReader.ChunkSnapshot> snapshotOpt = getOfflineSnapshot(offlineChunkCache, world, chunkKey, x >> 4, z >> 4);
+        Optional<OfflineChunkBlockReader.ChunkSnapshot> snapshotOpt = getOfflineSnapshot(offlineChunkCache, pendingReads, world, chunkKey, x >> 4, z >> 4);
+        if (snapshotOpt == null) {
+            return new DiscoveryResult(List.of(), RejectReason.CHUNK_PENDING);
+        }
         if (snapshotOpt.isEmpty()) {
             return new DiscoveryResult(List.of(), RejectReason.CHUNK_NBT_UNAVAILABLE);
         }
@@ -92,8 +98,13 @@ final class StructureMobMarkerDiscoveryService {
         return new DiscoveryResult(discovered, RejectReason.NONE);
     }
 
+    /**
+     * The chunk's snapshot, read without blocking the tick: the first call starts the read and returns null
+     * (pending); a later call returns the result once the read is done.
+     */
     private Optional<OfflineChunkBlockReader.ChunkSnapshot> getOfflineSnapshot(
         Map<Long, Optional<OfflineChunkBlockReader.ChunkSnapshot>> offlineChunkCache,
+        Map<Long, java.util.concurrent.CompletableFuture<Optional<net.minecraft.nbt.CompoundTag>>> pendingReads,
         ServerLevel world,
         long chunkKey,
         int chunkX,
@@ -104,7 +115,23 @@ final class StructureMobMarkerDiscoveryService {
             return cached;
         }
 
-        Optional<OfflineChunkBlockReader.ChunkSnapshot> loaded = OfflineChunkBlockReader.load(world, new ChunkPos(chunkX, chunkZ));
+        ChunkPos chunkPos = new ChunkPos(chunkX, chunkZ);
+        java.util.concurrent.CompletableFuture<Optional<net.minecraft.nbt.CompoundTag>> read = pendingReads.get(chunkKey);
+        if (read == null) {
+            pendingReads.put(chunkKey, OfflineChunkBlockReader.readAsync(world, chunkPos));
+            return null;
+        }
+        if (!read.isDone()) {
+            return null;
+        }
+        pendingReads.remove(chunkKey);
+        Optional<OfflineChunkBlockReader.ChunkSnapshot> loaded;
+        try {
+            loaded = OfflineChunkBlockReader.fromNbt(chunkPos, read.join());
+        } catch (RuntimeException failure) {
+            com.silver.atlantis.AtlantisMod.LOGGER.warn("Could not read chunk NBT for {}:{}: {}", chunkX, chunkZ, failure.toString());
+            loaded = Optional.empty();
+        }
         offlineChunkCache.put(chunkKey, loaded);
         return loaded;
     }

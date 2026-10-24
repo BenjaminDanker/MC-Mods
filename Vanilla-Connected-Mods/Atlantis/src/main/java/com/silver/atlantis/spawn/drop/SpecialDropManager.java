@@ -43,7 +43,7 @@ public final class SpecialDropManager {
         String longTag = SpawnSpecialConfig.SPECIAL_DROP_AMOUNT_TAG_PREFIX + amount;
         boolean added = entity.addTag(longTag);
         if (added) {
-            if (SpawnSpecialConfig.SPECIAL_DROP_DEBUG_LOGS && shouldLogTagSample()) {
+            if (com.silver.atlantis.spawn.config.AtlantisLoggingConfig.specialDropDebug && shouldLogTagSample()) {
                 AtlantisMod.LOGGER.info("[SpecialDropTag] entity={} amount={} tag={}", entity.getType(), amount, longTag);
             }
             return;
@@ -51,7 +51,7 @@ public final class SpecialDropManager {
 
         String compactTag = SpawnSpecialConfig.SPECIAL_DROP_AMOUNT_TAG_PREFIX_COMPACT + amount;
         if (entity.addTag(compactTag)) {
-            if (SpawnSpecialConfig.SPECIAL_DROP_DEBUG_LOGS && shouldLogTagSample()) {
+            if (com.silver.atlantis.spawn.config.AtlantisLoggingConfig.specialDropDebug && shouldLogTagSample()) {
                 AtlantisMod.LOGGER.info("[SpecialDropTag] entity={} amount={} tag={} (fallback)", entity.getType(), amount, compactTag);
             }
             return;
@@ -84,7 +84,7 @@ public final class SpecialDropManager {
 
         ItemEntity item = new ItemEntity(world, entity.getX(), entity.getY(0.6), entity.getZ(), stack);
         world.addFreshEntity(item);
-        if (SpawnSpecialConfig.SPECIAL_DROP_DEBUG_LOGS) {
+        if (com.silver.atlantis.spawn.config.AtlantisLoggingConfig.specialDropDebug) {
             AtlantisMod.LOGGER.info(
                 "[SpecialDropDeath] entity={} atlantisSpawned={} hasAmountTag={} dropped={} ",
                 entity.getType(),

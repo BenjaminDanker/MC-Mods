@@ -16,7 +16,8 @@ import java.util.List;
 
 final class StructureMobMarkerCache {
 
-    private static final int VERSION = 1;
+    /** 2: the header also stores a hash of the schematic the markers were found in. */
+    private static final int VERSION = 2;
     private static final String CACHE_FILE = "structuremob_markers.bin";
     private static final SpawnMobConfig.SpawnType[] SPAWN_TYPES = SpawnMobConfig.SpawnType.values();
 
@@ -40,12 +41,18 @@ final class StructureMobMarkerCache {
                 return List.of();
             }
 
-            // We no longer check runId, dimensionId, or absolute bounds.
-            // We just read them to advance the stream, but we ignore their values
-            // so that the cache can be reused across different construct runs.
-            in.readUTF(); // skip runId
-            in.readUTF(); // skip dimensionId
-            
+ 
+            // The cache is reused across runs (positions are translated to the new build), so it must come from the
+            // same schematic: a changed schematic would place markers in the wrong spots.
+            in.readUTF(); // runId (not compared)
+            in.readUTF(); // dimensionId (not compared)
+            String cachedSchematic = in.readUTF();
+            String currentSchematic = schematicHash();
+            if (currentSchematic == null || !currentSchematic.equals(cachedSchematic)) {
+                AtlantisMod.LOGGER.info("[SpawnDiag] structuremob cache is for a different schematic; rediscovering markers");
+                return List.of();
+            }
+
             // Read the bounds that the cache was originally generated for
             int cachedMinX = in.readInt();
             int cachedMinY = in.readInt();
@@ -53,6 +60,12 @@ final class StructureMobMarkerCache {
             int cachedMaxX = in.readInt();
             int cachedMaxY = in.readInt();
             int cachedMaxZ = in.readInt();
+            if (cachedMaxX - cachedMinX != bounds.maxX() - bounds.minX()
+                || cachedMaxY - cachedMinY != bounds.maxY() - bounds.minY()
+                || cachedMaxZ - cachedMinZ != bounds.maxZ() - bounds.minZ()) {
+                AtlantisMod.LOGGER.info("[SpawnDiag] structuremob cache bounds have a different size; rediscovering markers");
+                return List.of();
+            }
 
             int count = in.readInt();
             if (count <= 0) {
@@ -105,12 +118,17 @@ final class StructureMobMarkerCache {
             if (sanitized.isEmpty()) {
                 return;
             }
+            String schematic = schematicHash();
+            if (schematic == null) {
+                AtlantisMod.LOGGER.warn("[SpawnDiag] schematic unreadable; not caching structuremob markers");
+                return;
+            }
 
-            Files.createDirectories(cacheFile.getParent());
-            try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(cacheFile)))) {
+            try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(com.silver.atlantis.util.AtomicFiles.openReplacing(cacheFile)))) {
                 out.writeInt(VERSION);
                 out.writeUTF(bounds.runId() == null ? "" : bounds.runId());
                 out.writeUTF(bounds.dimensionId() == null ? "" : bounds.dimensionId());
+                out.writeUTF(schematic);
                 out.writeInt(bounds.minX());
                 out.writeInt(bounds.minY());
                 out.writeInt(bounds.minZ());
@@ -127,7 +145,21 @@ final class StructureMobMarkerCache {
 
             AtlantisMod.LOGGER.info("[SpawnDiag] structuremob cache saved runId={} markers={} file={}", bounds.runId(), sanitized.size(), cacheFile);
         } catch (Exception e) {
-            AtlantisMod.LOGGER.warn("[SpawnDiag] failed writing structuremob cache runId={}: {}", bounds.runId(), e.getMessage());
+            AtlantisMod.LOGGER.warn("[SpawnDiag] failed writing structuremob cache runId={}", bounds.runId(), e);
+        }
+    }
+
+    /** SHA-256 of the Atlantis schematic file, or null when it can't be read. */
+    private static String schematicHash() {
+        try (var in = Files.newInputStream(com.silver.atlantis.construct.AtlantisSchematicPaths.schematicFile())) {
+            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] buffer = new byte[1 << 16];
+            for (int read; (read = in.read(buffer)) > 0; ) {
+                digest.update(buffer, 0, read);
+            }
+            return java.util.HexFormat.of().formatHex(digest.digest());
+        } catch (Exception e) {
+            return null;
         }
     }
 
@@ -136,13 +168,4 @@ final class StructureMobMarkerCache {
         return atlantisConfigDir.resolve(CACHE_FILE);
     }
 
-    private static boolean safeEquals(String left, String right) {
-        if (left == null) {
-            return right == null || right.isBlank();
-        }
-        if (left.isBlank()) {
-            return right == null || right.isBlank();
-        }
-        return left.equals(right);
-    }
 }

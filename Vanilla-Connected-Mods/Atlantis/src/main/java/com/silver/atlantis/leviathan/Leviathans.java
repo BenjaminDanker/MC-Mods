@@ -62,14 +62,6 @@ public final class Leviathans {
         }
     }
 
-    public static VirtualLeviathanStore getVirtualStore() {
-        VirtualLeviathanStore store = virtualStore;
-        if (store == null) {
-            throw new IllegalStateException("VirtualLeviathanStore not initialized");
-        }
-        return store;
-    }
-
     public static void flushVirtualState() {
         VirtualLeviathanStore store = virtualStore;
         if (store != null) {

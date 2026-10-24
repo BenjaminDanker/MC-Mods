@@ -17,10 +17,7 @@ public final class ConstructRunStateIO {
     }
 
     public static void write(Path file, ConstructRunState state) throws IOException {
-        Files.createDirectories(file.getParent());
-        try (Writer writer = Files.newBufferedWriter(file)) {
-            GSON.toJson(state, writer);
-        }
+        com.silver.atlantis.util.AtomicFiles.writeString(file, GSON.toJson(state));
     }
 
     public static ConstructRunState read(Path file) throws IOException {

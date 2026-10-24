@@ -28,62 +28,35 @@ public final class UndoPaths {
     }
 
     /**
-     * Finds the newest undo run directory by numeric name (millis-based runId).
-     * Returns null if none exist.
-     */
-    public static String findLatestRunIdOrNull() {
-        try {
-            Path base = undoBaseDir();
-            if (!Files.exists(base)) {
-                return null;
-            }
-
-            String newest = null;
-            long newestId = Long.MIN_VALUE;
-
-            try (java.util.stream.Stream<Path> children = Files.list(base)) {
-                for (Path child : children.filter(Files::isDirectory).toList()) {
-                    String name = child.getFileName().toString();
-                    try {
-                        long id = Long.parseLong(name);
-                        if (id > newestId) {
-                            newestId = id;
-                            newest = name;
-                        }
-                    } catch (NumberFormatException ignored) {
-                    }
-                }
-            }
-
-            return newest;
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
-    /**
      * Finds the newest undo run directory by numeric name that has both metadata and undo file.
      * Returns null if no usable run exists.
      */
     public static String findLatestUsableRunIdOrNull() {
         try {
-            Path base = undoBaseDir();
-            if (!Files.exists(base)) {
-                return null;
-            }
-
-            try (java.util.stream.Stream<Path> children = Files.list(base)) {
-                return children
-                    .filter(Files::isDirectory)
-                    .filter(UndoPaths::hasNumericDirectoryName)
-                    .sorted(Comparator.comparingLong(UndoPaths::numericDirectoryName).reversed())
-                    .filter(UndoPaths::isUsableRunDirectory)
-                    .map(path -> path.getFileName().toString())
-                    .findFirst()
-                    .orElse(null);
-            }
-        } catch (Exception ignored) {
+            return findLatestUsableRunId();
+        } catch (java.io.IOException e) {
+            com.silver.atlantis.AtlantisMod.LOGGER.error("[undo] Could not list undo runs under {}", undoBaseDir(), e);
             return null;
+        }
+    }
+
+    /** Like {@link #findLatestUsableRunIdOrNull} but an unreadable undo folder is an error, not "no history". */
+    public static String findLatestUsableRunId() throws java.io.IOException {
+        Path base = undoBaseDir();
+        if (!Files.exists(base)) {
+            return null;
+        }
+        try (java.util.stream.Stream<Path> children = Files.list(base)) {
+            return children
+                .filter(Files::isDirectory)
+                .filter(UndoPaths::hasNumericDirectoryName)
+                .sorted(Comparator.comparingLong(UndoPaths::numericDirectoryName).reversed())
+                .filter(UndoPaths::isUsableRunDirectory)
+                .map(path -> path.getFileName().toString())
+                .findFirst()
+                .orElse(null);
+        } catch (java.io.UncheckedIOException e) {
+            throw e.getCause();
         }
     }
 
@@ -111,7 +84,8 @@ public final class UndoPaths {
             }
 
             return deleted;
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            com.silver.atlantis.AtlantisMod.LOGGER.error("[undo] Could not prune unusable undo runs under {}", undoBaseDir(), e);
             return 0;
         }
     }

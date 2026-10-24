@@ -5,7 +5,6 @@ import com.silver.atlantis.construct.undo.UndoMetadataIO;
 import com.silver.atlantis.construct.undo.UndoPaths;
 import com.silver.atlantis.construct.undo.UndoRunMetadata;
 import com.silver.atlantis.construct.undo.UndoFileFormat;
-import com.silver.atlantis.construct.mixin.ServerChunkManagerAccessor;
 import com.silver.atlantis.construct.state.ConstructRunState;
 import com.silver.atlantis.construct.state.ConstructRunStateIO;
 import com.silver.atlantis.construct.state.ConstructStatePaths;
@@ -20,12 +19,9 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.server.level.TicketType;
 import net.minecraft.world.entity.Relative;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.phys.AABB;
-import java.lang.reflect.Field;
-import java.lang.reflect.Modifier;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -78,9 +74,6 @@ final class ConstructUndoTask implements ConstructJob {
     private static final int UNLOAD_FORCE_INTERVAL_TICKS = 5;
     private static final int UNLOAD_STATUS_LOG_INTERVAL_TICKS = 20;
     private static final int UNLOAD_FORCE_CHUNK_BUDGET = 8;
-    private static final int MIN_TICKET_LEVEL = 0;
-    private static final int MAX_TICKET_LEVEL = 40;
-    private static final List<TicketType> DISCOVERED_TICKET_TYPES = discoverChunkTicketTypes();
 
     private long chunkPrepStartedAtNanos;
     private int chunkPrepExpectedMissingCount;
@@ -88,8 +81,7 @@ final class ConstructUndoTask implements ConstructJob {
     private int unloadWaitTicks;
     private Set<Long> unloadChunkKeys = Set.of();
     private final Set<Long> chunkPrepObservedLoadedKeys = new java.util.HashSet<>();
-    private long[] unloadChunkKeysArray = new long[0];
-    private int unloadChunkKeysCursor;
+    private final ConstructChunkOps.UnloadCursor unloadCursor = new ConstructChunkOps.UnloadCursor();
 
     private CompletableFuture<List<ChunkPos>> pendingMissingAfterUnload;
 
@@ -123,6 +115,7 @@ final class ConstructUndoTask implements ConstructJob {
     @Override
     public boolean tick(MinecraftServer ignored) {
         if (stage == Stage.DONE) {
+            releaseSpawnPauseIfNeeded();
             return true;
         }
 
@@ -134,10 +127,15 @@ final class ConstructUndoTask implements ConstructJob {
             case APPLY_UNDO_ASYNC -> applyUndoAsync();
             case DELETE_RUN_ASYNC -> deleteRunAsync();
             case DONE -> {
+                releaseSpawnPauseIfNeeded();
                 return true;
             }
         }
 
+        // Several stages jump straight to DONE; release the spawn pause on every such path.
+        if (stage == Stage.DONE) {
+            releaseSpawnPauseIfNeeded();
+        }
         return stage == Stage.DONE;
     }
 
@@ -484,10 +482,16 @@ final class ConstructUndoTask implements ConstructJob {
         Path finishedUndoFile = undoFile;
         try {
             Files.deleteIfExists(finishedUndoFile);
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            AtlantisMod.LOGGER.warn("[undo:{}] Could not delete the finished undo file {}", getRunId(), finishedUndoFile, e);
         }
 
         passIndex = -1;
+        // Finish here: lift the build's protection and remove its undo history. (Going straight to DELETE_RUN_ASYNC
+        // without starting the delete used to end the undo silently, leaving the old protection registered.)
+        unregisterProtectionOnce();
+        send("Undo complete. Removing undo history for run '" + metadata.runId() + "'...");
+        pendingDelete = CompletableFuture.runAsync(this::deleteUndoRunInternal, ioExecutor);
         stage = Stage.DELETE_RUN_ASYNC;
     }
 
@@ -503,7 +507,8 @@ final class ConstructUndoTask implements ConstructJob {
 
         try {
             pendingDelete.join();
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            AtlantisMod.LOGGER.warn("[undo:{}] Removing the undo history failed", getRunId(), e);
         }
 
         pendingDelete = null;
@@ -589,12 +594,13 @@ final class ConstructUndoTask implements ConstructJob {
         }
 
         final int[] writeCount = new int[1];
+        LoadedChunkProbe probe = new LoadedChunkProbe(world, new java.util.ArrayList<>(byChunk.keySet()));
         for (Map.Entry<Long, List<UndoPlacement>> entry : byChunk.entrySet()) {
             int chunkX = ChunkPos.getX(entry.getKey());
             int chunkZ = ChunkPos.getZ(entry.getKey());
             ChunkPos chunkPos = new ChunkPos(chunkX, chunkZ);
 
-            boolean mutated = UnloadedChunkNbtEditor.mutateChunk(world, chunkPos, context -> {
+            boolean mutated = UnloadedChunkNbtEditor.mutateChunk(world, chunkPos, probe, context -> {
                 for (UndoPlacement placement : entry.getValue()) {
                     context.setBlock(
                         placement.x,
@@ -616,38 +622,11 @@ final class ConstructUndoTask implements ConstructJob {
     }
 
     private int countLoadedTargetChunks(Set<Long> targetChunkKeys) {
-        if (world == null || targetChunkKeys == null || targetChunkKeys.isEmpty()) {
-            return 0;
-        }
-
-        int loaded = 0;
-        for (long key : targetChunkKeys) {
-            int chunkX = ChunkPos.getX(key);
-            int chunkZ = ChunkPos.getZ(key);
-            if (world.getChunkSource().hasChunk(chunkX, chunkZ)) {
-                loaded++;
-            }
-        }
-        return loaded;
+        return ConstructChunkOps.countLoaded(world, targetChunkKeys);
     }
 
     private void markLoadedTargetChunksNeedSaving(Set<Long> targetChunkKeys) {
-        if (world == null || targetChunkKeys == null || targetChunkKeys.isEmpty()) {
-            return;
-        }
-
-        int saved = 0;
-        for (long key : targetChunkKeys) {
-            int chunkX = ChunkPos.getX(key);
-            int chunkZ = ChunkPos.getZ(key);
-            if (!world.getChunkSource().hasChunk(chunkX, chunkZ)) {
-                continue;
-            }
-
-            ((ServerChunkManagerAccessor) world.getChunkSource().chunkMap).atlantis$setChunkUnsaved(new ChunkPos(chunkX, chunkZ));
-            saved++;
-        }
-
+        int saved = ConstructChunkOps.markLoadedNeedSaving(world, targetChunkKeys);
         if (saved > 0) {
             AtlantisMod.LOGGER.info("[undo:{}] requested immediate save for {} loaded target chunk(s).", getRunId(), saved);
         }
@@ -675,18 +654,7 @@ final class ConstructUndoTask implements ConstructJob {
     }
 
     private List<ChunkPos> findMissingChunkNbts(Set<Long> targetChunkKeys) {
-        List<ChunkPos> missingChunks = new ArrayList<>();
-        if (targetChunkKeys == null || targetChunkKeys.isEmpty()) {
-            return missingChunks;
-        }
-
-        for (long key : targetChunkKeys) {
-            ChunkPos chunkPos = new ChunkPos(ChunkPos.getX(key), ChunkPos.getZ(key));
-            if (!UnloadedChunkNbtEditor.hasChunkNbt(world, chunkPos)) {
-                missingChunks.add(chunkPos);
-            }
-        }
-        return missingChunks;
+        return ConstructChunkOps.findMissingChunkNbts(world, targetChunkKeys);
     }
 
     private void releaseChunkGenerationTickets() {
@@ -695,103 +663,30 @@ final class ConstructUndoTask implements ConstructJob {
         }
         try {
             chunkGenerationScheduler.releaseTickets(world);
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            AtlantisMod.LOGGER.warn("[undo] Could not release chunk-generation tickets", e);
         }
     }
 
     private void setUnloadChunkKeys(Set<Long> keys) {
-        if (keys == null || keys.isEmpty()) {
-            unloadChunkKeys = Set.of();
-            unloadChunkKeysArray = new long[0];
-            unloadChunkKeysCursor = 0;
-            return;
-        }
-
-        unloadChunkKeys = Set.copyOf(keys);
-        unloadChunkKeysArray = unloadChunkKeys.stream().mapToLong(Long::longValue).toArray();
-        unloadChunkKeysCursor = 0;
+        unloadCursor.set(keys);
+        unloadChunkKeys = unloadCursor.keys();
     }
 
     private void forceUnloadTargetChunks(Set<Long> targetChunkKeys) {
-        if (world == null || targetChunkKeys == null || targetChunkKeys.isEmpty()) {
+        if (targetChunkKeys == null || targetChunkKeys.isEmpty()) {
             return;
         }
-
-        if (unloadChunkKeysArray.length == 0) {
-            // Fallback: should normally be kept in sync via setUnloadChunkKeys().
-            setUnloadChunkKeys(targetChunkKeys);
-        }
-
-        int budget = Math.min(UNLOAD_FORCE_CHUNK_BUDGET, unloadChunkKeysArray.length);
-        for (int i = 0; i < budget; i++) {
-            int idx = unloadChunkKeysCursor++;
-            if (idx < 0) {
-                idx = 0;
-                unloadChunkKeysCursor = 1;
-            }
-
-            long key = unloadChunkKeysArray[idx % unloadChunkKeysArray.length];
-            int chunkX = ChunkPos.getX(key);
-            int chunkZ = ChunkPos.getZ(key);
-
-            world.setChunkForced(chunkX, chunkZ, false);
-
-            ChunkPos pos = new ChunkPos(chunkX, chunkZ);
-            for (TicketType ticketType : DISCOVERED_TICKET_TYPES) {
-                for (int level = MIN_TICKET_LEVEL; level <= MAX_TICKET_LEVEL; level++) {
-                    try {
-                        world.getChunkSource().removeTicketWithRadius(ticketType, pos, level);
-                    } catch (Exception ignored) {
-                    }
-                }
-            }
-        }
+        unloadCursor.releaseSome(world, targetChunkKeys, UNLOAD_FORCE_CHUNK_BUDGET);
     }
 
     private void forceUnloadChunkKeysNow(Set<Long> chunkKeys) {
         if (world == null || chunkKeys == null || chunkKeys.isEmpty()) {
             return;
         }
-
         for (long key : chunkKeys) {
-            int chunkX = ChunkPos.getX(key);
-            int chunkZ = ChunkPos.getZ(key);
-
-            world.setChunkForced(chunkX, chunkZ, false);
-
-            ChunkPos pos = new ChunkPos(chunkX, chunkZ);
-            for (TicketType ticketType : DISCOVERED_TICKET_TYPES) {
-                for (int level = MIN_TICKET_LEVEL; level <= MAX_TICKET_LEVEL; level++) {
-                    try {
-                        world.getChunkSource().removeTicketWithRadius(ticketType, pos, level);
-                    } catch (Exception ignored) {
-                    }
-                }
-            }
+            ConstructChunkOps.releaseChunk(world, key);
         }
-    }
-
-    private static List<TicketType> discoverChunkTicketTypes() {
-        List<TicketType> types = new ArrayList<>();
-        for (Field field : TicketType.class.getDeclaredFields()) {
-            if (!Modifier.isStatic(field.getModifiers())) {
-                continue;
-            }
-            if (!TicketType.class.isAssignableFrom(field.getType())) {
-                continue;
-            }
-            try {
-                field.setAccessible(true);
-                Object value = field.get(null);
-                if (value instanceof TicketType ticketType) {
-                    types.add(ticketType);
-                }
-            } catch (Exception ignored) {
-            }
-        }
-
-        AtlantisMod.LOGGER.info("[undo] discovered {} chunk ticket type(s) for unload forcing.", types.size());
-        return List.copyOf(types);
     }
 
     private void loadUndoBoundsFromRunState() {
@@ -817,7 +712,8 @@ final class ConstructUndoTask implements ConstructJob {
             undoMaxX = state.overallMaxX();
             undoMaxY = state.overallMaxY();
             undoMaxZ = state.overallMaxZ();
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            AtlantisMod.LOGGER.warn("[undo:{}] Could not read the run's bounds; player eject and keepout use the undo data instead", getRunId(), e);
         }
     }
 
@@ -889,6 +785,7 @@ final class ConstructUndoTask implements ConstructJob {
                 player.getXRot(),
                 true
             );
+            PetEscort.follow(player, world, target.getX() + 0.5, target.getY(), target.getZ() + 0.5);
             ejectedCount++;
         }
 
@@ -931,7 +828,8 @@ final class ConstructUndoTask implements ConstructJob {
                 walk.sorted((a, b) -> b.compareTo(a)).forEach(path -> {
                     try {
                         Files.deleteIfExists(path);
-                    } catch (Exception ignored) {
+                    } catch (Exception e) {
+                        AtlantisMod.LOGGER.warn("[undo] Could not delete {}: {}", path, e.toString());
                     }
                 });
             }
@@ -978,24 +876,9 @@ final class ConstructUndoTask implements ConstructJob {
         if (world == null) {
             return;
         }
-
-        int minChunkX = minX >> 4;
-        int maxChunkX = maxX >> 4;
-        int minChunkZ = minZ >> 4;
-        int maxChunkZ = maxZ >> 4;
-
-        int total = 0;
-        int loadedBefore = 0;
-        for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
-            for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
-                total++;
-                if (world.getChunkSource().hasChunk(chunkX, chunkZ)) {
-                    loadedBefore++;
-                }
-                world.setChunkForced(chunkX, chunkZ, false);
-            }
-        }
-
+        int[] counts = ConstructChunkOps.unforceChunksInBounds(world, minX, minZ, maxX, maxZ);
+        int total = counts[0];
+        int loadedBefore = counts[1];
         send("Undo preflight: force-release requested for " + total + " chunk(s), loadedBefore=" + loadedBefore);
     }
 
@@ -1035,27 +918,11 @@ final class ConstructUndoTask implements ConstructJob {
     }
 
     private static String rootMessage(Throwable throwable) {
-        Throwable root = throwable;
-        while (root.getCause() != null) {
-            root = root.getCause();
-        }
-        String msg = root.getMessage();
-        return (msg == null || msg.isBlank()) ? root.getClass().getSimpleName() : msg;
+        return ConstructChunkOps.rootMessage(throwable);
     }
 
     private static Set<Long> mergeChunkKeySets(Set<Long> first, Set<Long> second) {
-        if ((first == null || first.isEmpty()) && (second == null || second.isEmpty())) {
-            return Set.of();
-        }
-        if (first == null || first.isEmpty()) {
-            return Set.copyOf(second);
-        }
-        if (second == null || second.isEmpty()) {
-            return Set.copyOf(first);
-        }
-        Set<Long> merged = new java.util.HashSet<>(first);
-        merged.addAll(second);
-        return Set.copyOf(merged);
+        return ConstructChunkOps.merge(first, second);
     }
 
     private static final class UndoPlacement {

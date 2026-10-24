@@ -513,7 +513,8 @@ final class LeviathanRuntimeService {
         if (leviathan instanceof LivingEntity living) {
             damaged = target.hurtServer(world, world.damageSources().mobAttack(living), (float) effectiveDamage);
         } else {
-            damaged = target.hurtServer(world, world.damageSources().generic(), (float) effectiveDamage);
+            // generic would bypass armor; boss damage must respect it.
+            damaged = target.hurtServer(world, world.damageSources().mobProjectile(leviathan, null), (float) effectiveDamage);
         }
 
         if (!damaged) {

@@ -64,6 +64,9 @@ public final class AtlantisCommandManager {
                 .then(Commands.literal("resume")
                     .executes(context -> resume(context.getSource()))
                 )
+                .then(Commands.literal("where")
+                    .executes(context -> where(context.getSource()))
+                )
                 .then(cycleCommandManager.buildSubcommand())
                 .then(findCommandManager.buildSubcommand())
                 .then(constructCommandManager.buildSubcommand())
@@ -71,6 +74,31 @@ public final class AtlantisCommandManager {
                 .then(heightCapCommandManager.buildSubcommand())
                 .then(leviathanCommandManager.buildSubcommand())
         );
+    }
+
+    private int where(CommandSourceStack source) {
+        var cycle = com.silver.atlantis.cycle.CycleJsonIO.tryRead(com.silver.atlantis.cycle.CyclePaths.stateFile());
+        var bounds = com.silver.atlantis.spawn.bounds.ActiveConstructBoundsResolver.tryResolveLatest();
+        if (cycle == null || cycle.lastCenterX() == null || cycle.lastCenterZ() == null) {
+            source.sendSuccess(() -> Component.literal("Atlantis has not been built yet (no recorded location)."), false);
+            return 0;
+        }
+        int x = cycle.lastCenterX();
+        int y = cycle.lastCenterY() == null ? 60 : cycle.lastCenterY();
+        int z = cycle.lastCenterZ();
+        String dimension = bounds == null ? "minecraft:overworld" : bounds.dimensionId();
+        String size = bounds == null ? "" : String.format(java.util.Locale.ROOT,
+            " | spans x %d..%d, y %d..%d, z %d..%d",
+            bounds.minX(), bounds.maxX(), bounds.minY(), bounds.maxY(), bounds.minZ(), bounds.maxZ());
+        String next = cycle.nextRunAtEpochMillis() > 0
+            ? " | next cycle step at " + java.time.Instant.ofEpochMilli(cycle.nextRunAtEpochMillis()) : "";
+        String message = String.format(java.util.Locale.ROOT, "Atlantis is at %d %d %d in %s%s | cycle stage %s",
+            x, y, z, dimension, size, cycle.stage());
+        source.sendSuccess(() -> Component.literal(message).append(Component.literal(" [teleport]")
+            .withStyle(style -> style.withColor(net.minecraft.ChatFormatting.AQUA).withClickEvent(
+                new net.minecraft.network.chat.ClickEvent.SuggestCommand(
+                    String.format(java.util.Locale.ROOT, "/execute in %s run tp @s %d %d %d", dimension, x, y, z))))), false);
+        return 1;
     }
 
     private int pause(CommandSourceStack source) {

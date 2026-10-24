@@ -28,9 +28,6 @@ public final class SpawnSpecialConfig {
     /** How many of the item to drop. */
     public static final int SPECIAL_DROP_ITEM_COUNT = 1;
 
-    /** Enables verbose logs for special-drop roll, tagging, and death-drop behavior. */
-    public static final boolean SPECIAL_DROP_DEBUG_LOGS = true;
-
     /**
      * Custom data (SNBT compound) stored on the dropped item.
      * Example: {atlantis_special:1b,run:"cycle"}

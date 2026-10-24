@@ -25,6 +25,8 @@ public record CycleState(
         WAIT_STRUCTUREMOB,
         WAIT_BEFORE_UNDO,
         START_UNDO,
-        WAIT_UNDO
+        WAIT_UNDO,
+        /** The undo failed repeatedly; the cycle waits for an admin (/atlantis cycle set ...) instead of looping. */
+        UNDO_FAILED
     }
 }

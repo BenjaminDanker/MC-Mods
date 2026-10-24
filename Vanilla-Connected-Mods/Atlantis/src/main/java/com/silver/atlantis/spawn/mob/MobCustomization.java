@@ -121,11 +121,6 @@ public record MobCustomization(
             return this;
         }
 
-        public Builder baby(boolean isBaby) {
-            this.isBaby = isBaby;
-            return this;
-        }
-
         public Builder customName(String name) {
             this.customName = name;
             return this;

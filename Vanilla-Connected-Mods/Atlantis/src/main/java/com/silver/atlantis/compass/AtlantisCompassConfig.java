@@ -80,7 +80,7 @@ public final class AtlantisCompassConfig {
             Files.createDirectories(path.getParent());
             JsonObject root = new JsonObject();
             root.addProperty("crystalIntervalSeconds", config.crystalIntervalSeconds);
-            Files.writeString(path, GSON.toJson(root), StandardCharsets.UTF_8);
+            com.silver.atlantis.util.AtomicFiles.writeString(path, GSON.toJson(root));
         } catch (IOException e) {
             throw new ValidationException(List.of("io: unable to write config path=" + path + " error=" + e.getMessage()));
         }

@@ -256,27 +256,6 @@ public final class ProximityMobManager {
         return null;
     }
 
-    public void despawnToMarker(ServerLevel world, BlockPos pos, Mob mob) {
-        if (world == null || pos == null || mob == null) {
-            return;
-        }
-
-        AtlantisMobMarkerState state = AtlantisMobMarkerState.get(world);
-        AtlantisMobMarker marker = AtlantisMobMarker.fromEntity(mob);
-        if (marker != null) {
-            state.putMarker(pos.immutable(), marker);
-        }
-
-        Map<BlockPos, UUID> active = getActiveMap(world);
-        UUID removedId = active.remove(pos);
-        if (removedId != null) {
-            getActivePositionMap(world).remove(removedId);
-        }
-        clearRebindAttempt(world, pos);
-        mob.discard();
-        state.setDirty();
-    }
-
     public void clearWithinBounds(ServerLevel world, ActiveConstructBounds bounds) {
         if (world == null || bounds == null) {
             return;
@@ -540,6 +519,13 @@ public final class ProximityMobManager {
         long left = dxz2 * ry2 + (dy * dy) * rxz2;
         long right = rxz2 * ry2;
         return left <= right;
+    }
+
+    /** Human-readable answer to "why are (or aren't) Atlantis mobs spawning right now?". */
+    public String activationStatus(net.minecraft.server.MinecraftServer server) {
+        lastSpawnPhaseRefreshMs = 0L;
+        boolean allowed = isActivationPhaseEnabled(server);
+        return (allowed ? "allowed" : "BLOCKED") + " (" + spawnPhaseBlockReason + ")";
     }
 
     private boolean isActivationPhaseEnabled(net.minecraft.server.MinecraftServer server) {

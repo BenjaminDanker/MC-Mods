@@ -2,7 +2,6 @@ package com.silver.atlantis.spawn.drop;
 
 import com.silver.atlantis.AtlantisMod;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
-import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
@@ -132,25 +131,46 @@ public final class SpecialItemConversionManager {
         }
     }
 
+    /** Players whose ocean reward is being granted right now, so a burst of inventory changes grants it once. */
+    private static final java.util.Set<java.util.UUID> GRANTING = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private static final java.util.concurrent.ExecutorService REWARD_IO = java.util.concurrent.Executors.newSingleThreadExecutor(task -> {
+        Thread thread = new Thread(task, "atlantis-boss-reward");
+        thread.setDaemon(true);
+        return thread;
+    });
+
+    /**
+     * Grants the ocean boss reward through MPDS's API (it raises the player's SoulboundMax once), off the server
+     * thread because it talks to the database. MPDS is called by name so Atlantis builds without it.
+     */
     private static void tryMarkOceanDefeatedOnce(ServerPlayer player) {
-        if (player == null || player.entityTags().contains(MPDS_OCEAN_DEFEATED_TAG)) {
+        if (player == null || player.entityTags().contains(MPDS_OCEAN_DEFEATED_TAG) || !GRANTING.add(player.getUUID())) {
             return;
         }
-
-        MinecraftServer server = player.createCommandSourceStack().getServer();
-        if (server == null) {
-            return;
-        }
-
-        String playerName = player.getScoreboardName();
-        CommandSourceStack source = server.createCommandSourceStack();
-
-        try {
-            server.getCommands().performPrefixedCommand(source, "/mpdsgrantbossreward " + playerName + " ocean 1");
-            player.addTag(MPDS_OCEAN_DEFEATED_TAG);
-        } catch (Exception e) {
-            AtlantisMod.LOGGER.error("Failed to update MPDS ocean defeated flag for {}", playerName, e);
-        }
+        MinecraftServer server = player.level().getServer();
+        String name = player.getScoreboardName();
+        String uuid = player.getStringUUID();
+        java.util.UUID id = player.getUUID();
+        REWARD_IO.execute(() -> {
+            try {
+                Class<?> api = Class.forName("mpds.mpds.api.BossRewards");
+                java.lang.reflect.Method grant = api.getMethod("grant", String.class, String.class, String.class, int.class);
+                boolean granted = (boolean) grant.invoke(null, name, uuid, "ocean", 1);
+                AtlantisMod.LOGGER.info("[Atlantis] ocean boss reward for {}: {}", name, granted ? "granted" : "already had it");
+                server.execute(() -> {
+                    ServerPlayer online = server.getPlayerList().getPlayer(id);
+                    if (online != null) {
+                        online.addTag(MPDS_OCEAN_DEFEATED_TAG);
+                    }
+                });
+            } catch (java.lang.reflect.InvocationTargetException e) {
+                AtlantisMod.LOGGER.error("Failed to grant the MPDS ocean boss reward for {}; it is retried next time", name, e.getCause());
+            } catch (ReflectiveOperationException e) {
+                AtlantisMod.LOGGER.error("MPDS boss-reward API not available; the ocean reward for {} was not granted", name, e);
+            } finally {
+                GRANTING.remove(id);
+            }
+        });
     }
 
     private static int countSpecialDrops(ServerPlayer player) {

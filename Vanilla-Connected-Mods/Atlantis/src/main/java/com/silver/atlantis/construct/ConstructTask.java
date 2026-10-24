@@ -9,7 +9,6 @@ import com.silver.atlantis.construct.undo.UndoMetadataIO;
 import com.silver.atlantis.construct.undo.UndoPaths;
 import com.silver.atlantis.construct.undo.UndoRunMetadata;
 import com.silver.atlantis.construct.undo.UndoFileFormat;
-import com.silver.atlantis.construct.mixin.ServerChunkManagerAccessor;
 import com.silver.atlantis.protect.InteriorMask;
 import com.silver.atlantis.protect.ProtectionCollector;
 import com.silver.atlantis.protect.ProtectionFileIO;
@@ -25,15 +24,12 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.server.level.TicketType;
 import net.minecraft.world.entity.Relative;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.phys.AABB;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.lang.reflect.Field;
-import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -94,9 +90,6 @@ final class ConstructTask implements ConstructJob {
     private static final int APPLY_STATUS_LOG_INTERVAL_TICKS = 100;
     private static final int PROTECTION_MERGE_ADD_BUDGET_PER_TICK = 25_000;
     private static final int PROTECTION_MERGE_STATUS_LOG_INTERVAL_TICKS = 20;
-    private static final int MIN_TICKET_LEVEL = 0;
-    private static final int MAX_TICKET_LEVEL = 40;
-    private static final List<TicketType> DISCOVERED_TICKET_TYPES = discoverChunkTicketTypes();
 
     private long chunkPrepStartedAtNanos;
     private int chunkPrepExpectedMissingCount;
@@ -108,8 +101,7 @@ final class ConstructTask implements ConstructJob {
     private long protectionMergeStartedAtNanos;
     private Set<Long> unloadChunkKeys = Set.of();
     private final Set<Long> chunkPrepObservedLoadedKeys = new HashSet<>();
-    private long[] unloadChunkKeysArray = new long[0];
-    private int unloadChunkKeysCursor;
+    private final ConstructChunkOps.UnloadCursor unloadCursor = new ConstructChunkOps.UnloadCursor();
     private LongIterator pendingPlacedMergeIterator;
     private PassApplyResult pendingProtectionMergeResult;
     private int pendingPlacedMergeRemaining;
@@ -195,6 +187,13 @@ final class ConstructTask implements ConstructJob {
         return undoRunId;
     }
 
+    /**
+     * Runs that finished in this server session. Their DONE state is written in the background, so the file can still
+     * say "not completed" for a moment after the run finished; without this the cycle resumed (rebuilt) finished runs
+     * in a loop.
+     */
+    private static final java.util.Set<String> COMPLETED_THIS_SESSION = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     static ConstructRunState tryLoadLatestResumableState(ServerLevel world) {
         Path base = UndoPaths.undoBaseDir();
         if (!Files.exists(base) || !Files.isDirectory(base)) {
@@ -219,11 +218,12 @@ final class ConstructTask implements ConstructJob {
                 ConstructRunState state;
                 try {
                     state = ConstructRunStateIO.read(stateFile);
-                } catch (Exception ignored) {
+                } catch (Exception e) {
+                    AtlantisMod.LOGGER.warn("[construct] Skipping unreadable run state {}: {}", stateFile, e.toString());
                     continue;
                 }
 
-                if (state.completed()) {
+                if (state.completed() || COMPLETED_THIS_SESSION.contains(state.runId())) {
                     continue;
                 }
                 if (state.dimension() == null || !state.dimension().equals(dimension)) {
@@ -500,6 +500,13 @@ final class ConstructTask implements ConstructJob {
 
                     int currentPass = passIndex;
                     SpongeV3Schematic schematicToApply = loadedSchematic;
+                    // List the undo file before any block is written, so an undo finds it even if this attempt
+                    // fails or the server stops mid-apply.
+                    String undoFileName = UndoPaths.constructUndoFile(undoRunDir).getFileName().toString();
+                    if (!undoFiles.contains(undoFileName)) {
+                        undoFiles.add(undoFileName);
+                        writeUndoMetadataSafely();
+                    }
                     send(server, "Applying schematic pass");
                     applyStatusLogTicks = 0;
                     applyStartedAtNanos = System.nanoTime();
@@ -564,7 +571,7 @@ final class ConstructTask implements ConstructJob {
                     protectionMergeStatusLogTicks = 0;
                     protectionMergeStartedAtNanos = 0L;
 
-                    if (result != null && result.undoFileName != null) {
+                    if (result != null && result.undoFileName != null && !undoFiles.contains(result.undoFileName)) {
                         undoFiles.add(result.undoFileName);
                         writeUndoMetadataSafely();
                     }
@@ -617,7 +624,19 @@ final class ConstructTask implements ConstructJob {
         Path undoFile = UndoPaths.constructUndoFile(undoRunDir);
         SpongeV3Schematic.StreamApplyResult streamResult;
         String undoFileName;
-        try (UndoFileFormat.StreamWriter undoWriter = UndoFileFormat.openStreamWriter(undoFile, world.dimension().identifier().toString())) {
+        String dimensionId = world.dimension().identifier().toString();
+        boolean continuing;
+        try {
+            continuing = Files.isRegularFile(undoFile) && Files.size(undoFile) > 0;
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("Cannot inspect undo file " + undoFile, e);
+        }
+        if (continuing) {
+            AtlantisMod.LOGGER.warn("[construct:{}] An earlier attempt of this run already wrote blocks; keeping its undo records and adding to them", undoRunId);
+        }
+        try (UndoFileFormat.StreamWriter undoWriter = continuing
+            ? UndoFileFormat.openStreamWriterContinuing(undoFile, dimensionId)
+            : UndoFileFormat.openStreamWriter(undoFile, dimensionId)) {
             streamResult = schematic.streamApply(world, pasteAnchorTo, undoWriter::write);
             undoFileName = undoFile.getFileName().toString();
         } catch (Exception e) {
@@ -719,38 +738,11 @@ final class ConstructTask implements ConstructJob {
     }
 
     private int countLoadedTargetChunks(Set<Long> targetChunkKeys) {
-        if (targetChunkKeys == null || targetChunkKeys.isEmpty()) {
-            return 0;
-        }
-
-        int loaded = 0;
-        for (long key : targetChunkKeys) {
-            int chunkX = ChunkPos.getX(key);
-            int chunkZ = ChunkPos.getZ(key);
-            if (world.getChunkSource().hasChunk(chunkX, chunkZ)) {
-                loaded++;
-            }
-        }
-        return loaded;
+        return ConstructChunkOps.countLoaded(world, targetChunkKeys);
     }
 
     private void markLoadedTargetChunksNeedSaving(Set<Long> targetChunkKeys) {
-        if (targetChunkKeys == null || targetChunkKeys.isEmpty()) {
-            return;
-        }
-
-        int saved = 0;
-        for (long key : targetChunkKeys) {
-            int chunkX = ChunkPos.getX(key);
-            int chunkZ = ChunkPos.getZ(key);
-            if (!world.getChunkSource().hasChunk(chunkX, chunkZ)) {
-                continue;
-            }
-
-            ((ServerChunkManagerAccessor) world.getChunkSource().chunkMap).atlantis$setChunkUnsaved(new ChunkPos(chunkX, chunkZ));
-            saved++;
-        }
-
+        int saved = ConstructChunkOps.markLoadedNeedSaving(world, targetChunkKeys);
         if (saved > 0) {
             AtlantisMod.LOGGER.info("[construct:{}] requested immediate save for {} loaded target chunk(s).", undoRunId, saved);
         }
@@ -770,120 +762,36 @@ final class ConstructTask implements ConstructJob {
     }
 
     private List<ChunkPos> findMissingChunkNbts(Set<Long> targetChunkKeys) {
-        List<ChunkPos> missingChunks = new ArrayList<>();
-        if (targetChunkKeys == null || targetChunkKeys.isEmpty()) {
-            return missingChunks;
-        }
-
-        for (long key : targetChunkKeys) {
-            ChunkPos chunkPos = new ChunkPos(ChunkPos.getX(key), ChunkPos.getZ(key));
-            if (!UnloadedChunkNbtEditor.hasChunkNbt(world, chunkPos)) {
-                missingChunks.add(chunkPos);
-            }
-        }
-        return missingChunks;
+        return ConstructChunkOps.findMissingChunkNbts(world, targetChunkKeys);
     }
 
     private void releaseChunkGenerationTickets() {
         try {
             chunkGenerationScheduler.releaseTickets(world);
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            AtlantisMod.LOGGER.warn("[construct] Could not release chunk-generation tickets", e);
         }
     }
 
     private void setUnloadChunkKeys(Set<Long> keys) {
-        if (keys == null || keys.isEmpty()) {
-            unloadChunkKeys = Set.of();
-            unloadChunkKeysArray = new long[0];
-            unloadChunkKeysCursor = 0;
-            return;
-        }
-
-        unloadChunkKeys = Set.copyOf(keys);
-        unloadChunkKeysArray = unloadChunkKeys.stream().mapToLong(Long::longValue).toArray();
-        unloadChunkKeysCursor = 0;
+        unloadCursor.set(keys);
+        unloadChunkKeys = unloadCursor.keys();
     }
 
     private void forceUnloadTargetChunks(Set<Long> targetChunkKeys) {
         if (targetChunkKeys == null || targetChunkKeys.isEmpty()) {
             return;
         }
-
-        if (unloadChunkKeysArray.length == 0) {
-            // Fallback: should normally be kept in sync via setUnloadChunkKeys().
-            setUnloadChunkKeys(targetChunkKeys);
-        }
-
-        int budget = Math.min(UNLOAD_FORCE_CHUNK_BUDGET, unloadChunkKeysArray.length);
-        for (int i = 0; i < budget; i++) {
-            int idx = unloadChunkKeysCursor++;
-            if (idx < 0) {
-                idx = 0;
-                unloadChunkKeysCursor = 1;
-            }
-
-            long key = unloadChunkKeysArray[idx % unloadChunkKeysArray.length];
-            int chunkX = ChunkPos.getX(key);
-            int chunkZ = ChunkPos.getZ(key);
-
-            world.setChunkForced(chunkX, chunkZ, false);
-
-            ChunkPos pos = new ChunkPos(chunkX, chunkZ);
-            for (TicketType ticketType : DISCOVERED_TICKET_TYPES) {
-                for (int level = MIN_TICKET_LEVEL; level <= MAX_TICKET_LEVEL; level++) {
-                    try {
-                        world.getChunkSource().removeTicketWithRadius(ticketType, pos, level);
-                    } catch (Exception ignored) {
-                    }
-                }
-            }
-        }
+        unloadCursor.releaseSome(world, targetChunkKeys, UNLOAD_FORCE_CHUNK_BUDGET);
     }
 
     private void forceUnloadChunkKeysNow(Set<Long> chunkKeys) {
-        if (chunkKeys == null || chunkKeys.isEmpty()) {
+        if (world == null || chunkKeys == null || chunkKeys.isEmpty()) {
             return;
         }
-
         for (long key : chunkKeys) {
-            int chunkX = ChunkPos.getX(key);
-            int chunkZ = ChunkPos.getZ(key);
-
-            world.setChunkForced(chunkX, chunkZ, false);
-
-            ChunkPos pos = new ChunkPos(chunkX, chunkZ);
-            for (TicketType ticketType : DISCOVERED_TICKET_TYPES) {
-                for (int level = MIN_TICKET_LEVEL; level <= MAX_TICKET_LEVEL; level++) {
-                    try {
-                        world.getChunkSource().removeTicketWithRadius(ticketType, pos, level);
-                    } catch (Exception ignored) {
-                    }
-                }
-            }
+            ConstructChunkOps.releaseChunk(world, key);
         }
-    }
-
-    private static List<TicketType> discoverChunkTicketTypes() {
-        List<TicketType> types = new ArrayList<>();
-        for (Field field : TicketType.class.getDeclaredFields()) {
-            if (!Modifier.isStatic(field.getModifiers())) {
-                continue;
-            }
-            if (!TicketType.class.isAssignableFrom(field.getType())) {
-                continue;
-            }
-            try {
-                field.setAccessible(true);
-                Object value = field.get(null);
-                if (value instanceof TicketType ticketType) {
-                    types.add(ticketType);
-                }
-            } catch (Exception ignored) {
-            }
-        }
-
-        AtlantisMod.LOGGER.info("[construct] discovered {} chunk ticket type(s) for unload forcing.", types.size());
-        return List.copyOf(types);
     }
 
     private boolean ejectPlayersFromBuildArea(MinecraftServer server, int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
@@ -951,6 +859,7 @@ final class ConstructTask implements ConstructJob {
                 player.getXRot(),
                 true
             );
+            PetEscort.follow(player, world, target.getX() + 0.5, target.getY(), target.getZ() + 0.5);
             ejectedCount++;
         }
 
@@ -988,23 +897,12 @@ final class ConstructTask implements ConstructJob {
     }
 
     private void forceReleaseChunksInBounds(int minX, int minZ, int maxX, int maxZ) {
-        int minChunkX = minX >> 4;
-        int maxChunkX = maxX >> 4;
-        int minChunkZ = minZ >> 4;
-        int maxChunkZ = maxZ >> 4;
-
-        int total = 0;
-        int loadedBefore = 0;
-        for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
-            for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
-                total++;
-                if (world.getChunkSource().hasChunk(chunkX, chunkZ)) {
-                    loadedBefore++;
-                }
-                world.setChunkForced(chunkX, chunkZ, false);
-            }
+        if (world == null) {
+            return;
         }
-
+        int[] counts = ConstructChunkOps.unforceChunksInBounds(world, minX, minZ, maxX, maxZ);
+        int total = counts[0];
+        int loadedBefore = counts[1];
         AtlantisMod.LOGGER.info("[construct:{}] preflight: force-release requested for {} chunk(s), loadedBefore={}", undoRunId, total, loadedBefore);
     }
 
@@ -1063,6 +961,7 @@ final class ConstructTask implements ConstructJob {
             return;
         }
         runCompleted = true;
+        COMPLETED_THIS_SESSION.add(undoRunId);
         persistRunStateAsync("DONE");
     }
 
@@ -1109,7 +1008,9 @@ final class ConstructTask implements ConstructJob {
                     undoFiles.addAll(metadata.undoFiles());
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            // Without the existing list a resume would record a new undo file list and forget the earlier one.
+            AtlantisMod.LOGGER.error("[construct:{}] Could not read existing undo metadata", undoRunId, e);
         }
     }
 
@@ -1159,27 +1060,11 @@ final class ConstructTask implements ConstructJob {
     }
 
     private static String rootMessage(Throwable throwable) {
-        Throwable root = throwable;
-        while (root.getCause() != null) {
-            root = root.getCause();
-        }
-        String msg = root.getMessage();
-        return (msg == null || msg.isBlank()) ? root.getClass().getSimpleName() : msg;
+        return ConstructChunkOps.rootMessage(throwable);
     }
 
     private static Set<Long> mergeChunkKeySets(Set<Long> first, Set<Long> second) {
-        if ((first == null || first.isEmpty()) && (second == null || second.isEmpty())) {
-            return Set.of();
-        }
-        if (first == null || first.isEmpty()) {
-            return Set.copyOf(second);
-        }
-        if (second == null || second.isEmpty()) {
-            return Set.copyOf(first);
-        }
-        Set<Long> merged = new HashSet<>(first);
-        merged.addAll(second);
-        return Set.copyOf(merged);
+        return ConstructChunkOps.merge(first, second);
     }
 
     private static final class BlockPlacement {

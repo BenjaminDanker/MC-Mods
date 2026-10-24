@@ -17,22 +17,26 @@ public final class CycleJsonIO {
     }
 
     public static CycleState readOrCreateState(Path file) {
-        try {
-            if (Files.exists(file)) {
-                try (Reader reader = Files.newBufferedReader(file)) {
-                    CycleState st = GSON.fromJson(reader, CycleState.class);
-                    if (st != null && st.version() == CycleState.CURRENT_VERSION) {
-                        return st;
-                    }
+        if (Files.exists(file)) {
+            try (Reader reader = Files.newBufferedReader(file)) {
+                CycleState st = GSON.fromJson(reader, CycleState.class);
+                if (st != null && st.version() == CycleState.CURRENT_VERSION) {
+                    return st;
                 }
+                com.silver.atlantis.AtlantisMod.LOGGER.error("[cycle] ALERT: {} is empty or has an unknown version; "
+                    + "the cycle stays disabled and the file is left as it is", file);
+            } catch (Exception e) {
+                com.silver.atlantis.AtlantisMod.LOGGER.error("[cycle] ALERT: cannot read {}; the cycle stays disabled and "
+                    + "the file is left as it is (fix or delete it, then /atlantis cycle)", file, e);
             }
-        } catch (Exception ignored) {
+            return CycleState.disabled();
         }
 
         CycleState st = CycleState.disabled();
         try {
             write(file, st);
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            com.silver.atlantis.AtlantisMod.LOGGER.error("[cycle] Could not create {}", file, e);
         }
         return st;
     }
@@ -52,15 +56,13 @@ public final class CycleJsonIO {
                     return st;
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            com.silver.atlantis.AtlantisMod.LOGGER.warn("[cycle] Could not read {}: {}", file, e.toString());
         }
         return null;
     }
 
     public static void write(Path file, Object obj) throws IOException {
-        Files.createDirectories(file.getParent());
-        try (Writer writer = Files.newBufferedWriter(file)) {
-            GSON.toJson(obj, writer);
-        }
+        com.silver.atlantis.util.AtomicFiles.writeString(file, GSON.toJson(obj));
     }
 }

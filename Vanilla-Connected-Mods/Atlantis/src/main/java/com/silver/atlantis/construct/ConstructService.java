@@ -74,6 +74,8 @@ public final class ConstructService {
     }
 
     public void register() {
+        // Flush queued run-state, protection and undo writes before the JVM exits (the IO thread is a daemon).
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPING.register(server -> shutdown());
         ServerTickEvents.END_SERVER_TICK.register(this::onEndTick);
     }
 
@@ -84,7 +86,9 @@ public final class ConstructService {
 
         ioExecutor.shutdown();
         try {
-            if (!ioExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
+            // Long enough for the queued state, protection and undo writes; an interrupted undo file is still readable.
+            if (!ioExecutor.awaitTermination(30, TimeUnit.SECONDS)) {
+                AtlantisMod.LOGGER.warn("[construct] IO work still running at shutdown; interrupting it");
                 ioExecutor.shutdownNow();
             }
         } catch (InterruptedException e) {
@@ -118,6 +122,20 @@ public final class ConstructService {
         return true;
     }
 
+    /** A run resumed this many times in one session keeps failing; resuming it again would loop. */
+    private static final int MAX_RESUMES_PER_SESSION = 3;
+    private final java.util.Map<String, Integer> resumesThisSession = new java.util.HashMap<>();
+    private String abandonedRunId;
+
+    /** The run that kept failing and was given up on (null when none); the cycle undoes it. */
+    public String abandonedRunId() {
+        return abandonedRunId;
+    }
+
+    public void clearAbandonedRun() {
+        abandonedRunId = null;
+    }
+
     public boolean resumeLatest(CommandSourceStack source, ConstructConfig config, ServerLevel world) {
         if (activeJob != null) {
             return false;
@@ -127,6 +145,15 @@ public final class ConstructService {
 
         var resumeState = ConstructTask.tryLoadLatestResumableState(world);
         if (resumeState == null) {
+            return false;
+        }
+        int resumes = resumesThisSession.merge(resumeState.runId(), 1, Integer::sum);
+        if (resumes > MAX_RESUMES_PER_SESSION) {
+            if (!resumeState.runId().equals(abandonedRunId)) {
+                AtlantisMod.LOGGER.error("[construct:{}] ALERT: this build failed {} times in a row; giving up on it (its partial build will be undone)",
+                    resumeState.runId(), MAX_RESUMES_PER_SESSION);
+            }
+            abandonedRunId = resumeState.runId();
             return false;
         }
 

@@ -30,9 +30,7 @@ public final class ProtectionFileIO {
             return;
         }
 
-        Files.createDirectories(file.getParent());
-
-        try (var raw = Files.newOutputStream(file);
+        try (var raw = com.silver.atlantis.util.AtomicFiles.openReplacing(file);
              var gzip = new GZIPOutputStream(new BufferedOutputStream(raw));
              var out = new DataOutputStream(gzip)) {
 

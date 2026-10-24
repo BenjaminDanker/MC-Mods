@@ -56,6 +56,8 @@ public final class AtlantisMod implements ModInitializer {
 	@Override
 	public void onInitialize() {
 		instance = this;
+		com.silver.atlantis.spawn.config.AtlantisLoggingConfig.load();
+		new BusyMarker().register();
 		AtlantisWorldgen.register();
 		protectionService.register();
 		ProtectionBootstrap.loadActivePersisted();

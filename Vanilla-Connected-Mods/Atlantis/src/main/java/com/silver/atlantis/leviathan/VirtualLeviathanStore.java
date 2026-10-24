@@ -218,7 +218,7 @@ public final class VirtualLeviathanStore {
             }
             root.add("leviathans", arr);
 
-            Files.writeString(statePath, GSON.toJson(root), StandardCharsets.UTF_8);
+            com.silver.atlantis.util.AtomicFiles.writeString(statePath, GSON.toJson(root));
             if (AtlantisMod.LOGGER.isDebugEnabled()) {
                 AtlantisMod.LOGGER.debug("[Atlantis][leviathan] virtual store save complete entries={} path={}", leviathansById.size(), statePath);
             }
@@ -353,12 +353,5 @@ public final class VirtualLeviathanStore {
             headingZ /= len;
         }
 
-        public VirtualLeviathanState withPos(Vec3 newPos, long tick) {
-            return new VirtualLeviathanState(id, newPos, headingX, headingZ, tick, entityTypeId, spawnYAtCreation, scaleMultiplier, damageMultiplier, healthMultiplier);
-        }
-
-        public VirtualLeviathanState withHeading(double newHeadingX, double newHeadingZ, long tick) {
-            return new VirtualLeviathanState(id, pos, newHeadingX, newHeadingZ, tick, entityTypeId, spawnYAtCreation, scaleMultiplier, damageMultiplier, healthMultiplier);
-        }
     }
 }

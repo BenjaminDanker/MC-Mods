@@ -105,6 +105,29 @@ final class LeviathanChunkPreloader {
         return world.getChunkSource().hasChunk(pos.x(), pos.z());
     }
 
+    /** Removes each ticket on its own, so one failure can't leave the rest of the leviathan's chunks loaded. */
+    private int removeTickets(ServerLevel world, java.util.Collection<Long> keys, UUID id, String what) {
+        int removed = 0;
+        Exception firstFailure = null;
+        int failures = 0;
+        for (long key : keys) {
+            try {
+                world.getChunkSource().removeTicketWithRadius(TICKET_TYPE, new ChunkPos(ChunkPos.getX(key), ChunkPos.getZ(key)), ticketLevel);
+                removed++;
+            } catch (Exception e) {
+                failures++;
+                if (firstFailure == null) {
+                    firstFailure = e;
+                }
+            }
+        }
+        if (firstFailure != null) {
+            AtlantisMod.LOGGER.warn("[Atlantis][leviathan] chunk {} could not remove {} of {} ticket(s) id={}",
+                what, failures, keys.size(), shortId(id), firstFailure);
+        }
+        return removed;
+    }
+
     void release(ServerLevel world, UUID id) {
         LeviathanTickets tickets = ticketsByLeviathan.remove(id);
         if (tickets == null) {
@@ -112,16 +135,8 @@ final class LeviathanChunkPreloader {
             return;
         }
 
-        try {
-            for (long key : tickets.ticketKeys) {
-                int cx = ChunkPos.getX(key);
-                int cz = ChunkPos.getZ(key);
-                world.getChunkSource().removeTicketWithRadius(TICKET_TYPE, new ChunkPos(cx, cz), ticketLevel);
-            }
-            AtlantisMod.LOGGER.debug("[Atlantis][leviathan] chunk release removed tickets id={} count={}", shortId(id), tickets.ticketKeys.size());
-        } catch (Exception e) {
-            AtlantisMod.LOGGER.warn("[Atlantis][leviathan] chunk release failed id={} error={}", shortId(id), e.getMessage());
-        }
+        int removed = removeTickets(world, tickets.ticketKeys, id, "release");
+        AtlantisMod.LOGGER.debug("[Atlantis][leviathan] chunk release removed tickets id={} count={}", shortId(id), removed);
 
         tickets.pending.clear();
         tickets.pendingKeys.clear();
@@ -139,20 +154,9 @@ final class LeviathanChunkPreloader {
             }
 
             it.remove();
-            try {
-                for (long key : entry.getValue().ticketKeys) {
-                    int cx = ChunkPos.getX(key);
-                    int cz = ChunkPos.getZ(key);
-                    world.getChunkSource().removeTicketWithRadius(TICKET_TYPE, new ChunkPos(cx, cz), ticketLevel);
-                }
-                AtlantisMod.LOGGER.debug("[Atlantis][leviathan] chunk releaseUnused removed stale id={} count={}",
-                    shortId(entry.getKey()),
-                    entry.getValue().ticketKeys.size());
-            } catch (Exception e) {
-                AtlantisMod.LOGGER.warn("[Atlantis][leviathan] chunk releaseUnused failed id={} error={}",
-                    shortId(entry.getKey()),
-                    e.getMessage());
-            }
+            int removed = removeTickets(world, entry.getValue().ticketKeys, entry.getKey(), "releaseUnused");
+            AtlantisMod.LOGGER.debug("[Atlantis][leviathan] chunk releaseUnused removed stale id={} count={}",
+                shortId(entry.getKey()), removed);
         }
     }
 

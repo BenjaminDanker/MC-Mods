@@ -6,8 +6,12 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 
 /**
- * Command facade for /structuremob operations.
- * Domain logic lives in {@link ProximitySpawnService}.
+ * Command facade for /atlantis mobs. Domain logic lives in {@link ProximitySpawnService}.
+ *
+ *   /atlantis mobs                 status: seeded markers, alive mobs, whether spawning is allowed and why
+ *   /atlantis mobs seed [dryrun]   (re)seed mob markers for the current build
+ *   /atlantis mobs clear           remove the current build's mob markers
+ *   /atlantis mobs unpause         release any stuck spawn-pause tokens
  */
 public final class ProximitySpawnCommandManager {
 
@@ -22,21 +26,22 @@ public final class ProximitySpawnCommandManager {
     }
 
     public LiteralArgumentBuilder<CommandSourceStack> buildSubcommand() {
-        return Commands.literal("structuremob")
-            .executes(context -> spawnService.runStructureMob(context.getSource(), false))
-            .then(Commands.literal("dryrun")
-                .executes(context -> spawnService.runStructureMob(context.getSource(), true))
+        return Commands.literal("mobs")
+            .executes(context -> spawnService.mobStatus(context.getSource()))
+            .then(Commands.literal("status")
+                .executes(context -> spawnService.mobStatus(context.getSource()))
+            )
+            .then(Commands.literal("seed")
+                .executes(context -> spawnService.runStructureMob(context.getSource(), false))
+                .then(Commands.literal("dryrun")
+                    .executes(context -> spawnService.runStructureMob(context.getSource(), true))
+                )
             )
             .then(Commands.literal("clear")
                 .executes(context -> spawnService.clearStructureMob(context.getSource()))
             )
-            .then(Commands.literal("pause")
-                .then(Commands.literal("check")
-                    .executes(context -> spawnService.checkSpawnPause(context.getSource()))
-                )
-                .then(Commands.literal("clear")
-                    .executes(context -> spawnService.clearSpawnPause(context.getSource()))
-                )
+            .then(Commands.literal("unpause")
+                .executes(context -> spawnService.clearSpawnPause(context.getSource()))
             );
     }
 }

@@ -144,29 +144,6 @@ public final class AtlantisMobMarkerState extends SavedData {
         return removed;
     }
 
-    public Map<BlockPos, AtlantisMobMarker> getMarkersNear(BlockPos center, int chunkRadius) {
-        if (center == null || chunkRadius < 0) {
-            return Map.of();
-        }
-
-        int centerChunkX = center.getX() >> 4;
-        int centerChunkZ = center.getZ() >> 4;
-
-        Map<BlockPos, AtlantisMobMarker> out = new HashMap<>();
-        for (int dx = -chunkRadius; dx <= chunkRadius; dx++) {
-            for (int dz = -chunkRadius; dz <= chunkRadius; dz++) {
-                long chunkKey = ChunkPos.pack(centerChunkX + dx, centerChunkZ + dz);
-                Map<BlockPos, AtlantisMobMarker> byPos = markersByChunk.get(chunkKey);
-                if (byPos == null || byPos.isEmpty()) {
-                    continue;
-                }
-                out.putAll(byPos);
-            }
-        }
-
-        return out;
-    }
-
     public void forEachMarkerNear(BlockPos center, int chunkRadius, BiConsumer<BlockPos, AtlantisMobMarker> consumer) {
         if (center == null || chunkRadius < 0 || consumer == null) {
             return;

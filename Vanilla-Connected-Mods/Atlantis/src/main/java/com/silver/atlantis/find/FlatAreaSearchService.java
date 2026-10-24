@@ -41,16 +41,19 @@ public final class FlatAreaSearchService {
             return;
         }
 
-        boolean done = false;
+        boolean done;
+        boolean failed = false;
         try {
             done = activeTask.tick(server);
-        } catch (Exception ignored) {
-            // If something goes wrong, fail closed rather than freezing the server.
+        } catch (Exception e) {
+            // Fail closed: a crashed search has no result (its partial best is not a real answer).
+            com.silver.atlantis.AtlantisMod.LOGGER.error("[findflat] Flat-area search failed; treating it as no result", e);
             done = true;
+            failed = true;
         }
 
         if (done) {
-            lastResultCenter = activeTask.getResultCenterOrNull();
+            lastResultCenter = failed ? null : activeTask.getResultCenterOrNull();
             activeTask = null;
         }
     }

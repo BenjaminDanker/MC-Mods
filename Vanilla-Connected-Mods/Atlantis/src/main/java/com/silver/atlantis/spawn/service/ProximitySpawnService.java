@@ -76,6 +76,13 @@ public final class ProximitySpawnService {
         private int rejectedUnsupportedFloor;
         private int rejectedNoHeadroom;
 
+        /** Chunk reads in flight, so discovery never waits for the disk inside a tick. */
+        private final Map<Long, java.util.concurrent.CompletableFuture<Optional<net.minecraft.nbt.CompoundTag>>> pendingReads = new java.util.HashMap<>();
+        /** A candidate whose chunk was still loading; it is tried again first. */
+        private Long retryCandidate;
+        /** Set when discovery must wait for a chunk read: ends this tick's work. */
+        private boolean yieldTick;
+
         private final Map<Long, Optional<OfflineChunkBlockReader.ChunkSnapshot>> offlineChunkCache = new LinkedHashMap<>(128, 0.75f, true) {
             @Override
             protected boolean removeEldestEntry(Map.Entry<Long, Optional<OfflineChunkBlockReader.ChunkSnapshot>> eldest) {
@@ -156,7 +163,7 @@ public final class ProximitySpawnService {
 
         ActiveConstructBounds activeBounds = ActiveConstructBoundsResolver.tryResolveLatest();
         if (activeBounds == null) {
-            source.sendSuccess(() -> Component.literal("No active construct bounds found; /structuremob only seeds markers within the current cycle build. Run /construct first."), false);
+            source.sendSuccess(() -> Component.literal("No active construct bounds found; /atlantis mobs seed only seeds markers within the current cycle build. Run /atlantis construct first."), false);
             return 0;
         }
 
@@ -180,7 +187,7 @@ public final class ProximitySpawnService {
 
         synchronized (JOB_LOCK) {
             if (activeJob != null) {
-                source.sendSuccess(() -> Component.literal("structuremob is already running."), false);
+                source.sendSuccess(() -> Component.literal("Mob seeding is already running."), false);
                 return 0;
             }
 
@@ -242,9 +249,9 @@ public final class ProximitySpawnService {
         }
 
         if (cacheHit) {
-            source.sendSuccess(() -> Component.literal("structuremob started from cache (multi-tick seed only)."), false);
+            source.sendSuccess(() -> Component.literal("Mob seeding started from cache (multi-tick seed only)."), false);
         } else {
-            source.sendSuccess(() -> Component.literal("structuremob started (multi-tick scan + seed)."), false);
+            source.sendSuccess(() -> Component.literal("Mob seeding started (multi-tick scan + seed)."), false);
         }
         return 1;
     }
@@ -273,8 +280,9 @@ public final class ProximitySpawnService {
                 maxOps = Math.max(maxOps, SpawnMobConfig.MAX_SPAWN_ATTEMPTS_PER_TICK * DISCOVERY_OPS_MULTIPLIER);
             }
             int ops = 0;
+            job.yieldTick = false;
 
-            while (System.nanoTime() < deadline && ops < maxOps && job.phase != StructureMobPhase.DONE) {
+            while (System.nanoTime() < deadline && ops < maxOps && job.phase != StructureMobPhase.DONE && !job.yieldTick) {
                 switch (job.phase) {
                     case DISCOVER_MARKERS -> {
                         if (handleDiscoverPhase(job, server)) {
@@ -305,7 +313,7 @@ public final class ProximitySpawnService {
 
         private static boolean handleDiscoverPhase(StructureMobJob job, MinecraftServer server) {
             ProximitySpawnService service = TICK_HELPER;
-            if (!job.interiorIterator.hasNext()) {
+            if (job.retryCandidate == null && !job.interiorIterator.hasNext()) {
                 AtlantisMod.LOGGER.info(
                     "[structuremob:{}] discovery summary: scannedInterior={} discovered={} rejected(outOfBounds={} floorOutOfBounds={} chunkNbtUnavailable={} unsupportedFloor={} noHeadroom={})",
                     job.requesterName,
@@ -318,7 +326,7 @@ public final class ProximitySpawnService {
                     job.rejectedNoHeadroom
                 );
 
-                if (SpawnMobConfig.DIAGNOSTIC_LOGS) {
+                if (com.silver.atlantis.spawn.config.AtlantisLoggingConfig.spawnDiagnostics) {
                     AtlantisMod.LOGGER.info(
                         "[SpawnDiag] markers land={} water={} boss={} air={} airAttempts={} airNoGlass={} airTooShort={} airNotFound={} minAirStretch={} maxAirPerRun= {}",
                         job.landMarkers,
@@ -383,9 +391,19 @@ public final class ProximitySpawnService {
                 return true;
             }
 
-            long candidatePosKey = job.interiorIterator.nextLong();
-            service.tryDiscoverMarker(job, candidatePosKey);
-            if (SpawnMobConfig.DIAGNOSTIC_LOGS && job.interiorScanned > 0 && (job.interiorScanned % 50_000L) == 0L) {
+            long candidatePosKey;
+            if (job.retryCandidate != null) {
+                candidatePosKey = job.retryCandidate;
+                job.retryCandidate = null;
+            } else {
+                candidatePosKey = job.interiorIterator.nextLong();
+            }
+            if (!service.tryDiscoverMarker(job, candidatePosKey)) {
+                job.retryCandidate = candidatePosKey;
+                job.yieldTick = true;
+                return false;
+            }
+            if (com.silver.atlantis.spawn.config.AtlantisLoggingConfig.spawnDiagnostics && job.interiorScanned > 0 && (job.interiorScanned % 50_000L) == 0L) {
                 AtlantisMod.LOGGER.info(
                     "[structuremob:{}] discovery progress: scannedCandidates={} discovered={} rejected(chunkNbtUnavailable={} unsupportedFloor={} noHeadroom={})",
                     job.requesterName,
@@ -412,7 +430,7 @@ public final class ProximitySpawnService {
                     job.specialTotal
                 ));
 
-                if (SpawnMobConfig.DIAGNOSTIC_LOGS) {
+                if (com.silver.atlantis.spawn.config.AtlantisLoggingConfig.spawnDiagnostics) {
                     AtlantisMod.LOGGER.info(
                         "[SpawnDiag] seeded markers={} skipped={} replaced={} dim={} bounds=({},{},{})..({},{},{})",
                         job.seeded,
@@ -434,19 +452,20 @@ public final class ProximitySpawnService {
         }
     }
 
-    public int checkSpawnPause(CommandSourceStack source) {
-        Set<String> tokens = ProximityMobManager.getInstance().getActivePauseTokens();
-        if (tokens.isEmpty()) {
-            source.sendSuccess(() -> Component.literal("No active spawn pause tokens."), false);
-            return 0;
-        }
-
-        source.sendSuccess(() -> Component.literal(String.format(
-            "Active spawn pause tokens (%d): %s",
-            tokens.size(),
-            String.join(", ", tokens)
-        )), false);
-        return tokens.size();
+    /** /atlantis mobs: one-screen answer to whether mobs are seeded and allowed to spawn. */
+    public int mobStatus(CommandSourceStack source) {
+        MinecraftServer server = source.getServer();
+        ServerLevel overworld = server.getLevel(Level.OVERWORLD);
+        ProximityMobManager manager = ProximityMobManager.getInstance();
+        int markers = overworld == null ? 0 : AtlantisMobMarkerState.get(overworld).getTotalMarkers();
+        int active = overworld == null ? 0 : manager.countActive(overworld);
+        Set<String> tokens = manager.getActivePauseTokens();
+        String spawning = manager.activationStatus(server);
+        source.sendSuccess(() -> Component.literal(String.format(Locale.ROOT,
+            "Atlantis mobs: spawning %s | %d marker(s) seeded, %d alive now | pause tokens: %s%s",
+            spawning, markers, active, tokens.isEmpty() ? "none" : String.join(", ", tokens),
+            markers == 0 ? " | NOTHING SEEDED - run /atlantis mobs seed" : "")), false);
+        return markers;
     }
 
     public int clearSpawnPause(CommandSourceStack source) {
@@ -528,12 +547,11 @@ public final class ProximitySpawnService {
         return null;
     }
 
-    private void tryDiscoverMarker(StructureMobJob job, long candidatePosKey) {
+    /** False when the candidate's chunk is still being read: the caller retries it on a later tick. */
+    private boolean tryDiscoverMarker(StructureMobJob job, long candidatePosKey) {
         if (job == null) {
-            return;
+            return true;
         }
-
-        job.interiorScanned++;
 
         StructureMobMarkerDiscoveryService.DiscoveryResult result = MARKER_DISCOVERY.discoverMarker(
             candidatePosKey,
@@ -541,31 +559,40 @@ public final class ProximitySpawnService {
             job.easyY,
             job.world,
             job.offlineChunkCache,
+            job.pendingReads,
             job.airStats
         );
+        if (result.rejectReason() == StructureMobMarkerDiscoveryService.RejectReason.CHUNK_PENDING) {
+            return false;
+        }
+
+        job.interiorScanned++;
 
         switch (result.rejectReason()) {
             case NONE -> {
             }
+            case CHUNK_PENDING -> {
+                return false;
+            }
             case OUT_OF_BOUNDS -> {
                 job.rejectedOutOfBounds++;
-                return;
+                return true;
             }
             case FLOOR_OUT_OF_BOUNDS -> {
                 job.rejectedFloorOutOfBounds++;
-                return;
+                return true;
             }
             case CHUNK_NBT_UNAVAILABLE -> {
                 job.rejectedChunkNbtUnavailable++;
-                return;
+                return true;
             }
             case UNSUPPORTED_FLOOR -> {
                 job.rejectedUnsupportedFloor++;
-                return;
+                return true;
             }
             case NO_HEADROOM -> {
                 job.rejectedNoHeadroom++;
-                return;
+                return true;
             }
         }
 
@@ -578,6 +605,7 @@ public final class ProximitySpawnService {
                 case AIR -> job.airMarkers++;
             }
         }
+        return true;
     }
 
     private void seedSingleMarker(StructureMobJob job, SpawnMarker marker) {

@@ -17,10 +17,7 @@ public final class UndoMetadataIO {
     }
 
     public static void write(Path file, UndoRunMetadata metadata) throws IOException {
-        Files.createDirectories(file.getParent());
-        try (Writer writer = Files.newBufferedWriter(file)) {
-            GSON.toJson(metadata, writer);
-        }
+        com.silver.atlantis.util.AtomicFiles.writeString(file, GSON.toJson(metadata));
     }
 
     public static UndoRunMetadata read(Path file) throws IOException {

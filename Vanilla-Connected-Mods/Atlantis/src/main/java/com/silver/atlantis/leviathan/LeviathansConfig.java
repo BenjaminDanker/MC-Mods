@@ -652,7 +652,7 @@ public final class LeviathansConfig {
 
             root.addProperty("virtualStateFlushIntervalMinutes", config.virtualStateFlushIntervalMinutes);
 
-            Files.writeString(path, GSON.toJson(root), StandardCharsets.UTF_8);
+            com.silver.atlantis.util.AtomicFiles.writeString(path, GSON.toJson(root));
             AtlantisMod.LOGGER.info("[Atlantis][leviathan] wrote config path={} entityTypeId={} scale={} min={}",
                 path,
                 config.entityTypeId,

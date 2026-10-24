@@ -63,11 +63,9 @@ public final class HeightCapService {
                 continue;
             }
 
-            if (AuthorizationChecks.has(player, PermissionNodes.ATLANTIS_HEIGHTCAP_BYPASS)) {
-                continue;
-            }
-
-            if (player.getY() >= MAX_ALLOWED_Y_EXCLUSIVE) {
+            // The permission lookup only matters for a player who is above the cap.
+            if (player.getY() >= MAX_ALLOWED_Y_EXCLUSIVE
+                && !AuthorizationChecks.has(player, PermissionNodes.ATLANTIS_HEIGHTCAP_BYPASS)) {
                 // Keep X/Z and rotation; clamp to 317.
                 double x = player.getX();
                 double z = player.getZ();

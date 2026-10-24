@@ -27,6 +27,11 @@ public final class ProtectionManager {
     private ProtectionManager() {
     }
 
+    /** The protected build currently in force (null when none); read-only use. */
+    public synchronized ProtectionEntry activeEntry() {
+        return active;
+    }
+
     public synchronized void register(ProtectionEntry entry) {
         if (entry == null || entry.id() == null || entry.dimensionId() == null) {
             return;
@@ -130,6 +135,9 @@ public final class ProtectionManager {
             return;
         }
         lastWarnNanosByPlayer.put(id, now);
+        if (lastWarnNanosByPlayer.size() > 256) {
+            lastWarnNanosByPlayer.object2LongEntrySet().removeIf(e -> now - e.getLongValue() >= WARN_COOLDOWN_NANOS);
+        }
 
         AtlantisMod.LOGGER.info(
             "Protection blocked {} by {} at {} (dim={})",
@@ -146,6 +154,6 @@ public final class ProtectionManager {
 
     /** Creative mode remains a gameplay condition; authorization grants the separate bypass capability. */
     private static boolean isAllowedBypass(ServerPlayer player) {
-        return AuthorizationChecks.has(player, PermissionNodes.ATLANTIS_PROTECTION_BYPASS) && player.isCreative();
+        return player.isCreative() && AuthorizationChecks.has(player, PermissionNodes.ATLANTIS_PROTECTION_BYPASS);
     }
 }

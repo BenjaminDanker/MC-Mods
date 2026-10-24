@@ -39,9 +39,6 @@ public final class SpawnMobConfig {
     /** Per-tick time budget for /structuremob execution (nanoseconds). */
     public static final long SPAWN_TICK_BUDGET_NANOS = 4_000_000L;
 
-    /** Enables extra diagnostics for chunk tickets and spawn density troubleshooting. */
-    public static final boolean DIAGNOSTIC_LOGS = true;
-    
     /** Minimum horizontal spacing between non-boss spawns (<= 0 disables spacing). */
     public static final int MIN_SPAWN_SEPARATION_BLOCKS = 6;
 
@@ -958,7 +955,7 @@ public final class SpawnMobConfig {
             amount = 1;
         }
 
-        if (SpawnSpecialConfig.SPECIAL_DROP_DEBUG_LOGS) {
+        if (com.silver.atlantis.spawn.config.AtlantisLoggingConfig.specialDropDebug) {
             AtlantisMod.LOGGER.info(
                 "[SpecialDropRoll] type={} difficulty={} option={} expectedPerMob={} difficultyFactor={} optionFactor={} bossFactor={} expected={} varianceRoll={} rolled={} final={}",
                 spawnType,

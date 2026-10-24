@@ -3,6 +3,7 @@ package com.silver.atlantis.cycle;
 import com.silver.atlantis.AtlantisMod;
 import com.silver.atlantis.construct.ConstructConfig;
 import com.silver.atlantis.construct.ConstructService;
+import com.silver.atlantis.construct.PetEscort;
 import com.silver.atlantis.construct.PlayerEjectTarget;
 import com.silver.atlantis.find.FlatAreaSearchConfig;
 import com.silver.atlantis.find.FlatAreaSearchService;
@@ -30,6 +31,10 @@ public final class CycleService {
     private final FlatAreaSearchService searchService;
     private final ConstructService constructService;
     private final ProximitySpawnCommandManager spawnCommandManager;
+    private static final int STRUCTUREMOB_MAX_ATTEMPTS = 12;
+    private static final long STRUCTUREMOB_RETRY_MS = 5_000L;
+    private int structureMobAttempts;
+    private long nextStructureMobAttemptMs;
 
     private final Path stateFile;
 
@@ -62,6 +67,10 @@ public final class CycleService {
      * Waiting periods remain idle so vanilla pause-when-empty behavior can
      * still take effect, but a due schedule wakes the server back up.
      */
+    private static final int MAX_UNDO_ATTEMPTS_PER_BOOT = 3;
+    private int undoAttemptsThisBoot;
+    private long lastUndoListErrorLogMillis;
+
     public boolean requiresServerTicking() {
         if (searchService.isRunning() || constructService.isRunning() || spawnCommandManager.isStructureMobRunning()) {
             return true;
@@ -73,6 +82,9 @@ public final class CycleService {
         }
 
         CycleState.Stage stage = parseStage(current.stage());
+        if (stage == CycleState.Stage.UNDO_FAILED) {
+            return false;
+        }
         if (stage == CycleState.Stage.IDLE || stage == CycleState.Stage.WAIT_BEFORE_UNDO) {
             return current.nextRunAtEpochMillis() <= 0L
                 || System.currentTimeMillis() >= current.nextRunAtEpochMillis();
@@ -182,7 +194,7 @@ public final class CycleService {
                 constructService.cancel(server, "cycle step: skipping remaining construct");
             }
 
-            // If we're at the 48h wait, step should advance into undo immediately.
+            // If we're at the wait before the undo, step should advance into undo immediately.
             if (stage == CycleState.Stage.WAIT_BEFORE_UNDO) {
                 state = new CycleState(
                     CycleState.CURRENT_VERSION,
@@ -219,25 +231,35 @@ public final class CycleService {
             state = CycleJsonIO.readOrCreateState(stateFile);
         }
 
+        if (searchService.isRunning() || constructService.isRunning() || spawnCommandManager.isStructureMobRunning()) {
+            source.sendSuccess(() -> Component.literal("Cycle toggle refused: a cycle job is running. Wait for it to finish."), false);
+            return;
+        }
+
         boolean newEnabled = !state.enabled();
         long now = System.currentTimeMillis();
+        CycleState.Stage stage = parseStage(state.stage());
+        boolean fresh = stage == CycleState.Stage.IDLE;
+        // Disabling pauses the cycle where it is; enabling resumes it there. Resetting it to IDLE would forget a
+        // build that is still waiting for its undo and start a second one next to it.
         CycleState newState = new CycleState(
             CycleState.CURRENT_VERSION,
             newEnabled,
-            newEnabled ? now : 0L,
-            CycleState.Stage.IDLE.name(),
-            null,
-            null,
-            null,
-            null
+            newEnabled && fresh ? now : state.nextRunAtEpochMillis(),
+            state.stage(),
+            state.lastCenterX(),
+            state.lastCenterY(),
+            state.lastCenterZ(),
+            state.lastConstructRunId()
         );
         state = newState;
         persistState();
 
         if (newEnabled) {
-            source.sendSuccess(() -> Component.literal("Atlantis cycle enabled. Will run now; undo will happen 48h after /structuremob."), false);
+            String where = fresh ? "Will run now; undo will happen " + (CycleConfig.UNDO_DELAY_MILLIS / 3_600_000L) + "h after the mobs are seeded." : "Resuming at " + stage.name() + ".";
+            source.sendSuccess(() -> Component.literal("Atlantis cycle enabled. " + where), false);
         } else {
-            source.sendSuccess(() -> Component.literal("Atlantis cycle disabled."), false);
+            source.sendSuccess(() -> Component.literal("Atlantis cycle paused at " + stage.name() + "; /atlantis cycle resumes it there."), false);
         }
     }
 
@@ -287,7 +309,7 @@ public final class CycleService {
         if (target == CycleState.Stage.IDLE) {
             nextAt = now;
         } else if (target == CycleState.Stage.WAIT_BEFORE_UNDO) {
-            // Default to 'now' when explicitly set; user can use the normal 48h delay by letting RUN_STRUCTUREMOB set it.
+            // Default to 'now' when explicitly set; user can use the normal delay by letting RUN_STRUCTUREMOB set it.
             nextAt = 0L;
         } else {
             nextAt = state.nextRunAtEpochMillis();
@@ -436,6 +458,14 @@ public final class CycleService {
                 }
             }
 
+            if (constructService.abandonedRunId() != null) {
+                // The build kept failing: undo what it placed rather than seeding mobs into a half-built Atlantis.
+                constructService.clearAbandonedRun();
+                state = new CycleState(CycleState.CURRENT_VERSION, true, now, CycleState.Stage.START_UNDO.name(), state.lastCenterX(), state.lastCenterY(), state.lastCenterZ(), state.lastConstructRunId());
+                persistState();
+                return true;
+            }
+
             state = new CycleState(CycleState.CURRENT_VERSION, true, state.nextRunAtEpochMillis(), CycleState.Stage.RUN_STRUCTUREMOB.name(), state.lastCenterX(), state.lastCenterY(), state.lastCenterZ(), state.lastConstructRunId());
             persistState();
             return true;
@@ -446,11 +476,39 @@ public final class CycleService {
             enforceStructureMobKeepout(server);
             try {
                 if (!spawnCommandManager.isStructureMobRunning()) {
-                    spawnCommandManager.runStructureMob(actor, false);
+                    // The construct's run state is persisted asynchronously, so the first attempt can run
+                    // before the bounds are readable. Retry instead of silently leaving the build mob-less.
+                    long nowMs = System.currentTimeMillis();
+                    if (nowMs < nextStructureMobAttemptMs) {
+                        return false;
+                    }
+                    int started = spawnCommandManager.runStructureMob(actor, false);
+                    if (started <= 0 && !spawnCommandManager.isStructureMobRunning()) {
+                        structureMobAttempts++;
+                        if (structureMobAttempts < STRUCTUREMOB_MAX_ATTEMPTS) {
+                            nextStructureMobAttemptMs = nowMs + STRUCTUREMOB_RETRY_MS;
+                            AtlantisMod.LOGGER.warn("[cycle] structuremob could not start (attempt {}/{}); retrying in {}s",
+                                structureMobAttempts, STRUCTUREMOB_MAX_ATTEMPTS, STRUCTUREMOB_RETRY_MS / 1000);
+                            return false;
+                        }
+                        AtlantisMod.LOGGER.error("[cycle] ALERT structuremob never started after {} attempts; this build will have NO mobs. "
+                            + "Fix and run /atlantis mobs seed.", STRUCTUREMOB_MAX_ATTEMPTS);
+                    }
                 }
             } catch (Exception e) {
-                AtlantisMod.LOGGER.warn("structuremob failed during cycle: {}", e.getMessage());
+                // A crash is retried like a failed start, so one bad moment doesn't leave the build without mobs.
+                structureMobAttempts++;
+                if (structureMobAttempts < STRUCTUREMOB_MAX_ATTEMPTS) {
+                    nextStructureMobAttemptMs = System.currentTimeMillis() + STRUCTUREMOB_RETRY_MS;
+                    AtlantisMod.LOGGER.error("[cycle] structuremob failed (attempt {}/{}); retrying in {}s",
+                        structureMobAttempts, STRUCTUREMOB_MAX_ATTEMPTS, STRUCTUREMOB_RETRY_MS / 1000, e);
+                    return false;
+                }
+                AtlantisMod.LOGGER.error("[cycle] ALERT structuremob failed {} times; this build will have NO mobs. "
+                    + "Fix and run /atlantis mobs seed.", STRUCTUREMOB_MAX_ATTEMPTS, e);
             }
+            structureMobAttempts = 0;
+            nextStructureMobAttemptMs = 0L;
 
             state = new CycleState(CycleState.CURRENT_VERSION, true, state.nextRunAtEpochMillis(), CycleState.Stage.WAIT_STRUCTUREMOB.name(), state.lastCenterX(), state.lastCenterY(), state.lastCenterZ(), state.lastConstructRunId());
             persistState();
@@ -464,7 +522,13 @@ public final class CycleService {
                 return false;
             }
 
-            // Wait 48 hours after structuremob before undo.
+            // Nothing is building any more, so no spawn pause may remain. Release leaked tokens loudly.
+            var leaked = com.silver.atlantis.spawn.service.ProximityMobManager.getInstance().getActivePauseTokens();
+            if (!leaked.isEmpty()) {
+                AtlantisMod.LOGGER.warn("[cycle] ALERT releasing {} leaked spawn pause token(s): {}", leaked.size(), leaked);
+                com.silver.atlantis.spawn.service.ProximityMobManager.getInstance().clearAllExternalPauses();
+            }
+            // Wait CycleConfig.UNDO_DELAY_MILLIS after structuremob before undo.
             long undoAt = now + CycleConfig.UNDO_DELAY_MILLIS;
             state = new CycleState(CycleState.CURRENT_VERSION, true, undoAt, CycleState.Stage.WAIT_BEFORE_UNDO.name(), state.lastCenterX(), state.lastCenterY(), state.lastCenterZ(), state.lastConstructRunId());
             persistState();
@@ -490,7 +554,11 @@ public final class CycleService {
                 return true;
             }
 
-            if (!hasUndoHistory()) {
+            Boolean history = undoHistoryOrNull();
+            if (history == null) {
+                return false;
+            }
+            if (!history) {
                 // Nothing to undo; restart the loop.
                 state = new CycleState(CycleState.CURRENT_VERSION, true, now, CycleState.Stage.IDLE.name(), null, null, null, state.lastConstructRunId());
                 persistState();
@@ -508,19 +576,42 @@ public final class CycleService {
             return true;
         }
 
+        if (stage == CycleState.Stage.UNDO_FAILED) {
+            return false;
+        }
+
         if (stage == CycleState.Stage.WAIT_UNDO) {
             resetUndoCountdownCheck();
             if (constructService.isRunning()) {
                 return false;
             }
 
-            // If server restarted mid-undo, restart undo of latest run.
-            if (hasUndoHistory()) {
+            // If server restarted mid-undo, restart undo of latest run; an undo that keeps failing stops the cycle.
+            Boolean history = undoHistoryOrNull();
+            if (history == null) {
+                return false;
+            }
+            if (history) {
+                if (undoAttemptsThisBoot >= MAX_UNDO_ATTEMPTS_PER_BOOT) {
+                    AtlantisMod.LOGGER.error("[cycle] ALERT: the Atlantis undo failed {} times; the cycle is stopped at UNDO_FAILED. "
+                        + "Check the [undo:...] lines above, then use /atlantis cycle set to continue.", undoAttemptsThisBoot);
+                    for (var admin : server.getPlayerList().getPlayers()) {
+                        if (com.silver.authorization.fabric.AuthorizationChecks.has(admin, com.silver.authorization.PermissionNodes.ATLANTIS_MANAGE)) {
+                            admin.sendSystemMessage(Component.literal(
+                                "[Atlantis] The undo failed repeatedly; the cycle is paused at UNDO_FAILED (see the server log)."));
+                        }
+                    }
+                    state = new CycleState(CycleState.CURRENT_VERSION, true, state.nextRunAtEpochMillis(), CycleState.Stage.UNDO_FAILED.name(), state.lastCenterX(), state.lastCenterY(), state.lastCenterZ(), state.lastConstructRunId());
+                    persistState();
+                    return true;
+                }
+                undoAttemptsThisBoot++;
                 boolean restarted = constructService.startUndo(actor, ConstructConfig.defaults(), server, null);
                 if (restarted) {
                     return false;
                 }
             }
+            undoAttemptsThisBoot = 0;
 
             // Loop immediately back to findflat.
             state = new CycleState(CycleState.CURRENT_VERSION, true, now, CycleState.Stage.IDLE.name(), null, null, null, state.lastConstructRunId());
@@ -628,13 +719,29 @@ public final class CycleService {
                 player.getXRot(),
                 true
             );
+            PetEscort.follow(player, world, target.getX() + 0.5, target.getY(), target.getZ() + 0.5);
         }
     }
 
-    private boolean hasUndoHistory() {
+    /** @throws java.io.IOException when the undo folder can't be read: that is not the same as "nothing to undo". */
+    private boolean hasUndoHistory() throws java.io.IOException {
         com.silver.atlantis.construct.undo.UndoPaths.pruneUnusableRunDirectories();
-        String runId = com.silver.atlantis.construct.undo.UndoPaths.findLatestUsableRunIdOrNull();
+        String runId = com.silver.atlantis.construct.undo.UndoPaths.findLatestUsableRunId();
         return runId != null && !runId.isBlank();
+    }
+
+    /** Undo history, or null when the undo folder can't be read right now (logged at most once a minute). */
+    private Boolean undoHistoryOrNull() {
+        try {
+            return hasUndoHistory();
+        } catch (java.io.IOException e) {
+            long now = System.currentTimeMillis();
+            if (now - lastUndoListErrorLogMillis > 60_000L) {
+                lastUndoListErrorLogMillis = now;
+                AtlantisMod.LOGGER.error("[cycle] Cannot read the undo folder; the cycle waits instead of skipping the undo", e);
+            }
+            return null;
+        }
     }
 
     private CycleState.Stage parseStage(String raw) {
