@@ -10,7 +10,7 @@ public final class WardenControlConfig {
             10,
             "warden",
             "",
-            "silver"
+            "" // the network secret comes from ~/.config/mc-network/shared.properties
         );
     }
 

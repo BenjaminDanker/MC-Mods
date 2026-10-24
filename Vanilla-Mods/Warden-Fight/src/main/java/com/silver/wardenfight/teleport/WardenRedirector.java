@@ -58,7 +58,7 @@ public final class WardenRedirector {
             return;
         }
 
-        final String secret = config.portalRequestSecret();
+        final String secret = com.silver.portalprotocol.PortalRequestSecret.resolve(config.portalRequestSecret());
         if (secret == null || secret.isBlank()) {
             WardenFightMod.LOGGER.warn("portalRequestSecret is blank; cannot send portal requests");
             return;

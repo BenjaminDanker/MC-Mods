@@ -10,7 +10,7 @@ public final class WitherControlConfig {
             true,
             "desert",
             "",
-            "silver"
+            "" // the network secret comes from ~/.config/mc-network/shared.properties
         );
     }
 

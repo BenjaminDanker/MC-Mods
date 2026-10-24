@@ -59,7 +59,7 @@ public final class GuardianRedirector {
             return;
         }
 
-        final String secret = config.portalRequestSecret();
+        final String secret = com.silver.portalprotocol.PortalRequestSecret.resolve(config.portalRequestSecret());
         if (secret == null || secret.isBlank()) {
             ElderGuardianFightMod.LOGGER.warn("portalRequestSecret is blank; cannot send portal requests");
             return;

@@ -284,7 +284,7 @@ public final class PortalInterceptor {
             return false;
         }
 
-        String secret = config.portalRequestSecret();
+        String secret = com.silver.portalprotocol.PortalRequestSecret.resolve(config.portalRequestSecret());
         if (secret == null || secret.isBlank()) {
             EnderFightMod.LOGGER.warn("portalRequestSecret is blank; cannot send portal request for {}", entity.getName().getString());
             return false;

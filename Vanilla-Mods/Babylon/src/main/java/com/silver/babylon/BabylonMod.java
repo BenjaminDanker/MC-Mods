@@ -8,6 +8,8 @@ import com.silver.portalprotocol.PortalRequestSigner;
 import com.silver.portalprotocol.PortalPetTransferGate;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+import net.minecraft.commands.Commands;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.component.CustomData;
@@ -25,6 +27,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -33,6 +36,8 @@ public final class BabylonMod implements ModInitializer {
 
     private static final String TAG_STAGE1_PROCESSING = "babylon_stage1_processing";
     private static final String TAG_STAGE1_DONE = "babylon_stage1_done";
+    /** Persistent record of the path a player chose; the other path stays closed to them. */
+    private static final String TAG_PATH_PREFIX = "babylon_path_";
 
     private static final String KEY_ID = "id";
 
@@ -45,6 +50,8 @@ public final class BabylonMod implements ModInitializer {
 
     private static final Map<UUID, ZoneState> zone = new ConcurrentHashMap<>();
     private static final Map<UUID, Stage1State> stage1 = new ConcurrentHashMap<>();
+    private static final Set<UUID> hinted = ConcurrentHashMap.newKeySet();
+    private static final Set<UUID> commandsShown = ConcurrentHashMap.newKeySet();
 
     private BabylonConfig config;
 
@@ -53,6 +60,27 @@ public final class BabylonMod implements ModInitializer {
         this.config = new BabylonConfigManager().loadOrCreate();
 
         ServerTickEvents.END_SERVER_TICK.register(this::tick);
+        // /choose exists only for players standing inside the Babylon region (the command tree is
+        // re-sent whenever they enter or leave), so nobody else can see or run it.
+        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
+            if (config.choices.isEmpty()) {
+                return;
+            }
+            var root = Commands.literal("choose")
+                .requires(source -> source.getPlayer() != null && insideRegion(source.getPlayer()));
+            for (BabylonConfig.Choice choice : config.choices) {
+                root.then(Commands.literal(choice.id)
+                    .executes(context -> {
+                        choose(context.getSource().getPlayer(), choice, false);
+                        return 1;
+                    })
+                    .then(Commands.literal("confirm").executes(context -> {
+                        choose(context.getSource().getPlayer(), choice, true);
+                        return 1;
+                    })));
+            }
+            dispatcher.register(root);
+        });
 
         LOGGER.info(
             "Babylon loaded region=({}, {}, {})..({}, {}, {}) entryDelaySeconds={} particleSeconds={} targetServer='{}'",
@@ -86,7 +114,12 @@ public final class BabylonMod implements ModInitializer {
             BlockPos pos = player.blockPosition();
             boolean inRegion = config.region.contains(pos.getX(), pos.getY(), pos.getZ());
 
+            if (inRegion ? commandsShown.add(player.getUUID()) : commandsShown.remove(player.getUUID())) {
+                server.getCommands().sendCommands(player);
+            }
+
             if (!inRegion) {
+                hinted.remove(player.getUUID());
                 ZoneState previous = zone.remove(player.getUUID());
                 if (previous != null) {
                     LOGGER.info("{} left region at {}", player.getScoreboardName(), pos);
@@ -136,17 +169,179 @@ public final class BabylonMod implements ModInitializer {
             zone.put(player.getUUID(), zoneState);
 
             if (hasAllFour(player)) {
-                LOGGER.info("{} is worthy; starting processing", player.getScoreboardName());
-                startProcessing(world, player);
+                if (config.choices.isEmpty()) {
+                    LOGGER.info("{} is worthy; starting processing", player.getScoreboardName());
+                    startProcessing(world, player, null);
+                } else {
+                    BabylonConfig.Choice already = chosenChoice(player);
+                    if (already != null) {
+                        // The path is permanent: a returning worthy player only ever goes to their own.
+                        LOGGER.info("{} is worthy and already chose '{}'; starting processing",
+                            player.getScoreboardName(), already.id);
+                        startProcessing(world, player, already);
+                    } else if (hinted.add(player.getUUID())) {
+                        sendChoicePrompt(player);
+                    }
+                }
             } else if (!zoneState.notWorthyShown) {
-                LOGGER.info("{} is not worthy; sending message", player.getScoreboardName());
-                player.sendSystemMessage(Component.literal(config.notWorthyMessage).withStyle(ChatFormatting.RED));
+                BabylonConfig.Choice walking = config.choices.isEmpty() ? null : chosenChoice(player);
+                if (walking != null) {
+                    sendSwitchInfo(player, walking);
+                } else {
+                    LOGGER.info("{} is not worthy; sending message", player.getScoreboardName());
+                    player.sendSystemMessage(Component.literal(config.notWorthyMessage).withStyle(ChatFormatting.RED));
+                }
                 zone.put(player.getUUID(), new ZoneState(zoneState.enteredAtTick, true, zoneState.lastEligibilityCheckTick));
             }
         }
     }
 
-    private void startProcessing(ServerLevel world, ServerPlayer player) {
+    /** The id of the path this player chose earlier, or null. */
+    private static String chosenPath(ServerPlayer player) {
+        for (String tag : player.entityTags()) {
+            if (tag.startsWith(TAG_PATH_PREFIX)) {
+                return tag.substring(TAG_PATH_PREFIX.length());
+            }
+        }
+        return null;
+    }
+
+    private BabylonConfig.Choice chosenChoice(ServerPlayer player) {
+        String id = chosenPath(player);
+        if (id == null) {
+            return null;
+        }
+        for (BabylonConfig.Choice choice : config.choices) {
+            if (choice.id.equals(id)) {
+                return choice;
+            }
+        }
+        return null;
+    }
+
+    /** Shown once to someone who already chose, when they step into the square. */
+    private void sendSwitchInfo(ServerPlayer player, BabylonConfig.Choice walking) {
+        player.sendSystemMessage(Component.literal("You walk the path of " + labelOf(walking.id) + ".").withStyle(ChatFormatting.AQUA));
+        for (BabylonConfig.Choice other : config.choices) {
+            if (!other.id.equals(walking.id)) {
+                player.sendSystemMessage(Component.literal("  /choose " + other.id + " - switch to " + labelOf(other.id)
+                    + " (you will be asked to confirm)").withStyle(ChatFormatting.GRAY));
+            }
+        }
+        player.sendSystemMessage(Component.literal("  /choose " + walking.id + " - go back to " + labelOf(walking.id))
+            .withStyle(ChatFormatting.GRAY));
+    }
+
+    private void sendChoicePrompt(ServerPlayer player) {
+        player.sendSystemMessage(Component.literal(config.chooseHeader).withStyle(ChatFormatting.GOLD));
+        for (BabylonConfig.Choice choice : config.choices) {
+            player.sendSystemMessage(Component.literal("  /choose " + choice.id).withStyle(ChatFormatting.AQUA));
+        }
+        if (!config.chooseFooter.isBlank()) {
+            player.sendSystemMessage(Component.literal(config.chooseFooter).withStyle(ChatFormatting.RED));
+        }
+    }
+
+    private boolean insideRegion(ServerPlayer player) {
+        BlockPos pos = player.blockPosition();
+        return config != null && config.region.contains(pos.getX(), pos.getY(), pos.getZ());
+    }
+
+    /**
+     * /choose <path>: only reachable inside the region. The first choice costs the four boss items. Choosing the path
+     * you are already on just sends you there. Choosing the other one asks first, and on confirm erases the old path.
+     */
+    private void choose(ServerPlayer player, BabylonConfig.Choice choice, boolean confirmed) {
+        if (player == null || !(player.level() instanceof ServerLevel world) || !insideRegion(player)) {
+            return;
+        }
+        if (player.entityTags().contains(TAG_STAGE1_PROCESSING)) {
+            return;
+        }
+        BabylonConfig.Choice already = chosenChoice(player);
+        if (already != null && !already.id.equals(choice.id)) {
+            if (confirmed) {
+                switchPath(player, already, choice);
+            } else {
+                player.openDialog(net.minecraft.core.Holder.direct(
+                    SwitchDialog.confirm(labelOf(already.id), labelOf(choice.id), choice.id)));
+            }
+            return;
+        }
+        if (already != null) {
+            player.sendSystemMessage(Component.literal("You already walk the path of " + labelOf(already.id) + ".")
+                .withStyle(ChatFormatting.AQUA));
+            redirect(player, already);
+            return;
+        }
+        if (!hasAllFour(player)) {
+            player.sendSystemMessage(Component.literal(config.notWorthyMessage).withStyle(ChatFormatting.RED));
+            return;
+        }
+        LOGGER.info("{} chose '{}'", player.getScoreboardName(), choice.id);
+        hinted.remove(player.getUUID());
+        startProcessing(world, player, choice);
+    }
+
+    /** Moves the player to the other path: records it in the database (the old path's server wipes itself later), then sends them. */
+    private void switchPath(ServerPlayer player, BabylonConfig.Choice from, BabylonConfig.Choice to) {
+        MinecraftServer server = player.level().getServer();
+        if (server == null) {
+            return;
+        }
+        String name = player.getScoreboardName();
+        String uuid = player.getStringUUID();
+        java.util.UUID id = player.getUUID();
+        MpdsProgression.IO.execute(() -> {
+            boolean recorded;
+            try {
+                MpdsProgression.switchBranch(name, uuid, from.id, to.id);
+                recorded = true;
+            } catch (Exception failure) {
+                LOGGER.error("ALERT: branch switch {} -> {} failed for {}", from.id, to.id, name, failure);
+                recorded = false;
+            }
+            boolean ok = recorded;
+            server.execute(() -> {
+                ServerPlayer online = server.getPlayerList().getPlayer(id);
+                if (online == null) {
+                    return;
+                }
+                if (!ok) {
+                    online.sendSystemMessage(Component.literal("The switch could not be recorded. Nothing was changed; try again in a moment.")
+                        .withStyle(ChatFormatting.RED));
+                    return;
+                }
+                online.removeTag(TAG_PATH_PREFIX + from.id);
+                online.addTag(TAG_PATH_PREFIX + to.id);
+                LOGGER.info("{} switched from '{}' to '{}'", name, from.id, to.id);
+                online.sendSystemMessage(Component.literal("Your old path is erased. You now walk the path of " + labelOf(to.id) + ".")
+                    .withStyle(ChatFormatting.GOLD));
+                redirect(online, to);
+            });
+        });
+    }
+
+    /** Sends a signed request to the proxy to move the player to a path's server. */
+    private void redirect(ServerPlayer player, BabylonConfig.Choice choice) {
+        String secret = com.silver.portalprotocol.PortalRequestSecret.resolve(config.portalRequestSecret);
+        if (choice.targetServer == null || choice.targetServer.isBlank() || secret == null || secret.isBlank()) {
+            LOGGER.warn("Cannot redirect {}: target server or secret is blank", player.getScoreboardName());
+            return;
+        }
+        PortalPetTransferGate.send(player, choice.targetServer, choice.targetPortal == null ? "" : choice.targetPortal, secret);
+    }
+
+    private String labelOf(String id) {
+        for (BabylonConfig.Choice choice : config.choices) {
+            if (choice.id.equals(id)) {
+                return choice.label.isBlank() ? choice.id : choice.label;
+            }
+        }
+        return id;
+    }
+
+    private void startProcessing(ServerLevel world, ServerPlayer player, BabylonConfig.Choice choice) {
         if (world == null || player == null) {
             return;
         }
@@ -159,7 +354,11 @@ public final class BabylonMod implements ModInitializer {
         player.addTag(TAG_STAGE1_PROCESSING);
         long nowTick = world.getGameTime();
         long delayTicks = Math.max(1, config.particleSeconds) * 20L;
-        stage1.put(player.getUUID(), new Stage1State(nowTick + delayTicks, consumed));
+        stage1.put(player.getUUID(), new Stage1State(nowTick + delayTicks, consumed, choice));
+        if (choice != null) {
+            player.sendSystemMessage(Component.literal("You chose " + (choice.label.isBlank() ? choice.id : choice.label) + ".")
+                .withStyle(ChatFormatting.AQUA));
+        }
         LOGGER.info("{} processing started; teleport in {}s", player.getScoreboardName(), Math.max(1, config.particleSeconds));
         runParticles(world, player);
     }
@@ -277,38 +476,49 @@ public final class BabylonMod implements ModInitializer {
         }
 
         player.removeTag(TAG_STAGE1_PROCESSING);
-        stage1.remove(player.getUUID());
+        Stage1State done = stage1.remove(player.getUUID());
+        BabylonConfig.Choice chosen = done == null ? null : done.choice();
         zone.remove(player.getUUID());
+        hinted.remove(player.getUUID());
+        if (chosen != null) {
+            player.addTag(TAG_PATH_PREFIX + chosen.id);
+        }
 
         String playerName = player.getScoreboardName();
-        CommandSourceStack source = server.createCommandSourceStack();
+        String playerUuid = player.getStringUUID();
+        java.util.UUID playerId = player.getUUID();
 
-        final String targetServer = config.portalRedirectTargetServer;
-        final String secret = config.portalRequestSecret;
-        String destinationPortalCandidate = config.portalRedirectTargetPortal;
+        final String targetServer = chosen != null ? chosen.targetServer : config.portalRedirectTargetServer;
+        final String secret = com.silver.portalprotocol.PortalRequestSecret.resolve(config.portalRequestSecret);
+        String destinationPortalCandidate = chosen != null ? chosen.targetPortal : config.portalRedirectTargetPortal;
         final String destinationPortal = destinationPortalCandidate != null ? destinationPortalCandidate : "";
 
-        server.execute(() -> {
+        // Record stage 1 and drop the four boss items from the stored inventories (database, so off the server
+        // thread), then send the player on from the server thread.
+        MpdsProgression.IO.execute(() -> {
             try {
-                String c1 = "mpdsstage1 " + playerName + " true";
-                String c2 = "mpdsremovecustomid " + playerName + " id " + ID_OCEAN;
-                String c3 = "mpdsremovecustomid " + playerName + " id " + ID_SKY;
-                String c4 = "mpdsremovecustomid " + playerName + " id " + ID_DESERT;
-                String c5 = "mpdsremovecustomid " + playerName + " id " + ID_CAVE;
-
-                LOGGER.info("Running stage1 commands for {}: '{}', '{}', '{}', '{}', '{}'", playerName, c1, c2, c3, c4, c5);
-                server.getCommands().performPrefixedCommand(source, c1);
-                server.getCommands().performPrefixedCommand(source, c2);
-                server.getCommands().performPrefixedCommand(source, c3);
-                server.getCommands().performPrefixedCommand(source, c4);
-                server.getCommands().performPrefixedCommand(source, c5);
+                MpdsProgression.setStage1Cleared(playerName, playerUuid, true);
+                int removed = 0;
+                for (String bossItem : new String[] {ID_OCEAN, ID_SKY, ID_DESERT, ID_CAVE}) {
+                    removed += MpdsProgression.removeCustomIdFromStoredInventories(playerUuid, "id", bossItem);
+                }
+                LOGGER.info("{} stage 1 recorded; {} stored boss item(s) removed", playerName, removed);
+            } catch (Exception e) {
+                LOGGER.error("ALERT: recording stage 1 failed for {}", playerName, e);
+            }
+            server.execute(() -> {
+            ServerPlayer onlinePlayer = server.getPlayerList().getPlayer(playerId);
+            if (onlinePlayer == null) {
+                return;
+            }
+            try {
 
                 if (targetServer == null || targetServer.isBlank()) {
                     LOGGER.warn("Target server is blank; skipping redirect for {}", playerName);
                 } else if (secret == null || secret.isBlank()) {
                     LOGGER.warn("portalRequestSecret is blank; cannot send portal request for {}", playerName);
                 } else {
-                    if (PortalPetTransferGate.send(player, targetServer, destinationPortal, secret))
+                    if (PortalPetTransferGate.send(onlinePlayer, targetServer, destinationPortal, secret))
                         LOGGER.info("Queued Babylon redirect for {} -> {} after pet preparation", playerName, targetServer);
                 }
 
@@ -316,6 +526,7 @@ public final class BabylonMod implements ModInitializer {
             } catch (Exception e) {
                 LOGGER.error("Stage1 teleport failed for {}", playerName, e);
             }
+            });
         });
     }
 
@@ -371,7 +582,7 @@ public final class BabylonMod implements ModInitializer {
         return trimmed;
     }
 
-    private record Stage1State(long teleportAtTick, ConsumedItems consumed) {
+    private record Stage1State(long teleportAtTick, ConsumedItems consumed, BabylonConfig.Choice choice) {
     }
 
     private record ConsumedItems(ItemStack ocean, ItemStack sky, ItemStack desert, ItemStack cave) {

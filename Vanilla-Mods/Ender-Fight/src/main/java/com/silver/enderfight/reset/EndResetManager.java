@@ -61,6 +61,7 @@ import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -73,6 +74,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Stream;
@@ -145,6 +148,7 @@ public class EndResetManager {
         }
 
         unregisterStaleEndDimensions(server, activeKeyToKeep);
+        deleteLeftoverTrash(server);
         cleanupStaleEndDimensions(server, activeKeyToKeep);
     }
 
@@ -1521,6 +1525,7 @@ public class EndResetManager {
             List<Path> childrenList = children
                 .filter(Files::isDirectory)
                 .filter(path -> path.getFileName().toString().startsWith("daily_end_"))
+                .filter(path -> !path.getFileName().toString().contains(TRASH_MARKER))
                 .toList();
 
             // If we cannot resolve the active directory reliably, do NOT delete everything.
@@ -1551,28 +1556,68 @@ public class EndResetManager {
                 })
                 .toList();
 
-            int deleted = 0;
-            int failed = 0;
+            // Nothing reuses these folders, so they are deleted in the background without moving them first.
             for (Path candidate : candidates) {
-                boolean success = deleteDirectoryWithRetries(candidate, 3);
-                if (success) {
-                    deleted++;
-                } else {
-                    failed++;
-                }
+                DELETER.execute(() -> deleteDirectoryWithRetries(candidate, 3));
             }
 
             if (!candidates.isEmpty()) {
-                EnderFightMod.LOGGER.info(
-                    "Pruned Ender-Fight stale dimension folders under {} (attempted={}, deleted={}, failed={})",
-                    baseDir,
-                    candidates.size(),
-                    deleted,
-                    failed
-                );
+                EnderFightMod.LOGGER.info("Deleting {} stale Ender-Fight dimension folder(s) under {} in the background",
+                    candidates.size(), baseDir);
             }
         } catch (IOException ex) {
             EnderFightMod.LOGGER.warn("Failed scanning Ender-Fight dimension folders under {}", baseDir, ex);
+        }
+    }
+
+    /** Old End folders are deleted here, off the server thread: removing hundreds of MB in a tick froze the server. */
+    private static final ExecutorService DELETER = Executors.newSingleThreadExecutor(task -> {
+        Thread thread = new Thread(task, "enderfight-folder-delete");
+        thread.setDaemon(true);
+        thread.setPriority(Thread.MIN_PRIORITY);
+        return thread;
+    });
+    private static final String TRASH_MARKER = ".deleting-";
+
+    /**
+     * Moves the folder out of the way at once (a rename on the same disk), so a world created under the same name
+     * starts clean, then deletes the moved copy in the background. A copy left over by a stop mid-delete is removed by
+     * {@link #deleteLeftoverTrash} on the next start. Falls back to deleting in place if the rename fails.
+     */
+    private void deleteInBackground(Path directory) {
+        Path trash = directory.resolveSibling(directory.getFileName() + TRASH_MARKER + System.currentTimeMillis());
+        try {
+            Files.move(directory, trash, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException | UnsupportedOperationException moveFailed) {
+            EnderFightMod.LOGGER.warn("Could not move {} aside ({}); deleting it in place", directory, moveFailed.toString());
+            if (deleteDirectoryWithRetries(directory, 3)) {
+                EnderFightMod.LOGGER.info("Deleted End dimension folder at {}", directory);
+            }
+            return;
+        }
+        DELETER.execute(() -> {
+            if (deleteDirectoryWithRetries(trash, 3)) {
+                EnderFightMod.LOGGER.info("Deleted old End dimension folder {}", trash);
+            }
+        });
+    }
+
+    /** Deletes folders a previous run moved aside but did not finish deleting (the server stopped mid-delete). */
+    private void deleteLeftoverTrash(MinecraftServer server) {
+        Path dimensions = server.getWorldPath(LevelResource.ROOT).resolve("dimensions");
+        if (!Files.isDirectory(dimensions)) {
+            return;
+        }
+        try (Stream<Path> namespaces = Files.list(dimensions)) {
+            for (Path namespace : namespaces.filter(Files::isDirectory).toList()) {
+                try (Stream<Path> children = Files.list(namespace)) {
+                    children.filter(Files::isDirectory)
+                        .filter(path -> path.getFileName().toString().contains(TRASH_MARKER))
+                        .forEach(path -> DELETER.execute(() -> deleteDirectoryWithRetries(path, 3)));
+                }
+            }
+        } catch (IOException ex) {
+            EnderFightMod.LOGGER.warn("Failed scanning for leftover End folders under {}", dimensions, ex);
         }
     }
 
@@ -1628,10 +1673,7 @@ public class EndResetManager {
             return;
         }
 
-        boolean deleted = deleteDirectoryWithRetries(directory, 3);
-        if (deleted && !Files.exists(directory)) {
-            EnderFightMod.LOGGER.info("Deleted End dimension folder at {}", directory);
-        }
+        deleteInBackground(directory);
     }
 
     @SuppressWarnings("deprecation")

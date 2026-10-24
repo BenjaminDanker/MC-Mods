@@ -7,7 +7,7 @@ package com.silver.enderfight.config;
 public final class EndControlConfig {
     public static final int DEFAULT_CUSTOM_BREATH_TRACKING_USES = 5;
     public static final String DEFAULT_CUSTOM_BREATH_ID = "special_dragon_breath";
-    public static final String DEFAULT_PORTAL_REQUEST_SECRET = "silver";
+    public static final String DEFAULT_PORTAL_REQUEST_SECRET = ""; // the network secret comes from ~/.config/mc-network/shared.properties
 
     public static EndControlConfig createDefault() {
         return new EndControlConfig(

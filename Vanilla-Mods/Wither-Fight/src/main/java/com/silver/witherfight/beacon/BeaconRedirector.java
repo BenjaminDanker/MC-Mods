@@ -97,7 +97,7 @@ public final class BeaconRedirector {
             return false;
         }
 
-        String secret = config.portalRequestSecret();
+        String secret = com.silver.portalprotocol.PortalRequestSecret.resolve(config.portalRequestSecret());
         if (secret == null || secret.isBlank()) {
             WitherFightMod.LOGGER.warn("portalRequestSecret is blank; cannot send portal request for {}", player.getName().getString());
             return false;
