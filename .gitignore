@@ -84,3 +84,8 @@ $RECYCLE.BIN/
 !infinity-cave-resources.zip
 Vanilla-Connected-Mods/Sky-Islands/tracker.txt
 TODO.md
+
+# Server/test run logs and build-only third-party jars
+**/logs/*.log
+**/logs/*.log.gz
+Util-Mods/Spawn-Protect/libs/
