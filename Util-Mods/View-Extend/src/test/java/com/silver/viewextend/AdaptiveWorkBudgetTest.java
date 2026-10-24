@@ -22,4 +22,18 @@ class AdaptiveWorkBudgetTest {
         assertEquals(128,budget.lookahead(64,128));
         assertTrue(budget.lookahead(Float.NaN,128)>=4);
     }
+    @Test void diskWindowLetsOneReaderUseFastIoAndShrinksWhenIoIsSlow() {
+        var budget = new AdaptiveWorkBudget(256);
+        assertEquals(32, budget.diskStarts(0));
+        assertEquals(0, budget.diskStarts(32));
+        for (int i = 0; i < 200; i++) budget.observeDisk(1_000_000, budget.diskWindow());
+        assertEquals(256, budget.diskWindow());
+        budget.observeDisk(-1, 0);
+        assertEquals(256, budget.diskWindow());
+        for (int i = 0; i < 100; i++) budget.observeDisk(80_000_000, 0);
+        assertEquals(AdaptiveWorkBudget.DISK_MIN_WINDOW, budget.diskWindow());
+        // An idle, fast disk does not grow the window without demand.
+        budget.observeDisk(1_000_000, 0);
+        assertEquals(AdaptiveWorkBudget.DISK_MIN_WINDOW, budget.diskWindow());
+    }
 }

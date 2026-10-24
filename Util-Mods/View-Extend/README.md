@@ -17,7 +17,7 @@ Fabric lifecycle events own startup/shutdown and run delivery after vanilla upda
 
 ## Configuration
 
-Version 3 backs up older configuration to `viewextend.properties.previous.bak`. For v2, only known old default tuning values are migrated; customized values and distances are preserved. Keep `config-version=3` when customizing settings.
+Older configurations are migrated in place (no backup copy is kept). For v2, only known old default tuning values are migrated; customized values and distances are preserved. Keep `config-version=3` when customizing settings.
 
 | Setting | Default |
 | --- | ---: |
@@ -25,6 +25,8 @@ Version 3 backs up older configuration to `viewextend.properties.previous.bak`. 
 | Request/send ceiling per player per tick | 64 |
 | Global visual sends / ready processing per tick | 512 |
 | Global disk-read starts per tick | 256 |
+| Disk reads waiting on Minecraft's chunk IO thread | adaptive window 4-256 (starts at 32) |
+| Metrics INFO logs | off; never logged while the server is empty |
 | Pending requests per player | 128 |
 | Shared outstanding read/delivery capacity | 1024 |
 | Shared packet-cache budget | 256 MiB |
@@ -54,6 +56,14 @@ The smoke task force-transforms all five server target classes under Fabric, che
 These checks do not measure real multiplayer throughput or verify connected-client rendering. A radius of 127 covers 65,025 square chunk positions; storage, compression, bandwidth, client memory, and rendering determine fill time. Live validation should include several players moving, standing, teleporting, changing dimensions, and reconnecting while observing the interval metrics.
 
 Implementation was checked against local Minecraft 26.2 sources and Fabric API 0.160.0+26.2. Packet layouts and mixin contracts are version-specific.
+
+## Disk IO and Polymer
+
+Saved-chunk reads share Minecraft's single per-dimension chunk IO thread at vanilla's own priority. An adaptive window bounds how many View-Extend reads wait there at once: it grows while reads finish under 20 ms, so one fast flyer can use the whole disk, and shrinks above 50 ms so vanilla chunk loads are never stuck behind hundreds of visual reads. Starts are ranked globally by tier and distance, so several fast players split a saturated window.
+
+Worker-built packets are encoded inside the first subscriber's Fabric packet context, so Polymer remaps modded block states for vanilla clients. The shared packet uses that player's mapping, which is correct while every client is vanilla.
+
+Vanilla 26.2 clients cap render distance at 32 (16 with under 1 GB heap) and only render up to their own setting. They send the requested distance as a signed byte, so it can never exceed 127. The chunk-radius packet is a VarInt, and client storage is radius + 3 with no 128 limit, so the protocol itself allows more. LOD therefore stays disabled (start 128): vanilla clients never request a distance where it would apply.
 
 ## Flight diagnostics
 

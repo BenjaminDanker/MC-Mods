@@ -71,6 +71,23 @@ class VisualChunkPacketsTest {
         return nbt;
     }
 
+    @Test void visualCopyMatchesFullCopyAndLeavesSourceUntouched() {
+        var nbt = chunk();
+        nbt.put("block_entities", new ListTag());
+        var original = nbt.copy();
+        var copy = VisualChunkPreparer.visualCopy(nbt);
+        assertFalse(copy.contains("block_entities"));
+        var full = original.copy(); full.remove("block_entities");
+        assertEquals(full, copy);
+        copy.getListOrEmpty("sections").getCompoundOrEmpty(0).getCompoundOrEmpty("block_states")
+                .getListOrEmpty("palette").getCompoundOrEmpty(0).putString("Name", "minecraft:dirt");
+        assertEquals(original, nbt);
+        var prepared = new VisualChunkPreparer(ViewExtendConfig.fromProperties(new Properties()))
+                .prepare(new ChunkPos(7, -9), 0, nbt, context);
+        assertNotNull(prepared);
+        assertEquals(original, nbt);
+    }
+
     @Test void uniformLightIsSharedWithoutChangingWireOrNonuniformLayers() {
         var preparer = new VisualChunkPreparer(ViewExtendConfig.fromProperties(new Properties()));
         var a = preparer.prepare(new ChunkPos(7, -9), 0, chunk(), context);
@@ -237,7 +254,9 @@ class VisualChunkPacketsTest {
     }
 
     @Test void workerLoadHasTerminalResultsForSuccessMissingErrorsAndShutdown() throws Exception {
-        var config = ViewExtendConfig.fromProperties(new Properties());
+        var properties = new Properties();
+        properties.setProperty("metrics-info-logs-enabled", "true");
+        var config = ViewExtendConfig.fromProperties(properties);
         var loader = new VisualChunkLoader(config);
         var pos = new ChunkPos(7, -9);
         try {

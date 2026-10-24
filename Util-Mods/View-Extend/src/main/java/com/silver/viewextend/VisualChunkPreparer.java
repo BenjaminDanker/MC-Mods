@@ -42,6 +42,8 @@ final class VisualChunkPreparer {
         "structures", "UpgradeData", "blending_data", "below_zero_retrogen", "carving_mask"
     };
 
+    private static final java.util.Set<String> UNUSED_VISUAL_NBT_KEY_SET = java.util.Set.of(UNUSED_VISUAL_NBT_KEYS);
+
     private final ViewExtendConfig config;
     private final PipelineMemoryMetrics memoryMetrics;
     private final PreparationMetrics preparationMetrics;
@@ -92,7 +94,7 @@ final class VisualChunkPreparer {
             CompoundTag chunkNbt;
             memoryMetrics.copyStarted();
             try {
-                chunkNbt = sourceNbt.copy();
+                chunkNbt = visualCopy(sourceNbt);
             } finally {
                 memoryMetrics.copyFinished();
             }
@@ -119,8 +121,11 @@ final class VisualChunkPreparer {
             lightNanos = System.nanoTime() - started;
 
             started = System.nanoTime();
-            VisualChunkPackets.PacketBuild packetBuild = VisualChunkPackets.create(
-                    expectedPos, serialized, lightBuild.data(), context);
+            VisualChunkPackets.PacketBuild packetBuild = context.packetContext() == null
+                    ? VisualChunkPackets.create(expectedPos, serialized, lightBuild.data(), context)
+                    : net.fabricmc.fabric.api.networking.v1.context.PacketContext.supplyWithContext(
+                            context.packetContext(),
+                            () -> VisualChunkPackets.create(expectedPos, serialized, lightBuild.data(), context));
             ClientboundLevelChunkWithLightPacket packet = packetBuild.packet();
             int estimatedBytes = VisualChunkPackets.retainedBytes(packet);
             packetNanos = System.nanoTime() - started;
@@ -137,6 +142,46 @@ final class VisualChunkPreparer {
             preparationMetrics.recordFailure(System.nanoTime() - totalStarted);
             throw error;
         }
+    }
+
+    /**
+     * Copies only what the visual transform mutates: the chunk compound, each section compound,
+     * block_states and its palette. Unused keys are dropped, and large read-only payloads
+     * (packed block data, biomes, light, heightmaps) are shared with the source, never written.
+     */
+    static CompoundTag visualCopy(CompoundTag source) {
+        CompoundTag copy = new CompoundTag();
+        for (String key : source.keySet()) {
+            if (UNUSED_VISUAL_NBT_KEY_SET.contains(key)) continue;
+            net.minecraft.nbt.Tag tag = source.get(key);
+            copy.put(key, "sections".equals(key) && tag instanceof ListTag sections ? copySections(sections) : tag);
+        }
+        return copy;
+    }
+
+    private static ListTag copySections(ListTag sections) {
+        ListTag copy = new ListTag();
+        for (int index = 0; index < sections.size(); index++) {
+            if (!(sections.get(index) instanceof CompoundTag section)) {
+                copy.add(sections.get(index).copy());
+                continue;
+            }
+            CompoundTag sectionCopy = new CompoundTag();
+            for (String key : section.keySet()) {
+                net.minecraft.nbt.Tag tag = section.get(key);
+                if ("block_states".equals(key) && tag instanceof CompoundTag states) {
+                    CompoundTag statesCopy = new CompoundTag();
+                    for (String stateKey : states.keySet()) {
+                        net.minecraft.nbt.Tag value = states.get(stateKey);
+                        statesCopy.put(stateKey, "palette".equals(stateKey) ? value.copy() : value);
+                    }
+                    tag = statesCopy;
+                }
+                sectionCopy.put(key, tag);
+            }
+            copy.add(sectionCopy);
+        }
+        return copy;
     }
 
     private TransformStats transformVisualChunkNbt(CompoundTag chunkNbt, int lodLevel) {
@@ -426,7 +471,14 @@ final class VisualChunkPreparer {
             PalettedContainerFactory containerFactory,
             int bottomLightSectionY,
             int topLightSectionYExclusive,
-            boolean hasSkyLight) {
+            boolean hasSkyLight,
+            net.fabricmc.fabric.api.networking.v1.context.PacketContextProvider packetContext) {
+        LoadContext(net.minecraft.core.RegistryAccess registries, LevelHeightAccessor heightAccessor,
+                PalettedContainerFactory containerFactory, int bottomLightSectionY,
+                int topLightSectionYExclusive, boolean hasSkyLight) {
+            this(registries, heightAccessor, containerFactory, bottomLightSectionY,
+                    topLightSectionYExclusive, hasSkyLight, null);
+        }
     }
 
     record TransformStats(int remapCount, boolean unsortedSections, boolean oceanBiome,

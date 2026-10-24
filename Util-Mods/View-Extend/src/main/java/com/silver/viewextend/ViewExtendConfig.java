@@ -42,9 +42,7 @@ public record ViewExtendConfig(
             if (Files.exists(path)) {
                 try (InputStream input = Files.newInputStream(path)) { properties.load(input); }
                 if (!"3".equals(properties.getProperty("config-version"))) {
-                    Path backup = path.resolveSibling("viewextend.properties.previous.bak");
-                    if (!Files.exists(backup)) Files.copy(path, backup);
-                    ViewExtendMod.LOGGER.info("Migrating View Extend throughput settings to v3; previous config saved at {}", backup);
+                    ViewExtendMod.LOGGER.info("Migrating View Extend throughput settings to v3");
                     migrate(properties);
                 }
             }
@@ -115,7 +113,7 @@ public record ViewExtendConfig(
                 number(properties, "max-nbt-reads-per-tick", 256, 1, 16384),
                 number(properties, "prepared-queue-hard-limit", 1024, 128, 131072),
                 number(properties, "worker-threads", 0, 0, 64),
-                bool(properties, "metrics-info-logs-enabled", true),
+                bool(properties, "metrics-info-logs-enabled", false),
                 number(properties, "metrics-log-interval-ticks", 100, 20, 72000),
                 number(properties, "fallback-sky-light-level", 15, 0, 15),
                 number(properties, "fallback-block-light-level", 0, 0, 15),

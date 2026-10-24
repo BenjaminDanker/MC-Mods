@@ -67,6 +67,8 @@ final class PlayerViewState {
     PlayerViewPlanner.DemandCandidate cachedNearHead;
     PlayerViewPlanner.DemandCandidate cachedBootstrapHead;
     PlayerViewPlanner.DemandCandidate cachedGapHead;
+    // Best direct retry; revalidated against directDemandSet on use.
+    PlayerViewPlanner.DemandCandidate cachedDirectHead;
     long nextDemandAge;
     long readyFairnessSequence;
 

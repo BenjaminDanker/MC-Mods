@@ -121,12 +121,20 @@ public final class ViewExtendService {
 
     public void onEntityLoaded(net.minecraft.world.entity.Entity entity, ServerLevel world) {
         if (entity instanceof net.minecraft.world.entity.boss.enderdragon.EnderDragon)
-            loadedDragons.computeIfAbsent(world.dimension().identifier().toString(), ignored -> new it.unimi.dsi.fastutil.ints.IntOpenHashSet()).add(entity.getId());
+            loadedDragons.computeIfAbsent(worldKey(world), ignored -> new it.unimi.dsi.fastutil.ints.IntOpenHashSet()).add(entity.getId());
     }
 
     public void onEntityUnloaded(net.minecraft.world.entity.Entity entity, ServerLevel world) {
-        var ids = loadedDragons.get(world.dimension().identifier().toString());
+        var ids = loadedDragons.get(worldKey(world));
         if (ids != null) ids.remove(entity.getId());
+    }
+
+    // Identifier.toString() allocates; world keys are looked up many times per tick.
+    private final java.util.concurrent.ConcurrentHashMap<net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level>, String> worldKeys =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private String worldKey(net.minecraft.world.level.Level level) {
+        return worldKeys.computeIfAbsent(level.dimension(), dimension -> dimension.identifier().toString());
     }
 
     private int sendsThisTick;
@@ -147,6 +155,7 @@ public final class ViewExtendService {
         borrowing = false;
         adaptive.begin(tickStartNanos, vanillaTickStarted == 0 ? 0 : tickStartNanos - vanillaTickStarted,
                 loader.pressure(), !loadsByKey.isEmpty() || !readyDeliveries.isEmpty());
+        adaptive.observeDisk(loader.drainDiskLatencyNanos(), loader.diskInFlight());
         cleanupDisconnected(server);
         List<PlayerTickTarget> targets = collectTickTargets(server);
         // Rotate the first player so a saturated shared pipeline cannot favor join order.
@@ -165,7 +174,7 @@ public final class ViewExtendService {
             int preparedBudget = config.maxMainThreadPreparedChunksPerTick();
             transferCompletedLoads(server, Math.max(256, preparedBudget));
             processReadyDeliveries(server, preparedBudget);
-            processNbtReadRequests(server, adaptive.reads());
+            processNbtReadRequests(server, adaptive.diskStarts(loader.diskInFlight()));
             scheduleCandidates(targets);
             // Unused shares are borrowable only after every active observer had its fair pass.
             borrowing = true;
@@ -183,7 +192,7 @@ public final class ViewExtendService {
     }
 
     private void tickPlayer(ServerLevel world, ServerPlayer player) {
-        String worldKey = world.dimension().identifier().toString();
+        String worldKey = worldKey(world);
         PlayerWorldKey playerWorldKey = new PlayerWorldKey(player.getUUID(), worldKey);
         PlayerViewState state = statesByPlayer.computeIfAbsent(
                 playerWorldKey,
@@ -210,7 +219,7 @@ public final class ViewExtendService {
             for (PlayerTickTarget target : targets) {
                 if (!hasWorkTime()) return;
                 var player = target.player();
-                var state = statesByPlayer.get(new PlayerWorldKey(player.getUUID(), target.world().dimension().identifier().toString()));
+                var state = statesByPlayer.get(new PlayerWorldKey(player.getUUID(), worldKey(target.world())));
                 if (state == null || !isEnabled() || !player.isAlive()
                         || state.demandDescriptorCount() == 0
                         || !canAdmit(player, state)) continue;
@@ -398,9 +407,10 @@ public final class ViewExtendService {
         int lod = state.pendingLodByChunk.getOrDefault(worstPacked, 0);
         GlobalChunkKey key = new GlobalChunkKey(state.worldKey, worstPacked, lod);
         SharedLoad load = loadsByKey.get(key);
+        long requestId = worstRequestId;
+        boolean removedFromLoad = false;
         if (load != null) {
-            long requestId = worstRequestId;
-            load.subscribers.removeIf(subscriber -> subscriber.state() == state
+            removedFromLoad = load.subscribers.removeIf(subscriber -> subscriber.state() == state
                     && subscriber.requestId() == requestId);
             if (load.subscribers.isEmpty() && !load.started) {
                 loadsByKey.remove(key);
@@ -408,12 +418,14 @@ public final class ViewExtendService {
                 totalPreparationsSkippedNoSubscribers++;
             }
         }
-        long requestId = worstRequestId;
-        readyDeliveries.removeIf(delivery -> {
-            delivery.removeSubscriber(state, requestId);
-            return !delivery.hasSubscribers();
-        });
-        reconcileReadyBytes();
+        // A request id lives in either a load or a ready delivery, never both.
+        if (!removedFromLoad) {
+            readyDeliveries.removeIf(delivery -> {
+                delivery.removeSubscriber(state, requestId);
+                return !delivery.hasSubscribers();
+            });
+            reconcileReadyBytes();
+        }
         state.clearPending(worstPacked);
         totalSupersededSubscribers++;
         return true;
@@ -446,7 +458,7 @@ public final class ViewExtendService {
 
         int started = 0;
         int index = 0;
-        while (index < ranked.size() && started < Math.max(1, budget) && hasWorkTime()) {
+        while (index < ranked.size() && started < budget && hasWorkTime()) {
             QueuedLoadRank rank = ranked.get(index++);
             SharedLoad load = rank.load();
             GlobalChunkKey key = load.key;
@@ -475,7 +487,10 @@ public final class ViewExtendService {
                     world.palettedContainerFactory(),
                     lightEngine.getMinLightSection(),
                     lightEngine.getMaxLightSection(),
-                    world.dimensionType().hasSkyLight());
+                    world.dimensionType().hasSkyLight(),
+                    // Polymer remaps modded block states only inside a packet context. Every client is
+                    // vanilla, so the first subscriber's mapping is valid for the shared packet.
+                    firstValid.player().connection instanceof PacketContextProvider provider ? provider : null);
 
             try {
                 loader.load(world.getChunkSource().chunkMap.read(pos), pos, key.lodLevel(), context)
@@ -620,8 +635,8 @@ public final class ViewExtendService {
                 totalPriorityInversionsAvoided++;
             }
             pass.consumed().add(choice);
+            // Emptied deliveries are swept once after the pass instead of an O(n) remove per send.
             choice.delivery().removeSubscriber(choice.subscriber());
-            if (!choice.delivery().hasSubscribers()) readyDeliveries.remove(choice.delivery());
 
             choice.valid().state().readyFairnessSequence = ++readyFairnessSequence;
             long readyWait = Math.max(0, ticks - choice.delivery().createdTick());
@@ -777,7 +792,7 @@ public final class ViewExtendService {
 
         ServerLevel world = player.level();
         long packed = key.chunkLong();
-        if (!world.dimension().identifier().toString().equals(key.worldKey())) {
+        if (!worldKey(world).equals(key.worldKey())) {
             state.clearPending(packed);
             return null;
         }
@@ -819,7 +834,7 @@ public final class ViewExtendService {
         state.clearPending(key.chunkLong());
         ServerPlayer player = server.getPlayerList().getPlayer(subscriber.playerUuid());
         if (player != null && player.isAlive()
-                && player.level().dimension().identifier().toString().equals(key.worldKey())) {
+                && worldKey(player.level()).equals(key.worldKey())) {
             planner.scheduleRetry(state, key.chunkLong(), retryTicks);
         }
     }
@@ -875,7 +890,7 @@ public final class ViewExtendService {
 
     private void sendChunkPacket(ServerPlayer player, ClientboundLevelChunkWithLightPacket packet,
             VisualChunkPackets.PacketComposition composition) {
-        String worldKey = player.level().dimension().identifier().toString();
+        String worldKey = worldKey(player.level());
         PlayerViewState state = statesByPlayer.get(new PlayerWorldKey(player.getUUID(), worldKey));
         if (state == null) throw new IllegalStateException("Missing visual batch state");
         int sentDistance = Math.max(Math.abs(packet.getX() - state.centerX),
@@ -910,7 +925,7 @@ public final class ViewExtendService {
     }
 
     private void finishVisualBatch(ServerPlayer player) {
-        var key = new PlayerWorldKey(player.getUUID(), player.level().dimension().identifier().toString());
+        var key = new PlayerWorldKey(player.getUUID(), worldKey(player.level()));
         PlayerViewState state = statesByPlayer.get(key);
         if (state != null && state.visualBatchOpen) {
             state.visualBatchOpen = false;
@@ -919,7 +934,7 @@ public final class ViewExtendService {
     }
 
     public void onChunkAvailable(ServerLevel world, LevelChunk chunk) {
-        String worldKey = world.dimension().identifier().toString();
+        String worldKey = worldKey(world);
         long packed = chunk.getPos().pack();
         invalidatePreparedCacheForChunk(worldKey, packed);
         for (PlayerViewState state : statesByPlayer.values()) {
@@ -1047,7 +1062,7 @@ public final class ViewExtendService {
             var trackers = ((com.silver.viewextend.mixin.ServerChunkLoadingManagerAccessor)
                     world.getChunkSource().chunkMap).viewextend$getEntityMap();
             for (ServerPlayer target : world.players()) refreshTracker(trackers.get(target.getId()), observers);
-            var dragons = loadedDragons.get(world.dimension().identifier().toString());
+            var dragons = loadedDragons.get(worldKey(world));
             if (dragons != null) for (int id : dragons) refreshTracker(trackers.get(id), observers);
         });
     }
@@ -1064,7 +1079,7 @@ public final class ViewExtendService {
 
     public void onVanillaChunkSent(ServerPlayer player, int x, int z) {
         if (sendingVisualPacket) return;
-        String worldKey = player.level().dimension().identifier().toString();
+        String worldKey = worldKey(player.level());
         PlayerViewState state = statesByPlayer.computeIfAbsent(
                 new PlayerWorldKey(player.getUUID(), worldKey),
                 ignored -> new PlayerViewState(player.getUUID(), worldKey));
@@ -1079,7 +1094,7 @@ public final class ViewExtendService {
         if (!withinDistance(pos.x(), pos.z(), player.chunkPosition().x(), player.chunkPosition().z(), totalDistance)) {
             return false;
         }
-        String worldKey = player.level().dimension().identifier().toString();
+        String worldKey = worldKey(player.level());
         PlayerViewState state = statesByPlayer.get(new PlayerWorldKey(player.getUUID(), worldKey));
         if (state == null || !state.sent.contains(pos.pack())) return false;
         totalSuppressedVanillaUnloads++;
@@ -1088,7 +1103,7 @@ public final class ViewExtendService {
     }
 
     public void onLikelyClientUnload(ServerPlayer player, ChunkPos pos) {
-        String worldKey = player.level().dimension().identifier().toString();
+        String worldKey = worldKey(player.level());
         PlayerViewState state = statesByPlayer.get(new PlayerWorldKey(player.getUUID(), worldKey));
         if (state == null) {
             return;
@@ -1104,7 +1119,7 @@ public final class ViewExtendService {
     }
 
     public boolean hasSentVisualChunk(ServerPlayer player, ChunkPos pos) {
-        String worldKey = player.level().dimension().identifier().toString();
+        String worldKey = worldKey(player.level());
         PlayerViewState state = statesByPlayer.get(new PlayerWorldKey(player.getUUID(), worldKey));
         return state != null && state.sent.contains(pos.pack());
     }
@@ -1137,7 +1152,7 @@ public final class ViewExtendService {
             ServerPlayer player = server.getPlayerList().getPlayer(entry.getKey().playerUuid());
             if (player == null
                     || !entry.getKey().worldKey().equals(
-                            player.level().dimension().identifier().toString())) {
+                            worldKey(player.level()))) {
                 iterator.remove();
             }
         }
@@ -1155,6 +1170,10 @@ public final class ViewExtendService {
 
     private void maybeLogMetrics(MinecraftServer server) {
         if (!config.metricsInfoLogsEnabled() || ticks % config.metricsLogIntervalTicks() != 0) {
+            return;
+        }
+        if (server.getPlayerList().getPlayers().isEmpty()) {
+            metricsWindowStartNanos = System.nanoTime();
             return;
         }
 
@@ -1330,8 +1349,10 @@ public final class ViewExtendService {
                     memory.sentLodEntries(), memory.pendingEntries(), memory.activeMetadataEntries(),
                     memory.descriptors(), memory.sentBytes(), memory.schedulerBytes());
         }
-        ViewExtendMod.LOGGER.info("[ViewExtend Scheduler] readsPerTick={} budgetMs={} preparationLatencyTicks={} cachePromotions={}",
-                adaptive.reads(), adaptive.allowance() / 1_000_000.0, adaptive.latencyTicks(), cacheStats.promotions());
+        ViewExtendMod.LOGGER.info("[ViewExtend Scheduler] readsPerTick={} diskWindow={} diskInFlight={} diskLatencyMs={} budgetMs={} preparationLatencyTicks={} cachePromotions={}",
+                adaptive.reads(), adaptive.diskWindow(), loader.diskInFlight(),
+                String.format(Locale.ROOT, "%.2f", adaptive.diskLatencyNanos() / 1_000_000.0),
+                adaptive.allowance() / 1_000_000.0, adaptive.latencyTicks(), cacheStats.promotions());
         failureCounts.clear();
         totalCooldownHits = 0;
         metricsWindowStartNanos = now;
@@ -1435,7 +1456,7 @@ public final class ViewExtendService {
                 if (!state.isCurrentRequest(state, delivery.key().chunkLong(), subscriber.requestId())) continue;
                 ServerPlayer player = server.getPlayerList().getPlayer(subscriber.playerUuid());
                 if (player != null && state.worldKey.equals(
-                        player.level().dimension().identifier().toString())
+                        worldKey(player.level()))
                         && !hasNetworkQuota(player, state)) {
                     quotaBlocked = true;
                     break;

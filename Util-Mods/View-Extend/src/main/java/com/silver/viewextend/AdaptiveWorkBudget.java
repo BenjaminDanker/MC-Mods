@@ -8,7 +8,31 @@ final class AdaptiveWorkBudget {
     private double latencyTicks = 2;
     private long deadline;
     private long allowance = 4_000_000;
-    AdaptiveWorkBudget(int maximumReads) { this.maximumReads = maximumReads; reads = Math.min(32, maximumReads); }
+    // Reads share Minecraft's single per-dimension chunk IO thread at vanilla's own priority.
+    // The window bounds how many can wait there at once: it grows while reads stay fast, so one
+    // fast flyer can use the whole disk, and shrinks when latency shows IO is saturated. Starts
+    // are ranked globally by distance, so fast players split a saturated window.
+    static final long DISK_FAST_NANOS = 20_000_000L, DISK_SLOW_NANOS = 50_000_000L;
+    static final int DISK_MIN_WINDOW = 4;
+    private int diskWindow;
+    private long diskLatencyNanos;
+    AdaptiveWorkBudget(int maximumReads) {
+        this.maximumReads = maximumReads;
+        reads = Math.min(32, maximumReads);
+        diskWindow = Math.min(32, maximumReads);
+    }
+    void observeDisk(long averageLatencyNanos, int inFlight) {
+        if (averageLatencyNanos < 0) return;
+        diskLatencyNanos = averageLatencyNanos;
+        if (averageLatencyNanos > DISK_SLOW_NANOS) {
+            diskWindow = Math.max(Math.min(DISK_MIN_WINDOW, maximumReads), diskWindow * 3 / 4);
+        } else if (averageLatencyNanos < DISK_FAST_NANOS && inFlight * 2 >= diskWindow) {
+            diskWindow = Math.min(maximumReads, diskWindow + Math.max(1, diskWindow / 8));
+        }
+    }
+    int diskStarts(int inFlight) { return Math.max(0, Math.min(reads, diskWindow - inFlight)); }
+    int diskWindow() { return diskWindow; }
+    long diskLatencyNanos() { return diskLatencyNanos; }
     void begin(long now, long vanillaNanos, double workerPressure, boolean backlog) {
         allowance = Math.clamp((50_000_000L - vanillaNanos) / 5, 100_000L, 4_000_000L);
         deadline = now + allowance;

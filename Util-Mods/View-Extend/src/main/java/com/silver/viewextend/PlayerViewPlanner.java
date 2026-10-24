@@ -105,6 +105,7 @@ final class PlayerViewPlanner {
         state.cachedNearHead = null;
         state.cachedBootstrapHead = null;
         state.cachedGapHead = null;
+        state.cachedDirectHead = null;
 
         forEachSquareDifference(centerX, centerZ, totalDistance,
                 oldCenterX, oldCenterZ, oldTotalDistance, packed -> {
@@ -296,6 +297,10 @@ final class PlayerViewPlanner {
         state.directDemandSet.add(packed);
         state.directDemand.add(packed);
         state.directDemandAge.put(packed, ++state.nextDemandAge);
+        if (state.cachedDirectHead != null) {
+            state.cachedDirectHead = better(state.cachedDirectHead, candidate(state, packed,
+                    state.nextDemandAge, DemandSource.DIRECT_RETRY, null));
+        }
     }
 
     void resetNearDemand(PlayerViewState state) {
@@ -372,11 +377,20 @@ final class PlayerViewPlanner {
         ensureDescriptorHeads(state);
         DemandCandidate best = null;
 
-        for (int i = 0; i < state.directDemand.size(); i++) {
-            long packed = state.directDemand.getLong(i);
-            directRetryComparisons++;
-            best = better(best, candidate(state, packed, state.directDemandAge.get(packed),
-                    DemandSource.DIRECT_RETRY, null));
+        if (!state.directDemand.isEmpty()) {
+            // Rescan only after the cached head was consumed, cleared or recentered.
+            if (state.cachedDirectHead == null
+                    || !state.directDemandSet.contains(state.cachedDirectHead.packed())) {
+                DemandCandidate direct = null;
+                for (int i = 0; i < state.directDemand.size(); i++) {
+                    long packed = state.directDemand.getLong(i);
+                    directRetryComparisons++;
+                    direct = better(direct, candidate(state, packed, state.directDemandAge.get(packed),
+                            DemandSource.DIRECT_RETRY, null));
+                }
+                state.cachedDirectHead = direct;
+            }
+            best = better(best, state.cachedDirectHead);
         }
         if (state.nearActive) {
             nearCursorChecks++;
@@ -424,6 +438,7 @@ final class PlayerViewPlanner {
                 state.directDemand.rem(candidate.packed());
                 state.directDemandSet.remove(candidate.packed());
                 state.directDemandAge.remove(candidate.packed());
+                state.cachedDirectHead = null;
             }
             case NEAR -> {
                 state.nearOffset++;
