@@ -1,0 +1,25 @@
+{
+  "fabric:load_conditions": [
+    {
+      "condition": "fabric:all_mods_loaded",
+      "values": [
+        "polyfactory"
+      ]
+    }
+  ],
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    "III",
+    "IGI",
+    " s "
+  ],
+  "key": {
+    "G": "polyfactory:steel_gear",
+    "I": "polyfactory:steel_ingot",
+    "s": "minecraft:stick"
+  },
+  "result": {
+    "id": "arsenal:pipe_hammer"
+  }
+}

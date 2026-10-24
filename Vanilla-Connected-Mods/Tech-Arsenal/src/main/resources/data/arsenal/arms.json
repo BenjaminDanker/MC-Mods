@@ -1,0 +1,784 @@
+{
+  "arms": [
+    {
+      "id": "rivets",
+      "name": "Rivets",
+      "tier": 1,
+      "blurb": "Pistol and harpoon ammunition.",
+      "rarity": "common",
+      "stack": 64,
+      "temper": false,
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "shells",
+      "name": "Shotgun Shells",
+      "tier": 1,
+      "blurb": "Scatter cannon ammunition.",
+      "rarity": "common",
+      "stack": 64,
+      "temper": false,
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "coil_slug",
+      "name": "Coil Slug",
+      "tier": 2,
+      "blurb": "Coil rifle ammunition.",
+      "rarity": "common",
+      "stack": 64,
+      "temper": false,
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "rail_slug",
+      "name": "Rail Slug",
+      "tier": 3,
+      "blurb": "Rail lance ammunition.",
+      "rarity": "uncommon",
+      "stack": 64,
+      "temper": false,
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "flare",
+      "name": "Flare",
+      "tier": 1,
+      "blurb": "Flare gun ammunition.",
+      "rarity": "common",
+      "stack": 64,
+      "temper": false,
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "grenade_round",
+      "name": "Grenade Round",
+      "tier": 2,
+      "blurb": "Grenade launcher ammunition.",
+      "rarity": "common",
+      "stack": 64,
+      "temper": false,
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "rocket",
+      "name": "Rocket",
+      "tier": 3,
+      "blurb": "Rocket launcher ammunition.",
+      "rarity": "uncommon",
+      "stack": 16,
+      "temper": false,
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "power_cell",
+      "name": "Power Cell",
+      "tier": 2,
+      "blurb": "Charges energy weapons: twelve charges.",
+      "rarity": "uncommon",
+      "stack": 16,
+      "temper": false,
+      "cell": {
+        "charges": 12
+      },
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "ley_cell",
+      "name": "Ley-Charged Cell",
+      "tier": 3,
+      "blurb": "A power cell with a Ley Crystal in it: twenty-four charges, twice as many.",
+      "rarity": "rare",
+      "stack": 16,
+      "temper": false,
+      "cell": {
+        "charges": 24
+      },
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "fuel_cell",
+      "name": "Fuel Cell",
+      "tier": 2,
+      "blurb": "One burst for the flame projector.",
+      "rarity": "common",
+      "stack": 16,
+      "temper": false,
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "harpoon_bolt",
+      "name": "Harpoon Bolt",
+      "tier": 2,
+      "blurb": "Harpoon gun ammunition.",
+      "rarity": "common",
+      "stack": 16,
+      "temper": false,
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "vibro_blade",
+      "name": "Vibro Blade",
+      "tier": 1,
+      "blurb": "Every fourth hit lands half again as hard.",
+      "rarity": "common",
+      "stack": 1,
+      "temper": true,
+      "melee": {
+        "damage": 5.0,
+        "speed": 1.9
+      },
+      "hit": {
+        "kind": "surge",
+        "every": 4,
+        "bonus": 0.5
+      },
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "combat_knife",
+      "name": "Combat Knife",
+      "tier": 1,
+      "blurb": "Fast, and far worse for whoever has their back turned.",
+      "rarity": "common",
+      "stack": 1,
+      "temper": true,
+      "melee": {
+        "damage": 2.8,
+        "speed": 3.0
+      },
+      "hit": {
+        "kind": "backstab",
+        "mult": 2.2
+      },
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "chain_cleaver",
+      "name": "Chain Cleaver",
+      "tier": 1,
+      "blurb": "Heavy blows leave the target bleeding.",
+      "rarity": "common",
+      "stack": 1,
+      "temper": true,
+      "melee": {
+        "damage": 8.0,
+        "speed": 0.9
+      },
+      "hit": {
+        "kind": "bleed",
+        "damage": 1.0,
+        "pulses": 4,
+        "every": 20
+      },
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "pipe_hammer",
+      "name": "Pipe Hammer",
+      "tier": 1,
+      "blurb": "Right-click to leap and slam the ground.",
+      "rarity": "common",
+      "stack": 1,
+      "temper": true,
+      "melee": {
+        "damage": 9.0,
+        "speed": 0.8
+      },
+      "use": {
+        "kind": "slam",
+        "cooldown": 180,
+        "radius": 3.6,
+        "damage": 6.0,
+        "leap": 0.95,
+        "knock": 0.9
+      },
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "shock_baton",
+      "name": "Shock Baton",
+      "tier": 2,
+      "blurb": "Every third hit stuns.",
+      "rarity": "common",
+      "stack": 1,
+      "temper": true,
+      "melee": {
+        "damage": 4.0,
+        "speed": 1.6
+      },
+      "hit": {
+        "kind": "stun",
+        "every": 3,
+        "slow_ticks": 30,
+        "slow_amp": 2,
+        "weak_ticks": 40
+      },
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "arc_saber",
+      "name": "Arc Saber",
+      "tier": 2,
+      "blurb": "Each hit arcs to two enemies nearby.",
+      "rarity": "uncommon",
+      "stack": 1,
+      "temper": true,
+      "melee": {
+        "damage": 5.5,
+        "speed": 1.7
+      },
+      "hit": {
+        "kind": "arc",
+        "targets": 2,
+        "radius": 4.5,
+        "frac": 0.4
+      },
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "piston_gauntlets",
+      "name": "Piston Gauntlets",
+      "tier": 2,
+      "blurb": "Every fifth punch hits like a piston.",
+      "rarity": "uncommon",
+      "stack": 1,
+      "temper": true,
+      "melee": {
+        "damage": 3.2,
+        "speed": 3.0
+      },
+      "hit": {
+        "kind": "piston",
+        "every": 5,
+        "bonus": 3.0,
+        "knock": 1.6
+      },
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "monowire_whip",
+      "name": "Monowire Whip",
+      "tier": 2,
+      "blurb": "Right-click to lash a target and drag it in.",
+      "rarity": "uncommon",
+      "stack": 1,
+      "temper": true,
+      "melee": {
+        "damage": 3.0,
+        "speed": 1.2
+      },
+      "use": {
+        "kind": "lash",
+        "cooldown": 60,
+        "range": 7.5,
+        "damage": 4.0,
+        "pull": 1.0
+      },
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "thermal_lance",
+      "name": "Thermal Lance",
+      "tier": 3,
+      "blurb": "Right-click to lunge forward through everything in the way.",
+      "rarity": "rare",
+      "stack": 1,
+      "temper": true,
+      "melee": {
+        "damage": 6.5,
+        "speed": 1.1
+      },
+      "use": {
+        "kind": "lunge",
+        "cooldown": 140,
+        "distance": 7.0,
+        "damage": 9.0,
+        "ignite": 60,
+        "radius": 1.5
+      },
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "rotary_cutter",
+      "name": "Rotary Cutter",
+      "tier": 3,
+      "blurb": "Right-click to rev: for five seconds every hit is stronger and bleeds.",
+      "rarity": "rare",
+      "stack": 1,
+      "temper": true,
+      "melee": {
+        "damage": 6.0,
+        "speed": 1.4
+      },
+      "use": {
+        "kind": "rev",
+        "cooldown": 240,
+        "ticks": 100
+      },
+      "hit": {
+        "kind": "rev",
+        "bonus": 0.25,
+        "bleed": 1.0,
+        "pulses": 3,
+        "every": 20
+      },
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "rivet_pistol",
+      "name": "Rivet Pistol",
+      "tier": 1,
+      "blurb": "A reliable sidearm.",
+      "rarity": "common",
+      "stack": 1,
+      "temper": true,
+      "use": {
+        "kind": "hitscan",
+        "damage": 2.2,
+        "cooldown": 8,
+        "range": 32,
+        "spread": 0.8,
+        "color": "FFB347",
+        "sound": "pistol"
+      },
+      "ammo": {
+        "item": "rivets",
+        "per": 1
+      },
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "scatter_cannon",
+      "name": "Scatter Cannon",
+      "tier": 1,
+      "blurb": "Devastating up close, a nuisance beyond a dozen blocks.",
+      "rarity": "common",
+      "stack": 1,
+      "temper": true,
+      "use": {
+        "kind": "hitscan",
+        "damage": 1.5,
+        "pellets": 7,
+        "spread": 6.0,
+        "range": 18,
+        "falloff_start": 4,
+        "falloff_end": 14,
+        "falloff_min": 0.25,
+        "knock": 0.7,
+        "cooldown": 24,
+        "color": "C8C8C8",
+        "sound": "shotgun"
+      },
+      "ammo": {
+        "item": "shells",
+        "per": 1
+      },
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "flare_gun",
+      "name": "Flare Gun",
+      "tier": 1,
+      "blurb": "Sets a target alight and makes it glow for everyone to see.",
+      "rarity": "common",
+      "stack": 1,
+      "temper": true,
+      "use": {
+        "kind": "bolt",
+        "projectile": "flare",
+        "speed": 1.7,
+        "gravity": 0.4,
+        "spread": 1.0,
+        "cooldown": 30,
+        "impact": "flare",
+        "flare": {
+          "damage": 2.5,
+          "ignite": 100,
+          "glow": 160,
+          "radius": 2.5
+        },
+        "trail": "flame"
+      },
+      "ammo": {
+        "item": "flare",
+        "per": 1
+      },
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "coil_rifle",
+      "name": "Coil Rifle",
+      "tier": 2,
+      "blurb": "Accurate to sixty-four blocks; the slug passes through a second target.",
+      "rarity": "uncommon",
+      "stack": 1,
+      "temper": true,
+      "use": {
+        "kind": "hitscan",
+        "damage": 8.5,
+        "cooldown": 34,
+        "range": 64,
+        "pierce": 1,
+        "spread": 0.15,
+        "color": "59E7FF",
+        "sound": "rifle"
+      },
+      "ammo": {
+        "item": "coil_slug",
+        "per": 1
+      },
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "arc_caster",
+      "name": "Arc Caster",
+      "tier": 2,
+      "blurb": "A bolt of lightning that jumps from target to target.",
+      "rarity": "uncommon",
+      "stack": 1,
+      "temper": true,
+      "use": {
+        "kind": "hitscan",
+        "damage": 3.5,
+        "cooldown": 20,
+        "range": 20,
+        "spread": 0.3,
+        "color": "A8E6FF",
+        "sound": "arc",
+        "chain": {
+          "jumps": 3,
+          "radius": 5.0,
+          "mult": 0.7
+        }
+      },
+      "ammo": {
+        "charge": 1,
+        "cell": "power_cell"
+      },
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "taser",
+      "name": "Taser",
+      "tier": 2,
+      "blurb": "Short range. Slows and weakens whatever it hits.",
+      "rarity": "uncommon",
+      "stack": 1,
+      "temper": true,
+      "use": {
+        "kind": "hitscan",
+        "damage": 1.5,
+        "cooldown": 90,
+        "range": 9,
+        "spread": 0.2,
+        "color": "FFFF66",
+        "sound": "taser",
+        "effects": [
+          {
+            "effect": "slowness",
+            "ticks": 40,
+            "amp": 2
+          },
+          {
+            "effect": "weakness",
+            "ticks": 80,
+            "amp": 0
+          }
+        ]
+      },
+      "ammo": {
+        "charge": 4,
+        "cell": "power_cell"
+      },
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "flame_projector",
+      "name": "Flame Projector",
+      "tier": 2,
+      "blurb": "A three-second burst of fire in a cone ahead of you.",
+      "rarity": "uncommon",
+      "stack": 1,
+      "temper": true,
+      "use": {
+        "kind": "stream",
+        "cooldown": 90,
+        "duration": 36,
+        "pulse": 3,
+        "damage": 1.1,
+        "range": 7.0,
+        "half_angle": 24.0,
+        "ignite": 60
+      },
+      "ammo": {
+        "item": "fuel_cell",
+        "per": 1
+      },
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "grenade_launcher",
+      "name": "Grenade Launcher",
+      "tier": 2,
+      "blurb": "Lobs a grenade that bursts on impact.",
+      "rarity": "uncommon",
+      "stack": 1,
+      "temper": true,
+      "use": {
+        "kind": "bolt",
+        "projectile": "grenade_round",
+        "speed": 1.25,
+        "gravity": 1.0,
+        "spread": 1.5,
+        "cooldown": 50,
+        "impact": "blast",
+        "blast": {
+          "radius": 3.2,
+          "damage": 7.0,
+          "knock": 0.8
+        },
+        "trail": "smoke"
+      },
+      "ammo": {
+        "item": "grenade_round",
+        "per": 1
+      },
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "harpoon_gun",
+      "name": "Harpoon Gun",
+      "tier": 2,
+      "blurb": "Spears a target and reels it in to you.",
+      "rarity": "uncommon",
+      "stack": 1,
+      "temper": true,
+      "use": {
+        "kind": "bolt",
+        "projectile": "harpoon_bolt",
+        "speed": 2.4,
+        "gravity": 0.1,
+        "spread": 0.3,
+        "cooldown": 110,
+        "impact": "harpoon",
+        "harpoon": {
+          "damage": 5.0,
+          "pull": 1.0
+        },
+        "trail": "crit"
+      },
+      "ammo": {
+        "item": "harpoon_bolt",
+        "per": 1
+      },
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "rail_lance",
+      "name": "Rail Lance",
+      "tier": 3,
+      "blurb": "One enormous shot through up to four targets.",
+      "rarity": "rare",
+      "stack": 1,
+      "temper": true,
+      "use": {
+        "kind": "hitscan",
+        "damage": 16.0,
+        "cooldown": 80,
+        "range": 110,
+        "pierce": 3,
+        "spread": 0.0,
+        "knock": 1.0,
+        "color": "E05CFF",
+        "sound": "rail"
+      },
+      "ammo": {
+        "item": "rail_slug",
+        "per": 1
+      },
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "rocket_launcher",
+      "name": "Rocket Launcher",
+      "tier": 3,
+      "blurb": "A slow rocket with a very large bang.",
+      "rarity": "rare",
+      "stack": 1,
+      "temper": true,
+      "use": {
+        "kind": "bolt",
+        "projectile": "rocket",
+        "speed": 1.2,
+        "gravity": 0.0,
+        "spread": 0.5,
+        "cooldown": 120,
+        "impact": "blast",
+        "blast": {
+          "radius": 4.2,
+          "damage": 13.0,
+          "knock": 1.1
+        },
+        "trail": "flame"
+      },
+      "ammo": {
+        "item": "rocket",
+        "per": 1
+      },
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "grapple_gun",
+      "name": "Grapple Gun",
+      "tier": 1,
+      "blurb": "Fires a line to the block you aim at and hauls you across.",
+      "rarity": "common",
+      "stack": 1,
+      "temper": false,
+      "use": {
+        "kind": "grapple",
+        "cooldown": 45,
+        "range": 42,
+        "speed": 1.1,
+        "max_ticks": 30
+      },
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "smoke_grenade",
+      "name": "Smoke Grenade",
+      "tier": 1,
+      "blurb": "Blinds and slows everyone in the cloud but you.",
+      "rarity": "common",
+      "stack": 8,
+      "temper": false,
+      "use": {
+        "kind": "bolt",
+        "projectile": "smoke_grenade",
+        "speed": 0.9,
+        "gravity": 1.0,
+        "spread": 1.0,
+        "cooldown": 40,
+        "consume": true,
+        "impact": "smoke",
+        "smoke": {
+          "radius": 5.0,
+          "ticks": 160
+        }
+      },
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "emp_grenade",
+      "name": "EMP Grenade",
+      "tier": 2,
+      "blurb": "Knocks every bender it reaches off their abilities for six seconds.",
+      "rarity": "uncommon",
+      "stack": 4,
+      "temper": false,
+      "use": {
+        "kind": "bolt",
+        "projectile": "emp_grenade",
+        "speed": 0.9,
+        "gravity": 1.0,
+        "spread": 1.0,
+        "cooldown": 60,
+        "consume": true,
+        "impact": "emp",
+        "emp": {
+          "radius": 6.5,
+          "bender_ms": 6000,
+          "slow_ticks": 60
+        }
+      },
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "stim_pack",
+      "name": "Stim Pack",
+      "tier": 1,
+      "blurb": "Heals at once and keeps healing for a few seconds.",
+      "rarity": "common",
+      "stack": 4,
+      "temper": false,
+      "use": {
+        "kind": "stim",
+        "cooldown": 40,
+        "heal": 6.0,
+        "regen_ticks": 100,
+        "regen_amp": 1,
+        "consume": true
+      },
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "proximity_mine",
+      "name": "Proximity Mine",
+      "tier": 2,
+      "blurb": "Set it down; it arms after a moment and goes off for whoever comes near.",
+      "rarity": "uncommon",
+      "stack": 4,
+      "temper": false,
+      "use": {
+        "kind": "mine",
+        "cooldown": 20,
+        "arm_ticks": 30,
+        "trigger_radius": 2.2,
+        "max": 3,
+        "life": 3600,
+        "consume": true,
+        "blast": {
+          "radius": 3.4,
+          "damage": 9.0,
+          "knock": 0.9
+        }
+      },
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "barrier_emitter",
+      "name": "Barrier Emitter",
+      "tier": 2,
+      "blurb": "A burst of absorption and resistance, drawn from a power cell.",
+      "rarity": "uncommon",
+      "stack": 1,
+      "temper": false,
+      "use": {
+        "kind": "barrier",
+        "cooldown": 800,
+        "absorption_amp": 1,
+        "absorption_ticks": 240,
+        "resistance_ticks": 120
+      },
+      "ammo": {
+        "charge": 5,
+        "cell": "power_cell"
+      },
+      "base": "minecraft:stick"
+    },
+    {
+      "id": "sentry_turret",
+      "name": "Sentry Turret",
+      "tier": 3,
+      "blurb": "Deploys a turret that shoots anything hostile near it for twenty-five seconds.",
+      "rarity": "rare",
+      "stack": 1,
+      "temper": false,
+      "use": {
+        "kind": "turret",
+        "cooldown": 900,
+        "ticks": 500,
+        "range": 14.0,
+        "every": 8,
+        "damage": 1.6,
+        "max": 1
+      },
+      "ammo": {
+        "charge": 6,
+        "cell": "power_cell"
+      },
+      "base": "minecraft:stick"
+    }
+  ]
+}

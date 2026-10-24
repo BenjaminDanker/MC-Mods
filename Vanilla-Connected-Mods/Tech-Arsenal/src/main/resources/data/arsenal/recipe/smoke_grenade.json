@@ -1,0 +1,23 @@
+{
+  "fabric:load_conditions": [
+    {
+      "condition": "fabric:all_mods_loaded",
+      "values": [
+        "polyfactory"
+      ]
+    }
+  ],
+  "type": "minecraft:crafting_shapeless",
+  "category": "equipment",
+  "ingredients": [
+    "minecraft:gunpowder",
+    "polyfactory:coal_dust",
+    "polyfactory:coal_dust",
+    "polyfactory:sulfur_dust",
+    "minecraft:paper"
+  ],
+  "result": {
+    "id": "arsenal:smoke_grenade",
+    "count": 2
+  }
+}

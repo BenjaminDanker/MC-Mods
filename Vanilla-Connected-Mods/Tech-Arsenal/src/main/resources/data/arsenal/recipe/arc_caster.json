@@ -1,0 +1,27 @@
+{
+  "fabric:load_conditions": [
+    {
+      "condition": "fabric:all_mods_loaded",
+      "values": [
+        "polyfactory"
+      ]
+    }
+  ],
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    "KRK",
+    "CXC",
+    " s "
+  ],
+  "key": {
+    "C": "polyfactory:integrated_circuit",
+    "K": "polyfactory:copper_plate",
+    "R": "polyfactory:redstone_chip",
+    "X": "polyfactory:generic_machine_part",
+    "s": "minecraft:stick"
+  },
+  "result": {
+    "id": "arsenal:arc_caster"
+  }
+}

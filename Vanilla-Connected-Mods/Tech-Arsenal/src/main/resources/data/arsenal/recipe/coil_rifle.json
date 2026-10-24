@@ -1,0 +1,28 @@
+{
+  "fabric:load_conditions": [
+    {
+      "condition": "fabric:all_mods_loaded",
+      "values": [
+        "polyfactory"
+      ]
+    }
+  ],
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    "PPK",
+    "CXI",
+    " s "
+  ],
+  "key": {
+    "C": "polyfactory:integrated_circuit",
+    "I": "polyfactory:steel_ingot",
+    "K": "polyfactory:copper_plate",
+    "P": "polyfactory:steel_plate",
+    "X": "polyfactory:generic_machine_part",
+    "s": "minecraft:stick"
+  },
+  "result": {
+    "id": "arsenal:coil_rifle"
+  }
+}

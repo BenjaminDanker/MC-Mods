@@ -1,0 +1,22 @@
+{
+  "fabric:load_conditions": [
+    {
+      "condition": "fabric:all_mods_loaded",
+      "values": [
+        "polyfactory"
+      ]
+    }
+  ],
+  "type": "minecraft:crafting_shapeless",
+  "category": "equipment",
+  "ingredients": [
+    "arsenal:vibro_blade",
+    "polyfactory:integrated_circuit",
+    "polyfactory:integrated_circuit",
+    "polyfactory:copper_plate",
+    "polyfactory:copper_plate"
+  ],
+  "result": {
+    "id": "arsenal:arc_saber"
+  }
+}

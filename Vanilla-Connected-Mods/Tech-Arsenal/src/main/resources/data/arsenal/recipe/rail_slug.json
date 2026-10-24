@@ -1,0 +1,22 @@
+{
+  "fabric:load_conditions": [
+    {
+      "condition": "fabric:all_mods_loaded",
+      "values": [
+        "polyfactory"
+      ]
+    }
+  ],
+  "type": "minecraft:crafting_shapeless",
+  "category": "equipment",
+  "ingredients": [
+    "polyfactory:steel_ingot",
+    "polyfactory:ender_dust",
+    "polyfactory:redstone_chip",
+    "polyfactory:redstone_chip"
+  ],
+  "result": {
+    "id": "arsenal:rail_slug",
+    "count": 4
+  }
+}

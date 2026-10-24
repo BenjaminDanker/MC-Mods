@@ -1,0 +1,22 @@
+{
+  "fabric:load_conditions": [
+    {
+      "condition": "fabric:all_mods_loaded",
+      "values": [
+        "polyfactory"
+      ]
+    }
+  ],
+  "type": "minecraft:crafting_shapeless",
+  "category": "equipment",
+  "ingredients": [
+    "arsenal:chain_cleaver",
+    "polyfactory:large_steel_gear",
+    "polyfactory:large_steel_gear",
+    "polyfactory:integrated_circuit",
+    "polyfactory:integrated_circuit"
+  ],
+  "result": {
+    "id": "arsenal:rotary_cutter"
+  }
+}

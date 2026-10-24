@@ -1,0 +1,22 @@
+{
+  "fabric:load_conditions": [
+    {
+      "condition": "fabric:all_mods_loaded",
+      "values": [
+        "polyfactory",
+        "magitech"
+      ]
+    }
+  ],
+  "type": "minecraft:crafting_shapeless",
+  "category": "equipment",
+  "ingredients": [
+    "arsenal:monowire_whip",
+    "magitech:deepsteel_ingot",
+    "magitech:deepsteel_ingot",
+    "magitech:deepsteel_ingot"
+  ],
+  "result": {
+    "id": "arsenal:monowire_whip_tempered"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "fabric:load_conditions": [
+    {
+      "condition": "fabric:all_mods_loaded",
+      "values": [
+        "polyfactory"
+      ]
+    }
+  ],
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    "PPP",
+    "GXh",
+    "  s"
+  ],
+  "key": {
+    "G": "polyfactory:steel_gear",
+    "P": "polyfactory:steel_plate",
+    "X": "polyfactory:generic_machine_part",
+    "h": "minecraft:hopper",
+    "s": "minecraft:stick"
+  },
+  "result": {
+    "id": "arsenal:grenade_launcher"
+  }
+}

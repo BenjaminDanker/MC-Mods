@@ -1,0 +1,27 @@
+{
+  "fabric:load_conditions": [
+    {
+      "condition": "fabric:all_mods_loaded",
+      "values": [
+        "polyfactory"
+      ]
+    }
+  ],
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    "PCP",
+    "KEK",
+    " G "
+  ],
+  "key": {
+    "C": "polyfactory:integrated_circuit",
+    "E": "polyfactory:ender_dust",
+    "G": "polyfactory:steel_gear",
+    "K": "polyfactory:copper_plate",
+    "P": "polyfactory:steel_plate"
+  },
+  "result": {
+    "id": "arsenal:barrier_emitter"
+  }
+}

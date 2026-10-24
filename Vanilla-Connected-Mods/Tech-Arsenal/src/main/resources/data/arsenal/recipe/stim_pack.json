@@ -1,0 +1,22 @@
+{
+  "fabric:load_conditions": [
+    {
+      "condition": "fabric:all_mods_loaded",
+      "values": [
+        "polyfactory"
+      ]
+    }
+  ],
+  "type": "minecraft:crafting_shapeless",
+  "category": "equipment",
+  "ingredients": [
+    "polyfactory:copper_plate",
+    "polyfactory:copper_plate",
+    "minecraft:glistering_melon_slice",
+    "polyfactory:steel_nugget"
+  ],
+  "result": {
+    "id": "arsenal:stim_pack",
+    "count": 2
+  }
+}

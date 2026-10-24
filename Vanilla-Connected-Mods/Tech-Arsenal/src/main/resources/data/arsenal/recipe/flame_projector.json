@@ -1,0 +1,28 @@
+{
+  "fabric:load_conditions": [
+    {
+      "condition": "fabric:all_mods_loaded",
+      "values": [
+        "polyfactory"
+      ]
+    }
+  ],
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    "PPb",
+    "hXD",
+    "  s"
+  ],
+  "key": {
+    "D": "polyfactory:coal_dust",
+    "P": "polyfactory:steel_plate",
+    "X": "polyfactory:generic_machine_part",
+    "b": "minecraft:blaze_powder",
+    "h": "minecraft:hopper",
+    "s": "minecraft:stick"
+  },
+  "result": {
+    "id": "arsenal:flame_projector"
+  }
+}

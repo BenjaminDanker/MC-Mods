@@ -1,0 +1,22 @@
+{
+  "fabric:load_conditions": [
+    {
+      "condition": "fabric:all_mods_loaded",
+      "values": [
+        "polyfactory"
+      ]
+    }
+  ],
+  "type": "minecraft:crafting_shapeless",
+  "category": "equipment",
+  "ingredients": [
+    "arsenal:grenade_launcher",
+    "polyfactory:large_steel_gear",
+    "polyfactory:large_steel_gear",
+    "polyfactory:generic_machine_part",
+    "polyfactory:generic_machine_part"
+  ],
+  "result": {
+    "id": "arsenal:rocket_launcher"
+  }
+}

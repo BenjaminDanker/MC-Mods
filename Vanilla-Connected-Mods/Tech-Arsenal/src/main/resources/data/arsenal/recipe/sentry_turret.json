@@ -1,0 +1,27 @@
+{
+  "fabric:load_conditions": [
+    {
+      "condition": "fabric:all_mods_loaded",
+      "values": [
+        "polyfactory"
+      ]
+    }
+  ],
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    "PgP",
+    "CXC",
+    "PGP"
+  ],
+  "key": {
+    "C": "polyfactory:integrated_circuit",
+    "G": "polyfactory:steel_gear",
+    "P": "polyfactory:steel_plate",
+    "X": "polyfactory:generic_machine_part",
+    "g": "polyfactory:large_steel_gear"
+  },
+  "result": {
+    "id": "arsenal:sentry_turret"
+  }
+}
