@@ -35,6 +35,14 @@ Or, use this project's wrapper:
 .\gradlew.bat run --args='--world C:\Users\bsd20\world'
 ```
 
+No build is needed: the tool is one source file that uses only the JDK, so Java 25 runs it directly.
+On primary-ram, stop the server first, then:
+
+```bash
+java ~/repos/MC-Mods/Util-Mods/OpenPAC-World-Pruner/src/main/java/com/silver/openpacpruner/Main.java \
+  --world ~/mc-servers/cave/world --dry-run
+```
+
 Options: `--world <path>`, `--ignore-overworld`, `--ignore-nether`, `--ignore-end`,
 repeatable `--ignore-dimension <namespace:path>`, `--allow-empty-claims`, and
 `--dry-run`. A dry run never prompts or changes files, and prints totals plus small
@@ -44,5 +52,5 @@ For a direct manual spot check, add repeatable
 `--check-chunk <namespace:path> <chunk-x> <chunk-z>`. For example:
 
 ```powershell
-.\gradlew.bat run --args='--world C:\copied\vanilla1 --dry-run --check-chunk minecraft:overworld -33 -33'
+.\gradlew.bat run --args='--world C:\copied\vanilla --dry-run --check-chunk minecraft:overworld -33 -33'
 ```
