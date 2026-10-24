@@ -11,6 +11,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class OpenAiDialogueProviderTest {
     private static final String TOKEN = "test-openai-key";
@@ -55,7 +56,7 @@ class OpenAiDialogueProviderTest {
                     UUID.randomUUID(), new DialoguePrompt("Pet context and instructions", 5,
                             com.silver.aipets.common.transport.DialogueContextUsageWire.empty(),
                             java.util.Optional.of("I was thinking about going back there.")),
-                    DialogueStructuredSchema.JSON_SCHEMA, Duration.ofSeconds(2));
+                    DialogueStructuredSchema.VOICE_JSON_SCHEMA, Duration.ofSeconds(2));
             assertEquals(OUTPUT, result.structuredJson());
             assertEquals(42, result.inputTokens());
             assertEquals(4, result.cachedInputTokens());
@@ -69,48 +70,94 @@ class OpenAiDialogueProviderTest {
         }
     }
 
-    @Test
-    void moderationFailsClosedOnFlaggedResult() throws Exception {
+    private static HttpServer moderationServer(int status, String body) throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1/moderations", exchange -> {
-            byte[] response = "{\"results\":[{\"flagged\":true}]}".getBytes();
-            exchange.sendResponseHeaders(200, response.length);
-            exchange.getResponseBody().write(response);
+            byte[] response = body.getBytes();
+            exchange.sendResponseHeaders(status, status == 200 ? response.length : 0);
+            if (status == 200) exchange.getResponseBody().write(response);
             exchange.close();
         });
         server.start();
+        return server;
+    }
+
+    private static OpenAiModerationClient moderation(HttpServer server) {
+        return new OpenAiModerationClient(URI.create("http://127.0.0.1:" + server.getAddress().getPort()),
+                "omni-moderation-latest", TOKEN, Duration.ofSeconds(2));
+    }
+
+    private static String categories(String... on) {
+        java.util.Set<String> enabled = java.util.Set.of(on);
+        StringBuilder out = new StringBuilder("{\"results\":[{\"flagged\":true,\"categories\":{");
+        boolean first = true;
+        for (String name : OpenAiModerationClient.KNOWN_CATEGORIES.stream().sorted().toList()) {
+            if (!first) out.append(',');
+            out.append('"').append(name).append("\":").append(enabled.contains(name));
+            first = false;
+        }
+        return out.append("}}]}").toString();
+    }
+
+    @Test
+    void onlySexualAndHateCategoriesBlockAMessage() throws Exception {
+        for (String blocked : new String[]{"sexual", "sexual/minors", "hate", "hate/threatening"}) {
+            HttpServer server = moderationServer(200, categories(blocked));
+            try {
+                OpenAiModerationClient.ModerationResult result = moderation(server).moderate("x");
+                assertFalse(result.allowed(), blocked);
+                assertTrue(result.available());
+                assertEquals("MODERATION_BLOCKED:" + blocked, result.category());
+            } finally {
+                server.stop(0);
+            }
+        }
+    }
+
+    @Test
+    void selfHarmHarassmentAndViolencePassSoThePetCanRespondOrReact() throws Exception {
+        // The provider marks these "flagged", but they are not blocking categories.
+        HttpServer server = moderationServer(200, categories("self-harm", "self-harm/intent", "harassment", "violence"));
         try {
-            OpenAiModerationClient client = new OpenAiModerationClient(
-                    URI.create("http://127.0.0.1:" + server.getAddress().getPort()),
-                    "omni-moderation-latest", TOKEN, Duration.ofSeconds(2));
-            OpenAiModerationClient.ModerationResult result = client.moderate("unsafe");
-            assertTrue(!result.allowed());
+            OpenAiModerationClient.ModerationResult result = moderation(server).moderate("you useless furball");
+            assertTrue(result.allowed());
             assertTrue(result.available());
-            assertEquals("MODERATION_FLAGGED", result.category());
+            assertEquals("ALLOWED", result.category());
+            assertTrue(new ModeratedDialogueSafety(moderation(server)).preprocess("I feel awful", 500).allowed());
         } finally {
             server.stop(0);
         }
     }
 
     @Test
-    void moderationOutageFailsClosedForLocallySafeMessage() throws Exception {
-        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/v1/moderations", exchange -> {
-            exchange.sendResponseHeaders(503, 0);
-            exchange.close();
-        });
-        server.start();
+    void blockedCategoriesAreConfigurable() throws Exception {
+        HttpServer server = moderationServer(200, categories("harassment"));
         try {
-            OpenAiModerationClient client = new OpenAiModerationClient(
-                    URI.create("http://127.0.0.1:" + server.getAddress().getPort()),
-                    "omni-moderation-latest", TOKEN, Duration.ofSeconds(2));
-            DialogueSafety.SafetyResult result = new ModeratedDialogueSafety(client)
-                    .preprocess("hello pet", 500);
-            assertFalse(result.allowed());
-            assertEquals("MODERATION_UNAVAILABLE", result.category());
+            var client = new OpenAiModerationClient(URI.create("http://127.0.0.1:" + server.getAddress().getPort()),
+                    "omni-moderation-latest", TOKEN, Duration.ofSeconds(2), java.util.Set.of("harassment"));
+            assertFalse(client.moderate("x").allowed());
+            assertThrows(IllegalArgumentException.class, () -> new OpenAiModerationClient(
+                    URI.create("http://127.0.0.1:1"), "m", TOKEN, Duration.ofSeconds(2), java.util.Set.of("nonsense")));
         } finally {
             server.stop(0);
         }
+    }
+
+    @Test
+    void moderationOutageOrBadResponseLetsTheMessageThroughAndIsReported() throws Exception {
+        var metrics = new com.silver.aipets.service.metrics.PetOperationalMetrics();
+        var reporter = new com.silver.aipets.service.provider.AiFallbackReporter(metrics);
+        for (var server : new HttpServer[]{moderationServer(503, ""), moderationServer(200, "{\"results\":[{\"flagged\":true}]}")}) {
+            try {
+                DialogueSafety.SafetyResult result = new ModeratedDialogueSafety(moderation(server), reporter)
+                        .preprocess("hello pet", 500);
+                assertTrue(result.allowed());
+                assertEquals("MODERATION_BYPASSED", result.category());
+            } finally {
+                server.stop(0);
+            }
+        }
+        assertEquals(2, metrics.counter(com.silver.aipets.service.metrics.PetOperationalMetrics.Counter.MODERATION_BYPASSED));
     }
 
     private static String quote(String value) {

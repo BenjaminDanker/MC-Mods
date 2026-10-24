@@ -16,12 +16,14 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import com.silver.aipets.service.billing.AiPricing;
+import com.silver.aipets.service.provider.ProviderTarget;
 
 /** OpenAI Chat Completions client using strict JSON Schema structured output. */
 public final class OpenAiDialogueModelClient implements DialogueModelClient {
     private static final System.Logger LOGGER = System.getLogger(OpenAiDialogueModelClient.class.getName());
     public static final int MAX_COMPLETION_TOKENS = 2000;
     private final HttpClient client;
+    private final ProviderTarget target;
     private final URI endpoint;
     private final String model;
     private final String apiKey;
@@ -29,6 +31,7 @@ public final class OpenAiDialogueModelClient implements DialogueModelClient {
     private final String schemaName;
     private final AiPricing pricing;
     private final String reasoningEffort;
+    private final int maxCompletionTokens;
 
     public OpenAiDialogueModelClient(
             URI baseUri, String model, String apiKey, Duration timeout) {
@@ -50,21 +53,43 @@ public final class OpenAiDialogueModelClient implements DialogueModelClient {
     public OpenAiDialogueModelClient(
             URI baseUri, String model, String apiKey, Duration timeout,
             String schemaName, AiPricing pricing, String reasoningEffort) {
-        Objects.requireNonNull(baseUri, "baseUri");
-        if (baseUri.getHost() == null || !("http".equalsIgnoreCase(baseUri.getScheme())
-                || "https".equalsIgnoreCase(baseUri.getScheme()))) {
-            throw new IllegalArgumentException("baseUri must be an absolute HTTP(S) URI");
-        }
-        this.endpoint = baseUri.resolve("/v1/chat/completions");
+        this(baseUri, model, apiKey, timeout, schemaName, pricing, reasoningEffort, MAX_COMPLETION_TOKENS);
+    }
+
+    /**
+     * @param reasoningEffort none/minimal/low/medium/high, or blank to omit the parameter
+     * @param maxCompletionTokens completion ceiling for this call type
+     */
+    public OpenAiDialogueModelClient(
+            URI baseUri, String model, String apiKey, Duration timeout,
+            String schemaName, AiPricing pricing, String reasoningEffort, int maxCompletionTokens) {
+        this(ProviderTarget.openAi(Objects.requireNonNull(baseUri, "baseUri"), apiKey), model, timeout,
+                schemaName, pricing, reasoningEffort, maxCompletionTokens);
+    }
+
+    /**
+     * The same client serves OpenAI and its OpenRouter fallback: the request body is identical, only the
+     * target (endpoint, key, model id, and how cost is known) differs.
+     */
+    public OpenAiDialogueModelClient(
+            ProviderTarget target, String model, Duration timeout,
+            String schemaName, AiPricing pricing, String reasoningEffort, int maxCompletionTokens) {
+        this.target = Objects.requireNonNull(target, "target");
+        this.endpoint = target.endpoint("chat/completions");
         this.model = bounded(model, "model", 191);
-        this.apiKey = bounded(apiKey, "apiKey", 512);
+        this.apiKey = target.apiKey();
         this.defaultTimeout = positive(timeout, "timeout");
         this.schemaName = bounded(schemaName, "schemaName", 64);
         this.pricing = Objects.requireNonNull(pricing, "pricing");
-        if (!java.util.Set.of("none", "low", "medium", "high").contains(reasoningEffort)) {
+        if (!reasoningEffort.isEmpty()
+                && !java.util.Set.of("none", "minimal", "low", "medium", "high").contains(reasoningEffort)) {
             throw new IllegalArgumentException("reasoningEffort is invalid");
         }
+        if (maxCompletionTokens < 1 || maxCompletionTokens > 8_000) {
+            throw new IllegalArgumentException("maxCompletionTokens is invalid");
+        }
         this.reasoningEffort = reasoningEffort;
+        this.maxCompletionTokens = maxCompletionTokens;
         this.client = HttpClient.newBuilder().connectTimeout(defaultTimeout).build();
     }
 
@@ -83,9 +108,9 @@ public final class OpenAiDialogueModelClient implements DialogueModelClient {
         long serializationStart = System.nanoTime();
         JsonObject body = new JsonObject();
         body.addProperty("model", model);
-        body.addProperty("reasoning_effort", reasoningEffort);
+        if (!reasoningEffort.isEmpty()) body.addProperty("reasoning_effort", reasoningEffort);
         body.add("messages", messages(prompt));
-        body.addProperty("max_completion_tokens", MAX_COMPLETION_TOKENS);
+        body.addProperty("max_completion_tokens", maxCompletionTokens);
         JsonObject responseFormat = new JsonObject();
         responseFormat.addProperty("type", "json_schema");
         JsonObject schema = new JsonObject();
@@ -94,6 +119,12 @@ public final class OpenAiDialogueModelClient implements DialogueModelClient {
         schema.add("schema", parseObject(requiredJsonSchema));
         responseFormat.add("json_schema", schema);
         body.add("response_format", responseFormat);
+        if (target.isFallback()) {
+            // Only route to providers that honor the structured-output parameters.
+            JsonObject routing = new JsonObject();
+            routing.addProperty("require_parameters", true);
+            body.add("provider", routing);
+        }
         String requestBody = body.toString();
         HttpRequest request = HttpRequest.newBuilder(endpoint)
                 .timeout(effectiveTimeout)
@@ -108,7 +139,7 @@ public final class OpenAiDialogueModelClient implements DialogueModelClient {
         DialogueProviderDiagnostics.emit("Provider request: client_request_id=" + requestId
                 + " endpoint=" + endpoint.getScheme() + "://" + endpoint.getHost()
                 + endpoint.getPath() + " model=" + model + " reasoning_effort="
-                + reasoningEffort + " max_completion_tokens=" + MAX_COMPLETION_TOKENS + " stream=false"
+                + reasoningEffort + " max_completion_tokens=" + maxCompletionTokens + " stream=false"
                 + " request_bytes=" + requestBody.getBytes(StandardCharsets.UTF_8).length
                 + " timeout_ms=" + effectiveTimeout.toMillis());
         long transportStarted = System.nanoTime();
@@ -169,16 +200,16 @@ public final class OpenAiDialogueModelClient implements DialogueModelClient {
             DialogueProviderDiagnostics.emit("Provider result: id="
                     + providerId.orElse("<absent>")
                     + " provider_request_id=" + providerRequestId.orElse("<absent>")
-                    + " configured_completion_limit=" + MAX_COMPLETION_TOKENS
+                    + " configured_completion_limit=" + maxCompletionTokens
                     + " finish_reason=" + finish
                     + " token_limit_hit=" + finish.equals("length")
                     + " prompt_tokens=" + input + " cached_prompt_tokens=" + cached
                     + " completion_tokens=" + output + " reasoning_tokens=" + reasoningTokens
                     + " http_elapsed_ms=" + latency
                     + " structured_json_bytes=" + content.getBytes(StandardCharsets.UTF_8).length);
-            LOGGER.log(System.Logger.Level.INFO, "pet_model_completion model=" + model
+            LOGGER.log(System.Logger.Level.INFO, "pet_model_completion provider=" + target.name() + " model=" + model
                     + " request_id=" + providerRequestId.orElse("<absent>")
-                    + " configured_completion_limit=" + MAX_COMPLETION_TOKENS
+                    + " configured_completion_limit=" + maxCompletionTokens
                     + " finish_reason=" + finish + " token_limit_hit=" + finish.equals("length")
                     + " prompt_tokens=" + input + " cached_prompt_tokens=" + cached
                     + " completion_tokens=" + output + " reasoning_tokens=" + reasoningTokens
@@ -186,8 +217,9 @@ public final class OpenAiDialogueModelClient implements DialogueModelClient {
             return new DialogueModelResponse(
                     content,
                     providerId, input, cached, output,
-                    pricing.dialogueCost(input, cached, output), latency, finish,
-                    MAX_COMPLETION_TOKENS, providerRequestId);
+                    target.cost(usage, () -> pricing.dialogueCost(input, cached, output)), latency, finish,
+                    maxCompletionTokens, providerRequestId,
+                    target.isFallback() ? DialogueModelResponse.FALLBACK : DialogueModelResponse.PRIMARY);
         } catch (RuntimeException malformed) {
             throw new IllegalStateException("Dialogue provider response was invalid", malformed);
         }
@@ -199,6 +231,12 @@ public final class OpenAiDialogueModelClient implements DialogueModelClient {
         system.addProperty("role", "system");
         system.addProperty("content", prompt.text());
         messages.add(system);
+        for (DialogueTurn turn : prompt.chatHistory()) {
+            JsonObject item = new JsonObject();
+            item.addProperty("role", turn.role() == DialogueTurn.Role.OWNER ? "user" : "assistant");
+            item.addProperty("content", turn.text());
+            messages.add(item);
+        }
         prompt.currentOwnerMessage().ifPresent(text -> {
             JsonObject owner = new JsonObject();
             owner.addProperty("role", "user");

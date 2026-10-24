@@ -86,8 +86,7 @@ public final class DialogueWireResponder implements PetDialogueHttpHandler.Respo
         DialogueSafety.SafetyResult local = dialogue.preprocessLocally(request.message());
         if (!local.allowed()) return denied(request, "That message cannot be sent.");
         // Start moderation before context SQL/vector retrieval. Its result is kept private.
-        CompletableFuture<DialogueSafety.SafetyResult> moderation = dialogue.moderateAsync(
-                local, java.util.concurrent.ForkJoinPool.commonPool());
+        CompletableFuture<DialogueSafety.SafetyResult> moderation = dialogue.moderateAsync(local);
         Optional<DialogueContext> context;
         try {
             context = contexts.loadSpeculatively(request.ownerUuid(), request.petId(),

@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.silver.aipets.service.billing.AiPricing;
 import com.silver.aipets.service.config.PetServiceConfig;
+import com.silver.aipets.service.provider.ProviderTarget;
 
 import java.io.IOException;
 import java.net.URI;
@@ -16,11 +17,18 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 
-/** OpenAI embeddings client; sends only the bounded text supplied by the embedding boundary. */
+/**
+ * OpenAI embeddings client; sends only the bounded text supplied by the embedding boundary. The same
+ * client serves the OpenRouter fallback (same model, identical vectors): only the target differs.
+ */
 public final class OpenAiEmbeddingModelClient implements EmbeddingModelClient {
     private final HttpClient client;
+    private final ProviderTarget target;
     private final URI endpoint;
+    /** The model name the index records; also what {@link #model()} reports. */
     private final String model;
+    /** The model id sent to the provider (OpenRouter spells it {@code openai/<model>}). */
+    private final String requestModel;
     private final int dimension;
     private final String apiKey;
     private final Duration timeout;
@@ -42,19 +50,26 @@ public final class OpenAiEmbeddingModelClient implements EmbeddingModelClient {
             String apiKey,
             Duration timeout,
             AiPricing pricing) {
-        Objects.requireNonNull(baseUri, "baseUri");
-        if (baseUri.getHost() == null
-                || !("http".equalsIgnoreCase(baseUri.getScheme())
-                || "https".equalsIgnoreCase(baseUri.getScheme()))) {
-            throw new IllegalArgumentException("baseUri must be an absolute HTTP(S) URI");
-        }
-        this.endpoint = baseUri.resolve("/v1/embeddings");
+        this(ProviderTarget.openAi(Objects.requireNonNull(baseUri, "baseUri"), apiKey), model, model,
+                dimension, timeout, pricing);
+    }
+
+    public OpenAiEmbeddingModelClient(
+            ProviderTarget target,
+            String requestModel,
+            String model,
+            int dimension,
+            Duration timeout,
+            AiPricing pricing) {
+        this.target = Objects.requireNonNull(target, "target");
+        this.endpoint = target.endpoint("embeddings");
+        this.requestModel = bounded(requestModel, "requestModel", 191);
         this.model = bounded(model, "model", 191);
         if (dimension < 1 || dimension > 16_384) {
             throw new IllegalArgumentException("dimension must be between 1 and 16384");
         }
         this.dimension = dimension;
-        this.apiKey = bounded(apiKey, "apiKey", 512);
+        this.apiKey = target.apiKey();
         this.timeout = Objects.requireNonNull(timeout, "timeout");
         this.pricing = Objects.requireNonNull(pricing, "pricing");
         if (timeout.isZero() || timeout.isNegative()) {
@@ -90,9 +105,10 @@ public final class OpenAiEmbeddingModelClient implements EmbeddingModelClient {
             throw new IllegalArgumentException("normalizedText length is invalid");
         }
         JsonObject body = new JsonObject();
-        body.addProperty("model", model);
+        body.addProperty("model", requestModel);
         body.addProperty("input", normalizedText);
         body.addProperty("dimensions", dimension);
+        if (target.isFallback()) body.addProperty("encoding_format", "float");
         HttpRequest request = HttpRequest.newBuilder(endpoint)
                 .timeout(timeout)
                 .header("Authorization", "Bearer " + apiKey)
@@ -128,18 +144,17 @@ public final class OpenAiEmbeddingModelClient implements EmbeddingModelClient {
             for (int index = 0; index < values.size(); index++) {
                 vector[index] = values.get(index).getAsFloat();
             }
-            int inputTokens = 0;
             JsonObject usage = root.getAsJsonObject("usage");
-            if (usage != null && usage.has("prompt_tokens")) {
-                inputTokens = integer(usage, "prompt_tokens");
-            }
+            final int inputTokens = usage != null && usage.has("prompt_tokens")
+                    ? integer(usage, "prompt_tokens") : 0;
             long latency = Math.max(0L, Duration.between(started, Instant.now()).toMillis());
             return new EmbeddingModelResponse(
                     new EmbeddingVector(model, vector),
                     Optional.ofNullable(root.get("id"))
                             .filter(element -> element.isJsonPrimitive())
                             .map(element -> element.getAsString()),
-                    inputTokens, pricing.embeddingCost(inputTokens), latency);
+                    inputTokens, target.cost(usage, () -> pricing.embeddingCost(inputTokens)), latency,
+                    target.isFallback() ? "openrouter" : "openai");
         } catch (RuntimeException malformed) {
             if (malformed instanceof VectorStoreUnavailableException unavailable) {
                 throw unavailable;

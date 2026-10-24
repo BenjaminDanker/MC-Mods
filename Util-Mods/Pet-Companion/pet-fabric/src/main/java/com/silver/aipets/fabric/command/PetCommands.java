@@ -241,10 +241,9 @@ public final class PetCommands {
                 && details.budgetUsd() != null
                 && details.remainingUsd() != null) {
             source.sendSuccess(() -> Component.literal(
-                    "Admin quota: " + usd(details.budgetUsd())
-                            + " total • " + usd(details.remainingUsd()) + " remaining"
+                    "Pet budget: " + usd(details.remainingUsd()) + " left of " + usd(details.budgetUsd())
                             + (details.consumedUsd() == null
-                            ? "" : " • " + usd(details.consumedUsd()) + " consumed"))
+                            ? "" : " (" + usd(details.consumedUsd()) + " used)"))
                     .withStyle(ChatFormatting.LIGHT_PURPLE), false);
         }
         if (details.aiAccessEnabled()) {
@@ -252,14 +251,14 @@ public final class PetCommands {
                     "Your subscription is active. " + billingStateText(details))
                     .withStyle(ChatFormatting.GRAY), false);
             source.sendSuccess(() -> Component.empty()
-                    .append(Component.literal("Next action: run /pet portal to manage or cancel billing.")
+                    .append(Component.literal("Manage or cancel your subscription with /pet portal.")
                             .withStyle(ChatFormatting.GRAY)), false);
         } else {
             source.sendSuccess(() -> Component.literal(
                     "No active subscription is linked to this Minecraft account.")
                     .withStyle(ChatFormatting.GRAY), false);
             source.sendSuccess(() -> Component.empty()
-                    .append(Component.literal("Next action: run /pet adopt <cat|dog> <name> to start a subscription.")
+                    .append(Component.literal("Start a subscription with /pet adopt <cat|dog> <name>.")
                             .withStyle(ChatFormatting.GRAY)), false);
         }
     }

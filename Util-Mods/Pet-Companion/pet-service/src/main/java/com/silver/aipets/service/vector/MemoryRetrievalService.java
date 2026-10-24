@@ -127,15 +127,17 @@ public final class MemoryRetrievalService {
                 Optional<UUID> owner = recordEffects ? ownerResolver.apply(query.petId()) : Optional.empty();
                 if (owner.isPresent()) {
                     reservation = budget.tryReserve(
-                            owner.orElseThrow(), pricing.maximumEmbeddingCost(8192),
+                            owner.orElseThrow(), pricing.embeddingHoldUsd(),
                             clock.instant()).orElse(null);
                     if (reservation == null) return MemoryRetrievalResult.degraded();
                 }
                 long embeddingStart = System.nanoTime();
                 EmbeddingModelResponse response = model.embedWithUsage(query.deterministicSearchText());
                 DialogueDiagnostics.elapsed("query_embedding_provider", embeddingStart);
-                actualCost = pricing.embeddingCost(response.inputTokens());
-                if (recordEffects) usageRecorder.record(query.petId(), response, clock.instant(), "SUCCEEDED", null);
+                actualCost = response.estimatedCost();
+                // Paid for whether or not moderation later blocks the turn, so always recorded: this is what
+                // puts query embeddings in the owner's quota. Only recall counters wait for moderation.
+                usageRecorder.record(query.petId(), response, clock.instant(), "SUCCEEDED", null);
                 queryEmbedding = response.embedding();
                 synchronized (queryCache) {
                     if (queryCache.size() >= 64) queryCache.remove(queryCache.keySet().iterator().next());

@@ -112,12 +112,23 @@ public final class JdbcOrganicPetContextReader {
             var root=JsonParser.parseString(json).getAsJsonObject();
             String lower=message.toLowerCase(java.util.Locale.ROOT);
             List<String> result=new ArrayList<>();
+            if (root.has("character") && root.get("character").isJsonArray()) {
+                root.getAsJsonArray("character").forEach(item->{
+                    if (item.isJsonPrimitive() && item.getAsString().length()<=160) result.add("character:"+item.getAsString());
+                });
+            }
+            int characterLines=result.size();
             for (String key:List.of("likes","dislikes","interests","activities","avoidances","goals","voice")) {
                 if (!root.has(key) || !root.get(key).isJsonArray()) continue;
                 root.getAsJsonArray(key).forEach(item->{
-                    if (!item.isJsonPrimitive() || item.getAsString().length()>120 || result.size()>=5) return;
+                    if (!item.isJsonPrimitive() || item.getAsString().length()>120 || result.size()-characterLines>=5) return;
                     String value=item.getAsString();
                     if (key.equals("voice") || sharesCue(lower,value)) result.add(key+":"+value);
+                });
+            }
+            if (root.has("changed") && root.get("changed").isJsonArray()) {
+                root.getAsJsonArray("changed").forEach(item->{
+                    if (item.isJsonPrimitive() && sharesCue(lower,item.getAsString())) result.add("character:"+item.getAsString());
                 });
             }
             return result;

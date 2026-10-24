@@ -64,6 +64,16 @@ public record BehavioralAffect(int valence, int valenceIntensity, int alertness,
             case CURIOSITY -> da += 4 * magnitude;
             case NONE -> { }
         }
+        // Habituation: the same pleasant stimulus again soon is worth less each time (a tenth
+        // "good boy" lands softer than the first). Threats are deliberately excluded; repeated
+        // harm sensitizes instead of fading.
+        String incoming = affect != DialogueAffect.NONE ? affect.name() : signal.type().name();
+        if (pleasant(affect, signal) && incoming.equals(base.trigger)
+                && Duration.between(updatedAt, at).compareTo(HABITUATION_WINDOW) < 0) {
+            dv = (int) Math.round(dv * HABITUATION_FACTOR);
+            da = (int) Math.round(da * HABITUATION_FACTOR);
+            ds = (int) Math.round(ds * HABITUATION_FACTOR);
+        }
         dv = (int) Math.round(dv * temperament * evidence);
         da = (int) Math.round(da * Math.max(.65, temperament) * evidence);
         ds = (int) Math.round(ds * evidence);
@@ -73,6 +83,16 @@ public record BehavioralAffect(int valence, int valenceIntensity, int alertness,
                 updateIntensity(base.socialIntensity, ds), affect != DialogueAffect.NONE ? affect.name() : signal.type().name(),
                 signal.meaningful() ? relatedOwner : base.target, at, causeEvent);
     }
+    private static final Duration HABITUATION_WINDOW = Duration.ofHours(2);
+    private static final double HABITUATION_FACTOR = .6;
+
+    private static boolean pleasant(DialogueAffect affect, RelationshipSignal signal) {
+        return affect == DialogueAffect.BRIGHTER || affect == DialogueAffect.CALMER
+                || affect == DialogueAffect.NONE && (signal.type() == RelationshipSignal.Type.WARMTH
+                        || signal.type() == RelationshipSignal.Type.TRUST
+                        || signal.type() == RelationshipSignal.Type.CURIOSITY);
+    }
+
     public BehavioralAffect decay(Instant at) {
         if (!at.isAfter(updatedAt)) return this;
         double elapsed = Duration.between(updatedAt, at).toMillis() / 1000d;

@@ -7,10 +7,12 @@ import com.silver.aipets.common.domain.PetTraits;
 import java.util.Objects;
 
 /** Values generated exactly once and committed with a new pet. */
-public record AdoptionProfile(PetAppearance appearance, PetTraits traits, PetMood mood) {
+public record AdoptionProfile(
+        PetAppearance appearance, PetTraits traits, PetMood mood, String characterJson) {
     public AdoptionProfile {
         Objects.requireNonNull(appearance, "appearance");
         Objects.requireNonNull(traits, "traits");
         Objects.requireNonNull(mood, "mood");
+        Objects.requireNonNull(characterJson, "characterJson");
     }
 }

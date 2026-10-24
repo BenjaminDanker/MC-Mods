@@ -31,14 +31,14 @@ final class DialoguePromptOrganicStateTest {
                 Duration.ofSeconds(10),new BigDecimal("25"),new BigDecimal("500"),5,Duration.ofMinutes(1));
         var assembled=new DialoguePromptBuilder(limits,tokens).build(context,"I meant the bridge; what do you think?");
         String prompt=assembled.text();
-        assertTrue(prompt.contains("alertness=30/100"));
-        assertTrue(prompt.contains("SELF_MODEL_CUES"));
-        assertTrue(prompt.contains("OPEN_THREADS"));
-        assertTrue(prompt.contains("TENTATIVE_OWNER_INTERPRETATION"));
-        assertTrue(prompt.contains("confidence=0.55"));
-        assertTrue(prompt.contains("source-tagged unfinished activities"));
+        assertTrue(prompt.contains("You're annoyed with your owner. (Because of: wary.)"));
+        assertTrue(prompt.contains("About yourself: interests:riverside paths"));
+        assertTrue(prompt.contains("Still unfinished (your owner told you): Owner said they were building a bridge."));
+        assertTrue(prompt.contains("Your hunch about your owner (could be wrong): REQUEST, feeling CONCERNED."));
         assertEquals("I meant the bridge; what do you think?",assembled.currentOwnerMessage().orElseThrow());
-        assertTrue(prompt.contains("Corrections override older claims"));
-        assertTrue(prompt.contains("Resume only matching open threads"));
+        assertFalse(prompt.contains("thread-1"));
+        String records=new DialoguePromptBuilder(limits,tokens).buildMemory(context,"I meant the bridge; what do you think?").text();
+        assertTrue(records.contains("thread_id=thread-1 state=OPEN version=2"));
+        assertTrue(records.contains("A correction gives the corrected complete summary"));
     }
 }

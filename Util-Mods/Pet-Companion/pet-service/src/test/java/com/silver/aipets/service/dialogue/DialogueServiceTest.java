@@ -50,55 +50,175 @@ final class DialogueServiceTest {
     private static final UUID PET_ID = UUID.fromString("20000000-0000-0000-0000-000000000001");
 
     @Test
-    void speculativeModerationOverlapsLunaAndFlaggedResultIsCancelledAndNeverCommitted() throws Exception {
+    void blockedMessageCommitsNothingButStillBillsTheCallsTheProviderCompletes() throws Exception {
         DialogueLimits limits = limits(4_000, 8, 4, 8, new BigDecimal("50"));
-        MutableClock clock = new MutableClock(START);
         InMemoryDialogueStateStore state = new InMemoryDialogueStateStore();
         state.put(pet(START));
         CompletableFuture<DialogueSafety.SafetyResult> moderation = new CompletableFuture<>();
-        CountDownLatch lunaStarted = new CountDownLatch(1);
-        AtomicBoolean cancellationAttempted = new AtomicBoolean();
+        CountDownLatch bothStarted = new CountDownLatch(2);
+        CompletableFuture<DialogueModelResponse> voiceFuture = new CompletableFuture<>();
+        CompletableFuture<DialogueModelResponse> memoryFuture = new CompletableFuture<>();
         DialogueSafety safety = new DialogueSafety() {
             @Override public SafetyResult preprocess(String input, int maximum) {
-                return preprocessLocal(input, maximum);
-            }
-            @Override public SafetyResult preprocessLocal(String input, int maximum) {
                 return new SafetyResult(true, input.strip(), "ALLOWED");
             }
             @Override public java.util.concurrent.CompletionStage<SafetyResult> moderateAsync(
                     String input, java.util.concurrent.Executor executor) { return moderation; }
         };
-        DialogueModelClient model = new DialogueModelClient() {
-            @Override public String model() { return "test-model"; }
-            @Override public DialogueModelResponse complete(UUID id, DialoguePrompt prompt,
-                    String schema, Duration timeout) { throw new AssertionError("async path expected"); }
-            @Override public CompletableFuture<DialogueModelResponse> completeAsync(UUID id,
-                    DialoguePrompt prompt, String schema, Duration timeout,
-                    java.util.concurrent.Executor executor) {
-                lunaStarted.countDown();
-                return new CompletableFuture<>() {
-                    @Override public boolean cancel(boolean interrupt) {
-                        cancellationAttempted.set(true);
-                        return super.cancel(interrupt);
-                    }
-                };
+        DialogueService service = new DialogueService(limits, safety,
+                new DialoguePromptBuilder(limits, new WordTokenCounter()), pendingModel(bothStarted, voiceFuture),
+                new DialogueOutputCodec(), new DialogueResponseMapper(limits),
+                new DialogueAdmissionController(limits), state, new MutableClock(START),
+                UUID::randomUUID, UUID::randomUUID, () -> true,
+                new com.silver.aipets.service.metrics.PetOperationalMetrics(),
+                Optional.of(pendingModel(bothStarted, memoryFuture)));
+        CompletableFuture<DialogueResult> result = CompletableFuture.supplyAsync(() ->
+                service.respond(UUID.randomUUID(), OWNER, context(state.pet(PET_ID), false, true, START), "tell me about today"));
+        assertTrue(bothStarted.await(2, TimeUnit.SECONDS), "both calls should start while moderation is pending");
+        moderation.complete(new DialogueSafety.SafetyResult(false, "", "MODERATION_BLOCKED:hate"));
+        assertEquals(DialogueResultStatus.UNSAFE_INPUT, result.get(2, TimeUnit.SECONDS).status());
+        assertEquals(0, state.eventCount());
+        assertEquals(50, state.pet(PET_ID).traits().curiosity());
+        // The provider cannot be recalled, so when it finishes it still bills us: both costs are recorded.
+        assertEquals(0, state.usageCount());
+        voiceFuture.complete(new DialogueModelResponse("{}", Optional.of("gen-voice"), 100, 0, 20,
+                new BigDecimal("0.00020000"), 50, "stop", 1000, Optional.of("gen-voice")));
+        memoryFuture.complete(new DialogueModelResponse("{}", Optional.of("gen-memory"), 100, 0, 20,
+                new BigDecimal("0.00005000"), 50, "stop", 600, Optional.of("gen-memory"),
+                DialogueModelResponse.FALLBACK));
+        assertEquals(2, state.usageCount());
+        assertEquals(0, new BigDecimal("0.00025000").compareTo(state.usageCostTotal()));
+        assertEquals(DialogueUsage.Status.REJECTED, state.lastUsage().status());
+        assertEquals("FALLBACK:openrouter:pending-model", state.lastUsage().model());
+        assertEquals(0, state.eventCount());
+    }
+
+    private static DialogueModelClient pendingModel(CountDownLatch started, CompletableFuture<DialogueModelResponse> future) {
+        return new DialogueModelClient() {
+            @Override public String model() { return "pending-model"; }
+            @Override public DialogueModelResponse complete(UUID id, DialoguePrompt prompt, String schema, Duration timeout) {
+                throw new AssertionError("async path expected");
+            }
+            @Override public CompletableFuture<DialogueModelResponse> completeAsync(UUID id, DialoguePrompt prompt,
+                    String schema, Duration timeout, java.util.concurrent.Executor executor) {
+                started.countDown();
+                return future;
             }
         };
+    }
+
+    @Test
+    void moderationThatCannotRunLetsTheMessageThroughAndIsCounted() {
+        DialogueLimits limits = limits(4_000, 8, 4, 8, new BigDecimal("50"));
+        InMemoryDialogueStateStore state = new InMemoryDialogueStateStore();
+        state.put(pet(START));
+        var metrics = new com.silver.aipets.service.metrics.PetOperationalMetrics();
+        DialogueSafety safety = new DialogueSafety() {
+            @Override public SafetyResult preprocess(String input, int maximum) {
+                return new SafetyResult(true, input.strip(), "ALLOWED");
+            }
+            @Override public java.util.concurrent.CompletionStage<SafetyResult> moderateAsync(
+                    String input, java.util.concurrent.Executor executor) {
+                return CompletableFuture.failedFuture(new IllegalStateException("moderation provider down"));
+            }
+        };
+        String voiceJson = "{\"reply\":\"Hmph. Fine.\",\"action\":\"NONE\",\"attention\":\"CALM\","
+                + "\"affect_delta\":\"NONE\",\"affect_strength\":0,\"relationship_event\":{\"type\":\"NONE\",\"strength\":0}}";
         DialogueService service = new DialogueService(limits, safety,
-                new DialoguePromptBuilder(limits, new WordTokenCounter()), model,
+                new DialoguePromptBuilder(limits, new WordTokenCounter()),
+                parallelModel("voice-model", new CountDownLatch(0), voiceJson, new BigDecimal("0.0001"),
+                        DialogueStructuredSchema.VOICE_JSON_SCHEMA),
+                new DialogueOutputCodec(), new DialogueResponseMapper(limits),
+                new DialogueAdmissionController(limits), state, new MutableClock(START),
+                UUID::randomUUID, UUID::randomUUID, () -> true, metrics, Optional.empty());
+        DialogueResult result = service.respond(UUID.randomUUID(), OWNER,
+                context(state.pet(PET_ID), false, true, START), "You're a useless furball.");
+        assertEquals(DialogueResultStatus.SUCCEEDED, result.status());
+        assertEquals(1, metrics.counter(com.silver.aipets.service.metrics.PetOperationalMetrics.Counter.MODERATION_BYPASSED));
+        assertEquals(1, state.eventCount());
+    }
+
+    @Test
+    void voiceAndMemoryCallsOverlapAndTheirResultsAndCostsAreJoined() throws Exception {
+        DialogueLimits limits = limits(4_000, 8, 4, 8, new BigDecimal("50"));
+        MutableClock clock = new MutableClock(START);
+        InMemoryDialogueStateStore state = new InMemoryDialogueStateStore();
+        state.put(pet(START));
+        CountDownLatch bothStarted = new CountDownLatch(2);
+        String voiceJson = "{\"reply\":\"Mm. Birch, then.\",\"action\":\"LOOK_AT_OWNER\","
+                + "\"attention\":\"CALM\",\"affect_delta\":\"NONE\",\"affect_strength\":0,"
+                + "\"relationship_event\":{\"type\":\"NONE\",\"strength\":0}}";
+        String memoryJson = "{\"memory_candidate\":null,"
+                + "\"self_model_candidate\":{\"kind\":\"NONE\",\"value\":null,\"confidence\":0},"
+                + "\"owner_interpretation\":{\"intent\":\"share a building update\",\"emotion\":\"proud\",\"confidence\":0.6}}";
+        DialogueModelClient voice = parallelModel("voice-model", bothStarted, voiceJson, new BigDecimal("0.00020000"),
+                DialogueStructuredSchema.VOICE_JSON_SCHEMA);
+        DialogueModelClient memory = parallelModel("memory-model", bothStarted, memoryJson, new BigDecimal("0.00005000"),
+                DialogueStructuredSchema.MEMORY_JSON_SCHEMA);
+        DialogueService service = new DialogueService(limits, new RuleBasedDialogueSafety(),
+                new DialoguePromptBuilder(limits, new WordTokenCounter()), voice,
                 new DialogueOutputCodec(), new DialogueResponseMapper(limits),
                 new DialogueAdmissionController(limits), state, clock,
-                UUID::randomUUID, UUID::randomUUID);
-        CompletableFuture<DialogueResult> result = CompletableFuture.supplyAsync(() ->
-                service.respond(UUID.randomUUID(), OWNER,
-                        context(state.pet(PET_ID), false, true, START), "tell me about today"));
-        assertTrue(lunaStarted.await(2, TimeUnit.SECONDS), "Luna should start while moderation is pending");
-        moderation.complete(new DialogueSafety.SafetyResult(false, "", "MODERATION_FLAGGED"));
-        assertEquals(DialogueResultStatus.UNSAFE_INPUT, result.get(2, TimeUnit.SECONDS).status());
-        assertTrue(cancellationAttempted.get());
-        assertEquals(0, state.eventCount());
-        assertEquals(0, state.usageCount());
-        assertEquals(50, state.pet(PET_ID).traits().curiosity());
+                UUID::randomUUID, UUID::randomUUID, () -> true,
+                new com.silver.aipets.service.metrics.PetOperationalMetrics(), Optional.of(memory));
+        DialogueResult result = service.respond(UUID.randomUUID(), OWNER,
+                context(state.pet(PET_ID), false, true, START), "I finished the bridge with birch.");
+        assertEquals(DialogueResultStatus.SUCCEEDED, result.status());
+        assertEquals("Mm. Birch, then.", result.output().orElseThrow().reply());
+        assertEquals("share a building update",
+                result.output().orElseThrow().ownerInterpretation().intent().orElseThrow());
+        assertEquals(1, state.eventCount());
+        assertEquals(0, new BigDecimal("0.00025000").compareTo(state.lastUsage().estimatedCost()));
+        assertEquals("voice-model+memory-model", state.lastUsage().model());
+    }
+
+    @Test
+    void failedMemoryCallNeverBlocksTheReply() {
+        DialogueLimits limits = limits(4_000, 8, 4, 8, new BigDecimal("50"));
+        InMemoryDialogueStateStore state = new InMemoryDialogueStateStore();
+        state.put(pet(START));
+        String voiceJson = "{\"reply\":\"Not now.\",\"action\":\"NONE\",\"attention\":\"QUIET\","
+                + "\"affect_delta\":\"NONE\",\"affect_strength\":0,\"relationship_event\":{\"type\":\"NONE\",\"strength\":0}}";
+        DialogueModelClient voice = parallelModel("voice-model", new CountDownLatch(0), voiceJson,
+                new BigDecimal("0.00010000"), DialogueStructuredSchema.VOICE_JSON_SCHEMA);
+        DialogueModelClient memory = new DialogueModelClient() {
+            @Override public String model() { return "memory-model"; }
+            @Override public DialogueModelResponse complete(UUID id, DialoguePrompt prompt, String schema, Duration timeout) {
+                throw new IllegalStateException("provider down");
+            }
+        };
+        DialogueService service = new DialogueService(limits, new RuleBasedDialogueSafety(),
+                new DialoguePromptBuilder(limits, new WordTokenCounter()), voice,
+                new DialogueOutputCodec(), new DialogueResponseMapper(limits),
+                new DialogueAdmissionController(limits), state, new MutableClock(START),
+                UUID::randomUUID, UUID::randomUUID, () -> true,
+                new com.silver.aipets.service.metrics.PetOperationalMetrics(), Optional.of(memory));
+        DialogueResult result = service.respond(UUID.randomUUID(), OWNER,
+                context(state.pet(PET_ID), false, true, START), "Want to play?");
+        assertEquals(DialogueResultStatus.SUCCEEDED, result.status());
+        assertEquals("Not now.", result.output().orElseThrow().reply());
+        assertTrue(result.output().orElseThrow().ownerMemory().isEmpty());
+        assertEquals(0, new BigDecimal("0.00010000").compareTo(state.lastUsage().estimatedCost()));
+    }
+
+    private static DialogueModelClient parallelModel(String name, CountDownLatch bothStarted, String json,
+            BigDecimal cost, String expectedSchema) {
+        return new DialogueModelClient() {
+            @Override public String model() { return name; }
+            @Override public DialogueModelResponse complete(UUID id, DialoguePrompt prompt, String schema, Duration timeout) {
+                assertEquals(expectedSchema, schema);
+                bothStarted.countDown();
+                try {
+                    // Each call waits for the other: a serial implementation would time out here.
+                    assertTrue(bothStarted.await(2, TimeUnit.SECONDS), "voice and memory calls must overlap");
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(interrupted);
+                }
+                return new DialogueModelResponse(json, Optional.of("gen-" + name), 100, 0, 20, cost, 50,
+                        "stop", 1000, Optional.of("gen-" + name));
+            }
+        };
     }
 
     @Test
@@ -130,11 +250,13 @@ final class DialogueServiceTest {
         assertEquals(2, output.proposedMoodDeltas().get(com.silver.aipets.common.domain.MoodDimension.ANXIOUS));
         assertEquals(-1, output.proposedMoodDeltas().get(com.silver.aipets.common.domain.MoodDimension.EXCITED));
         assertTrue(output.proposedTraitDeltas().values().stream().allMatch(delta -> delta == 0));
-        assertTrue(DialogueStructuredSchema.JSON_SCHEMA.contains("affect_delta"));
-        assertFalse(DialogueStructuredSchema.COMPACT_AFFECT_JSON_SCHEMA.contains("relationship_event"));
-        assertTrue(DialogueStructuredSchema.JSON_SCHEMA.contains("relationship_event"));
-        assertTrue(DialogueStructuredSchema.JSON_SCHEMA.contains("\"strength\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":2}"));
-        assertFalse(DialogueStructuredSchema.COMPACT_JSON_SCHEMA.contains("affect_delta"));
+        assertTrue(DialogueStructuredSchema.VOICE_JSON_SCHEMA.contains("affect_delta"));
+        assertTrue(DialogueStructuredSchema.VOICE_JSON_SCHEMA.contains("relationship_event"));
+        assertTrue(DialogueStructuredSchema.VOICE_JSON_SCHEMA.contains("\"strength\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":2}"));
+        // The voice call carries no record-keeping or mode fields; those never reach the pet's voice.
+        assertFalse(DialogueStructuredSchema.VOICE_JSON_SCHEMA.contains("memory_candidate"));
+        assertFalse(DialogueStructuredSchema.VOICE_JSON_SCHEMA.contains("conversation_mode"));
+        assertFalse(DialogueStructuredSchema.MEMORY_JSON_SCHEMA.contains("conversation_mode"));
     }
 
     @Test
@@ -175,14 +297,18 @@ final class DialogueServiceTest {
 
         DialoguePrompt prompt = builder.build(context, "current-owner-message must remain; what happened in memory marker11?");
         assertTrue(prompt.inputTokens() <= 900);
-        assertTrue(prompt.text().contains("IDENTITY_AND_STATE"));
-        assertTrue(prompt.text().contains(PET_ID.toString()));
+        assertTrue(prompt.text().startsWith("You are " + pet.name()));
+        // Record IDs belong to the bookkeeping prompt, never the pet's voice.
+        assertFalse(prompt.text().contains(PET_ID.toString()));
         assertTrue(prompt.currentOwnerMessage().orElseThrow().contains("current-owner-message must remain"));
         assertFalse(prompt.text().contains("current-owner-message must remain"));
         assertTrue(prompt.text().contains("memory marker11"));
         assertFalse(prompt.text().contains("memory marker0"));
-        assertFalse(prompt.text().contains("turn-marker-0"));
-        assertTrue(prompt.text().contains("turn-marker-9"));
+        String history = prompt.chatHistory().stream().map(DialogueTurn::text)
+                .collect(java.util.stream.Collectors.joining("|"));
+        assertFalse(history.contains("turn-marker-0"));
+        assertTrue(history.contains("turn-marker-9"));
+        assertEquals(DialogueTurn.Role.OWNER, prompt.chatHistory().getFirst().role());
         assertTrue(countOccurrences(prompt.text(), "long-marker-") <= 3);
     }
 

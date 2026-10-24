@@ -1,6 +1,7 @@
 package com.silver.aipets.service.consolidation;
 
 import com.silver.aipets.common.domain.Pet;
+import com.silver.aipets.service.dialogue.DialogueModelClient;
 import com.silver.aipets.service.dialogue.DialogueModelResponse;
 import com.silver.aipets.service.dialogue.DialogueUsage;
 import com.silver.aipets.service.memory.LongTermMemoryCard;
@@ -27,7 +28,7 @@ public final class ConsolidationWorker {
     private final SubscriptionAccess subscriptions;
     private final ConsolidationCandidateSelector selector;
     private final ConsolidationPromptBuilder prompts;
-    private final ConsolidationModelClient model;
+    private final DialogueModelClient model;
     private final ConsolidationOutputCodec codec;
     private final ConsolidationOutputValidator validator;
     private final Consumer<LongTermMemoryCard> embeddingEnqueuer;
@@ -45,7 +46,7 @@ public final class ConsolidationWorker {
             SubscriptionAccess subscriptions,
             ConsolidationCandidateSelector selector,
             ConsolidationPromptBuilder prompts,
-            ConsolidationModelClient model,
+            DialogueModelClient model,
             ConsolidationOutputCodec codec,
             ConsolidationOutputValidator validator,
             Consumer<LongTermMemoryCard> embeddingEnqueuer,
@@ -63,7 +64,7 @@ public final class ConsolidationWorker {
             SubscriptionAccess subscriptions,
             ConsolidationCandidateSelector selector,
             ConsolidationPromptBuilder prompts,
-            ConsolidationModelClient model,
+            DialogueModelClient model,
             ConsolidationOutputCodec codec,
             ConsolidationOutputValidator validator,
             Consumer<LongTermMemoryCard> embeddingEnqueuer,
@@ -81,7 +82,7 @@ public final class ConsolidationWorker {
             SubscriptionAccess subscriptions,
             ConsolidationCandidateSelector selector,
             ConsolidationPromptBuilder prompts,
-            ConsolidationModelClient model,
+            DialogueModelClient model,
             ConsolidationOutputCodec codec,
             ConsolidationOutputValidator validator,
             Consumer<LongTermMemoryCard> embeddingEnqueuer,
@@ -101,7 +102,7 @@ public final class ConsolidationWorker {
             SubscriptionAccess subscriptions,
             ConsolidationCandidateSelector selector,
             ConsolidationPromptBuilder prompts,
-            ConsolidationModelClient model,
+            DialogueModelClient model,
             ConsolidationOutputCodec codec,
             ConsolidationOutputValidator validator,
             Consumer<LongTermMemoryCard> embeddingEnqueuer,
@@ -122,7 +123,7 @@ public final class ConsolidationWorker {
             SubscriptionAccess subscriptions,
             ConsolidationCandidateSelector selector,
             ConsolidationPromptBuilder prompts,
-            ConsolidationModelClient model,
+            DialogueModelClient model,
             ConsolidationOutputCodec codec,
             ConsolidationOutputValidator validator,
             Consumer<LongTermMemoryCard> embeddingEnqueuer,
@@ -211,8 +212,7 @@ public final class ConsolidationWorker {
             return;
         }
         AiBudgetService.Reservation reservation = budget.tryReserve(
-                pet.ownerUuid(), pricing.maximumDialogueCost(
-                        config.maximumInputTokens(), 800), now).orElse(null);
+                pet.ownerUuid(), pricing.consolidationHoldUsd(), now).orElse(null);
         if (reservation == null) {
             repository.retry(job, workerId, now, now.plus(Duration.ofHours(1)),
                     "AI_BUDGET_EXHAUSTED");
@@ -366,7 +366,7 @@ public final class ConsolidationWorker {
             DialogueUsage.Status status,
             Optional<String> category) {
         return new DialogueUsage(
-                requestId, requestId, pet.petId(), pet.ownerUuid(), model.model(),
+                requestId, requestId, pet.petId(), pet.ownerUuid(), response.usageModel(model.model()),
                 response.providerId(), response.inputTokens(), response.cachedInputTokens(),
                 response.outputTokens(), response.estimatedCost(), response.latencyMillis(),
                 status, category, at);

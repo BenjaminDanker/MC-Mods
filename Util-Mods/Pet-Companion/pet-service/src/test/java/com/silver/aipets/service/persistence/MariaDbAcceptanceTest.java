@@ -133,6 +133,17 @@ final class MariaDbAcceptanceTest {
                 UUID petId = results.getFirst().pet().orElseThrow().petId();
                 assertTrue(results.stream().allMatch(result -> result.pet().orElseThrow().petId().equals(petId)));
                 assertNotNull(repository.findByOwner(owner).orElseThrow());
+                try (Connection characterConnection = dataSource.getConnection();
+                     PreparedStatement characterRead = characterConnection.prepareStatement(
+                             "SELECT self_model_json, self_model_version FROM pet_traits WHERE pet_id = ?")) {
+                    characterRead.setString(1, petId.toString());
+                    try (var row = characterRead.executeQuery()) {
+                        assertTrue(row.next());
+                        assertTrue(row.getString(1).contains("\"character\""),
+                                "a new pet stores its starting character lines once");
+                        assertEquals(1, row.getLong(2));
+                    }
+                }
 
                 List<CompletableFuture<Boolean>> statusReads = new ArrayList<>();
                 for (int index = 0; index < 32; index++) {

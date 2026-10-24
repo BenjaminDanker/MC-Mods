@@ -7,7 +7,6 @@ import java.util.Map;
 final class WorldLocationContext {
     private static final Map<String, String> REALMS = Map.ofEntries(
             Map.entry("vanilla", "Vanilla world"),
-            Map.entry("vanilla1", "Vanilla world"),
             Map.entry("ocean", "Ocean world"),
             Map.entry("sky-island", "Sky Islands world"),
             Map.entry("sky-islands", "Sky Islands world"),

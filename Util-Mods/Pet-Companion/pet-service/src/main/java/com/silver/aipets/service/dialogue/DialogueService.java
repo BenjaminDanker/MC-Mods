@@ -28,6 +28,15 @@ public final class DialogueService {
     private final Supplier<UUID> eventIds;
     private final BooleanSupplier aiEnabled;
     private final PetOperationalMetrics metrics;
+    private final Optional<DialogueModelClient> memoryModel;
+    /**
+     * Model and moderation calls block on HTTP, so they run on virtual threads: concurrent
+     * conversations never queue behind each other the way they would on the shared common pool
+     * (3 threads on a 4-core host). Admission control still bounds the number in flight.
+     */
+    private static final java.util.concurrent.Executor MODEL_CALLS =
+            java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
+    private final com.silver.aipets.service.provider.AiFallbackReporter fallbackReporter;
 
     public DialogueService(
             DialogueLimits limits,
@@ -77,6 +86,29 @@ public final class DialogueService {
             Supplier<UUID> eventIds,
             BooleanSupplier aiEnabled,
             PetOperationalMetrics metrics) {
+        this(limits, safety, prompts, model, codec, responseMapper, admission, state, clock, callIds,
+                eventIds, aiEnabled, metrics, Optional.empty());
+    }
+
+    /**
+     * @param memoryModel optional structured model for the parallel memory bookkeeping call; without
+     *        it the turn proposes no owner-report memory, self-model evidence, or owner reading
+     */
+    public DialogueService(
+            DialogueLimits limits,
+            DialogueSafety safety,
+            DialoguePromptBuilder prompts,
+            DialogueModelClient model,
+            DialogueOutputCodec codec,
+            DialogueResponseMapper responseMapper,
+            DialogueAdmissionController admission,
+            DialogueStateStore state,
+            Clock clock,
+            Supplier<UUID> callIds,
+            Supplier<UUID> eventIds,
+            BooleanSupplier aiEnabled,
+            PetOperationalMetrics metrics,
+            Optional<DialogueModelClient> memoryModel) {
         this.limits = Objects.requireNonNull(limits, "limits");
         this.safety = Objects.requireNonNull(safety, "safety");
         this.prompts = Objects.requireNonNull(prompts, "prompts");
@@ -90,15 +122,16 @@ public final class DialogueService {
         this.eventIds = Objects.requireNonNull(eventIds, "eventIds");
         this.aiEnabled = Objects.requireNonNull(aiEnabled, "aiEnabled");
         this.metrics = Objects.requireNonNull(metrics, "metrics");
+        this.memoryModel = Objects.requireNonNull(memoryModel, "memoryModel");
+        this.fallbackReporter = new com.silver.aipets.service.provider.AiFallbackReporter(metrics);
     }
 
     public DialogueResult respond(
             UUID requestId, UUID ownerUuid, DialogueContext context, String playerInput) {
         DialogueSafety.SafetyResult safe = preprocessLocally(playerInput);
         if (!safe.allowed()) return deniedUnsafe();
-        java.util.concurrent.CompletableFuture<DialogueSafety.SafetyResult> moderation =
-                moderateAsync(safe, java.util.concurrent.ForkJoinPool.commonPool());
-        return respondPrepared(requestId, ownerUuid, context, safe, moderation);
+        return respondPrepared(requestId, ownerUuid, context, safe,
+                moderateAsync(safe), false);
     }
 
     /** Local gate called before any context or memory retrieval. */
@@ -108,13 +141,13 @@ public final class DialogueService {
 
     /** Begins remote moderation without blocking; its result is not committed to pet state. */
     public java.util.concurrent.CompletableFuture<DialogueSafety.SafetyResult> moderateAsync(
-            DialogueSafety.SafetyResult local, java.util.concurrent.Executor executor) {
+            DialogueSafety.SafetyResult local) {
         Objects.requireNonNull(local, "local");
         if (!local.allowed()) return java.util.concurrent.CompletableFuture.completedFuture(local);
-        return safety.moderateAsync(local.normalizedText(), executor).toCompletableFuture();
+        return safety.moderateAsync(local.normalizedText(), MODEL_CALLS).toCompletableFuture();
     }
 
-    /** Runs after speculative context retrieval. Luna output remains private until moderation passes. */
+    /** Runs after speculative context retrieval. Model output stays private until moderation passes. */
     public DialogueResult respondPrepared(
             UUID requestId, UUID ownerUuid, DialogueContext context,
             DialogueSafety.SafetyResult safe,
@@ -128,10 +161,10 @@ public final class DialogueService {
             java.util.concurrent.CompletableFuture<DialogueSafety.SafetyResult> moderation,
             boolean alreadyQueued) {
         Objects.requireNonNull(requestId, "requestId");
+        Objects.requireNonNull(moderation, "moderation");
         Objects.requireNonNull(ownerUuid, "ownerUuid");
         Objects.requireNonNull(context, "context");
         Objects.requireNonNull(safe, "safe");
-        Objects.requireNonNull(moderation, "moderation");
         if (!aiEnabled.getAsBoolean()) {
             return DialogueResult.denied(
                     DialogueResultStatus.NO_AI_ACCESS, "Your pet is quiet right now. Please try again later.");
@@ -171,9 +204,12 @@ public final class DialogueService {
         }
         DialogueAdmissionController.Permit permit = acquired.permit().orElseThrow();
         DialoguePrompt prompt;
+        Optional<DialoguePrompt> memoryPrompt;
         try {
             long promptStart=System.nanoTime();
             prompt = prompts.build(context, safe.normalizedText());
+            memoryPrompt = memoryModel.isPresent()
+                    ? Optional.of(prompts.buildMemory(context, safe.normalizedText())) : Optional.empty();
             DialogueDiagnostics.elapsed("prompt_assembly",promptStart);
         } catch (RuntimeException failure) {
             permit.rejected();
@@ -182,90 +218,81 @@ public final class DialogueService {
         }
 
         UUID callId = Objects.requireNonNull(callIds.get(), "callIds returned null");
-        DialogueModelResponse response;
-        java.util.concurrent.CompletableFuture<DialogueModelResponse> modelCall = null;
         long modelWaitStart = System.nanoTime();
+        long deadline = modelWaitStart + limits.modelTimeout().toNanos();
+        metrics.increment(PetOperationalMetrics.Counter.DIALOGUE_CALLS);
+        java.util.concurrent.CompletableFuture<DialogueModelResponse> memoryCall = memoryPrompt.map(memory ->
+                memoryModel.orElseThrow().completeAsync(memoryRequestId(requestId), memory,
+                        DialogueStructuredSchema.MEMORY_JSON_SCHEMA, limits.modelTimeout(),
+                        MODEL_CALLS)).orElse(null);
+        java.util.concurrent.CompletableFuture<DialogueModelResponse> voiceCall = model.completeAsync(
+                requestId, prompt, DialogueStructuredSchema.VOICE_JSON_SCHEMA, limits.modelTimeout(),
+                MODEL_CALLS);
+        // Moderation that cannot run lets the message through (reported); it never fails the turn.
+        java.util.concurrent.CompletableFuture<DialogueSafety.SafetyResult> moderationOrBypass = moderation.handle((result, failure) -> {
+            if (failure == null && result != null) return result;
+            fallbackReporter.moderationBypassed(failure == null ? "MODERATION_EMPTY" : failure.getClass().getSimpleName());
+            return new DialogueSafety.SafetyResult(true, safe.normalizedText(), "MODERATION_BYPASSED");
+        });
+        DialogueModelResponse voice;
         try {
-            metrics.increment(PetOperationalMetrics.Counter.DIALOGUE_CALLS);
-            modelCall = model.completeAsync(
-                    requestId, prompt, DialogueStructuredSchema.JSON_SCHEMA, limits.modelTimeout(),
-                    java.util.concurrent.ForkJoinPool.commonPool());
-            java.util.concurrent.CompletableFuture.anyOf(modelCall, moderation)
+            java.util.concurrent.CompletableFuture.anyOf(voiceCall, moderationOrBypass)
                     .get(limits.modelTimeout().toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
-            if (moderation.isDone()) {
-                DialogueSafety.SafetyResult completedModeration = null;
-                try { completedModeration = moderation.join(); }
-                catch (java.util.concurrent.CompletionException | java.util.concurrent.CancellationException ignored) { }
-                if (completedModeration == null || !completedModeration.allowed()) {
-                    cancelSpeculative(requestId, modelCall, "MODERATION_DENIED_OR_UNAVAILABLE");
-                    permit.rejected(BigDecimal.ZERO, clock.instant());
-                    return DialogueResult.denied(DialogueResultStatus.UNSAFE_INPUT,
-                            "That message cannot be sent.");
-                }
+            if (moderationOrBypass.isDone() && !moderationOrBypass.join().allowed()) {
+                abandon(requestId, context, moderationOrBypass.join().category(), voiceCall, memoryCall);
+                fallbackReporter.moderationBlocked();
+                permit.rejected(BigDecimal.ZERO, clock.instant());
+                return deniedUnsafe();
             }
-            response = modelCall.get(limits.modelTimeout().toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
-            DialogueDiagnostics.elapsed("model_request_to_complete_body", modelWaitStart);
-        } catch (RuntimeException failure) {
-            metrics.increment(PetOperationalMetrics.Counter.DIALOGUE_FAILED);
-            Instant failedAt = clock.instant();
-            permit.providerFailed(failedAt);
-            state.recordUsage(failedUsage(
-                    callId, requestId, context, failedAt,
-                    DialogueUsage.Status.FAILED, failure.getClass().getSimpleName()));
-            logModelCall(requestId, context, null, "provider_failure", failure);
-            return DialogueResult.denied(
-                    DialogueResultStatus.PROVIDER_FAILURE, "Your pet cannot find the words right now.");
+            voice = voiceCall.get(limits.modelTimeout().toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
+            DialogueDiagnostics.elapsed("voice_model_complete", modelWaitStart);
         } catch (InterruptedException failure) {
             Thread.currentThread().interrupt();
+            abandon(requestId, context, "INTERRUPTED", voiceCall, memoryCall);
             permit.providerFailed(clock.instant());
             return DialogueResult.denied(DialogueResultStatus.PROVIDER_FAILURE,
                     "Your pet cannot find the words right now.");
-        } catch (java.util.concurrent.ExecutionException failure) {
-            if (moderation.isCompletedExceptionally() || moderation.isCancelled()) {
-                cancelSpeculative(requestId, modelCall, "MODERATION_FAILED");
-                permit.rejected(BigDecimal.ZERO, clock.instant());
-                return DialogueResult.denied(DialogueResultStatus.UNSAFE_INPUT,
-                        "That message cannot be sent.");
-            }
+        } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException
+                 | RuntimeException failure) {
+            abandon(requestId, context, "PROVIDER_FAILURE", voiceCall, memoryCall);
             metrics.increment(PetOperationalMetrics.Counter.DIALOGUE_FAILED);
             Instant failedAt = clock.instant();
             permit.providerFailed(failedAt);
+            Throwable cause = failure instanceof java.util.concurrent.ExecutionException && failure.getCause() != null
+                    ? failure.getCause() : failure;
             state.recordUsage(failedUsage(callId, requestId, context, failedAt,
-                    DialogueUsage.Status.FAILED, failure.getClass().getSimpleName()));
-            logModelCall(requestId, context, null, "provider_failure", new RuntimeException(failure));
-            return DialogueResult.denied(DialogueResultStatus.PROVIDER_FAILURE,
-                    "Your pet cannot find the words right now.");
-        } catch (java.util.concurrent.TimeoutException failure) {
-            cancelSpeculative(requestId, modelCall, "SPECULATIVE_TIMEOUT");
-            moderation.cancel(true);
-            metrics.increment(PetOperationalMetrics.Counter.DIALOGUE_FAILED);
-            Instant failedAt = clock.instant();
-            permit.providerFailed(failedAt);
-            state.recordUsage(failedUsage(callId, requestId, context, failedAt,
-                    DialogueUsage.Status.FAILED, failure.getClass().getSimpleName()));
-            logModelCall(requestId, context, null, "provider_failure", new RuntimeException(failure));
+                    DialogueUsage.Status.FAILED, cause.getClass().getSimpleName()));
+            logModelCall(requestId, context, null, "provider_failure",
+                    cause instanceof RuntimeException runtime ? runtime : new RuntimeException(cause));
             return DialogueResult.denied(DialogueResultStatus.PROVIDER_FAILURE,
                     "Your pet cannot find the words right now.");
         }
-
         DialogueSafety.SafetyResult moderationResult;
         try {
-            moderationResult = moderation.get(limits.modelTimeout().toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
+            moderationResult = moderationOrBypass.get(limits.modelTimeout().toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
         } catch (InterruptedException failure) {
             Thread.currentThread().interrupt();
             moderationResult = new DialogueSafety.SafetyResult(false, "", "MODERATION_INTERRUPTED");
         } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException failure) {
-            moderationResult = new DialogueSafety.SafetyResult(false, "", "MODERATION_UNAVAILABLE");
+            fallbackReporter.moderationBypassed("MODERATION_TIMEOUT");
+            moderationResult = new DialogueSafety.SafetyResult(true, safe.normalizedText(), "MODERATION_BYPASSED");
         }
         if (!moderationResult.allowed()) {
-            boolean cancelled = modelCall != null && modelCall.cancel(true);
+            // The voice call is recorded just below; the memory call may still be in flight.
+            abandon(requestId, context, moderationResult.category(), null, memoryCall);
+            fallbackReporter.moderationBlocked();
             DialogueDiagnostics.event("speculative_dialogue_discarded", requestId,
-                    "moderation=" + moderationResult.category() + " cancel_attempted=" + (modelCall != null)
-                            + " cancel_reported=" + cancelled);
-            permit.rejected(BigDecimal.ZERO, clock.instant());
-            return DialogueResult.denied(DialogueResultStatus.UNSAFE_INPUT,
-                    "That message cannot be sent.");
+                    "moderation=" + moderationResult.category() + " result_always_discarded=true");
+            Instant at = clock.instant();
+            // The voice call was already paid for; keep its cost durable but commit nothing else.
+            permit.rejected(voice.estimatedCost(), at);
+            state.recordUsage(usage(callId, requestId, context, voice, at, DialogueUsage.Status.REJECTED,
+                    Optional.of("MODERATION"), prompt));
+            return deniedUnsafe();
         }
+        Optional<DialogueModelResponse> memory = awaitMemory(requestId, context, memoryCall, deadline);
+        DialogueModelResponse response = combine(voice, memory);
+        DialogueDiagnostics.elapsed("model_request_to_complete_body", modelWaitStart);
 
         ValidatedDialogueOutput output;
         try {
@@ -276,13 +303,15 @@ public final class DialogueService {
                             + " completion_tokens=" + response.outputTokens()
                             + " token_limit_hit=" + response.finishReason().equals("length")
                             + " provider_request_id=" + response.providerRequestId().orElse("<absent>")
-                            + " http_elapsed_ms=" + response.latencyMillis());
+                            + " http_elapsed_ms=" + response.latencyMillis()
+                            + " memory_call=" + (memory.isPresent() ? "used" : memoryCall == null ? "disabled" : "unavailable"));
             if (!response.finishReason().equals("stop")) {
                 throw new DialogueOutputException(response.finishReason().equals("length")
                         ? "Provider response hit the configured completion token limit"
                         : "Provider response did not finish normally", null);
             }
-            if (response.inputTokens() > limits.hardInputTokens()) {
+            // Provider tokenizers differ from the local budget counter; reject only a clear overrun.
+            if (voice.inputTokens() > limits.hardInputTokens() * 3 / 2) {
                 throw new DialogueOutputException("Provider input usage exceeded hard cap", null);
             }
             output = responseMapper.map(
@@ -339,17 +368,147 @@ public final class DialogueService {
         }
     }
 
+    /** The memory call never blocks a reply beyond the shared deadline and never fails the turn. */
+    private Optional<DialogueModelResponse> awaitMemory(UUID requestId, DialogueContext context,
+            java.util.concurrent.CompletableFuture<DialogueModelResponse> memoryCall, long deadlineNanos) {
+        if (memoryCall == null) return Optional.empty();
+        long waitStart = System.nanoTime();
+        try {
+            long remaining = Math.max(1L, deadlineNanos - waitStart);
+            DialogueModelResponse response = memoryCall.get(remaining, java.util.concurrent.TimeUnit.NANOSECONDS);
+            DialogueDiagnostics.elapsed("memory_model_wait_after_voice", waitStart);
+            if (!response.completedNormally()) {
+                DialogueDiagnostics.event("memory_bookkeeping_unavailable", requestId,
+                        "finish_reason=" + safeCategory(response.finishReason()));
+                return Optional.of(costOnly(response));
+            }
+            return Optional.of(response);
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            abandon(requestId, context, "MEMORY_INTERRUPTED", null, memoryCall);
+            return Optional.empty();
+        } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException
+                 | RuntimeException failure) {
+            abandon(requestId, context, "MEMORY_UNAVAILABLE", null, memoryCall);
+            DialogueDiagnostics.event("memory_bookkeeping_unavailable", requestId, failure.getClass().getSimpleName());
+            return Optional.empty();
+        }
+    }
+
+    private static final java.util.Set<String> VOICE_FIELDS = java.util.Set.of(
+            "reply", "action", "attention", "affect_delta", "affect_strength", "relationship_event");
+    private static final java.util.Set<String> MEMORY_FIELDS = java.util.Set.of(
+            "memory_candidate", "self_model_candidate", "owner_interpretation");
+
+    /**
+     * Joins the voice and memory results into the one structured response the codec validates, and
+     * sums their usage so the turn is charged its full provider cost. A missing or malformed memory
+     * result contributes neutral fields; the voice result is never altered.
+     */
+    static DialogueModelResponse combine(DialogueModelResponse voice, Optional<DialogueModelResponse> memory) {
+        String json = voice.structuredJson();
+        try {
+            com.google.gson.JsonElement parsed = com.google.gson.JsonParser.parseString(json);
+            if (parsed.isJsonObject() && parsed.getAsJsonObject().keySet().equals(VOICE_FIELDS)) {
+                com.google.gson.JsonObject merged = parsed.getAsJsonObject().deepCopy();
+                com.google.gson.JsonObject records = memory.filter(DialogueModelResponse::completedNormally)
+                        .flatMap(DialogueService::memoryFields).orElseGet(DialogueService::neutralMemoryFields);
+                records.entrySet().forEach(entry -> merged.add(entry.getKey(), entry.getValue()));
+                json = merged.toString();
+            }
+        } catch (RuntimeException malformed) {
+            // Leave the voice content unchanged; strict decoding reports it as invalid output.
+        }
+        if (memory.isEmpty()) {
+            return new DialogueModelResponse(json, voice.providerId(), voice.inputTokens(),
+                    voice.cachedInputTokens(), voice.outputTokens(), voice.estimatedCost(), voice.latencyMillis(),
+                    voice.finishReason(), voice.configuredCompletionLimit(), voice.providerRequestId(),
+                    voice.provider());
+        }
+        DialogueModelResponse records = memory.orElseThrow();
+        return new DialogueModelResponse(json, voice.providerId(),
+                voice.inputTokens() + records.inputTokens(),
+                voice.cachedInputTokens() + records.cachedInputTokens(),
+                voice.outputTokens() + records.outputTokens(),
+                voice.estimatedCost().add(records.estimatedCost()),
+                Math.max(voice.latencyMillis(), records.latencyMillis()),
+                voice.finishReason(), voice.configuredCompletionLimit(), voice.providerRequestId(),
+                voice.servedByFallback() || records.servedByFallback()
+                        ? DialogueModelResponse.FALLBACK : DialogueModelResponse.PRIMARY);
+    }
+
+    private static Optional<com.google.gson.JsonObject> memoryFields(DialogueModelResponse memory) {
+        try {
+            com.google.gson.JsonElement parsed = com.google.gson.JsonParser.parseString(memory.structuredJson());
+            if (!parsed.isJsonObject() || !parsed.getAsJsonObject().keySet().equals(MEMORY_FIELDS)) {
+                return Optional.empty();
+            }
+            return Optional.of(parsed.getAsJsonObject());
+        } catch (RuntimeException malformed) {
+            return Optional.empty();
+        }
+    }
+
+    private static com.google.gson.JsonObject neutralMemoryFields() {
+        return com.google.gson.JsonParser.parseString("""
+                {"memory_candidate":null,
+                 "self_model_candidate":{"kind":"NONE","value":null,"confidence":0},
+                 "owner_interpretation":{"intent":null,"emotion":null,"confidence":0}}
+                """).getAsJsonObject();
+    }
+
+    /** A truncated memory result still cost money; keep its usage but none of its content. */
+    private static DialogueModelResponse costOnly(DialogueModelResponse response) {
+        return new DialogueModelResponse("{}", response.providerId(), response.inputTokens(),
+                response.cachedInputTokens(), response.outputTokens(), response.estimatedCost(),
+                response.latencyMillis(), response.finishReason(), response.configuredCompletionLimit(),
+                response.providerRequestId(), response.provider());
+    }
+
+    private static UUID memoryRequestId(UUID requestId) {
+        return UUID.nameUUIDFromBytes((requestId + ":memory").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
     private static DialogueResult deniedUnsafe() {
         return DialogueResult.denied(DialogueResultStatus.UNSAFE_INPUT, "That message cannot be sent.");
     }
 
-    private static void cancelSpeculative(UUID requestId,
-            java.util.concurrent.CompletableFuture<?> modelCall, String reason) {
-        boolean attempted = modelCall != null && !modelCall.isDone();
-        boolean cancelled = attempted && modelCall.cancel(true);
-        DialogueDiagnostics.event("speculative_dialogue_discarded", requestId,
-                "reason=" + reason + " cancel_attempted=" + attempted
-                        + " cancel_reported=" + cancelled + " result_always_discarded=true");
+    /**
+     * Stops waiting for model calls the turn no longer needs (moderation blocked it, the reply failed,
+     * or the memory call timed out). An HTTP call cannot be recalled, so the provider may still finish
+     * and bill it: when it does, its real cost is recorded as a REJECTED {@code ai_usage} row with the
+     * reason, so the owner's budget and our ledger never miss spend. Failed calls report no usage.
+     */
+    private void abandon(UUID requestId, DialogueContext context, String reason,
+            java.util.concurrent.CompletableFuture<DialogueModelResponse> voiceCall,
+            java.util.concurrent.CompletableFuture<DialogueModelResponse> memoryCall) {
+        DialogueDiagnostics.event("model_calls_abandoned", requestId, "reason=" + safeCategory(reason)
+                + " voice=" + (voiceCall != null) + " memory=" + (memoryCall != null));
+        billWhenItCompletes(requestId, context, reason, "voice", model.model(), voiceCall);
+        billWhenItCompletes(requestId, context, reason, "memory",
+                memoryModel.map(DialogueModelClient::model).orElse(model.model()), memoryCall);
+    }
+
+    private void billWhenItCompletes(UUID requestId, DialogueContext context, String reason, String part,
+            String modelName, java.util.concurrent.CompletableFuture<DialogueModelResponse> call) {
+        if (call == null) return;
+        UUID usageRequestId = UUID.nameUUIDFromBytes(
+                (requestId + ":abandoned:" + part).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        call.whenComplete((response, failure) -> {
+            if (response == null) return;
+            try {
+                recordUsageMetrics(response);
+                state.recordUsage(new DialogueUsage(UUID.randomUUID(), usageRequestId, context.pet().petId(),
+                        context.pet().ownerUuid(), response.usageModel(modelName), response.providerId(),
+                        response.inputTokens(), response.cachedInputTokens(), response.outputTokens(),
+                        response.estimatedCost(), response.latencyMillis(), DialogueUsage.Status.REJECTED,
+                        Optional.of(safeCategory(reason + "_" + part)), clock.instant()));
+            } catch (RuntimeException unrecorded) {
+                LOGGER.log(System.Logger.Level.ERROR, "ALERT AI_USAGE_UNRECORDED {\"part\":\"" + part
+                        + "\",\"request_id\":\"" + requestId + "\",\"reason\":\"" + safeCategory(reason) + "\"}",
+                        unrecorded);
+            }
+        });
     }
 
     private void recordUsageMetrics(DialogueModelResponse response) {
@@ -384,10 +543,17 @@ public final class DialogueService {
             DialoguePrompt prompt) {
         return new DialogueUsage(
                 callId, requestId, context.pet().petId(), context.pet().ownerUuid(),
-                model.model(), response.providerId(), response.inputTokens(),
+                response.usageModel(usageModel()), response.providerId(), response.inputTokens(),
                 response.cachedInputTokens(), response.outputTokens(), response.estimatedCost(),
                 response.latencyMillis(), status, category.map(DialogueService::safeCategory), at,
                 Optional.of(prompt.contextUsage()));
+    }
+
+    private String usageModel() {
+        String voice = model.model();
+        String name = memoryModel.map(DialogueModelClient::model).filter(memory -> !memory.equals(voice))
+                .map(memory -> voice + "+" + memory).orElse(voice);
+        return name.length() <= 191 ? name : voice;
     }
 
     private static String safeCategory(String category) {

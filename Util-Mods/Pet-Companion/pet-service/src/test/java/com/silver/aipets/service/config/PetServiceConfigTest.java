@@ -150,8 +150,40 @@ class PetServiceConfigTest {
         assertEquals("http://127.0.0.1:6333", qdrantConfig.qdrantUri().toString());
         assertEquals("aipets_test", qdrantConfig.qdrantCollection());
         assertEquals(1536, qdrantConfig.qdrantDimension());
-        assertFalse(qdrantConfig.toString().contains("qdrant-test-secret"));
+        assertEquals("text-embedding-3-small", qdrantConfig.embeddingModel());
+        assertEquals("gpt-6-luna", qdrantConfig.dialogueModel());
+        assertEquals("omni-moderation-latest", qdrantConfig.moderationModel());
+        assertFalse(qdrantConfig.openRouterFallback());
         assertFalse(qdrantConfig.toString().contains("openai-test-secret"));
+
+        assertEquals(java.util.Set.of("sexual", "sexual/minors", "hate", "hate/threatening"),
+                qdrantConfig.moderationBlockedCategories());
+        Map<String, String> categories = new HashMap<>(qdrant);
+        categories.put(PetServiceConfig.MODERATION_BLOCKED_CATEGORIES_ENV, "sexual, hate");
+        assertEquals(java.util.Set.of("sexual", "hate"),
+                PetServiceConfig.fromEnvironment(categories).moderationBlockedCategories());
+        categories.put(PetServiceConfig.MODERATION_BLOCKED_CATEGORIES_ENV, "sexual,nonsense");
+        assertThrows(IllegalArgumentException.class, () -> PetServiceConfig.fromEnvironment(categories));
+
+        // An OpenRouter key turns on the same-model chat fallback unless it is switched off.
+        Map<String, String> fallback = new HashMap<>(qdrant);
+        fallback.put(PetServiceConfig.OPENROUTER_API_KEY_ENV, "openrouter-test-secret");
+        PetServiceConfig fallbackConfig = PetServiceConfig.fromEnvironment(fallback);
+        assertEquals(true, fallbackConfig.openRouterFallback());
+        assertEquals("openai/gpt-6-luna", PetServiceConfig.openRouterModel(fallbackConfig.dialogueModel()));
+        assertFalse(fallbackConfig.toString().contains("openrouter-test-secret"));
+        fallback.put(PetServiceConfig.OPENROUTER_FALLBACK_ENV, "false");
+        assertFalse(PetServiceConfig.fromEnvironment(fallback).openRouterFallback());
+        // The OpenRouter spelling of an OpenAI model is accepted; another vendor's model is not.
+        Map<String, String> spelling = new HashMap<>(qdrant);
+        spelling.put(PetServiceConfig.DIALOGUE_MODEL_ENV, "openai/gpt-6-luna");
+        assertEquals("gpt-6-luna", PetServiceConfig.fromEnvironment(spelling).dialogueModel());
+        spelling.put(PetServiceConfig.DIALOGUE_MODEL_ENV, "deepseek/deepseek-v4-pro");
+        assertThrows(IllegalArgumentException.class, () -> PetServiceConfig.fromEnvironment(spelling));
+
+        Map<String, String> missingKey = new HashMap<>(qdrant);
+        missingKey.remove(PetServiceConfig.OPENAI_API_KEY_ENV);
+        assertThrows(IllegalArgumentException.class, () -> PetServiceConfig.fromEnvironment(missingKey));
         qdrant.put(PetServiceConfig.CONSOLIDATION_ENABLED_ENV, "true");
         qdrant.put(PetServiceConfig.CONSOLIDATION_MODEL_ENV, "gpt-5.6-luna");
         PetServiceConfig consolidationConfig = PetServiceConfig.fromEnvironment(qdrant);

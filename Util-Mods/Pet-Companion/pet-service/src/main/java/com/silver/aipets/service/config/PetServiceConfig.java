@@ -42,17 +42,45 @@ public final class PetServiceConfig {
     public static final String QDRANT_DIMENSION_ENV = "PET_QDRANT_DIMENSION";
     public static final String QDRANT_API_KEY_ENV = "PET_QDRANT_API_KEY";
     public static final String QDRANT_TIMEOUT_MS_ENV = "PET_QDRANT_TIMEOUT_MS";
+    /** OpenAI is the primary provider for chat, moderation, and embeddings. */
     public static final String OPENAI_API_KEY_ENV = "PET_OPENAI_API_KEY";
     public static final String OPENAI_BASE_URL_ENV = "PET_OPENAI_BASE_URL";
+    public static final String MODERATION_MODEL_ENV = "PET_MODERATION_MODEL";
+    /** Comma-separated omni-moderation categories that block a message; everything else passes. */
+    public static final String MODERATION_BLOCKED_CATEGORIES_ENV = "PET_MODERATION_BLOCKED_CATEGORIES";
+    /**
+     * Optional OpenRouter key. When present (and PET_OPENROUTER_FALLBACK is not "false") a failed
+     * OpenAI chat call is retried once on the same model through OpenRouter, charged at OpenRouter's
+     * reported cost.
+     */
+    public static final String OPENROUTER_API_KEY_ENV = "PET_OPENROUTER_API_KEY";
+    public static final String OPENROUTER_BASE_URL_ENV = "PET_OPENROUTER_BASE_URL";
+    public static final String OPENROUTER_FALLBACK_ENV = "PET_OPENROUTER_FALLBACK";
     public static final String EMBEDDING_MODEL_ENV = "PET_EMBEDDING_MODEL";
     public static final String EMBEDDING_DIMENSION_ENV = "PET_EMBEDDING_DIMENSION";
     public static final String DIALOGUE_ENABLED_ENV = "PET_DIALOGUE_ENABLED";
     public static final String DIALOGUE_MODEL_ENV = "PET_DIALOGUE_MODEL";
-    public static final String MODERATION_MODEL_ENV = "PET_MODERATION_MODEL";
+    public static final String DIALOGUE_REASONING_EFFORT_ENV = "PET_DIALOGUE_REASONING_EFFORT";
     public static final String DIALOGUE_TIMEOUT_MS_ENV = "PET_DIALOGUE_TIMEOUT_MS";
     public static final String DIALOGUE_DAILY_REPLY_CAP_ENV = "PET_DIALOGUE_DAILY_REPLY_CAP";
     public static final String CONSOLIDATION_ENABLED_ENV = "PET_CONSOLIDATION_ENABLED";
     public static final String CONSOLIDATION_MODEL_ENV = "PET_CONSOLIDATION_MODEL";
+    public static final String PLANNER_MODEL_ENV = "PET_PLANNER_MODEL";
+    /** Structured model for the per-turn memory bookkeeping call; blank disables it. */
+    public static final String MEMORY_MODEL_ENV = "PET_MEMORY_MODEL";
+    /** USD per one million tokens for OpenAI calls, which report tokens but not dollars. */
+    public static final String AI_PRICE_DIALOGUE_INPUT_ENV = "PET_AI_PRICE_DIALOGUE_INPUT_PER_MILLION";
+    public static final String AI_PRICE_DIALOGUE_CACHED_ENV = "PET_AI_PRICE_DIALOGUE_CACHED_PER_MILLION";
+    public static final String AI_PRICE_DIALOGUE_OUTPUT_ENV = "PET_AI_PRICE_DIALOGUE_OUTPUT_PER_MILLION";
+    public static final String AI_PRICE_EMBEDDING_INPUT_ENV = "PET_AI_PRICE_EMBEDDING_INPUT_PER_MILLION";
+    public static final String AI_HOLD_DIALOGUE_USD_ENV = "PET_AI_HOLD_DIALOGUE_USD";
+    public static final String AI_HOLD_CONSOLIDATION_USD_ENV = "PET_AI_HOLD_CONSOLIDATION_USD";
+    public static final String AI_HOLD_PLANNING_USD_ENV = "PET_AI_HOLD_PLANNING_USD";
+    public static final String AI_HOLD_EMBEDDING_USD_ENV = "PET_AI_HOLD_EMBEDDING_USD";
+    public static final String DEFAULT_CHAT_MODEL = "gpt-6-luna";
+    public static final String DEFAULT_MODERATION_MODEL = "omni-moderation-latest";
+    public static final String DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small";
+    public static final int DEFAULT_EMBEDDING_DIMENSION = 1_536;
 
     private final String bindAddress;
     private final int port;
@@ -90,15 +118,22 @@ public final class PetServiceConfig {
     private final long qdrantTimeoutMs;
     private final String openAiApiKey;
     private final URI openAiBaseUri;
+    private final String openRouterApiKey;
+    private final URI openRouterBaseUri;
+    private final boolean openRouterFallback;
+    private final String moderationModel;
+    private final java.util.Set<String> moderationBlockedCategories;
     private final String embeddingModel;
     private final int embeddingDimension;
     private final boolean dialogueEnabled;
     private final String dialogueModel;
-    private final String moderationModel;
     private final long dialogueTimeoutMs;
     private final int dialogueDailyReplyCap;
     private final boolean consolidationEnabled;
     private final String consolidationModel;
+    private final String plannerModel;
+    private final String memoryModel;
+    private final String dialogueReasoningEffort;
 
     private PetServiceConfig(
             String bindAddress,
@@ -137,15 +172,22 @@ public final class PetServiceConfig {
             long qdrantTimeoutMs,
             String openAiApiKey,
             URI openAiBaseUri,
+            String openRouterApiKey,
+            URI openRouterBaseUri,
+            boolean openRouterFallback,
             String embeddingModel,
             int embeddingDimension,
             boolean dialogueEnabled,
             String dialogueModel,
             String moderationModel,
+            java.util.Set<String> moderationBlockedCategories,
             long dialogueTimeoutMs,
             int dialogueDailyReplyCap,
             boolean consolidationEnabled,
-            String consolidationModel) {
+            String consolidationModel,
+            String plannerModel,
+            String memoryModel,
+            String dialogueReasoningEffort) {
         this.bindAddress = bindAddress;
         this.port = port;
         this.backlog = backlog;
@@ -182,15 +224,22 @@ public final class PetServiceConfig {
         this.qdrantTimeoutMs = qdrantTimeoutMs;
         this.openAiApiKey = openAiApiKey;
         this.openAiBaseUri = openAiBaseUri;
+        this.openRouterApiKey = openRouterApiKey;
+        this.openRouterBaseUri = openRouterBaseUri;
+        this.openRouterFallback = openRouterFallback;
+        this.moderationModel = moderationModel;
+        this.moderationBlockedCategories = java.util.Set.copyOf(moderationBlockedCategories);
         this.embeddingModel = embeddingModel;
         this.embeddingDimension = embeddingDimension;
         this.dialogueEnabled = dialogueEnabled;
         this.dialogueModel = dialogueModel;
-        this.moderationModel = moderationModel;
         this.dialogueTimeoutMs = dialogueTimeoutMs;
         this.dialogueDailyReplyCap = dialogueDailyReplyCap;
         this.consolidationEnabled = consolidationEnabled;
         this.consolidationModel = consolidationModel;
+        this.plannerModel = plannerModel;
+        this.memoryModel = memoryModel;
+        this.dialogueReasoningEffort = dialogueReasoningEffort;
     }
 
     public static PetServiceConfig fromEnvironment(Map<String, String> environment) {
@@ -235,8 +284,14 @@ public final class PetServiceConfig {
                 decimal(environment, STRIPE_PAYMENT_PERCENT_ENV, "2.9"),
                 decimal(environment, STRIPE_FIXED_FEE_USD_ENV, "0.30"),
                 decimal(environment, STRIPE_BILLING_PERCENT_ENV, "0.7"),
-                new BigDecimal("0.10"), new BigDecimal("0.01"),
-                new BigDecimal("0.50"), new BigDecimal("0.02"));
+                decimal(environment, AI_PRICE_DIALOGUE_INPUT_ENV, AiPricing.Defaults.DIALOGUE_INPUT.toPlainString()),
+                decimal(environment, AI_PRICE_DIALOGUE_CACHED_ENV, AiPricing.Defaults.DIALOGUE_CACHED_INPUT.toPlainString()),
+                decimal(environment, AI_PRICE_DIALOGUE_OUTPUT_ENV, AiPricing.Defaults.DIALOGUE_OUTPUT.toPlainString()),
+                decimal(environment, AI_PRICE_EMBEDDING_INPUT_ENV, AiPricing.Defaults.EMBEDDING_INPUT.toPlainString()),
+                decimal(environment, AI_HOLD_DIALOGUE_USD_ENV, AiPricing.Defaults.DIALOGUE_HOLD.toPlainString()),
+                decimal(environment, AI_HOLD_CONSOLIDATION_USD_ENV, AiPricing.Defaults.CONSOLIDATION_HOLD.toPlainString()),
+                decimal(environment, AI_HOLD_PLANNING_USD_ENV, AiPricing.Defaults.PLANNING_HOLD.toPlainString()),
+                decimal(environment, AI_HOLD_EMBEDDING_USD_ENV, AiPricing.Defaults.EMBEDDING_HOLD.toPlainString()));
         String stripeSecretKey = stripeEnabled ? required(environment, STRIPE_SECRET_KEY_ENV) : "";
         String stripeWebhookSecret = stripeEnabled
                 ? required(environment, STRIPE_WEBHOOK_SECRET_ENV) : "";
@@ -273,55 +328,75 @@ public final class PetServiceConfig {
             throw new IllegalArgumentException(QDRANT_COLLECTION_ENV + " contains unsupported characters");
         }
         int qdrantDimension = qdrantEnabled
-                ? integer(environment, QDRANT_DIMENSION_ENV, 1_536, 1, 16_384) : 0;
+                ? integer(environment, QDRANT_DIMENSION_ENV, DEFAULT_EMBEDDING_DIMENSION, 1, 16_384) : 0;
         String qdrantApiKey = qdrantEnabled ? optional(environment, QDRANT_API_KEY_ENV, "") : "";
         if (qdrantApiKey.length() > 512 || containsWhitespace(qdrantApiKey)) {
             throw new IllegalArgumentException(QDRANT_API_KEY_ENV + " is invalid");
         }
         long qdrantTimeoutMs = longValue(
                 environment, QDRANT_TIMEOUT_MS_ENV, 2_000L, 250L, 30_000L);
-        String embeddingModel = optional(
-                environment, EMBEDDING_MODEL_ENV, "text-embedding-3-small");
-        if (embeddingModel.length() > 191 || containsWhitespace(embeddingModel)) {
-            throw new IllegalArgumentException(EMBEDDING_MODEL_ENV + " is invalid");
-        }
+        String embeddingModel = openAiModel(optional(environment, EMBEDDING_MODEL_ENV, DEFAULT_EMBEDDING_MODEL),
+                EMBEDDING_MODEL_ENV);
+        validateModelName(embeddingModel, EMBEDDING_MODEL_ENV);
         int embeddingDimension = integer(
-                environment, EMBEDDING_DIMENSION_ENV, 1_536, 1, 16_384);
-        String openAiApiKey = qdrantEnabled
+                environment, EMBEDDING_DIMENSION_ENV, DEFAULT_EMBEDDING_DIMENSION, 1, 16_384);
+        boolean dialogueEnabled = booleanValue(environment, DIALOGUE_ENABLED_ENV, false);
+        boolean consolidationEnabled = booleanValue(environment, CONSOLIDATION_ENABLED_ENV, false);
+        String openAiApiKey = qdrantEnabled || dialogueEnabled || consolidationEnabled
                 ? required(environment, OPENAI_API_KEY_ENV)
                 : optional(environment, OPENAI_API_KEY_ENV, "");
         if (openAiApiKey.length() > 512 || containsWhitespace(openAiApiKey)) {
             throw new IllegalArgumentException(OPENAI_API_KEY_ENV + " is invalid");
         }
         URI openAiBaseUri = validateHttpOrigin(
-                optional(environment, OPENAI_BASE_URL_ENV, "https://api.openai.com"),
-                OPENAI_BASE_URL_ENV);
+                optional(environment, OPENAI_BASE_URL_ENV, "https://api.openai.com"), OPENAI_BASE_URL_ENV);
+        String openRouterApiKey = optional(environment, OPENROUTER_API_KEY_ENV, "");
+        if (openRouterApiKey.length() > 512 || containsWhitespace(openRouterApiKey)) {
+            throw new IllegalArgumentException(OPENROUTER_API_KEY_ENV + " is invalid");
+        }
+        URI openRouterBaseUri = validateHttpBase(
+                optional(environment, OPENROUTER_BASE_URL_ENV, "https://openrouter.ai/api/v1"),
+                OPENROUTER_BASE_URL_ENV);
+        boolean openRouterFallback = !openRouterApiKey.isEmpty()
+                && booleanValue(environment, OPENROUTER_FALLBACK_ENV, true);
         if (qdrantEnabled && qdrantDimension != embeddingDimension) {
             throw new IllegalArgumentException(
                     QDRANT_DIMENSION_ENV + " must equal " + EMBEDDING_DIMENSION_ENV);
         }
-        boolean dialogueEnabled = booleanValue(environment, DIALOGUE_ENABLED_ENV, false);
-        String dialogueModel = optional(environment, DIALOGUE_MODEL_ENV, "gpt-6-luna");
-        String moderationModel = optional(
-                environment, MODERATION_MODEL_ENV, "omni-moderation-latest");
+        String dialogueModel = openAiModel(optional(environment, DIALOGUE_MODEL_ENV, DEFAULT_CHAT_MODEL),
+                DIALOGUE_MODEL_ENV);
+        String moderationModel = optional(environment, MODERATION_MODEL_ENV, DEFAULT_MODERATION_MODEL);
+        validateModelName(moderationModel, MODERATION_MODEL_ENV);
+        java.util.Set<String> moderationBlockedCategories = Arrays.stream(optional(environment,
+                        MODERATION_BLOCKED_CATEGORIES_ENV, String.join(",",
+                                new java.util.TreeSet<>(com.silver.aipets.service.dialogue.OpenAiModerationClient
+                                        .DEFAULT_BLOCKED_CATEGORIES))).split(","))
+                .map(String::strip).filter(item -> !item.isEmpty()).collect(java.util.stream.Collectors.toSet());
+        if (!com.silver.aipets.service.dialogue.OpenAiModerationClient.KNOWN_CATEGORIES
+                .containsAll(moderationBlockedCategories)) {
+            throw new IllegalArgumentException(MODERATION_BLOCKED_CATEGORIES_ENV + " contains an unknown category");
+        }
         long dialogueTimeoutMs = longValue(
                 environment, DIALOGUE_TIMEOUT_MS_ENV, 10_000L, 1_000L, 60_000L);
         int dialogueDailyReplyCap = integer(
                 environment, DIALOGUE_DAILY_REPLY_CAP_ENV, 100, 1, 10_000);
         validateModelName(dialogueModel, DIALOGUE_MODEL_ENV);
-        validateModelName(moderationModel, MODERATION_MODEL_ENV);
-        if (dialogueEnabled && openAiApiKey.isBlank()) {
-            throw new IllegalArgumentException(
-                    DIALOGUE_ENABLED_ENV + " requires " + OPENAI_API_KEY_ENV);
+        // "none" turns reasoning off for OpenAI reasoning models; blank omits the parameter.
+        String dialogueReasoningEffort = environment.containsKey(DIALOGUE_REASONING_EFFORT_ENV)
+                ? environment.get(DIALOGUE_REASONING_EFFORT_ENV).strip().toLowerCase(Locale.ROOT) : "none";
+        if (!dialogueReasoningEffort.isEmpty()
+                && !Set.of("none", "minimal", "low", "medium", "high").contains(dialogueReasoningEffort)) {
+            throw new IllegalArgumentException(DIALOGUE_REASONING_EFFORT_ENV + " is invalid");
         }
-        boolean consolidationEnabled = booleanValue(environment, CONSOLIDATION_ENABLED_ENV, false);
-        String consolidationModel = optional(
-                environment, CONSOLIDATION_MODEL_ENV, "gpt-6-luna");
+        String consolidationModel = openAiModel(optional(environment, CONSOLIDATION_MODEL_ENV, DEFAULT_CHAT_MODEL),
+                CONSOLIDATION_MODEL_ENV);
         validateModelName(consolidationModel, CONSOLIDATION_MODEL_ENV);
-        if (consolidationEnabled && openAiApiKey.isBlank()) {
-            throw new IllegalArgumentException(
-                    CONSOLIDATION_ENABLED_ENV + " requires " + OPENAI_API_KEY_ENV);
-        }
+        String plannerModel = openAiModel(optional(environment, PLANNER_MODEL_ENV, DEFAULT_CHAT_MODEL),
+                PLANNER_MODEL_ENV);
+        validateModelName(plannerModel, PLANNER_MODEL_ENV);
+        String memoryModel = environment.containsKey(MEMORY_MODEL_ENV)
+                ? openAiModel(environment.get(MEMORY_MODEL_ENV), MEMORY_MODEL_ENV) : DEFAULT_CHAT_MODEL;
+        if (!memoryModel.isEmpty()) validateModelName(memoryModel, MEMORY_MODEL_ENV);
 
         return new PetServiceConfig(
                 bindAddress, port, backlog, workerThreads, workerQueue, shutdownGrace,
@@ -334,14 +409,37 @@ public final class PetServiceConfig {
                 dummySubscriptionEnabled, dummySubscriptionOwnerUuid,
                 qdrantEnabled, qdrantUri, qdrantCollection, qdrantDimension,
                 qdrantApiKey, qdrantTimeoutMs,
-                openAiApiKey, openAiBaseUri, embeddingModel, embeddingDimension,
-                dialogueEnabled, dialogueModel, moderationModel, dialogueTimeoutMs,
+                openAiApiKey, openAiBaseUri, openRouterApiKey, openRouterBaseUri, openRouterFallback,
+                embeddingModel, embeddingDimension,
+                dialogueEnabled, dialogueModel, moderationModel, moderationBlockedCategories, dialogueTimeoutMs,
                 dialogueDailyReplyCap,
-                consolidationEnabled, consolidationModel);
+                consolidationEnabled, consolidationModel, plannerModel, memoryModel,
+                dialogueReasoningEffort);
     }
 
     private static URI validateQdrantUri(String encoded) {
         return validateHttpOrigin(encoded, QDRANT_URL_ENV);
+    }
+
+    /**
+     * The OpenAI model id for a configured name. An {@code openai/} prefix (the OpenRouter spelling)
+     * is accepted and stripped; a model from another vendor cannot be served by the primary provider.
+     */
+    public static String openAiModel(String value, String environmentName) {
+        Objects.requireNonNull(value, "value");
+        String normalized = value.strip();
+        if (normalized.startsWith("openai/")) normalized = normalized.substring("openai/".length());
+        if (normalized.contains("/")) {
+            throw new IllegalArgumentException(environmentName + " must name an OpenAI model");
+        }
+        return normalized;
+    }
+
+    /** The same model's OpenRouter id, used by the fallback provider. */
+    public static String openRouterModel(String openAiModel) {
+        Objects.requireNonNull(openAiModel, "openAiModel");
+        String normalized = openAiModel.strip();
+        return normalized.isEmpty() || normalized.contains("/") ? normalized : "openai/" + normalized;
     }
 
     private static void validateModelName(String value, String environmentName) {
@@ -357,6 +455,24 @@ public final class PetServiceConfig {
         } catch (IllegalArgumentException malformed) {
             throw new IllegalArgumentException(name + " must be a UUID", malformed);
         }
+    }
+
+    /** An HTTP(S) API base such as {@code https://openrouter.ai/api/v1}: a path is allowed, nothing else. */
+    private static URI validateHttpBase(String encoded, String environmentName) {
+        final URI uri;
+        try {
+            uri = URI.create(encoded);
+        } catch (IllegalArgumentException malformed) {
+            throw new IllegalArgumentException(environmentName + " is malformed", malformed);
+        }
+        if (!("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))
+                || uri.getHost() == null || uri.getRawUserInfo() != null
+                || uri.getRawQuery() != null || uri.getRawFragment() != null) {
+            throw new IllegalArgumentException(
+                    environmentName + " must be an HTTP(S) URL without credentials/query/fragment");
+        }
+        String normalized = uri.toString();
+        return URI.create(normalized.endsWith("/") ? normalized.substring(0, normalized.length() - 1) : normalized);
     }
 
     private static URI validateHttpOrigin(String encoded, String environmentName) {
@@ -702,6 +818,27 @@ public final class PetServiceConfig {
         return openAiBaseUri;
     }
 
+    public String moderationModel() {
+        return moderationModel;
+    }
+
+    public java.util.Set<String> moderationBlockedCategories() {
+        return moderationBlockedCategories;
+    }
+
+    /** True when a failed OpenAI chat or embedding call is retried through OpenRouter. */
+    public boolean openRouterFallback() {
+        return openRouterFallback;
+    }
+
+    public String openRouterApiKey() {
+        return openRouterApiKey;
+    }
+
+    public URI openRouterBaseUri() {
+        return openRouterBaseUri;
+    }
+
     public String embeddingModel() {
         return embeddingModel;
     }
@@ -718,10 +855,6 @@ public final class PetServiceConfig {
         return dialogueModel;
     }
 
-    public String moderationModel() {
-        return moderationModel;
-    }
-
     public long dialogueTimeoutMs() {
         return dialogueTimeoutMs;
     }
@@ -736,6 +869,20 @@ public final class PetServiceConfig {
 
     public String consolidationModel() {
         return consolidationModel;
+    }
+
+    public String plannerModel() {
+        return plannerModel;
+    }
+
+    /** Empty when the memory bookkeeping call is disabled. */
+    public String memoryModel() {
+        return memoryModel;
+    }
+
+    /** Empty when the reasoning parameter is omitted. */
+    public String dialogueReasoningEffort() {
+        return dialogueReasoningEffort;
     }
 
     @Override
@@ -764,11 +911,16 @@ public final class PetServiceConfig {
                 + ", embeddingDimension=" + embeddingDimension
                 + ", dialogueEnabled=" + dialogueEnabled
                 + ", dialogueModel=" + dialogueModel
+                + ", dialogueReasoningEffort=" + dialogueReasoningEffort
                 + ", moderationModel=" + moderationModel
+                + ", moderationBlockedCategories=" + new java.util.TreeSet<>(moderationBlockedCategories)
+                + ", openRouterFallback=" + openRouterFallback
                 + ", dialogueTimeoutMs=" + dialogueTimeoutMs
                 + ", dialogueDailyReplyCap=" + dialogueDailyReplyCap
                 + ", consolidationEnabled=" + consolidationEnabled
                 + ", consolidationModel=" + consolidationModel
+                + ", plannerModel=" + plannerModel
+                + ", memoryModel=" + memoryModel
                 + ", stripePaymentGraceDays=" + stripePaymentGraceDays
                 + ", accountLinkTtlMinutes=" + accountLinkTtlMinutes
                 + "]";

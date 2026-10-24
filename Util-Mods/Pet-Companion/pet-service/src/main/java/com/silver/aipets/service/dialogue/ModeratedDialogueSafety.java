@@ -1,17 +1,27 @@
 package com.silver.aipets.service.dialogue;
 
+import com.silver.aipets.service.provider.AiFallbackReporter;
+
 import java.util.Objects;
 
-/** Composes deterministic local checks with best-effort provider moderation. */
+/**
+ * Composes deterministic local checks with best-effort provider moderation. Moderation blocks only
+ * its configured categories; when moderation is unavailable the message is let through and the
+ * bypass is reported through {@link AiFallbackReporter} so it is never silent.
+ */
 public final class ModeratedDialogueSafety implements DialogueSafety {
-    private static final System.Logger LOGGER =
-            System.getLogger(ModeratedDialogueSafety.class.getName());
     private final RuleBasedDialogueSafety local;
     private final OpenAiModerationClient moderation;
+    private final AiFallbackReporter reporter;
 
     public ModeratedDialogueSafety(OpenAiModerationClient moderation) {
+        this(moderation, AiFallbackReporter.LOG_ONLY);
+    }
+
+    public ModeratedDialogueSafety(OpenAiModerationClient moderation, AiFallbackReporter reporter) {
         this.local = new RuleBasedDialogueSafety();
         this.moderation = Objects.requireNonNull(moderation, "moderation");
+        this.reporter = Objects.requireNonNull(reporter, "reporter");
     }
 
     @Override
@@ -36,12 +46,13 @@ public final class ModeratedDialogueSafety implements DialogueSafety {
     private SafetyResult moderate(String normalizedInput) {
         OpenAiModerationClient.ModerationResult result = moderation.moderate(normalizedInput);
         if (!result.available()) {
-            LOGGER.log(System.Logger.Level.WARNING, "dialogue moderation unavailable; denying interaction ({0})",
-                    result.category());
+            reporter.moderationBypassed(result.category());
+            return new SafetyResult(true, normalizedInput, "MODERATION_BYPASSED");
+        }
+        if (!result.allowed()) {
+            reporter.moderationBlocked();
             return new SafetyResult(false, "", result.category());
         }
-        return result.allowed()
-                ? new SafetyResult(true, normalizedInput, "ALLOWED")
-                : new SafetyResult(false, "", result.category());
+        return new SafetyResult(true, normalizedInput, "ALLOWED");
     }
 }

@@ -90,11 +90,16 @@ class RelationshipEvidenceTest {
         DialoguePromptBuilder builder = new DialoguePromptBuilder(DialogueLimits.defaultsWithoutReplyCap(),
                 new JTokkitDialogueTokenCounter());
         String relevant = builder.build(context, "I'm sorry. Can I stay close? Please forgive me.").text();
-        assertTrue(relevant.contains("type=FEAR strength=2"));
-        assertTrue(relevant.contains("type=REPAIR strength=1"));
+        assertTrue(relevant.contains("you were afraid of your owner (strongly)"));
+        assertTrue(relevant.contains("you and your owner started making up"));
+        // Fresh evidence is part of the pet's feelings whatever the owner says next ...
         String unrelated = builder.build(context, "What happened on the spruce bridge?").text();
-        assertFalse(unrelated.contains("RELATIONSHIP_EVIDENCE (recent, relevant interaction events; not a score)"));
-        assertFalse(unrelated.contains("type=FEAR strength=2"));
+        assertTrue(unrelated.contains("you were afraid of your owner (strongly)"));
+        // ... while older evidence returns only when the conversation turns to the relationship.
+        DialogueContext later = new DialogueContext(pet, false, true, List.of(), List.of(), List.of(),
+                new DialogueGameContext("survival", "minecraft:overworld", "dialogue"), NOW.plus(Duration.ofDays(2)), mixed);
+        assertFalse(builder.build(later, "What happened on the spruce bridge?").text().contains("afraid of your owner"));
+        assertTrue(builder.build(later, "I'm sorry about before.").text().contains("afraid of your owner"));
     }
 
     @Test

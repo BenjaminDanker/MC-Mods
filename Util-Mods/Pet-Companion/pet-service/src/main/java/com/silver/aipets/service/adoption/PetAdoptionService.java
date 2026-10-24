@@ -95,6 +95,9 @@ public final class PetAdoptionService {
         if (!result.created()) {
             return AdoptionResult.existing(result.pet());
         }
+        if (!profile.characterJson().isBlank()) {
+            repository.initializeCharacter(result.pet().petId(), profile.characterJson(), adoptedAt);
+        }
         if (species == PetSpecies.CAT) {
             metrics.increment(PetOperationalMetrics.Counter.PETS_CREATED_CAT);
         } else if (species == PetSpecies.DOG) {

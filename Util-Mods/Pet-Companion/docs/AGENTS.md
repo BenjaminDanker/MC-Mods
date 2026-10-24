@@ -55,12 +55,12 @@ The `primary-ram` units were reported as `Restart=always`, `RestartSec=5`; their
 | --- | --- | --- | ---: | --- |
 | Cave | `cave-mc-server` | `/mnt/mc-storage/cave-mc-server` | 25572 | `mods/pet-companion-0.1.0-SNAPSHOT.jar` |
 | Desert | `desert-mc-server` | `/mnt/mc-fast/desert-mc-server` | 25571 | `mods/pet-companion-0.1.0-SNAPSHOT.jar` |
-| Magic | `magic-mc-server` | `/home/silver/magic-mc-server` | 25573 | `mods/pet-companion-0.1.0-SNAPSHOT.jar` |
+| Magic | `magic-mc-server` | `/home/silver/mc-servers/magic` | 25573 | `mods/pet-companion-0.1.0-SNAPSHOT.jar` |
 | Ocean | `ocean-mc-server` | `/mnt/mc-storage/ocean-mc-server` | 25569 | `mods/pet-companion-0.1.0-SNAPSHOT.jar` |
 | Sky Island | `sky-island-mc-server` | `/mnt/mc-fast/sky-island-mc-server` | 25568 | `mods/pet-companion-0.1.0-SNAPSHOT.jar` |
-| Vanilla | `vanilla-mc-server` | `/home/silver/vanilla-mc-server` | 25567 | `mods/pet-companion-0.1.0-SNAPSHOT.jar` |
+| Vanilla | `vanilla-mc-server` | `/home/silver/mc-servers/vanilla` | 25567 | `mods/pet-companion-0.1.0-SNAPSHOT.jar` |
 
-On `raspberrypi`, the user unit `pet-companion.service` runs from `/home/silver/pet-companion` and was reported as `Restart=on-failure`, with a five-second delay. Its service jar is `/home/silver/pet-companion/lib/pet-service-0.1.0-SNAPSHOT.jar`; the runtime `pet-common` jar is adjacent under `lib/`. The system unit `velocity.service` runs from `/home/silver/velocity`, with plugin `/home/silver/velocity/plugins/pet-velocity-0.1.0-SNAPSHOT.jar`, and was reported as `Restart=always` with a five-second delay. The waiting lobby runs from `/home/silver/mc_waiting_lobby`; no Pet Companion jar was found there. The production MariaDB schema is `minecraft`.
+On `raspberrypi`, the user unit `pet-companion.service` runs from `/home/silver/pet-companion` and was reported as `Restart=on-failure`, with a five-second delay. Its service jar is `/home/silver/pet-companion/lib/pet-service-0.1.0-SNAPSHOT.jar`; the runtime `pet-common` jar is adjacent under `lib/`. The system unit `velocity.service` runs from `/home/silver/mc-proxy/velocity`, with plugin `/home/silver/mc-proxy/velocity/plugins/pet-velocity-0.1.0-SNAPSHOT.jar`, and was reported as `Restart=always` with a five-second delay. The waiting lobby runs from `/home/silver/mc-proxy/lobby`; no Pet Companion jar was found there. The production MariaDB schema is `minecraft`.
 
 ## 4. Dev Player isolation
 
@@ -131,7 +131,7 @@ Require `OK` for each expected port; close the tunnel with Ctrl+C. Status and st
 
 ### Velocity on `raspberrypi`
 
-Only a changed `pet-velocity` plugin requires replacing `/home/silver/velocity/plugins/pet-velocity-0.1.0-SNAPSHOT.jar` and restarting `velocity.service`. Stage the built jar beside the destination, match hashes, rename on the same filesystem, then restart and check the **system** unit and recent journal. Determine whether the `silver` account has restart permission before relying on it; use the configured system-unit operator if necessary. A service-only or Fabric-only change does not restart Velocity. No Pet Companion artifacts go to `vps` or the Raspberry Pi waiting lobby.
+Only a changed `pet-velocity` plugin requires replacing `/home/silver/mc-proxy/velocity/plugins/pet-velocity-0.1.0-SNAPSHOT.jar` and restarting `velocity.service`. Stage the built jar beside the destination, match hashes, rename on the same filesystem, then restart and check the **system** unit and recent journal. Determine whether the `silver` account has restart permission before relying on it; use the configured system-unit operator if necessary. A service-only or Fabric-only change does not restart Velocity. No Pet Companion artifacts go to `vps` or the Raspberry Pi waiting lobby.
 
 ## 6. Dated reference hashes
 

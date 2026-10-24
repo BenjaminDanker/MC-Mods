@@ -32,6 +32,11 @@ public final class PetOperationalMetrics {
         MEMORIES_REINFORCED("aipets_memories_reinforced_total"),
         MEMORIES_RETRIEVED("aipets_memories_retrieved_total"),
         EMBEDDING_FAILURES("aipets_embedding_failures_total"),
+        AI_FALLBACK_CHAT_USED("aipets_ai_fallback_chat_used_total"),
+        AI_FALLBACK_EMBEDDING_USED("aipets_ai_fallback_embedding_used_total"),
+        AI_FALLBACK_FAILED("aipets_ai_fallback_failed_total"),
+        MODERATION_BYPASSED("aipets_moderation_bypassed_total"),
+        MODERATION_BLOCKED("aipets_moderation_blocked_total"),
         HTTP_REQUESTS("aipets_http_requests_total"),
         HTTP_ERRORS("aipets_http_errors_total"),
         HTTP_LATENCY_MILLIS("aipets_http_latency_milliseconds_total"),
@@ -86,6 +91,8 @@ public final class PetOperationalMetrics {
         if (amount < 0) throw new IllegalArgumentException("counter amount must be non-negative");
         counters.get(metric).add(amount);
     }
+
+    public long counter(Counter metric) { return counters.get(metric).sum(); }
 
     public void set(Gauge metric, long value) {
         if (value < 0) throw new IllegalArgumentException("gauge value must be non-negative");

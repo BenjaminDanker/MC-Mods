@@ -44,7 +44,7 @@ public final class JdbcEmbeddingUsageRecorder implements EmbeddingUsageRecorder 
             statement.setString(1, UUID.randomUUID().toString());
             statement.setString(2, petId.toString());
             statement.setString(3, pet.orElseThrow().ownerUuid().toString());
-            statement.setString(4, response.embedding().model());
+            statement.setString(4, response.usageModel());
             statement.setString(5, UUID.randomUUID().toString());
             if (response.providerId().isPresent()) statement.setString(6, response.providerId().orElseThrow());
             else statement.setNull(6, java.sql.Types.VARCHAR);

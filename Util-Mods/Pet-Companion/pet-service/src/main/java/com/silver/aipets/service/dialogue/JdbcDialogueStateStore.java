@@ -309,7 +309,6 @@ public final class JdbcDialogueStateStore implements DialogueStateStore {
             metadata.addProperty("affect", request.output().affectDelta().name());
             metadata.addProperty("affect_strength", request.output().affectStrength());
             metadata.addProperty("relationship", request.output().relationshipSignal().type().name());
-            metadata.addProperty("conversation_mode", request.output().conversationMode().name());
             statement.setString(15, participants.toString());
             statement.setNull(16, Types.LONGVARCHAR); // Chat position is not the reported event's location.
             statement.setString(17, metadata.toString());
@@ -405,12 +404,17 @@ public final class JdbcDialogueStateStore implements DialogueStateStore {
         }
     }
 
+    /** The pet's own reaction was at maximum strength: an emotionally intense moment. */
+    private static boolean highEmotion(ValidatedDialogueOutput output) {
+        return output.affectStrength() >= 2 || output.relationshipSignal().strength() >= 2;
+    }
+
     private static void updateSelfModelCandidate(Connection connection,
             DialoguePersistRequest request, LockedState locked) throws SQLException {
         DialogueSelfModelCandidate candidate = request.output().selfModelCandidate();
         if (!candidate.meaningful()) return;
         String next = PetSelfModel.recordCandidate(locked.selfModelJson(), candidate,
-                request.eventId(), request.occurredAt(), false);
+                request.eventId(), request.occurredAt(), false, highEmotion(request.output()));
         if (Objects.equals(locked.selfModelJson(), next)) return;
         try (PreparedStatement update = connection.prepareStatement("""
                 UPDATE pet_traits SET self_model_json=?,self_model_version=self_model_version+1,

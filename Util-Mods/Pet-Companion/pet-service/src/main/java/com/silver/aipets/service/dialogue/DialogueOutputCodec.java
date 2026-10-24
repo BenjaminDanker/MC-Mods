@@ -27,7 +27,7 @@ public final class DialogueOutputCodec {
     private static final Set<String> COMPACT_ORGANIC_FIELDS = Set.of(
             "reply", "action", "attention", "memory_candidate", "affect_delta", "affect_strength", "relationship_event");
     private static final Set<String> PRODUCTION_FIELDS = Set.of(
-            "reply", "action", "attention", "memory_candidate", "affect_delta", "affect_strength", "relationship_event", "conversation_mode", "self_model_candidate", "owner_interpretation");
+            "reply", "action", "attention", "memory_candidate", "affect_delta", "affect_strength", "relationship_event", "self_model_candidate", "owner_interpretation");
 
     public DialogueModelOutput decode(String json) {
         try {
@@ -64,9 +64,6 @@ public final class DialogueOutputCodec {
                         : RelationshipSignal.none();
                 int affectStrength = root.has("affect_strength")
                         ? boundedInteger(root.get("affect_strength"), 0, 2) : (affect == DialogueAffect.NONE ? 0 : 1);
-                String modeValue = root.has("conversation_mode")
-                        ? requiredString(root, "conversation_mode") : "ANSWER";
-                DialogueConversationMode mode = DialogueConversationMode.validated(modeValue);
                 DialogueSelfModelCandidate selfCandidate = root.has("self_model_candidate")
                         ? selfModelCandidate(root.getAsJsonObject("self_model_candidate"))
                         : DialogueSelfModelCandidate.none();
@@ -75,7 +72,7 @@ public final class DialogueOutputCodec {
                         : OwnerInterpretationCandidate.none();
                 return new DialogueModelOutput(reply, DialogueImportance.MEDIUM, candidate,
                         zeroes(TraitName.class), moodFromAffect(affect), action, attention, affect,
-                        relationship, affectStrength, mode, selfCandidate, ownerInterpretation, ownerMemory);
+                        relationship, affectStrength, selfCandidate, ownerInterpretation, ownerMemory);
             }
             DialogueImportance importance = DialogueImportance.valueOf(
                     requiredString(root, "importance").toUpperCase(Locale.ROOT));

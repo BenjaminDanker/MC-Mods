@@ -235,6 +235,36 @@ final class MemoryVectorWorkflowTest {
                 MemoryImportance.HIGH, Set.of("happy"), Set.of(entity), Set.of(location), true);
     }
 
+    @Test
+    void speculativeRetrievalStillRecordsTheQueryEmbeddingCostButNotRecallCounters() {
+        InMemoryLongTermMemoryStore memories = new InMemoryLongTermMemoryStore();
+        InMemoryVectorMemoryRepository vectors = new InMemoryVectorMemoryRepository();
+        LongTermMemoryCard memory = card(60, PET_A, true);
+        memories.put(memory);
+        vectors.upsert(new VectorMemoryDocument(memory, new EmbeddingVector("test-embedding", new float[]{1.0f, 0.0f})));
+        List<EmbeddingModelResponse> recorded = new ArrayList<>();
+        EmbeddingModelClient priced = new EmbeddingModelClient() {
+            @Override public String model() { return "test-embedding"; }
+            @Override public EmbeddingVector embed(String text) { return embedWithUsage(text).embedding(); }
+            @Override public EmbeddingModelResponse embedWithUsage(String text) {
+                return new EmbeddingModelResponse(new EmbeddingVector(model(), new float[]{1.0f, 0.0f}),
+                        Optional.of("emb-1"), 12, new java.math.BigDecimal("0.00000024"), 5);
+            }
+        };
+        MemoryRetrievalService retrieval = new MemoryRetrievalService(memories, vectors, priced, Runnable::run,
+                Clock.fixed(START, ZoneOffset.UTC), new com.silver.aipets.service.metrics.PetOperationalMetrics(),
+                (petId, response, at, status, category) -> recorded.add(response),
+                AiBudgetService.UNLIMITED, ignored -> Optional.empty());
+        MemorySearchQuery query = new MemorySearchQuery(PET_A, "Do you remember the bridge?", Optional.empty(),
+                Optional.empty(), Optional.empty(), Set.of(), 0.1, 3);
+        retrieval.retrieveSpeculatively(query);
+        // The embedding was paid for even though the turn may still be blocked, so it is in the ledger
+        // (and therefore in the owner's quota); recall counters wait for the turn to commit.
+        assertEquals(1, recorded.size());
+        assertEquals(0, new java.math.BigDecimal("0.00000024").compareTo(recorded.getFirst().estimatedCost()));
+        assertEquals(0L, memories.recallCount(memory.memoryId()));
+    }
+
     private static final class CapturingEmbeddingModel implements EmbeddingModelClient {
         private final List<String> inputs = new ArrayList<>();
 

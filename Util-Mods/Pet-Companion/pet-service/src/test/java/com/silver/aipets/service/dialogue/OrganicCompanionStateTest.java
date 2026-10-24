@@ -4,6 +4,7 @@ import com.silver.aipets.common.domain.PetTraits;
 import com.silver.aipets.common.domain.TraitName;
 import com.silver.aipets.common.transport.PetDialogueAction;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -84,6 +85,107 @@ final class OrganicCompanionStateTest {
                 "owner reports are not evidence of a pet preference");
     }
 
+    @Test void oneStrongEmotionalMomentPromotesAtOnceButRoutineRepeatsDoNot() {
+        var candidate=new DialogueSelfModelCandidate(DialogueSelfModelCandidate.Kind.AVOIDANCE,
+                "loud thunder",.8,Set.of(UUID.randomUUID()));
+        String routine=PetSelfModel.recordCandidate(null,candidate,UUID.randomUUID(),NOW,false);
+        assertFalse(PetSelfModel.promoteEligible(routine).contains("\"avoidances\":[\"loud thunder\"]"));
+        String strong=PetSelfModel.recordCandidate(null,candidate,UUID.randomUUID(),NOW,false,true);
+        assertTrue(strong.contains("\"avoidances\":[\"loud thunder\"]"),"a flashbulb moment is kept immediately");
+        assertEquals(strong,PetSelfModel.recordCandidate(strong,candidate,UUID.randomUUID(),NOW,true,true),
+                "owner reports never count, however emotional");
+    }
+
+    @Test void fiveSameDayRepeatsDoNotPromoteAndQuietWeeksChangeNothing() {
+        String model=null;
+        for (int i=0;i<5;i++) model=PetSelfModel.recordCandidate(model,new DialogueSelfModelCandidate(
+                DialogueSelfModelCandidate.Kind.PREFERENCE,"fishing docks",.8,Set.of(UUID.randomUUID())),
+                UUID.randomUUID(),NOW.plusSeconds(i*60),false);
+        String after=PetSelfModel.promoteEligible(model);
+        assertFalse(after.contains("\"likes\":[\"fishing docks\"]"),"one day of repetition is not a habit");
+        String quiet="{\"likes\":[\"sunny spots\"],\"pending\":[]}";
+        for (int week=0;week<3;week++) assertSame(quiet,PetSelfModel.promoteEligible(quiet));
+    }
+
+    @Test void characterLinesAreAlwaysSelectedWithoutCrowdingOutRelevantCues() {
+        String json="{\"character\":[\"You hate waiting.\",\"You love food.\"],\"likes\":[\"river fishing\"],\"voice\":[]}";
+        var unrelated=JdbcOrganicPetContextReader.selectSelfCues(json,"hello there");
+        assertEquals(List.of("character:You hate waiting.","character:You love food."),unrelated);
+        var related=JdbcOrganicPetContextReader.selectSelfCues(json,"want to go fishing at the river?");
+        assertEquals(3,related.size());
+        assertTrue(related.getLast().contains("river fishing"));
+    }
+
+    @Test void repeatedPleasantStimuliHabituateButThreatsDoNot() {
+        BehavioralAffect first=BehavioralAffect.neutral(NOW).apply(DialogueAffect.BRIGHTER,1,
+                RelationshipSignal.none(),traits(50),1,UUID.randomUUID(),UUID.randomUUID(),NOW);
+        BehavioralAffect second=first.apply(DialogueAffect.BRIGHTER,1,RelationshipSignal.none(),traits(50),1,
+                UUID.randomUUID(),UUID.randomUUID(),NOW.plusSeconds(60));
+        assertTrue(second.valence()-first.valence()<first.valence(),"the second identical praise lands softer");
+        BehavioralAffect later=first.apply(DialogueAffect.BRIGHTER,1,RelationshipSignal.none(),traits(50),1,
+                UUID.randomUUID(),UUID.randomUUID(),NOW.plusSeconds(3*3600));
+        assertTrue(later.valence()-first.decay(NOW.plusSeconds(3*3600)).valence()>=first.valence(),
+                "after a long gap the stimulus is fresh again");
+        var fear=new RelationshipSignal(RelationshipSignal.Type.FEAR,1);
+        BehavioralAffect scared=BehavioralAffect.neutral(NOW).apply(DialogueAffect.NONE,0,fear,traits(50),1,
+                UUID.randomUUID(),UUID.randomUUID(),NOW);
+        BehavioralAffect again=scared.apply(DialogueAffect.NONE,0,fear,traits(50),1,
+                UUID.randomUUID(),UUID.randomUUID(),NOW.plusSeconds(60));
+        assertTrue(again.valence()-scared.valence()<=scared.valence()+1&&again.valence()<scared.valence(),
+                "repeated harm keeps hurting; it does not fade");
+        assertEquals(scared.valence()*2,again.valence(),2,"harm is not damped");
+    }
+
+    @Test void unreinforcedTastesFadeAndReinforcedOnesStay() {
+        Instant start=Instant.parse("2026-01-01T00:00:00Z");
+        String model=PetSelfModel.add(PetSelfModel.add("{\"character\":[\"You hate waiting.\"],\"voice\":[\"dry\"]}",
+                new PetSelfModel.Update("likes","river fishing"),start),
+                new PetSelfModel.Update("interests","redstone"),start);
+        assertSame(model,PetSelfModel.fade(model,start.plusSeconds(30L*86400)),"nothing is stale yet");
+        String refreshed=PetSelfModel.add(model,new PetSelfModel.Update("likes","river fishing"),start.plusSeconds(80L*86400));
+        String later=PetSelfModel.fade(refreshed,start.plusSeconds(100L*86400));
+        assertTrue(later.contains("river fishing"),"reinforced 20 days ago");
+        assertFalse(later.contains("redstone"),"untouched for 100 days");
+        assertTrue(later.contains("You hate waiting.")&&later.contains("dry"),"who the pet is never fades");
+        String legacy="{\"likes\":[\"old taste\"],\"pending\":[]}";
+        String stamped=PetSelfModel.fade(legacy,start);
+        assertTrue(stamped.contains("old taste"),"pre-existing cues are stamped, not dropped");
+        assertFalse(PetSelfModel.fade(stamped,start.plusSeconds(200L*86400)).contains("old taste"));
+    }
+
+    @Test void unrepeatedInferencesExpireAfterAMonth() {
+        UUID event=UUID.randomUUID();
+        String pending=PetSelfModel.recordCandidate(null,new DialogueSelfModelCandidate(
+                DialogueSelfModelCandidate.Kind.PREFERENCE,"snow",.7,Set.of(event)),UUID.randomUUID(),NOW,false);
+        assertTrue(pending.contains("snow"));
+        assertSame(pending,PetSelfModel.fade(pending,NOW.plusSeconds(20L*86400)));
+        assertFalse(PetSelfModel.fade(pending,NOW.plusSeconds(40L*86400)).contains("\"value\":\"snow\""));
+    }
+
+    @Test void aContradictedTasteBecomesADatedChangeAndSurfacesWhenRelevant() {
+        Instant at=Instant.parse("2026-01-01T00:00:00Z");
+        String liked=PetSelfModel.add(null,new PetSelfModel.Update("likes","swimming"),at);
+        String flipped=PetSelfModel.add(liked,new PetSelfModel.Update("dislikes","swimming"),at.plusSeconds(86400));
+        var root=com.google.gson.JsonParser.parseString(flipped).getAsJsonObject();
+        assertEquals(0,root.getAsJsonArray("likes").size(),"both cannot stand");
+        assertEquals(1,root.getAsJsonArray("avoidances").size());
+        assertTrue(root.getAsJsonArray("changed").get(0).getAsString().contains("used to like swimming"));
+        assertTrue(JdbcOrganicPetContextReader.selectSelfCues(flipped,"want to go swimming?").stream()
+                .anyMatch(cue->cue.contains("used to like swimming")));
+        assertTrue(JdbcOrganicPetContextReader.selectSelfCues(flipped,"nice weather").isEmpty()
+                ||JdbcOrganicPetContextReader.selectSelfCues(flipped,"nice weather").stream()
+                        .noneMatch(cue->cue.contains("used to")));
+    }
+
+    @Test void newEvidenceForAHeldTasteRefreshesIt() {
+        Instant at=Instant.parse("2026-01-01T00:00:00Z");
+        String model=PetSelfModel.add(null,new PetSelfModel.Update("likes","fishing"),at);
+        String reinforced=PetSelfModel.recordCandidate(model,new DialogueSelfModelCandidate(
+                DialogueSelfModelCandidate.Kind.PREFERENCE,"fishing",.8,Set.of(UUID.randomUUID())),
+                UUID.randomUUID(),at.plusSeconds(80L*86400),false);
+        assertTrue(PetSelfModel.fade(reinforced,at.plusSeconds(120L*86400)).contains("\"likes\":[\"fishing\"]"));
+    }
+
     @Test void affectUsesIndependentHalfLivesBoundedAlertnessAndIdempotentEvents() {
         BehavioralAffect state=new BehavioralAffect(80,80,80,80,80,80,"TEST",null,NOW);
         BehavioralAffect afterTwoHours=state.decay(NOW.plusSeconds(2*60*60));
@@ -144,7 +246,7 @@ final class OrganicCompanionStateTest {
         String json="{\"reply\":\"Do you mean the spruce bridge?\",\"action\":\"NONE\","
                 +"\"attention\":\"QUIET\",\"memory_candidate\":null,\"affect_delta\":\"NONE\","
                 +"\"affect_strength\":0,\"relationship_event\":{\"type\":\"NONE\",\"strength\":0},"
-                +"\"conversation_mode\":\"ASK\",\"self_model_candidate\":{\"kind\":\"NONE\","
+                +"\"self_model_candidate\":{\"kind\":\"NONE\","
                 +"\"value\":null,\"confidence\":0},\"owner_interpretation\":{\"intent\":\"RETURN_TO_PLACE\","
                 +"\"emotion\":\"UNCERTAIN\",\"confidence\":0.42}}";
         var decoded=new DialogueOutputCodec().decode(json);

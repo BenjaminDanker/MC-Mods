@@ -102,7 +102,8 @@ final class SpatialMemoryRecallTest {
         prompt = builder.build(context(scene, List.of(irrelevant, farEvent), List.of()), "spruce bridge rain").text();
         assertTrue(prompt.contains(far.text()));
         assertFalse(prompt.contains(irrelevant.summary()));
-        assertTrue(prompt.contains("4000.0"));
+        // Coordinates steer ranking only; they never reach the pet's voice.
+        assertFalse(prompt.contains("4000.0"));
     }
 
     @Test void ownerReportedShortTermLocationRemainsUnknownEvenIfCallerSuppliesChatCoordinates() {

@@ -29,7 +29,8 @@ Every Fabric backend resolves the environment names configured by
 service token and private origin from its process environment. Model/vector secrets follow the
 same pattern. On the current Pi, the selected embedding/vector endpoint is staged. Dialogue uses
 the same `PET_OPENAI_API_KEY` when `PET_DIALOGUE_ENABLED=true`; its selected model settings are
-`PET_DIALOGUE_MODEL=gpt-6-luna` (reasoning disabled) and `PET_MODERATION_MODEL=omni-moderation-latest`. Do not add
+`PET_DIALOGUE_MODEL=gpt-6-luna` (reasoning disabled) and `PET_MODERATION_MODEL=omni-moderation-latest`. An optional
+`PET_OPENROUTER_API_KEY` enables the same-model chat fallback and is handled identically. Do not add
 placeholder live keys, and leave the dialogue switch false until paid traffic is intentionally
 staged.
 

@@ -59,7 +59,6 @@ import com.silver.aipets.service.consolidation.ConsolidationOutputValidator;
 import com.silver.aipets.service.consolidation.ConsolidationScheduler;
 import com.silver.aipets.service.consolidation.ConsolidationWorker;
 import com.silver.aipets.service.consolidation.JdbcConsolidationRepository;
-import com.silver.aipets.service.consolidation.OpenAiConsolidationModelClient;
 import com.silver.aipets.service.consolidation.SleepConsolidationTrigger;
 import com.silver.aipets.service.sleep.JdbcPetSleepStateStore;
 import com.silver.aipets.service.sleep.PetSleepPolicy;
@@ -102,8 +101,10 @@ import com.silver.aipets.service.dialogue.JdbcDialogueStateStore;
 import com.silver.aipets.service.dialogue.JdbcDialogueAdminHistoryReader;
 import com.silver.aipets.service.dialogue.JTokkitDialogueTokenCounter;
 import com.silver.aipets.service.dialogue.ModeratedDialogueSafety;
-import com.silver.aipets.service.dialogue.OpenAiDialogueModelClient;
 import com.silver.aipets.service.dialogue.OpenAiModerationClient;
+import com.silver.aipets.service.provider.AiFallbackReporter;
+import com.silver.aipets.service.provider.ChatModels;
+import com.silver.aipets.service.vector.FallbackEmbeddingModelClient;
 import com.silver.aipets.service.dialogue.DialogueMemoryRetriever;
 import com.silver.aipets.service.dialogue.RelationalDialogueMemoryRetriever;
 import com.silver.aipets.service.dialogue.VectorDialogueMemoryRetriever;
@@ -342,12 +343,13 @@ public final class PetServiceRuntime implements AutoCloseable {
                     "/v1/presence",
                     new MetricsHttpHandler(
                             new PetPresenceHttpHandler(sleepService, config.bearerToken()), metrics));
+            boolean aiKeyPresent = !config.openAiApiKey().isBlank();
+            AiFallbackReporter fallbackReporter = new AiFallbackReporter(metrics);
+            ChatModels chat = aiKeyPresent ? ChatModels.from(config, fallbackReporter) : null;
             PetDecisionPlanner planner = new PetDecisionPlanner(new JdbcDecisionStore(dataSource), budget,
-                    config.aiPricing(), config.aiEnabled() && !config.openAiApiKey().isBlank()
-                            ? new OpenAiDialogueModelClient(config.openAiBaseUri(), "gpt-6-luna",
-                                    config.openAiApiKey(), Duration.ofSeconds(8),
-                                    "pet_decision", config.aiPricing()) : null,
-                    config.aiEnabled() && !config.openAiApiKey().isBlank(),
+                    config.aiPricing(), config.aiEnabled() && aiKeyPresent
+                            ? chat.create(config.plannerModel(), "pet_decision", 800, "none") : null,
+                    config.aiEnabled() && aiKeyPresent,
                     new JdbcOpenThreadRecall(dataSource),
                     new JdbcDecisionMemoryRecall(dataSource));
             server.createContext("/v1/experiences", new MetricsHttpHandler(
@@ -370,7 +372,16 @@ public final class PetServiceRuntime implements AutoCloseable {
             AtomicReference<MemoryEmbeddingWorker> embeddingWorkerRef = new AtomicReference<>();
             if (config.qdrantEnabled()) {
                 sharedVectors = QdrantVectorMemoryRepository.fromConfig(config);
-                sharedEmbeddingModel = OpenAiEmbeddingModelClient.fromConfig(config);
+                EmbeddingModelClient primaryEmbeddings = OpenAiEmbeddingModelClient.fromConfig(config);
+                sharedEmbeddingModel = chat.fallbackTarget().isPresent()
+                        ? new FallbackEmbeddingModelClient(primaryEmbeddings,
+                                new OpenAiEmbeddingModelClient(chat.fallbackTarget().orElseThrow(),
+                                        PetServiceConfig.openRouterModel(config.embeddingModel()),
+                                        config.embeddingModel(), config.embeddingDimension(),
+                                        Duration.ofMillis(Math.max(2_000L, config.qdrantTimeoutMs())),
+                                        config.aiPricing()),
+                                fallbackReporter)
+                        : primaryEmbeddings;
             }
             if (config.dialogueEnabled()) {
                 // Token/dollar budget is authoritative in production; retain the legacy counter only
@@ -379,19 +390,18 @@ public final class PetServiceRuntime implements AutoCloseable {
                 DialogueMemoryRetriever memoryRetriever =
                         new RelationalDialogueMemoryRetriever(sharedMemories);
                 if (config.qdrantEnabled()) {
-                    memoryRetriever = new VectorDialogueMemoryRetriever(
-                            new MemoryRetrievalService(
-                                    sharedMemories,
-                                    sharedVectors,
-                                    sharedEmbeddingModel,
-                                    workers,
-                                    Clock.systemUTC(),
-                                    metrics,
-                                    new com.silver.aipets.service.vector.JdbcEmbeddingUsageRecorder(dataSource, repository),
-                                    budget,
-                                    petId -> repository.findById(petId).map(com.silver.aipets.common.domain.Pet::ownerUuid),
-                                    config.aiPricing()),
-                            memoryRetriever);
+                    MemoryRetrievalService retrieval = new MemoryRetrievalService(
+                            sharedMemories,
+                            sharedVectors,
+                            sharedEmbeddingModel,
+                            workers,
+                            Clock.systemUTC(),
+                            metrics,
+                            new com.silver.aipets.service.vector.JdbcEmbeddingUsageRecorder(dataSource, repository),
+                            budget,
+                            petId -> repository.findById(petId).map(com.silver.aipets.common.domain.Pet::ownerUuid),
+                            config.aiPricing());
+                    memoryRetriever = new VectorDialogueMemoryRetriever(retrieval, memoryRetriever);
                 }
                 JdbcDialogueContextLoader contexts = new JdbcDialogueContextLoader(
                         repository,
@@ -399,22 +409,24 @@ public final class PetServiceRuntime implements AutoCloseable {
                         memoryRetriever,
                         new JdbcDialogueHistoryReader(dataSource),
                         aiAccess, new com.silver.aipets.service.dialogue.JdbcOrganicPetContextReader(dataSource));
-                OpenAiModerationClient moderation = new OpenAiModerationClient(
-                        config.openAiBaseUri(), config.moderationModel(), config.openAiApiKey(),
-                        Duration.ofMillis(config.dialogueTimeoutMs()));
                 DialogueService dialogue = new DialogueService(
                         dialogueLimits,
-                        new ModeratedDialogueSafety(moderation),
+                        new ModeratedDialogueSafety(new OpenAiModerationClient(
+                                config.openAiBaseUri(), config.moderationModel(), config.openAiApiKey(),
+                                Duration.ofMillis(config.dialogueTimeoutMs()),
+                                config.moderationBlockedCategories()), fallbackReporter),
                         new DialoguePromptBuilder(dialogueLimits, new JTokkitDialogueTokenCounter()),
-                        new OpenAiDialogueModelClient(
-                                config.openAiBaseUri(), config.dialogueModel(), config.openAiApiKey(),
-                                Duration.ofMillis(config.dialogueTimeoutMs()), "pet_dialogue", config.aiPricing()),
+                        chat.create(config.dialogueModel(), "pet_dialogue", 1_000,
+                                config.dialogueReasoningEffort()),
                         new DialogueOutputCodec(),
                         new DialogueResponseMapper(dialogueLimits),
                         new DialogueAdmissionController(dialogueLimits, budget, config.aiPricing()),
                         new JdbcDialogueStateStore(dataSource, UUID::randomUUID),
                         Clock.systemUTC(), UUID::randomUUID, UUID::randomUUID,
-                        () -> config.aiEnabled(), metrics);
+                        () -> config.aiEnabled(), metrics,
+                        config.memoryModel().isEmpty() ? java.util.Optional.empty()
+                                : java.util.Optional.of(chat.create(config.memoryModel(), "pet_memory", 600,
+                                        "none")));
                 DialoguePostResponseWork postResponseWork = config.qdrantEnabled()
                         ? new PetEmbeddingPostResponseWork(sharedMemories, embeddingWorkerRef::get,
                                 workers, Duration.ofSeconds(40))
@@ -474,10 +486,7 @@ public final class PetServiceRuntime implements AutoCloseable {
                         new ConsolidationCandidateSelector(consolidationConfig, consolidationTokens),
                         new com.silver.aipets.service.consolidation.ConsolidationPromptBuilder(
                                 consolidationConfig, consolidationTokens),
-                        new OpenAiConsolidationModelClient(
-                                config.openAiBaseUri(), config.consolidationModel(),
-                                config.openAiApiKey(),
-                                Duration.ofMillis(config.dialogueTimeoutMs()), config.aiPricing()),
+                        chat.create(config.consolidationModel(), "pet_consolidation", 2_000, "none"),
                         new ConsolidationOutputCodec(),
                         new ConsolidationOutputValidator(consolidationConfig, consolidationTokens),
                         card -> {

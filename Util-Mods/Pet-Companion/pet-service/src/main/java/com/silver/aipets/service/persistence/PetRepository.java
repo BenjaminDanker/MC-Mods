@@ -24,6 +24,10 @@ public interface PetRepository {
     /** Enforces the unique owner invariant and returns the existing pet on an adoption retry/race. */
     CreatePetResult createIfOwnerAbsent(Pet proposedPet);
 
+    /** Stores a new pet's starting character lines; a no-op once any self-model exists. */
+    default void initializeCharacter(UUID petId, String selfModelJson, Instant at) {
+    }
+
     /**
      * Persists {@code replacement} only when the current row still has {@code expectedVersion}.
      * Implementations must never emulate this as a read followed by an unconditional write.

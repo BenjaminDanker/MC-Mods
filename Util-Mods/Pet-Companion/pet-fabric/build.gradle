@@ -42,6 +42,10 @@ loom {
             if (providers.gradleProperty('gametestFilter').isPresent()) {
                 vmArg "-Dfabric-api.gametest.filter=${providers.gradleProperty('gametestFilter').get()}"
             }
+            // Opt-in live conversation test: forward PET_LIVE_* settings to the server JVM.
+            System.getenv().findAll { it.key.startsWith('PET_LIVE_') }.each { name, value ->
+                vmArg "-D${name}=${value}"
+            }
             runDir 'build/gametest'
         }
     }

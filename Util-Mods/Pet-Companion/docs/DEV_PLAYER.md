@@ -71,7 +71,6 @@ bash /home/silver/pet-companion/dev-player/dev_player.sh inspect
 bash /home/silver/pet-companion/dev-player/dev_player.sh run-scenario
 bash /home/silver/pet-companion/dev-player/dev_player.sh bench 16
 bash /home/silver/pet-companion/dev-player/dev_player.sh bench 28
-bash /home/silver/pet-companion/dev-player/dev_player.sh diagnose-provider
 ```
 
 `traits` accepts eight integers in this order: curiosity, boldness,
@@ -165,12 +164,8 @@ persisted provenance, not conversational wording. Owner reports never become
 witnessed episodes or proof of the pet's own preferences. Diagnostics retain the
 historical label `Validated/displayed reply` for the mapped output.
 
-`compare-conversation bridge_records` runs three paired, non-persisting model
-comparisons and explicitly resets **only the selected isolated pet** between
-repetitions. Its `deployed_answer_first` label denotes the historical answer-first
-policy, not the current deployment. Do not use this command during a continuous
-conversation. Compare raw replies as well as displayed replies; successful
-schema decoding is not evidence of good conversation.
+Compare raw replies as well as displayed replies; successful schema decoding is
+not evidence of good conversation.
 
 ## Reading diagnostics
 
@@ -196,11 +191,8 @@ python deploy/scripts/analyze_pet_latency.py <session.md>
 ```
 
 `bench 28` gives four distinct cold queries followed by 24 warm repetitions
-in one process. `diagnose-provider` makes 20 isolated, non-persisting
-same-model calls comparing the full request, a short prompt with the same
-schema, no retrieved memories, a reply-only diagnostic schema, and low
-reasoning. They do not change production pet settings, but model calls may
-incur cost and their raw output should remain local.
+in one process. Model calls may incur cost and their raw output should remain
+local.
 
 ## Installation and recovery
 

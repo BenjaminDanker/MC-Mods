@@ -15,8 +15,8 @@ import java.util.random.RandomGenerator;
 
 /** Adoption-only appearance and temperament generation with injected randomness. */
 public final class PetRandomizer {
-    public static final int TEMPERAMENT_MINIMUM = 35;
-    public static final int TEMPERAMENT_MAXIMUM = 65;
+    public static final int TEMPERAMENT_MINIMUM = 15;
+    public static final int TEMPERAMENT_MAXIMUM = 85;
 
     private final AppearanceRules appearanceRules;
     private final AppearanceCatalog appearanceCatalog;
@@ -51,19 +51,18 @@ public final class PetRandomizer {
                 OptionalLong.of(random.nextLong()),
                 appearanceRules);
         PetTraits traits = PetTraits.initial(
-                centeredTemperament(),
-                centeredTemperament(),
-                centeredTemperament(),
-                centeredTemperament(),
-                centeredTemperament(),
+                temperament(),
+                temperament(),
+                temperament(),
+                temperament(),
+                temperament(),
                 adoptedAt);
-        return new AdoptionProfile(appearance, traits, initialMood.at(adoptedAt));
+        return new AdoptionProfile(
+                appearance, traits, initialMood.at(adoptedAt), CharacterSeed.roll(species, random));
     }
 
-    private int centeredTemperament() {
-        int width = TEMPERAMENT_MAXIMUM - TEMPERAMENT_MINIMUM + 1;
-        int first = random.nextInt(width);
-        int second = random.nextInt(width);
-        return TEMPERAMENT_MINIMUM + (first + second) / 2;
+    /** Uniform, so a good share of pets are clearly timid or bold, not all near the middle. */
+    private int temperament() {
+        return TEMPERAMENT_MINIMUM + random.nextInt(TEMPERAMENT_MAXIMUM - TEMPERAMENT_MINIMUM + 1);
     }
 }

@@ -1,14 +1,7 @@
 package com.silver.aipets.service.consolidation;
 
-import com.silver.aipets.service.dialogue.DialogueModelResponse;
-import com.silver.aipets.service.dialogue.DialoguePrompt;
+import com.silver.aipets.service.dialogue.DialogueModelClient;
 
-import java.time.Duration;
-import java.util.UUID;
-
-public interface ConsolidationModelClient {
-    String model();
-
-    DialogueModelResponse complete(
-            UUID requestId, DialoguePrompt prompt, String requiredJsonSchema, Duration timeout);
+/** Consolidation uses the same structured-output model client as dialogue. */
+public interface ConsolidationModelClient extends DialogueModelClient {
 }

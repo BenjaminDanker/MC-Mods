@@ -156,7 +156,7 @@ public final class MemoryEmbeddingWorker {
             Optional<UUID> owner = ownerResolver.apply(card.petId());
             if (owner.isPresent()) {
                 reservation = budget.tryReserve(
-                        owner.orElseThrow(), pricing.maximumEmbeddingCost(8192), now).orElse(null);
+                        owner.orElseThrow(), pricing.embeddingHoldUsd(), now).orElse(null);
                 if (reservation == null) {
                     jobs.retry(job.jobId(), workerId, now, now.plus(Duration.ofHours(1)),
                             "AI_BUDGET_EXHAUSTED");

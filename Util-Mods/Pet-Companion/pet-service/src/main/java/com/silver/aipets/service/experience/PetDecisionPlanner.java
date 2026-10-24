@@ -124,7 +124,7 @@ public final class PetDecisionPlanner {
                 return Optional.empty();
             // Durable cooldown survives restarts and coalesces a burst into one window.
             if (store.current(pet.petId(), now).isPresent()) return Optional.empty();
-            BigDecimal maximum = pricing.maximumDialogueCost(800, 800);
+            BigDecimal maximum = pricing.planningHoldUsd();
             AiBudgetService.Reservation reservation = budget.tryReserve(
                     pet.ownerUuid(), maximum, now).orElse(null);
             if (reservation == null) return Optional.empty();
@@ -183,7 +183,7 @@ public final class PetDecisionPlanner {
                         memory == null ? null : memory.memoryId());
                 boolean saved = store.saveForPlacement(pet, eventId, decision, now,
                         now.plusSeconds(Math.max(60, seconds)));
-                store.usage(pet, requestId, model.model(), response, "SUCCEEDED", now);
+                store.usage(pet, requestId, response.usageModel(model.model()), response, "SUCCEEDED", now);
                 if (saved) trace(pet.petId(), decision, "model_" + type);
                 return saved ? Optional.of(decision) : Optional.empty();
             } catch (RuntimeException failure) {
@@ -199,7 +199,7 @@ public final class PetDecisionPlanner {
                 store.saveForPlacement(pet, eventId,
                         new Decision("PAUSE", null, now.plusSeconds(60)),
                         now, now.plusSeconds(60));
-                store.usage(pet, requestId, model.model(), response, "FAILED", now);
+                store.usage(pet, requestId, response == null ? model.model() : response.usageModel(model.model()), response, "FAILED", now);
                 return Optional.empty();
             } finally {
                 budget.settle(reservation, response == null ? BigDecimal.ZERO

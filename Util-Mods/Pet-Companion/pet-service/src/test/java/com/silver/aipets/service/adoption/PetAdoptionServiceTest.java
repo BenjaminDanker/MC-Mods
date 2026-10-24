@@ -29,6 +29,33 @@ class PetAdoptionServiceTest {
     private static final Instant NOW = Instant.parse("2026-08-30T12:00:00Z");
 
     @Test
+    void newPetGetsItsCharacterLinesStoredExactlyOnce() {
+        InMemoryPetRepository delegate = new InMemoryPetRepository();
+        List<String> stored = new ArrayList<>();
+        com.silver.aipets.service.persistence.PetRepository repository =
+                (com.silver.aipets.service.persistence.PetRepository) java.lang.reflect.Proxy.newProxyInstance(
+                        getClass().getClassLoader(),
+                        new Class<?>[] {com.silver.aipets.service.persistence.PetRepository.class},
+                        (proxy, method, args) -> {
+                            if (method.getName().equals("initializeCharacter")) {
+                                stored.add((String) args[1]);
+                                return null;
+                            }
+                            return method.invoke(delegate, args);
+                        });
+        PetAdoptionService service = new PetAdoptionService(
+                repository, owner -> true, new PetRandomizer(AppearanceRules.defaults(),
+                        AppearanceCatalog.vanilla12110(), InitialMood.defaults(), new Random(99L)),
+                Clock.fixed(NOW, ZoneOffset.UTC), UUID::randomUUID);
+
+        service.adopt(OWNER_ID, PetSpecies.CAT, "Mochi");
+        service.adopt(OWNER_ID, PetSpecies.CAT, "Mochi");
+
+        assertEquals(1, stored.size());
+        assertTrue(stored.getFirst().contains("\"character\""));
+    }
+
+    @Test
     void inactiveOwnerWithoutPetCannotAdopt() {
         InMemoryPetRepository repository = new InMemoryPetRepository();
         PetAdoptionService service = service(repository, false);

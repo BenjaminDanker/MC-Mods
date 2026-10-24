@@ -18,50 +18,50 @@ final class DialogueConversationQualityTest {
     private static final Instant NOW = Instant.parse("2026-09-30T12:00:00Z");
     private static final UUID PET_ID = UUID.fromString("5bdcb9cb-c59a-4194-87cc-4efb940ccf0e");
 
-    @Test void modeChangesNeverEraseQuietActionOrRewriteNaturalReply() {
-        var output = output("Yes. I'll sit quietly with you.", PetDialogueAction.SIT, DialogueConversationMode.BRIEF);
+    @Test void quietActionAndNaturalReplyAreNeverRewritten() {
+        var output = output("Yes. I'll sit quietly with you.", PetDialogueAction.SIT);
         var mapped = new DialogueResponseMapper(limits()).map(output, "Can we sit quietly?", context(List.of(),List.of(),List.of()));
         assertEquals(output.reply(), mapped.reply());
         assertEquals(PetDialogueAction.SIT, mapped.action());
-        assertEquals(DialogueConversationMode.BRIEF, mapped.conversationMode());
     }
 
     @Test void observationWithConversationalVocabularyIsNotLexicallyRewritten() {
-        var output = output("Oak, and not finished yet. I'll remember that.", PetDialogueAction.NONE, DialogueConversationMode.OBSERVE);
+        var output = output("Oak, and not finished yet. I'll remember that.", PetDialogueAction.NONE);
         assertEquals(output.reply(), new DialogueResponseMapper(limits()).map(output,
                 "I started rebuilding the old bridge by the mill yesterday. I used oak, but I haven't finished it.").reply());
     }
 
-    @Test void lunaOwnsClarificationAndDeclineWording() {
-        for (var mode : List.of(DialogueConversationMode.CLARIFY, DialogueConversationMode.DECLINE, DialogueConversationMode.ASK)) {
-            var raw = output("What place do you mean?", PetDialogueAction.NONE, mode);
-            var mapped = new DialogueResponseMapper(limits()).map(raw,"I was thinking about going back there.");
-            assertEquals(raw.reply(),mapped.reply());
-            assertEquals(mode,mapped.conversationMode());
-        }
+    @Test void theModelOwnsClarificationAndDeclineWording() {
+        var raw = output("What place do you mean?", PetDialogueAction.NONE);
+        var mapped = new DialogueResponseMapper(limits()).map(raw,"I was thinking about going back there.");
+        assertEquals(raw.reply(),mapped.reply());
     }
 
     @Test void promptSeparatesWitnessedCrossingAndOwnerReportedActivity() {
         var crossing=event("We crossed a narrow spruce bridge together in the rain.");
         var building=thread("Owner is rebuilding the old bridge by the mill with oak; it is unfinished.");
-        String text=prompt(context(List.of(crossing,event("We watched a skeleton burn.")),List.of(),List.of(building)),
-                "What did we do near the bridge?");
-        assertTrue(text.contains(crossing.eventId().toString()));
-        assertTrue(text.contains("source_kind=OWNER_REPORTED"));
-        assertTrue(text.contains("return CLARIFY with one question"));
-        assertTrue(text.contains("do not append another event"));
+        var context=context(List.of(crossing,event("We watched a skeleton burn.")),List.of(),List.of(building));
+        String text=prompt(context,"What did we do near the bridge?");
+        assertTrue(text.contains("you saw: We crossed a narrow spruce bridge together in the rain."));
+        assertTrue(text.contains("Still unfinished (your owner told you): Owner is rebuilding the old bridge"));
+        assertTrue(text.contains("If your owner could mean two different things you remember, ask which one"));
         assertFalse(text.contains("We watched a skeleton"));
+        String records=new DialoguePromptBuilder(limits(),new WordCounter())
+                .buildMemory(context,"What did we do near the bridge?").text();
+        assertTrue(records.contains(crossing.eventId().toString()));
+        assertTrue(records.contains("thread_id=thread-bridge"));
+        assertTrue(records.contains("source_kind=OWNER_REPORTED"));
     }
 
     @Test void promptIncludesTwoAlternativesButDoesNotMandateARecap() {
         var first=event("We crossed a spruce bridge in rain.");
         var second=event("We repaired a stone bridge by the mill.");
         String text=prompt(context(List.of(first,second),List.of(),List.of()),"What did we do near the bridge?");
-        assertTrue(text.contains(first.eventId().toString()));
-        assertTrue(text.contains(second.eventId().toString()));
-        assertTrue(text.contains("rather than narrating them as a sequence"));
+        assertTrue(text.contains("We crossed a spruce bridge in rain."));
+        assertTrue(text.contains("We repaired a stone bridge by the mill."));
+        assertTrue(text.contains("ask which one, briefly"));
         assertTrue(prompt(context(List.of(first,second),List.of(),List.of()),"Give a complete recap of the bridge events.")
-                .contains(second.eventId().toString()));
+                .contains("We repaired a stone bridge by the mill."));
     }
 
     @Test void unknownSceneDoesNotClaimOwnerIsInvisible() {
@@ -108,17 +108,18 @@ final class DialogueConversationQualityTest {
         var context=withTurns(context(List.of(),List.of(),List.of()),List.of(
                 new DialogueTurn(DialogueTurn.Role.PET,"Which bridge?",NOW.minusSeconds(2)),
                 new DialogueTurn(DialogueTurn.Role.OWNER,"No questions for a bit.",NOW.minusSeconds(1))));
-        String text=prompt(context,"Thanks.");
-        assertTrue(text.contains("already asked a question"));
-        assertTrue(text.contains("honor that until they invite questions again"));
-        assertTrue(text.contains("No questions for a bit."));
+        DialoguePrompt built=new DialoguePromptBuilder(limits(),new WordCounter()).build(context,"Thanks.");
+        assertTrue(built.text().contains("You don't have to agree, answer everything, or ask questions back."));
+        assertTrue(built.text().contains("If your owner wants quiet or space, give it."));
+        // The live exchange is sent as real chat turns, starting with the owner.
+        assertEquals(List.of("No questions for a bit."), built.chatHistory().stream().map(DialogueTurn::text).toList());
     }
 
     @Test void selfModelStillNeedsRealPetActionEvidenceWithoutRewritingTheReply() {
         var action=event("ACTION_COMPLETED: Pet completed EXPLORE_NEARBY reason=CURIOSITY");
         var raw=new DialogueModelOutput("I'm interested in exploring nearby.",DialogueImportance.MEDIUM,Optional.empty(),
                 zeros(TraitName.class),zeros(MoodDimension.class),PetDialogueAction.NONE,PetDialogueAttention.CURIOUS,
-                DialogueAffect.NONE,RelationshipSignal.none(),0,DialogueConversationMode.ANSWER,
+                DialogueAffect.NONE,RelationshipSignal.none(),0,
                 new DialogueSelfModelCandidate(DialogueSelfModelCandidate.Kind.INTEREST,"nearby exploration",.8),OwnerInterpretationCandidate.none());
         var mapped=new DialogueResponseMapper(limits()).map(raw,"Do you like exploring?",context(List.of(action),List.of(),List.of()));
         assertEquals(raw.reply(),mapped.reply());
@@ -127,9 +128,9 @@ final class DialogueConversationQualityTest {
                 .selfModelCandidate().meaningful());
     }
 
-    private static DialogueModelOutput output(String reply, PetDialogueAction action, DialogueConversationMode mode) {
+    private static DialogueModelOutput output(String reply, PetDialogueAction action) {
         return new DialogueModelOutput(reply,DialogueImportance.MEDIUM,Optional.empty(),zeros(TraitName.class),zeros(MoodDimension.class),
-                action,PetDialogueAttention.CALM,DialogueAffect.CALMER,new RelationshipSignal(RelationshipSignal.Type.REPAIR,1),1,mode);
+                action,PetDialogueAttention.CALM,DialogueAffect.CALMER,new RelationshipSignal(RelationshipSignal.Type.REPAIR,1),1);
     }
 
     private static DialogueContext withTurns(DialogueContext context,List<DialogueTurn> turns) {

@@ -61,6 +61,24 @@ class PetRandomizerTest {
         assertEquals(first, second);
     }
 
+    @Test
+    void temperamentReachesBothEndsAndEachPetGetsItsOwnCharacterLines() {
+        PetRandomizer randomizer = randomizer(7L);
+        int bold = 0;
+        int timid = 0;
+        Set<String> characters = new HashSet<>();
+        for (int index = 0; index < 400; index++) {
+            AdoptionProfile profile = randomizer.generate(PetSpecies.DOG, ADOPTED_AT);
+            if (profile.traits().boldness() >= 65) bold++;
+            if (profile.traits().boldness() <= 35) timid++;
+            characters.add(profile.characterJson());
+            assertEquals(5, com.google.gson.JsonParser.parseString(profile.characterJson())
+                    .getAsJsonObject().getAsJsonArray("character").size());
+        }
+        assertTrue(bold > 80 && timid > 80, "extremes should be common: bold=" + bold + " timid=" + timid);
+        assertTrue(characters.size() > 350, "character lines should rarely repeat: " + characters.size());
+    }
+
     private static PetRandomizer randomizer(long seed) {
         return new PetRandomizer(
                 AppearanceRules.defaults(),
@@ -70,11 +88,16 @@ class PetRandomizerTest {
     }
 
     private static void assertTemperamentBounds(AdoptionProfile profile) {
-        assertTrue(profile.traits().curiosity() >= 35 && profile.traits().curiosity() <= 65);
-        assertTrue(profile.traits().boldness() >= 35 && profile.traits().boldness() <= 65);
-        assertTrue(profile.traits().playfulness() >= 35 && profile.traits().playfulness() <= 65);
-        assertTrue(profile.traits().expressiveness() >= 35 && profile.traits().expressiveness() <= 65);
-        assertTrue(profile.traits().independence() >= 35 && profile.traits().independence() <= 65);
+        assertTrue(profile.traits().curiosity() >= PetRandomizer.TEMPERAMENT_MINIMUM
+                && profile.traits().curiosity() <= PetRandomizer.TEMPERAMENT_MAXIMUM);
+        assertTrue(profile.traits().boldness() >= PetRandomizer.TEMPERAMENT_MINIMUM
+                && profile.traits().boldness() <= PetRandomizer.TEMPERAMENT_MAXIMUM);
+        assertTrue(profile.traits().playfulness() >= PetRandomizer.TEMPERAMENT_MINIMUM
+                && profile.traits().playfulness() <= PetRandomizer.TEMPERAMENT_MAXIMUM);
+        assertTrue(profile.traits().expressiveness() >= PetRandomizer.TEMPERAMENT_MINIMUM
+                && profile.traits().expressiveness() <= PetRandomizer.TEMPERAMENT_MAXIMUM);
+        assertTrue(profile.traits().independence() >= PetRandomizer.TEMPERAMENT_MINIMUM
+                && profile.traits().independence() <= PetRandomizer.TEMPERAMENT_MAXIMUM);
     }
 
     private static void assertRelationshipDefaults(AdoptionProfile profile) {

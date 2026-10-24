@@ -12,15 +12,35 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Objects;
 
-/** Bounded text moderation adapter; transport/availability failures are reported separately. */
+/**
+ * Bounded text moderation adapter. Only the configured categories block a message (by default
+ * sexual content and hate); everything else, including self-harm and mild harassment, passes so
+ * the pet can respond to people who need it and can react to rude owners. Transport or
+ * availability failures are reported separately and the caller lets the message through.
+ */
 public final class OpenAiModerationClient {
+    /** Categories that block a message unless configured otherwise. */
+    public static final java.util.Set<String> DEFAULT_BLOCKED_CATEGORIES =
+            java.util.Set.of("sexual", "sexual/minors", "hate", "hate/threatening");
+    /** Category names returned by {@code omni-moderation}. */
+    public static final java.util.Set<String> KNOWN_CATEGORIES = java.util.Set.of(
+            "harassment", "harassment/threatening", "hate", "hate/threatening", "illicit", "illicit/violent",
+            "self-harm", "self-harm/intent", "self-harm/instructions", "sexual", "sexual/minors",
+            "violence", "violence/graphic");
+
     private final HttpClient client;
     private final URI endpoint;
     private final String model;
     private final String apiKey;
     private final Duration timeout;
+    private final java.util.Set<String> blockedCategories;
 
     public OpenAiModerationClient(URI baseUri, String model, String apiKey, Duration timeout) {
+        this(baseUri, model, apiKey, timeout, DEFAULT_BLOCKED_CATEGORIES);
+    }
+
+    public OpenAiModerationClient(URI baseUri, String model, String apiKey, Duration timeout,
+            java.util.Set<String> blockedCategories) {
         Objects.requireNonNull(baseUri, "baseUri");
         if (baseUri.getHost() == null || !("http".equalsIgnoreCase(baseUri.getScheme())
                 || "https".equalsIgnoreCase(baseUri.getScheme()))) {
@@ -30,6 +50,10 @@ public final class OpenAiModerationClient {
         this.model = bounded(model, "model", 191);
         this.apiKey = bounded(apiKey, "apiKey", 512);
         this.timeout = timeout;
+        this.blockedCategories = java.util.Set.copyOf(Objects.requireNonNull(blockedCategories, "blockedCategories"));
+        if (!KNOWN_CATEGORIES.containsAll(this.blockedCategories)) {
+            throw new IllegalArgumentException("blockedCategories contains an unknown category");
+        }
         if (timeout.isZero() || timeout.isNegative()) throw new IllegalArgumentException("timeout must be positive");
         this.client = HttpClient.newBuilder().connectTimeout(timeout).build();
     }
@@ -56,8 +80,16 @@ public final class OpenAiModerationClient {
                 return new ModerationResult(true, false, "MODERATION_INVALID");
             }
             JsonObject result = results.get(0).getAsJsonObject();
-            boolean flagged = result.get("flagged").getAsBoolean();
-            return new ModerationResult(!flagged, true, flagged ? "MODERATION_FLAGGED" : "ALLOWED");
+            if (!result.has("categories") || !result.get("categories").isJsonObject()) {
+                return new ModerationResult(true, false, "MODERATION_INVALID");
+            }
+            JsonObject categories = result.getAsJsonObject("categories");
+            for (String category : new java.util.TreeSet<>(blockedCategories)) {
+                if (categories.has(category) && categories.get(category).getAsBoolean()) {
+                    return new ModerationResult(false, true, "MODERATION_BLOCKED:" + category);
+                }
+            }
+            return new ModerationResult(true, true, "ALLOWED");
         } catch (IOException failure) {
             return new ModerationResult(true, false, "MODERATION_UNAVAILABLE");
         } catch (InterruptedException failure) {
@@ -68,6 +100,10 @@ public final class OpenAiModerationClient {
         }
     }
 
+    /**
+     * @param allowed false only when an enabled category matched
+     * @param available false when moderation could not run; such a result is always allowed
+     */
     public record ModerationResult(boolean allowed, boolean available, String category) {
         public ModerationResult {
             Objects.requireNonNull(category, "category");

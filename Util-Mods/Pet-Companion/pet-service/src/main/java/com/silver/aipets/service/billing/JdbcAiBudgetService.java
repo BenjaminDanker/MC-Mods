@@ -65,8 +65,10 @@ public final class JdbcAiBudgetService implements AiBudgetService {
     public synchronized void settle(Reservation reservation, BigDecimal actualCost) {
         Objects.requireNonNull(reservation, "reservation");
         Objects.requireNonNull(actualCost, "actualCost");
-        if (actualCost.signum() < 0 || actualCost.compareTo(reservation.maximumCost()) > 0) {
-            throw new IllegalArgumentException("actualCost must be within the reservation");
+        // The hold is released either way. Actual provider cost is durable in ai_usage and may
+        // exceed the hold; the next admission check sees it through consumed().
+        if (actualCost.signum() < 0) {
+            throw new IllegalArgumentException("actualCost cannot be negative");
         }
         OwnerReservations owner = reservations.get(reservation.ownerUuid());
         if (owner == null) return;

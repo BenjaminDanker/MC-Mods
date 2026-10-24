@@ -979,7 +979,9 @@ public final class PetPhysicalGameTests {
         context.succeed();
     }
 
-    @GameTest(maxTicks = 240)
+    // The follow path is a 24-block strip, wider than the empty template. Padding keeps neighbouring
+    // tests (and their end-of-test area cleanup, which discards entities) away from the strip.
+    @GameTest(maxTicks = 240, padding = 40)
     @SuppressWarnings("removal")
     public void petFollowsRegisteredOwnerWithoutTeleportOrForcedChunks(GameTestHelper context) {
         ServerLevel world = context.getLevel();

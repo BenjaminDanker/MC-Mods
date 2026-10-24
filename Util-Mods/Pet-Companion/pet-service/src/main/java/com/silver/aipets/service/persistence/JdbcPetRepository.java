@@ -251,6 +251,23 @@ public final class JdbcPetRepository implements PetRepository {
     }
 
     @Override
+    public void initializeCharacter(UUID petId, String selfModelJson, Instant at) {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     UPDATE pet_traits SET self_model_json = ?, self_model_version = 1,
+                         self_model_updated_at = ?
+                     WHERE pet_id = ? AND self_model_json IS NULL
+                     """)) {
+            statement.setString(1, selfModelJson);
+            statement.setObject(2, java.time.LocalDateTime.ofInstant(at, java.time.ZoneOffset.UTC));
+            statement.setString(3, petId.toString());
+            statement.executeUpdate();
+        } catch (SQLException failure) {
+            throw persistenceFailure("Could not store the pet's starting character", failure);
+        }
+    }
+
+    @Override
     public CompareAndSetResult compareAndSet(UUID petId, long expectedVersion, Pet replacement) {
         Objects.requireNonNull(petId, "petId");
         Objects.requireNonNull(replacement, "replacement");

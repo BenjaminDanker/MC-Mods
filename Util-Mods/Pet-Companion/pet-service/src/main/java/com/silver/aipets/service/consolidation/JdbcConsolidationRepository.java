@@ -330,7 +330,8 @@ public final class JdbcConsolidationRepository implements ConsolidationRepositor
                 lockPendingEvent(connection,event.eventId(),job.petId());
             }
             for (UUID id : selection.discardedEventIds()) lockPendingEvent(connection,id,job.petId());
-            Applied applied = apply(current,output,job.petId(),at,dailyChanges(connection,job.petId(),at));
+            Applied applied = apply(current,output,job.petId(),at,dailyChanges(connection,job.petId(),at),
+                    isYoung(connection,job.petId(),at));
             List<UUID> retired = new ArrayList<>();
             List<LongTermMemoryCard> cards = insertMemories(
                     connection,job,selection,output,at,retired);
@@ -535,7 +536,7 @@ public final class JdbcConsolidationRepository implements ConsolidationRepositor
             q.setString(1,petId.toString());
             try(ResultSet r=q.executeQuery()) { if(!r.next()) throw new SQLException("Pet self model missing"); prior=r.getString(1); }
         }
-        String next=PetSelfModel.add(prior,evidence);
+        String next=PetSelfModel.add(prior,evidence,at);
         if (java.util.Objects.equals(prior,next)) return;
         try(PreparedStatement q=c.prepareStatement("""
                 UPDATE pet_traits SET self_model_json=?,self_model_version=self_model_version+1,
@@ -556,7 +557,7 @@ public final class JdbcConsolidationRepository implements ConsolidationRepositor
                 prior = row.getString(1); version = row.getLong(2);
             }
         }
-        String next = PetSelfModel.promoteEligible(prior);
+        String next = PetSelfModel.settle(prior, at);
         if (Objects.equals(prior, next)) return;
         try (PreparedStatement update = c.prepareStatement("""
                 UPDATE pet_traits SET self_model_json=?,self_model_version=self_model_version+1,
@@ -647,21 +648,52 @@ public final class JdbcConsolidationRepository implements ConsolidationRepositor
 
     private static Applied apply(
             PetTraits current,ValidatedConsolidationOutput output,UUID petId,
-            Instant at,Map<TraitName,Integer> daily) {
+            Instant at,Map<TraitName,Integer> daily,boolean young) {
         int[] values=java.util.Arrays.stream(TraitName.values()).mapToInt(current::value).toArray();
         Map<TraitName,Integer> deltas=new EnumMap<>(TraitName.class);
         for (TraitName trait:TraitName.values()) {
-            int per=trait.category()==TraitCategory.TEMPERAMENT?1:2;
-            int max=trait.category()==TraitCategory.TEMPERAMENT?3:6;
-            int bounded=clamp(output.proposedTraitDeltas().get(trait),-per,per);
-            bounded=clamp(bounded,-Math.max(0,max-daily.getOrDefault(trait,0)),
-                    Math.max(0,max-daily.getOrDefault(trait,0)));
+            int bounded=boundedDelta(trait,output.proposedTraitDeltas().get(trait),daily.getOrDefault(trait,0),young);
             int old=values[trait.ordinal()]; int next=clamp(old+bounded,0,100);
             values[trait.ordinal()]=next; deltas.put(trait,next-old);
         }
         return new Applied(new PetTraits(
                 values[0],values[1],values[2],values[3],values[4],values[5],values[6],values[7],
                 output.relationshipSummary(),current.summaryVersion()+1,at),deltas);
+    }
+
+    /**
+     * One sleep's change to a trait. Temperament drifts slowly. Trust and security are built slowly
+     * and lost quickly (one point up, three down); the daily total still bounds both.
+     */
+    static int boundedDelta(TraitName trait,int proposed,int dailyUsed) {
+        return boundedDelta(trait,proposed,dailyUsed,false);
+    }
+
+    /**
+     * A pet in its first week is still imprinting: how much it trusts, feels safe and attaches
+     * moves up faster than it will later. Temperament never speeds up.
+     */
+    static int boundedDelta(TraitName trait,int proposed,int dailyUsed,boolean young) {
+        boolean temperament=trait.category()==TraitCategory.TEMPERAMENT;
+        boolean asymmetric=trait==TraitName.TRUST||trait==TraitName.SECURITY;
+        int imprint=young&&!temperament?1:0;
+        int up=(temperament||asymmetric?1:2)+imprint;
+        int down=temperament?1:asymmetric?3:2;
+        int remaining=Math.max(0,(temperament?3:young?10:6)-dailyUsed);
+        return clamp(clamp(proposed,-down,up),-remaining,remaining);
+    }
+
+    private static final java.time.Duration IMPRINTING=java.time.Duration.ofDays(7);
+
+    private static boolean isYoung(Connection c,UUID petId,Instant at) throws SQLException {
+        try (PreparedStatement q=c.prepareStatement("SELECT created_at FROM pets WHERE pet_id=?")) {
+            q.setString(1,petId.toString());
+            try (ResultSet r=q.executeQuery()) {
+                return r.next() && java.time.Duration.between(
+                        r.getObject(1,java.time.LocalDateTime.class).toInstant(java.time.ZoneOffset.UTC),at)
+                        .compareTo(IMPRINTING)<0;
+            }
+        }
     }
 
     private static void updateTraits(

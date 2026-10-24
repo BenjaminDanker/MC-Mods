@@ -10,6 +10,11 @@ import com.silver.aipets.service.memory.*;
 import com.silver.aipets.service.persistence.JdbcPetRepository;
 import com.silver.aipets.service.sleep.*;
 import com.silver.aipets.service.vector.*;
+import com.silver.aipets.service.billing.AiPricing;
+import com.silver.aipets.service.provider.AiFallbackReporter;
+import com.silver.aipets.service.provider.ChatModels;
+import com.silver.aipets.service.config.PetServiceConfig;
+import com.silver.aipets.service.provider.ProviderTarget;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import com.google.gson.*;
@@ -45,6 +50,7 @@ public final class DevPlayerCli implements AutoCloseable {
     private final ConsolidationWorker consolidation;
     private final JdbcDialogueContextLoader contexts;
     private final DialogueService dialogue;
+    private final ChatModels chat;
     private Trace trace;
     private boolean vectorOffline;
 
@@ -74,8 +80,20 @@ public final class DevPlayerCli implements AutoCloseable {
         pets = new JdbcPetRepository(db, AppearanceRules.defaults());
         cards = new JdbcLongTermMemoryStore(db);
         Duration timeout = Duration.ofSeconds(20);
-        EmbeddingModelClient embeddingModel = new OpenAiEmbeddingModelClient(env.openAiUri(),
-                env.embeddingModel(), env.embeddingDimension(), env.openAiKey(), timeout);
+        AiPricing pricing = AiPricing.defaults();
+        Optional<ProviderTarget> fallbackTarget = env.openRouterFallback()
+                ? Optional.of(ProviderTarget.openRouter(env.openRouterUri(), env.openRouterKey(),
+                        AiPricing.Defaults.DIALOGUE_HOLD))
+                : Optional.empty();
+        chat = new ChatModels(ProviderTarget.openAi(env.openAiUri(), env.openAiKey()), fallbackTarget, timeout,
+                pricing, AiFallbackReporter.LOG_ONLY);
+        EmbeddingModelClient primaryEmbeddings = new OpenAiEmbeddingModelClient(env.openAiUri(),
+                env.embeddingModel(), env.embeddingDimension(), env.openAiKey(), timeout, pricing);
+        EmbeddingModelClient embeddingModel = fallbackTarget.isPresent()
+                ? new FallbackEmbeddingModelClient(primaryEmbeddings, new OpenAiEmbeddingModelClient(
+                        fallbackTarget.orElseThrow(), PetServiceConfig.openRouterModel(env.embeddingModel()),
+                        env.embeddingModel(), env.embeddingDimension(), timeout, pricing), AiFallbackReporter.LOG_ONLY)
+                : primaryEmbeddings;
         VectorMemoryRepository vector = new QdrantVectorMemoryRepository(env.qdrantUri(),
                 env.qdrantCollection(), env.embeddingDimension(), Duration.ofSeconds(5),
                 Optional.ofNullable(env.qdrantKey()).filter(s -> !s.isBlank()));
@@ -86,7 +104,8 @@ public final class DevPlayerCli implements AutoCloseable {
                 long start = System.nanoTime();
                 EmbeddingModelResponse result = embeddingModel.embedWithUsage(text);
                 if (trace != null) trace.line("Embedding model: `" + model() + "`, input `" + text
-                        + "`, tokens " + result.inputTokens() + ", " + ms(start) + " ms.");
+                        + "`, tokens " + result.inputTokens() + ", cost $" + result.estimatedCost().toPlainString()
+                        + ", " + ms(start) + " ms.");
                 return result;
             }
         };
@@ -114,26 +133,31 @@ public final class DevPlayerCli implements AutoCloseable {
                 tracedEmbedding, tracedVector, clock, UUID::randomUUID, 5,
                 Duration.ofMinutes(2), Duration.ofSeconds(30));
         DialogueMemoryRetriever fallback = new RelationalDialogueMemoryRetriever(cards);
-        DialogueMemoryRetriever memory = new VectorDialogueMemoryRetriever(
-                new MemoryRetrievalService(cards, tracedVector, tracedEmbedding,
-                        Runnable::run, clock), fallback);
+        MemoryRetrievalService retrieval = new MemoryRetrievalService(cards, tracedVector, tracedEmbedding,
+                Runnable::run, clock);
+        DialogueMemoryRetriever memory = new VectorDialogueMemoryRetriever(retrieval, fallback);
         contexts = new JdbcDialogueContextLoader(pets, new JdbcPetSleepStateReader(db),
                 memory, new JdbcDialogueHistoryReader(db), owner -> OWNER.equals(owner),
                 new com.silver.aipets.service.dialogue.JdbcOrganicPetContextReader(db));
         DialogueLimits limits = DialogueLimits.defaultsWithoutReplyCap();
-        OpenAiDialogueModelClient provider = new OpenAiDialogueModelClient(env.openAiUri(),
-                env.dialogueModel(), env.openAiKey(), timeout);
+        DialogueModelClient provider = chat.create(env.dialogueModel(), "pet_dialogue", 1_000,
+                env.dialogueReasoningEffort());
         DialogueModelClient tracedModel = new DialogueModelClient() {
             public String model() { return provider.model(); }
             public DialogueModelResponse complete(UUID id, DialoguePrompt prompt,
                     String schema, Duration deadline) {
                 if (trace != null) {
-                    trace.line("Model: `" + model() + "`; Chat Completions, `reasoning_effort=none`, "
-                            + "`max_completion_tokens=" + OpenAiDialogueModelClient.MAX_COMPLETION_TOKENS
+                    trace.line("Model: `" + model() + "`; OpenAI Chat Completions"
+                            + (env.openRouterFallback() ? " (OpenRouter fallback enabled)" : "")
+                            + ", reasoning effort `" + (env.dialogueReasoningEffort().isEmpty() ? "<omitted>" : env.dialogueReasoningEffort())
                             + "`, strict JSON schema. Nonstreaming; TTFT unavailable.");
                     trace.line("Prompt section tokens (local o200k estimate): `"
                             + new Gson().toJson(prompt.contextUsage()) + "`");
                     trace.block("Exact assembled model message (system role)", prompt.text());
+                    for (com.silver.aipets.service.dialogue.DialogueTurn turn : prompt.chatHistory()) {
+                        trace.line("History turn (" + (turn.role() == com.silver.aipets.service.dialogue.DialogueTurn.Role.OWNER
+                                ? "user" : "assistant") + "): `" + turn.text() + "`");
+                    }
                     prompt.currentOwnerMessage().ifPresent(text ->
                             trace.block("Exact assembled model message (user role)", text));
                     trace.block("Exact structured-output schema", schema);
@@ -150,13 +174,15 @@ public final class DevPlayerCli implements AutoCloseable {
                             + ", token_limit_hit=" + response.finishReason().equals("length")
                             + ", HTTP elapsed=" + response.latencyMillis() + " ms.");
                     trace.line("Provider usage: input=" + response.inputTokens() + ", cached="
-                            + response.cachedInputTokens() + ", output=" + response.outputTokens());
+                            + response.cachedInputTokens() + ", output=" + response.outputTokens()
+                            + ", cost_usd=" + response.estimatedCost().toPlainString());
                 }
                 return response;
             }
         };
         DialogueSafety moderation = new ModeratedDialogueSafety(new OpenAiModerationClient(
-                env.openAiUri(), env.moderationModel(), env.openAiKey(), timeout));
+                env.openAiUri(), env.moderationModel(), env.openAiKey(), timeout,
+                env.moderationBlockedCategories()), AiFallbackReporter.LOG_ONLY);
         DialogueSafety timedSafety = new DialogueSafety() {
             @Override public SafetyResult preprocess(String input, int max) {
                 long start = System.nanoTime();
@@ -188,13 +214,35 @@ public final class DevPlayerCli implements AutoCloseable {
             }
             public void recordUsage(DialogueUsage usage) { jdbcState.recordUsage(usage); }
         };
+        Optional<DialogueModelClient> memoryModel = Optional.empty();
+        if (!env.memoryModel().isEmpty()) {
+            DialogueModelClient memoryProvider = chat.create(env.memoryModel(), "pet_memory", 600, "none");
+            memoryModel = Optional.of(new DialogueModelClient() {
+                public String model() { return memoryProvider.model(); }
+                public DialogueModelResponse complete(UUID id, DialoguePrompt prompt, String schema, Duration deadline) {
+                    long start = System.nanoTime();
+                    DialogueModelResponse response = memoryProvider.complete(id, prompt, schema, deadline);
+                    if (trace != null) {
+                        trace.line("Memory bookkeeping model: `" + model() + "` (parallel with the voice call).");
+                        trace.block("Exact memory bookkeeping message (system role)", prompt.text());
+                        trace.stage("memory_provider_complete", ms(start));
+                        trace.block("Raw memory bookkeeping content", response.structuredJson());
+                        trace.line("Memory usage: input=" + response.inputTokens() + ", output="
+                                + response.outputTokens() + ", cost_usd=" + response.estimatedCost().toPlainString()
+                                + ", finish_reason=" + response.finishReason());
+                    }
+                    return response;
+                }
+            });
+        }
         dialogue = new DialogueService(limits, timedSafety,
                 new DialoguePromptBuilder(limits, new JTokkitDialogueTokenCounter()),
                 tracedModel, new DialogueOutputCodec(), new DialogueResponseMapper(limits),
                 new DialogueAdmissionController(limits), timedState,
-                clock, UUID::randomUUID, UUID::randomUUID);
-        ConsolidationModelClient consolidationProvider = new OpenAiConsolidationModelClient(
-                env.openAiUri(), env.consolidationModel(), env.openAiKey(), timeout);
+                clock, UUID::randomUUID, UUID::randomUUID, () -> true,
+                new com.silver.aipets.service.metrics.PetOperationalMetrics(), memoryModel);
+        DialogueModelClient consolidationProvider =
+                chat.create(env.consolidationModel(), "pet_consolidation", 2_000, "none");
         ConsolidationModelClient tracedConsolidation = new ConsolidationModelClient() {
             public String model() { return consolidationProvider.model(); }
             public DialogueModelResponse complete(UUID id, DialoguePrompt prompt,
@@ -228,7 +276,8 @@ public final class DevPlayerCli implements AutoCloseable {
                 clock, new SleepConsolidationTrigger(consolidation));
         planner = new PetDecisionPlanner(new JdbcDecisionStore(db),
                 com.silver.aipets.service.billing.AiBudgetService.UNLIMITED,
-                com.silver.aipets.service.billing.AiPricing.defaults(), tracedModel, true,
+                AiPricing.defaults(), chat.create(env.plannerModel(), "pet_decision", 800, "none"),
+                true,
                 new JdbcOpenThreadRecall(db), new JdbcDecisionMemoryRecall(db));
     }
 
@@ -272,9 +321,6 @@ public final class DevPlayerCli implements AutoCloseable {
             case "seed-owner-interpretation" -> seedOwnerInterpretation(args);
             case "run-scenario" -> scenario();
             case "bench" -> bench(args.length > 1 ? Integer.parseInt(args[1]) : 16);
-            case "diagnose-provider" -> diagnoseProvider();
-            case "diagnose-relationship" -> diagnoseRelationshipSchema();
-            case "compare-conversation" -> compareConversation(join(args,1));
             default -> usage();
         }
     }
@@ -360,8 +406,7 @@ public final class DevPlayerCli implements AutoCloseable {
         long contextStart = System.nanoTime();
         DialogueSafety.SafetyResult local = dialogue.preprocessLocally(message);
         if (!local.allowed()) throw new IllegalArgumentException("Dev Player message failed local safety");
-        CompletableFuture<DialogueSafety.SafetyResult> moderation = dialogue.moderateAsync(
-                local, java.util.concurrent.ForkJoinPool.commonPool());
+        CompletableFuture<DialogueSafety.SafetyResult> moderation = dialogue.moderateAsync(local);
         DialogueContext context = contexts.loadSpeculatively(OWNER, PET, BACKEND, DIMENSION,
                 clock.instant(), local.normalizedText(), scene).orElseThrow();
         trace.stage("context_sql_embedding_vector", ms(contextStart));
@@ -382,7 +427,7 @@ public final class DevPlayerCli implements AutoCloseable {
         result.output().ifPresent(output -> trace.line("Validated immediate state: action=" + output.action()
                 + ", attention=" + output.attention() + ", affect=" + output.affectDelta()
                 + "×" + output.affectStrength() + ", relationship=" + output.relationshipSignal().type()
-                + "/" + output.relationshipSignal().strength() + ", conversation_mode=" + output.conversationMode()
+                + "/" + output.relationshipSignal().strength() + ""
                 + ", self_model_candidate=" + output.selfModelCandidate().kind()
                 + ", supporting_event_ids=" + output.selfModelCandidate().supportingEventIds()
                 + ", owner_interpretation=" + output.ownerInterpretation().intent().orElse("none") + "/"
@@ -604,319 +649,6 @@ public final class DevPlayerCli implements AutoCloseable {
         }
     }
 
-    private void diagnoseProvider() throws Exception {
-        create();
-        trace = new Trace("diagnose-provider", clock.instant(), report);
-        String message = "What happened on the spruce bridge?";
-        String affectMessage = "I'm nervous about going into this cave.";
-        trace.line("Controlled isolated provider comparison; no dialogue state is written by these calls.");
-        trace.line("Same model and owner question for all variants. Reply length is observed, not forced.");
-        DialogueContext fullContext = contexts.loadSpeculatively(OWNER, PET, BACKEND, DIMENSION,
-                clock.instant(), message, PetSceneSnapshot.unknown()).orElseThrow();
-        DialogueLimits limits = DialogueLimits.defaultsWithoutReplyCap();
-        JTokkitDialogueTokenCounter counter = new JTokkitDialogueTokenCounter();
-        DialoguePromptBuilder builder = new DialoguePromptBuilder(limits, counter);
-        DialoguePrompt full = builder.build(fullContext, message);
-        DialogueContext affectContext = contexts.loadSpeculatively(OWNER, PET, BACKEND, DIMENSION,
-                clock.instant(), affectMessage, PetSceneSnapshot.unknown()).orElseThrow();
-        DialoguePrompt affectPrompt = builder.build(affectContext, affectMessage);
-        DialogueContext noMemoryContext = new DialogueContext(fullContext.pet(),
-                fullContext.sleeping(), fullContext.aiAccessEnabled(), List.of(), List.of(),
-                fullContext.recentTurns(), fullContext.gameContext(), fullContext.now());
-        DialoguePrompt noMemory = builder.build(noMemoryContext, message);
-        String shortText = "You are Mica, a cautious, independent cat speaking briefly to your owner. "
-                + "Witnessed: We crossed a narrow spruce bridge together in the rain. "
-                + "Answer the owner's question without inventing details. "
-                + "Return one structured response matching the supplied schema.";
-        DialoguePrompt shortPrompt = new DialoguePrompt(shortText, counter.count(shortText)+counter.count(message),
-                com.silver.aipets.common.transport.DialogueContextUsageWire.empty(), Optional.of(message));
-        DialoguePrompt reduced = full;
-        String reducedSchema = """
-                {"type":"object","additionalProperties":false,"required":["reply"],
-                 "properties":{"reply":{"type":"string","minLength":1,"maxLength":2000}}}
-                """;
-        OpenAiDialogueModelClient normalClient = new OpenAiDialogueModelClient(env.openAiUri(),
-                env.dialogueModel(), env.openAiKey(), Duration.ofSeconds(20),
-                "pet_dialogue_diagnostic", com.silver.aipets.service.billing.AiPricing.defaults(), "none");
-        OpenAiDialogueModelClient lowClient = new OpenAiDialogueModelClient(env.openAiUri(),
-                env.dialogueModel(), env.openAiKey(), Duration.ofSeconds(20),
-                "pet_dialogue_diagnostic", com.silver.aipets.service.billing.AiPricing.defaults(), "low");
-        try (AutoCloseable providerDiagnostics=DialogueProviderDiagnostics.attach(trace::line)) {
-            for (int repetition=1; repetition<=4; repetition++) {
-                diagnosticCall("full_schema", repetition, full, DialogueStructuredSchema.FULL_JSON_SCHEMA,
-                        "none", counter, normalClient);
-                diagnosticCall("compact_without_affect", repetition, full,
-                        DialogueStructuredSchema.COMPACT_JSON_SCHEMA, "none", counter, normalClient);
-                diagnosticCall("compact_with_affect", repetition, full,
-                        DialogueStructuredSchema.JSON_SCHEMA, "none", counter, normalClient);
-                diagnosticCall("compact_without_affect_owner_anxious", repetition, affectPrompt,
-                        DialogueStructuredSchema.COMPACT_JSON_SCHEMA, "none", counter, normalClient);
-                diagnosticCall("compact_with_affect_owner_anxious", repetition, affectPrompt,
-                        DialogueStructuredSchema.JSON_SCHEMA, "none", counter, normalClient);
-                diagnosticCall("reply_only_schema", repetition, reduced,
-                        reducedSchema, "none", counter, normalClient);
-                diagnosticCall("short_prompt_same_full_schema", repetition, shortPrompt,
-                        DialogueStructuredSchema.FULL_JSON_SCHEMA, "none", counter, normalClient);
-                diagnosticCall("full_without_retrieved_memories", repetition, noMemory,
-                        DialogueStructuredSchema.FULL_JSON_SCHEMA, "none", counter, normalClient);
-            }
-            for (int repetition=1; repetition<=4; repetition++) {
-                diagnosticCall("full_low_reasoning", repetition, full,
-                        DialogueStructuredSchema.JSON_SCHEMA, "low", counter, lowClient);
-            }
-        }
-        trace.finish(); trace = null;
-        System.out.println("Provider comparison trace: " + report);
-    }
-
-    private void diagnoseRelationshipSchema() throws Exception {
-        create();
-        trace = new Trace("diagnose-relationship", clock.instant(), report);
-        String[] messages = {
-                "What happened on the spruce bridge?",
-                "Thanks for waiting for me while I finished the bridge.",
-                "Stop following me so closely while I build; I need some space.",
-                "I'm sorry I pushed you away earlier. I should have given you space."
-        };
-        trace.line("Isolated, non-persistent schema comparison. The same prompt and owner input are sent "
-                + "to the current compact schema and the compact schema with relationship_event. "
-                + "No production player or vector data is read or written.");
-        DialogueLimits limits = DialogueLimits.defaultsWithoutReplyCap();
-        JTokkitDialogueTokenCounter counter = new JTokkitDialogueTokenCounter();
-        DialoguePromptBuilder builder = new DialoguePromptBuilder(limits, counter);
-        OpenAiDialogueModelClient client = new OpenAiDialogueModelClient(env.openAiUri(),
-                env.dialogueModel(), env.openAiKey(), Duration.ofSeconds(20),
-                "pet_relationship_diagnostic", com.silver.aipets.service.billing.AiPricing.defaults(), "none");
-        try (AutoCloseable providerDiagnostics = DialogueProviderDiagnostics.attach(trace::line)) {
-            for (int scenario = 0; scenario < messages.length; scenario++) {
-                String message = messages[scenario];
-                DialogueContext context = contexts.loadSpeculatively(OWNER, PET, BACKEND, DIMENSION,
-                        clock.instant(), message, PetSceneSnapshot.unknown()).orElseThrow();
-                DialoguePrompt prompt = builder.build(context, message);
-                for (int repetition = 1; repetition <= 3; repetition++) {
-                    trace.line("## Scenario " + (scenario + 1) + " repetition=" + repetition
-                            + " input=" + message);
-                    boolean relationshipFirst = (scenario + repetition) % 2 == 0;
-                    if (relationshipFirst) {
-                        diagnosticCall("relationship_compact", repetition, prompt,
-                                DialogueStructuredSchema.JSON_SCHEMA, "none", counter, client);
-                        diagnosticCall("current_compact", repetition, prompt,
-                                DialogueStructuredSchema.COMPACT_AFFECT_JSON_SCHEMA, "none", counter, client);
-                    } else {
-                        diagnosticCall("current_compact", repetition, prompt,
-                                DialogueStructuredSchema.COMPACT_AFFECT_JSON_SCHEMA, "none", counter, client);
-                        diagnosticCall("relationship_compact", repetition, prompt,
-                                DialogueStructuredSchema.JSON_SCHEMA, "none", counter, client);
-                    }
-                }
-            }
-        }
-        trace.finish(); trace = null;
-        System.out.println("Relationship schema comparison trace: " + report);
-    }
-
-    /** Paired, non-persisting prompt-policy calls; reset the isolated pet before each repetition. */
-    private void compareConversation(String caseName) throws Exception {
-        String message=switch(caseName) {
-            case "bridge_records" -> "What did we do near the bridge?";
-            case "why_sitting" -> "Why are you sitting here?";
-            case "stars" -> "How many stars are in the sky?";
-            case "going_back" -> "I've been thinking about going back to that place.";
-            case "river_no_preference", "river_after_exploration_interest" ->
-                    "Do you like walking by the river?";
-            case "ambiguous_bridges" -> "What happened at the bridge?";
-            default -> throw new IllegalArgumentException("Unknown policy case: " + caseName);
-        };
-        Path comparisonDir=report.getParent().resolve("conversation-policy-"+clock.instant().atZone(ZoneOffset.UTC).toLocalDate());
-        Files.createDirectories(comparisonDir);
-        System.out.println("Policy comparison: "+caseName+"; reports at "+comparisonDir);
-        for(int repetition=1;repetition<=3;repetition++) {
-            reset();
-            seedPolicyCase(caseName);
-            Path caseReport=comparisonDir.resolve(caseName+"-r"+repetition+".md");
-            trace=new Trace("same-schema conversation policy comparison "+caseName+" repetition="+repetition,
-                    clock.instant(),caseReport);
-            try {
-                trace.line("Owner input: `"+message+"`; synthetic scene `"+PetSceneSnapshot.unknown()+"`. "
-                        +"Dev Player identity and pet were reset before this repetition.");
-                trace.line("Two diagnostic provider calls share one retrieved DialogueContext, model ID, base route, "
-                        +"reasoning_effort=none, non-streaming transport, max_completion_tokens=2000, timeout, "
-                        +"and strict current schema. Only the deployed answer-first policy text differs from the current "
-                        +"conversation-aware policy. These are non-persisting comparison calls, not accepted interactions.");
-                snapshot("seeded_before");
-                long contextStart=System.nanoTime();
-                DialogueContext context=contexts.loadSpeculatively(OWNER,PET,BACKEND,DIMENSION,
-                        clock.instant(),message,PetSceneSnapshot.unknown()).orElseThrow();
-                trace.stage("context_sql_embedding_qdrant",ms(contextStart));
-                trace.line("Selected long-term context: "+context.longTermMemories().stream()
-                        .map(item->item.card().memoryId()+"/"+item.source()+"/"+item.similarity()+"/"+item.card().text()).toList());
-                DialogueLimits diagnosticLimits=DialogueLimits.defaultsWithoutReplyCap();
-                JTokkitDialogueTokenCounter counter=new JTokkitDialogueTokenCounter();
-                DialoguePromptBuilder builder=new DialoguePromptBuilder(diagnosticLimits,counter);
-                DialoguePrompt current=builder.build(context,message);
-                DialoguePrompt baseline=builder.buildAnswerFirstComparison(context,message);
-                OpenAiDialogueModelClient client=new OpenAiDialogueModelClient(env.openAiUri(),env.dialogueModel(),
-                        env.openAiKey(),Duration.ofSeconds(20),"pet_conversation_policy_diagnostic",
-                        com.silver.aipets.service.billing.AiPricing.defaults(),"none");
-                DialogueOutputCodec codec=new DialogueOutputCodec();
-                DialogueResponseMapper responseMapper=new DialogueResponseMapper(diagnosticLimits);
-                try(AutoCloseable diagnostics=DialogueProviderDiagnostics.attach(trace::line)) {
-                    if(repetition%2==1) {
-                        comparePolicyCall("deployed_answer_first",baseline,message,context,client,codec,responseMapper);
-                        comparePolicyCall("conversation_aware",current,message,context,client,codec,responseMapper);
-                    } else {
-                        comparePolicyCall("conversation_aware",current,message,context,client,codec,responseMapper);
-                        comparePolicyCall("deployed_answer_first",baseline,message,context,client,codec,responseMapper);
-                    }
-                }
-                snapshot("after_nonpersisting_model_calls");
-                trace.line("The diagnostic calls do not run moderation, interaction persistence, Qdrant writes, or Fabric delivery. "
-                        +"Context retrieval may record its normal isolated recall telemetry.");
-                trace.finish();
-            } finally { trace=null; }
-        }
-        System.out.println("Completed three reset, paired model repetitions for "+caseName);
-    }
-
-    private void comparePolicyCall(String policy,DialoguePrompt prompt,String message,DialogueContext context,
-            OpenAiDialogueModelClient client,DialogueOutputCodec codec,DialogueResponseMapper responseMapper) {
-        trace.line("### Policy `"+policy+"`; model `"+client.model()+"`; prompt tokens="+prompt.inputTokens()+
-                "; current response schema; nonstreaming; reasoning_effort=none; max_completion_tokens=2000.");
-        trace.block("Exact rendered prompt",prompt.text());
-        prompt.currentOwnerMessage().ifPresent(text -> trace.block("Exact current owner user message",text));
-        trace.block("Exact structured-output schema",DialogueStructuredSchema.JSON_SCHEMA);
-        long start=System.nanoTime();
-        try {
-            DialogueModelResponse response=client.complete(UUID.randomUUID(),prompt,
-                    DialogueStructuredSchema.JSON_SCHEMA,Duration.ofSeconds(20));
-            trace.stage("http_complete_response_body_"+policy,ms(start));
-            trace.block("Raw structured response",response.structuredJson());
-            trace.line("Provider metadata: request_id="+response.providerRequestId().orElse("<absent>")
-                    +", finish_reason="+response.finishReason()+", configured_completion_limit="
-                    +response.configuredCompletionLimit()+", token_limit_hit="+response.finishReason().equals("length")
-                    +", input_tokens="+response.inputTokens()+", cached_tokens="+response.cachedInputTokens()
-                    +", completion_tokens="+response.outputTokens()+", HTTP elapsed="+response.latencyMillis()+" ms.");
-            var decoded=codec.decode(response.structuredJson());
-            var validated=responseMapper.map(decoded,message,context);
-            trace.line("Validated visible reply: `"+validated.reply()+"`; conversation_mode="
-                    +validated.conversationMode()+"; validator_fallback="
-                    +!validated.reply().equals(decoded.reply())+"; action="+validated.action()
-                    +"; affect="+validated.affectDelta()+"; interpretation="
-                    +validated.ownerInterpretation().intent().orElse("none")+"/"
-                    +validated.ownerInterpretation().emotion().orElse("none")+"/"
-                    +validated.ownerInterpretation().confidence()+". No interaction state was committed.");
-        } catch(RuntimeException failure) {
-            trace.stage("http_or_validation_failure_"+policy,ms(start));
-            trace.line("Call rejected: "+failure.getClass().getSimpleName()+" (no state commit).");
-        }
-    }
-
-    private void seedPolicyCase(String caseName) throws SQLException {
-        Instant now=clock.instant();
-        switch(caseName) {
-            case "bridge_records" -> {
-                insertPolicyEvent("ARRIVED_TOGETHER","We crossed a narrow spruce bridge together in the rain.",
-                        "VERIFIED_OBSERVATION","EPISODE",now,null);
-                UUID ownerSource=insertPolicyEvent("DIALOGUE",
-                        "Owner is building a bridge and plans to finish it tomorrow.",
-                        "OWNER_STATEMENT","OPEN_THREAD",now,"Owner is building a bridge and plans to finish it tomorrow.");
-                try(Connection c=db.getConnection();PreparedStatement q=c.prepareStatement("""
-                        INSERT INTO pet_open_threads(thread_id,pet_id,summary,source_kind,source_event_id,thread_key,
-                            location_server,location_dimension,location_cue,state,created_at,last_referenced_at,
-                            next_cue,expires_at,version,updated_at)
-                        VALUES(?,?,?,'OWNER_REPORTED',?,'bridge',?,?,'unknown','OPEN',?,?,?, ?,1,?)
-                        """)) {
-                    q.setString(1,UUID.randomUUID().toString());q.setString(2,PET.toString());
-                    q.setString(3,"Owner is building a bridge and plans to finish it tomorrow.");
-                    q.setString(4,ownerSource.toString());q.setString(5,BACKEND);q.setString(6,DIMENSION);
-                    q.setObject(7,utc(now));q.setObject(8,utc(now));q.setString(9,"owner returns to this activity");
-                    q.setObject(10,utc(now.plus(Duration.ofDays(30))));q.setObject(11,utc(now));q.executeUpdate();
-                }
-            }
-            case "ambiguous_bridges" -> {
-                insertPolicyEvent("ARRIVED_TOGETHER","We crossed the spruce bridge in the rain.",
-                        "VERIFIED_OBSERVATION","EPISODE",now.minusSeconds(60),null);
-                insertPolicyEvent("OWNER_ACTION","We repaired the stone bridge near the mill.",
-                        "VERIFIED_OBSERVATION","EPISODE",now,null);
-            }
-            case "river_after_exploration_interest" -> seedPromotedExplorationInterest(now);
-            default -> { }
-        }
-    }
-
-    private UUID insertPolicyEvent(String type,String summary,String provenance,String kind,Instant at,String rawOwner)
-            throws SQLException {
-        UUID event=UUID.randomUUID();
-        try(Connection c=db.getConnection();PreparedStatement q=c.prepareStatement("""
-                INSERT INTO pet_events(event_id,pet_id,owner_uuid,event_type,occurred_at,source_server,
-                    source_dimension,importance,summary,raw_player_text,short_term_expires_at,prompt_eligible,
-                    consolidation_status,created_at,memory_kind,source_provenance,confidence,salience,emotional_significance)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?, 'PENDING',?,?,?,?,?,0)
-                """)) {
-            q.setString(1,event.toString());q.setString(2,PET.toString());q.setString(3,OWNER.toString());
-            q.setString(4,type);q.setObject(5,utc(at));q.setString(6,BACKEND);q.setString(7,DIMENSION);
-            q.setString(8,type.equals("ARRIVED_TOGETHER")?"HIGH":"MEDIUM");q.setString(9,summary);
-            q.setString(10,rawOwner);q.setObject(11,utc(at.plus(Duration.ofDays(30))));q.setBoolean(12,true);
-            q.setObject(13,utc(at));q.setString(14,kind);q.setString(15,provenance);
-            q.setBigDecimal(16,provenance.equals("OWNER_STATEMENT")?new java.math.BigDecimal("1.000"):
-                    new java.math.BigDecimal("0.900"));q.setInt(17,provenance.equals("OWNER_STATEMENT")?2:3);
-            q.executeUpdate();
-        }
-        return event;
-    }
-
-    private void seedPromotedExplorationInterest(Instant now) throws SQLException {
-        String selfModel=null;
-        for(int index=0;index<3;index++) {
-            Instant actionAt=now.minus(Duration.ofDays(index==2?1:2)).plusSeconds(index*60L);
-            UUID action=insertPolicyEvent("ACTION_COMPLETED","Pet completed EXPLORE_NEARBY reason=CURIOSITY",
-                    "VERIFIED_OBSERVATION","EPISODE",actionAt,null);
-            UUID interaction=insertPolicyEvent("DIALOGUE","Do you like exploring nearby?",
-                    "OWNER_STATEMENT","EPISODE",actionAt.plusSeconds(1),"Do you like exploring nearby?");
-            var candidate=new DialogueSelfModelCandidate(DialogueSelfModelCandidate.Kind.INTEREST,
-                    "nearby exploration",.72,Set.of(action));
-            selfModel=PetSelfModel.recordCandidate(selfModel,candidate,interaction,actionAt,false);
-        }
-        selfModel=PetSelfModel.promoteEligible(selfModel);
-        try(Connection c=db.getConnection();PreparedStatement q=c.prepareStatement("""
-                UPDATE pet_traits SET self_model_json=?,self_model_version=1,self_model_updated_at=?,updated_at=?
-                WHERE pet_id=?
-                """)) {
-            q.setString(1,selfModel);q.setObject(2,utc(now));q.setObject(3,utc(now));q.setString(4,PET.toString());
-            q.executeUpdate();
-        }
-    }
-
-    private void diagnosticCall(String variant, int repetition, DialoguePrompt prompt,
-            String schema, String effort, JTokkitDialogueTokenCounter counter,
-            OpenAiDialogueModelClient client) {
-        trace.line("### Variant " + variant + " repetition=" + repetition
-                + " reasoning_effort=" + effort + " prompt_tokens_local=" + prompt.inputTokens());
-        trace.line("Prompt section tokens (local o200k estimate): `"
-                + new Gson().toJson(prompt.contextUsage()) + "`");
-        trace.block("Exact diagnostic prompt", prompt.text());
-        prompt.currentOwnerMessage().ifPresent(text -> trace.block("Exact diagnostic user message",text));
-        trace.block("Exact diagnostic schema", schema);
-        long began = System.nanoTime();
-        try {
-            DialogueModelResponse response = client.complete(UUID.randomUUID(), prompt,
-                    schema, Duration.ofSeconds(20));
-            trace.stage("diagnostic_call_" + variant, ms(began));
-            trace.block("Complete structured response", response.structuredJson());
-            JsonObject parsed = JsonParser.parseString(response.structuredJson()).getAsJsonObject();
-            String reply = parsed.has("reply") ? parsed.get("reply").getAsString() : "<missing>";
-            int visibleTokens = counter.count(reply);
-            trace.line("VISIBLE REPLY: `" + reply + "`; local reply tokens=" + visibleTokens
-                    + "; provider completion tokens=" + response.outputTokens()
-                    + "; remaining completion tokens (JSON fields/framing and any reasoning)="
-                    + Math.max(0, response.outputTokens() - visibleTokens));
-        } catch (RuntimeException failure) {
-            trace.stage("diagnostic_call_" + variant, ms(began));
-            trace.line("Diagnostic call failed: " + failure.getClass().getSimpleName()
-                    + " (provider status, if received, appears above)");
-        }
-    }
-
     private void snapshot(String label) throws SQLException {
         trace.line("SQL " + label + " (isolated schema):");
         rows("pet_traits", "SELECT curiosity,boldness,playfulness,expressiveness,independence,attachment,trust,security,relationship_summary,summary_version,self_model_json,self_model_version FROM pet_traits WHERE pet_id=?");
@@ -969,7 +701,7 @@ public final class DevPlayerCli implements AutoCloseable {
     private static LocalDateTime utc(Instant at) { return LocalDateTime.ofInstant(at,ZoneOffset.UTC); }
     private static long ms(long start) { return (System.nanoTime()-start)/1_000_000; }
     private static void usage() {
-        System.out.println("dev-player create|reset|say TEXT [--scene-json JSON] [--vector-offline]|observe TYPE SUMMARY [--location-json JSON] [--no-decision]|sleep|wake|consolidate|advance PT...|inspect|traits 8_VALUES|seed-owner-interpretation INTENT EMOTION CONFIDENCE|run-scenario|bench [8..40]|diagnose-provider|compare-conversation CASE");
+        System.out.println("dev-player create|reset|say TEXT [--scene-json JSON] [--vector-offline]|observe TYPE SUMMARY [--location-json JSON] [--no-decision]|sleep|wake|consolidate|advance PT...|inspect|traits 8_VALUES|seed-owner-interpretation INTENT EMOTION CONFIDENCE|run-scenario|bench [8..40]");
     }
     @Override public void close() { db.close(); }
 

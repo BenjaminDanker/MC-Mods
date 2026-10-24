@@ -9,7 +9,8 @@
     "main": ["com.silver.aipets.fabric.gametest.PetGameTestBootstrap"],
     "fabric-gametest": [
       "com.silver.aipets.fabric.gametest.PetPhysicalGameTests",
-      "com.silver.aipets.fabric.gametest.PetConversationGameTests"
+      "com.silver.aipets.fabric.gametest.PetConversationGameTests",
+      "com.silver.aipets.fabric.gametest.PetLiveServiceGameTests"
     ]
   },
   "depends": {

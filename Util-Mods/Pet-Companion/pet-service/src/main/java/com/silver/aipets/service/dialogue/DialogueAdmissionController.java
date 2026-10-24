@@ -77,7 +77,7 @@ public final class DialogueAdmissionController {
             return Admission.denied(Denial.GLOBAL_CONCURRENCY);
         }
         Optional<AiBudgetService.Reservation> reservation = budget.tryReserve(
-                ownerUuid, pricing.maximumDialogueCost(limits.hardInputTokens(), 800), now);
+                ownerUuid, pricing.dialogueHoldUsd(), now);
         if (reservation.isEmpty()) {
             return Admission.denied(Denial.BUDGET_EXHAUSTED);
         }

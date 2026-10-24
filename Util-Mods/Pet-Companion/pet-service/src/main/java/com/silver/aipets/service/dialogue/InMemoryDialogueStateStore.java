@@ -24,7 +24,7 @@ public final class InMemoryDialogueStateStore implements DialogueStateStore {
     private final Map<UUID, Pet> pets = new HashMap<>();
     private final Map<DailyTraitKey, Integer> dailyAbsoluteChanges = new HashMap<>();
     private final Map<UUID, DialogueEvent> events = new HashMap<>();
-    private final Map<UUID, DialogueUsage> usageByRequest = new HashMap<>();
+    private final Map<UUID, DialogueUsage> usageByRequest = new java.util.LinkedHashMap<>();
     private final Map<UUID, RelationshipEvidence> relationshipEvidence = new HashMap<>();
     private final List<TraitAudit> audits = new ArrayList<>();
 
@@ -140,6 +140,21 @@ public final class InMemoryDialogueStateStore implements DialogueStateStore {
     public int usageCount() {
         synchronized (monitor) {
             return usageByRequest.size();
+        }
+    }
+
+    /** Total recorded provider cost across all usage rows (test inspection). */
+    public java.math.BigDecimal usageCostTotal() {
+        synchronized (monitor) {
+            return usageByRequest.values().stream().map(DialogueUsage::estimatedCost)
+                    .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+        }
+    }
+
+    /** The most recently recorded usage row (test inspection). */
+    public DialogueUsage lastUsage() {
+        synchronized (monitor) {
+            return usageByRequest.values().stream().reduce((first, second) -> second).orElseThrow();
         }
     }
 

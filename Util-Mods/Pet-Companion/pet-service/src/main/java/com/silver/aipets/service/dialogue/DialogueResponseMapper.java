@@ -32,7 +32,7 @@ public final class DialogueResponseMapper {
         return new ValidatedDialogueOutput(
                 reply, output.importance(), output.memoryCandidate(), output.traitDeltas(), output.moodDeltas(),
                 output.action(), output.attention(), output.affectDelta(), output.relationshipSignal(),
-                output.affectStrength(), output.conversationMode(), selfCandidate, interpretation,
+                output.affectStrength(), selfCandidate, interpretation,
                 output.ownerMemory().flatMap(item -> item.bind(normalizedPlayerMessage, context)));
     }
 
