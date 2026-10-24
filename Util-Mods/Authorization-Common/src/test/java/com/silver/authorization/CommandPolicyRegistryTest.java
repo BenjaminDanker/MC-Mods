@@ -18,6 +18,23 @@ class CommandPolicyRegistryTest {
     }
 
     @Test
+    void bendingAndPolyFactoryAreUsableByPlayersWhileStaffToolsStayGated() {
+        for (String command : new String[] {"/bending bind fireblast 1", "/b help",
+                "/polydex", "/polydex search gear", "/polyfactory wiki", "/choose magic", "/choose tech", "/choose tech confirm", "/faction", "/skills", "/skills buy ice", "/skills ascend", "/skills attune fire"}) {
+            var decision = decide(command, true, false, false, false, ignored -> false);
+            assertTrue(decision.allowed(), command);
+        }
+        for (String command : new String[] {"/bending modifier clear", "/bending export", "/b import file",
+                "/polydex reload", "/polyfactory debug list_models", "/graphlib list", "/bending choose fire",
+                "/bending remove fire", "/b choose water", "/skills check Steve icespike", "/skills admin points Steve 5", "/claimlist", "/claimlist player Steve", "/claimlist tp minecraft:overworld 1 2", "/skills admin max Steve", "/skills admin complete Steve magic", "/mpdselementunlock Steve fire",
+                "/mpdsskillpoints Steve 3", "/mpdsbranchswitch Steve magic tech", "/structurereset here"}) {
+            var decision = decide(command, true, false, false, false, ignored -> false);
+            assertFalse(decision.allowed(), command);
+            assertEquals(CommandClassification.PERMISSION, decision.classification(), command);
+        }
+    }
+
+    @Test
     void nestedPathsInheritNearestMappedAncestorAndMoreSpecificPoliciesOverride() {
         var parent = decide("/pet", true, false, false, false, ignored -> false);
         var child = decide("/pet admin inspect", true, false, false, false, ignored -> false);
@@ -130,6 +147,11 @@ class CommandPolicyRegistryTest {
                         .requiredPermission().orElseThrow().value());
         assertEquals("commands.admin.spark",
                 decide("/spark profiler", true, false, false, false, ignored -> false)
+                        .requiredPermission().orElseThrow().value());
+        assertEquals(CommandClassification.PERMISSION,
+                decide("/tt20", true, false, false, false, ignored -> false).classification());
+        assertEquals("commands.admin.utilities",
+                decide("/tt20", true, false, false, false, ignored -> false)
                         .requiredPermission().orElseThrow().value());
         assertEquals("commands.admin.carpet",
                 decide("/script run", true, false, false, false, ignored -> false)

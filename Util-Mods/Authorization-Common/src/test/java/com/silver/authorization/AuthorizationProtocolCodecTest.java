@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 class AuthorizationProtocolCodecTest {
     private static final byte[] KEY = new byte[32];
     private static final Instant NOW = Instant.parse("2026-09-19T12:00:00Z");
-    private static final ServerId SERVER = ServerId.of("vanilla1");
+    private static final ServerId SERVER = ServerId.of("vanilla");
     private static final UUID PLAYER = UUID.fromString("ac4c25b5-7dd2-47c9-a6c0-7c08a3b5905b");
     private static final UUID EPOCH = UUID.fromString("9c434a47-62ac-43bd-a64c-a40910b46f6c");
     private static final UUID NONCE = UUID.fromString("4f474608-bfcc-47ef-9c3e-d53d7c80e57b");

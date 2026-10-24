@@ -111,7 +111,8 @@ public final class DiscoveredCommandPolicies {
 
         add(policies, CommandClassification.PERMISSION, "mpds.inventory.metadata.modify",
                 "mpds", "mpds", "/mpdsremovecustomidself");
-        add(policies, CommandClassification.INTERNAL, null, "mpds", "mpds", "/mpdscomplete");
+        add(policies, CommandClassification.INTERNAL, null, "mpds", "mpds", "/mpdscomplete", "/mpdselementclaim",
+                "/mpdsskillclaim");
         policies.add(CommandOrigin.FABRIC_BACKEND, "/return", CommandClassification.INTERNAL,
                 null, "Minecraft", "minecraft");
         // The same literal is a different command on Velocity: an eligible player uses it
@@ -124,7 +125,7 @@ public final class DiscoveredCommandPolicies {
         add(policies, CommandClassification.PERMISSION, "mpds.skip.manage", "mpds", "mpds", "/updateskip");
         add(policies, CommandClassification.PERMISSION, "mpds.skip.inspect", "mpds", "mpds", "/showskip");
         add(policies, CommandClassification.PERMISSION, "mpds.progression.modify", "mpds", "mpds",
-                "/mpdsdefeated", "/mpdsstage1");
+                "/mpdsdefeated", "/mpdsstage1", "/mpdselementunlock", "/mpdsskillpoints", "/mpdsbranchswitch");
         add(policies, CommandClassification.PERMISSION, "mpds.reward.grant", "mpds", "mpds", "/mpdsgrantbossreward");
         add(policies, CommandClassification.PERMISSION, "mpds.inventory.metadata.modify", "mpds", "mpds",
                 "/mpdssoulboundmax", "/mpdsremovecustomid");
@@ -140,9 +141,9 @@ public final class DiscoveredCommandPolicies {
                 "/skyislands dragons virtual", "/skyislands giants", "/skyislands giants all",
                 "/skyislands giants loaded", "/skyislands giants projectiles", "/skyislands giants virtual");
         add(policies, CommandClassification.PERMISSION, "enderfight.reset", "ender-fight", "enderfight",
-                "/enderfight", "/enderfight reset");
+                "/enderfight", "/enderfight resetend");
         add(policies, CommandClassification.PERMISSION, "villagerinterface.devtest", "villager-interface",
-                "villager_interface", "/villagerinterface", "/villagerinterface devtest");
+                "villager_interface", "/villagerinterface", "/villagerinterface devtest", "/vi", "/vi devtest");
         add(policies, CommandClassification.PERMISSION, "dimensions.manage", "Disable Dimensions",
                 "disable_dimensions", "/dimensions", "/disabledimensions");
         add(policies, CommandClassification.PERMISSION, "atlantis.manage", "Atlantis", "atlantis", "/atlantis");
@@ -169,7 +170,7 @@ public final class DiscoveredCommandPolicies {
         add(policies, CommandClassification.PERMISSION, "commands.admin.servercore", "ServerCore", "servercore",
                 "/servercore", "/server-core");
         add(policies, CommandClassification.PERMISSION, "commands.admin.viaversion", "ViaVersion", "viaversion",
-                "/viaver", "/viaversion", "/vvfabric", "/vi");
+                "/viaver", "/viaversion", "/vvfabric");
         add(policies, CommandClassification.PERMISSION, "commands.admin.carpet", "Carpet", "carpet",
                 "/carpet", "/script", "/distance", "/log", "/mobcaps", "/perimeterinfo", "/profile", "/info");
         add(policies, CommandClassification.PERMISSION, "commands.admin.carpet", "Carpet", "carpet", "/spawn");
@@ -179,7 +180,7 @@ public final class DiscoveredCommandPolicies {
                 "/polymer");
         add(policies, CommandClassification.PERMISSION, "commands.admin.utilities", "server utilities", "utilities",
                 "/sparkc", "/servercoreconfig", "/fabric", "/mods", "/perf", "/debugstick",
-                "/chunky", "/c2me", "/fetchprofile", "/jfr", "/stopwatch", "/swing",
+                "/chunky", "/c2me", "/fetchprofile", "/jfr", "/stopwatch", "/swing", "/tt20",
                 "!", ",", ".", ";");
         add(policies, CommandClassification.PERMISSION, "commands.admin.servercore", "ServerCore", "servercore",
                 "/sc");
@@ -195,6 +196,34 @@ public final class DiscoveredCommandPolicies {
         // //paste, and their single-slash aliases). One root-family mapping covers all of them.
         policies.addRootPrefix("/", CommandClassification.PERMISSION, "commands.admin.worldedit",
                 "WorldEdit", "worldedit");
+
+        // Babylon: /choose is public; the mod itself only exposes it inside the Babylon region.
+        add(policies, CommandClassification.PUBLIC, null, "babylon", "babylon", "/choose");
+
+        // Bending (Avatar abilities): players choose, bind and read help; setup and data tools are staff.
+        add(policies, CommandClassification.PUBLIC, null, "bending", "bending",
+                "/bending", "/b", "/adventure_callback");
+        add(policies, CommandClassification.PERMISSION, "commands.admin.bending", "bending", "bending",
+                "/bending add", "/bending attribute", "/bending modifier", "/bending export", "/bending import",
+                "/bending choose", "/bending remove",
+                "/b add", "/b attribute", "/b modifier", "/b export", "/b import", "/b choose", "/b remove");
+        // Spawn Protect: the claim overview (list, player view, teleport) is staff only.
+        add(policies, CommandClassification.PERMISSION, "commands.admin.openpac", "spawnprotect", "spawnprotect", "/claimlist");
+        // Element Choice: the skill tree opens from /skills (and the quick-actions dialog); only staff may inspect abilities.
+        add(policies, CommandClassification.PERMISSION, "commands.admin.structurereset", "structure-reset", "structure-reset",
+                "/structurereset");
+        add(policies, CommandClassification.PUBLIC, null, "faction-lock", "faction-lock", "/faction");
+        add(policies, CommandClassification.PUBLIC, null, "element-choice", "element-choice", "/skills");
+        add(policies, CommandClassification.PERMISSION, "commands.admin.bending", "element-choice", "element-choice",
+                "/skills check", "/skills admin");
+
+        // PolyFactory / Polydex: the in-game guide and wiki link are public; reload and debug are staff.
+        add(policies, CommandClassification.PUBLIC, null, "polydex", "polydex", "/polydex");
+        add(policies, CommandClassification.PERMISSION, "commands.admin.polyfactory", "polydex", "polydex",
+                "/polydex reload");
+        add(policies, CommandClassification.PERMISSION, "commands.admin.polyfactory", "polyfactory", "polyfactory",
+                "/polyfactory", "/graphlib");
+        add(policies, CommandClassification.PUBLIC, null, "polyfactory", "polyfactory", "/polyfactory wiki");
 
         return policies.build();
     }
