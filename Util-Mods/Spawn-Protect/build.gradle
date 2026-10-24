@@ -28,7 +28,16 @@ dependencies {
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 	compileOnly project(':network-authorization')
+	// OpenPAC's public API, copied from the server's mods folder into libs/ (not committed).
+	compileOnly fileTree(dir: 'libs', include: '*.jar')
+	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.11.3'
+	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.11.3'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.3'
 	compileOnly 'com.silver:authorization-common:0.1.0'
+}
+
+test {
+	useJUnitPlatform()
 }
 
 processResources {

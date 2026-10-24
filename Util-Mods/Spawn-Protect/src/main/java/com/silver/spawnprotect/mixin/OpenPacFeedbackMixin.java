@@ -18,6 +18,7 @@ public abstract class OpenPacFeedbackMixin {
         require = 1
     )
     private void spawnprotect$suppressOpenPacInteractionFeedback(ServerPlayer player, Component message) {
-        // OpenPAC has already denied the action.
+        // OpenPAC has already denied the action; show its native claim bar instead of chat.
+        com.silver.spawnprotect.protect.OpenPacClaimBar.show(player);
     }
 }

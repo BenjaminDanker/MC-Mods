@@ -20,7 +20,12 @@ public abstract class ServerPlayerSystemMessageMixin {
             || text.contains("you are not allowed to apply this item")
             || text.contains("not allowed to land on")
             || text.contains("interaction with this block is disabled")
-            || text.contains("interaction with this entity is disabled")) {
+            || text.contains("interaction with this entity is disabled")
+            || text.contains("try again empty-handed")
+            || text.contains("try empty hand")
+            || text.contains("not allowed to apply this item")
+            || text.contains("this item is disabled on the server")) {
+            com.silver.spawnprotect.protect.OpenPacClaimBar.show((ServerPlayer) (Object) this);
             ci.cancel();
         }
     }
