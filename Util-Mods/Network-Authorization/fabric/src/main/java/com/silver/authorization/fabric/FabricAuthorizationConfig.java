@@ -53,10 +53,14 @@ record FabricAuthorizationConfig(Optional<ServerId> serverId, Optional<byte[]> b
             }
             if (server.isEmpty()) log.warn("[NetworkAuthorization] No canonical backend server ID configured");
             if (key.isEmpty()) log.warn("[NetworkAuthorization] No backend-specific HMAC key configured");
+            // This server's own value wins; otherwise the address every server on this host shares.
             String catalogHost = properties.getProperty("catalog_host", "").trim();
+            if (catalogHost.isEmpty()) catalogHost = com.silver.authorization.NetworkShared.get("catalog_host", "");
+            String portText = properties.getProperty("catalog_port", "").trim();
+            if (portText.isEmpty()) portText = com.silver.authorization.NetworkShared.get("catalog_port", "25576");
             int catalogPort;
             try {
-                catalogPort = Integer.parseInt(properties.getProperty("catalog_port", "25576").trim());
+                catalogPort = Integer.parseInt(portText);
                 if (catalogPort < 1 || catalogPort > 65535) throw new NumberFormatException("outside 1..65535");
             } catch (NumberFormatException invalid) {
                 catalogPort = 25576;

@@ -112,13 +112,13 @@ public final class CommandPolicyRuntime {
             case "polymer" -> new String[]{"Polymer", "polymer"};
             case "collective" -> new String[]{"Collective", "collective"};
             case "servercore" -> new String[]{"ServerCore", "servercore"};
-            case "viaver", "viaversion", "vvfabric", "vi" -> new String[]{"ViaVersion", "viaversion"};
+            case "viaver", "viaversion", "vvfabric" -> new String[]{"ViaVersion", "viaversion"};
             case "serverportals" -> new String[]{"MCServerPortals", "server_portals"};
             case "skyislands" -> new String[]{"Sky Islands", "skyislands"};
             case "dimensions", "disabledimensions" -> new String[]{"Disable Dimensions", "disable_dimensions"};
             case "atlantis" -> new String[]{"Atlantis", "atlantis"};
             case "enderfight" -> new String[]{"Ender Fight", "enderfight"};
-            case "villagerinterface" -> new String[]{"Villager Interface", "villager_interface"};
+            case "villagerinterface", "vi" -> new String[]{"Villager Interface", "villager_interface"};
             default -> vanillaRoot(root) ? new String[]{"Minecraft", "minecraft"} : new String[]{null, null};
         };
     }
