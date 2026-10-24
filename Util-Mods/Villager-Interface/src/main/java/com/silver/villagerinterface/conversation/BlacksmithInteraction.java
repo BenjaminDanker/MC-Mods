@@ -1,7 +1,7 @@
 package com.silver.villagerinterface.conversation;
 
 import com.silver.villagerinterface.config.VillagerConfigEntry;
-import com.silver.villagerinterface.soulbound.MpdsSoulboundApi;
+import com.silver.soulbounditems.mpds.MpdsSoulboundApi;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.Item;

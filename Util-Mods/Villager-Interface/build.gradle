@@ -29,6 +29,8 @@ dependencies {
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 	compileOnly project(':network-authorization')
 	compileOnly 'com.silver:authorization-common:0.1.0'
+	// The Soulbound cap lookup lives in Soulbound-Items (build it first); every server with this mod has that one too.
+	compileOnly files('../Soulbound-Items/build/libs/soulbound-items-1.0.0.jar')
 }
 
 def modVersion = project.version

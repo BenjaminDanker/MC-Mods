@@ -315,7 +315,7 @@ public final class ConversationManager {
         HttpRequest request;
         try {
             request = buildProviderRequest(config, messages, session.entry().id());
-        } catch (IllegalStateException ex) {
+        } catch (IllegalStateException | IllegalArgumentException ex) {
             VillagerInterfaceMod.LOGGER.warn("{} request was not sent: {}", providerDisplayName(config), ex.getMessage());
             player.sendSystemMessage(Component.literal("The villager cannot reach its configured AI provider.").withStyle(ChatFormatting.DARK_GRAY), false);
             return;
@@ -328,8 +328,11 @@ public final class ConversationManager {
             .whenComplete((response, error) -> {
                 MinecraftServer server = player.level().getServer();
                 server.execute(() -> {
-                    if (!sessions.containsKey(player.getUUID())) {
+                    if (sessions.get(player.getUUID()) != session) {
                         session.clearActiveRequest();
+                        if (response != null) {
+                            response.body().close();
+                        }
                         return;
                     }
 
@@ -354,6 +357,7 @@ public final class ConversationManager {
                     int status = response.statusCode();
                     if (status < 200 || status >= 300) {
                         session.clearActiveRequest();
+                        response.body().close();
                         VillagerInterfaceMod.LOGGER.warn("{} HTTP {}", providerDisplayName(config), status);
                         player.sendSystemMessage(Component.literal("The villager seems distracted.").withStyle(ChatFormatting.DARK_GRAY), false);
                         return;
@@ -819,27 +823,8 @@ public final class ConversationManager {
         return cleaned;
     }
 
+    // Both providers stream deltas (only the new text), so every chunk is appended as is.
     private void applyStreamChunk(StringBuilder full, String chunk) {
-        if (chunk.isBlank()) {
-            return;
-        }
-
-        if (full.length() == 0) {
-            full.append(chunk);
-            return;
-        }
-
-        String current = full.toString();
-        if (chunk.startsWith(current)) {
-            full.setLength(0);
-            full.append(chunk);
-            return;
-        }
-
-        if (current.endsWith(chunk)) {
-            return;
-        }
-
         full.append(chunk);
     }
 
