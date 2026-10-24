@@ -1,0 +1,8 @@
+{
+  "type": "minecraft:smelting",
+  "category": "misc",
+  "ingredient": "magitech:raw_deep_ore",
+  "result": {"id": "magitech:deepsteel_ingot"},
+  "experience": 2.0,
+  "cookingtime": 400
+}

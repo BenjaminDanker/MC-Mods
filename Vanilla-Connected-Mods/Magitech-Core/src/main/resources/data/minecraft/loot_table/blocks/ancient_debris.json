@@ -1,0 +1,39 @@
+{
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:alternatives",
+          "children": [
+            {
+              "type": "minecraft:item",
+              "name": "magitech:raw_deep_ore",
+              "conditions": [
+                {"condition": "minecraft:location_check", "predicate": {"dimension": "minecraft:overworld"}},
+                {"condition": "minecraft:match_tool", "predicate": {"items": [
+                  "polyfactory:portable_drill", "polyfactory:iron_drill_head", "polyfactory:copper_drill_head",
+                  "polyfactory:golden_drill_head", "polyfactory:diamond_drill_head", "polyfactory:netherite_drill_head"]}}
+              ],
+              "functions": [
+                {"function": "minecraft:set_count", "count": {"type": "minecraft:uniform", "min": 1, "max": 2}},
+                {"function": "minecraft:apply_bonus", "enchantment": "minecraft:fortune", "formula": "minecraft:ore_drops"},
+                {"function": "minecraft:explosion_decay"}
+              ]
+            },
+            {
+              "type": "minecraft:item",
+              "name": "minecraft:ancient_debris",
+              "conditions": [
+                {"condition": "minecraft:inverted", "term": {"condition": "minecraft:location_check", "predicate": {"dimension": "minecraft:overworld"}}},
+                {"condition": "minecraft:survives_explosion"}
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "random_sequence": "minecraft:blocks/ancient_debris"
+}
