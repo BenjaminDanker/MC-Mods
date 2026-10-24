@@ -1,0 +1,44 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    "PPP",
+    "PCP",
+    "P P"
+  ],
+  "key": {
+    "P": "polyfactory:steel_plate",
+    "C": "polyfactory:integrated_circuit"
+  },
+  "result": {
+    "id": "minecraft:diamond_leggings",
+    "count": 1,
+    "components": {
+      "minecraft:custom_name": {
+        "text": "Reinforced Steel Leggings",
+        "color": "aqua",
+        "italic": false
+      },
+      "minecraft:max_damage": 570,
+      "minecraft:attribute_modifiers": [
+        {
+          "type": "minecraft:armor",
+          "id": "techarms:reinforced_leggings_armor",
+          "amount": 6,
+          "operation": "add_value",
+          "slot": "legs"
+        },
+        {
+          "type": "minecraft:armor_toughness",
+          "id": "techarms:reinforced_leggings_toughness",
+          "amount": 2.0,
+          "operation": "add_value",
+          "slot": "legs"
+        }
+      ],
+      "minecraft:custom_data": {
+        "id": "techarms_reinforced_leggings"
+      }
+    }
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:lodestone"
+    },
+    "title": {
+      "text": "An Older Faith"
+    },
+    "description": {
+      "text": "Stand in an ancient temple. The currents were worshipped here before anyone studied them."
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "magicstory:tower",
+  "criteria": {
+    "visited": {
+      "trigger": "minecraft:location",
+      "conditions": {
+        "player": [
+          {
+            "condition": "minecraft:location_check",
+            "predicate": {
+              "structures": [
+                "structory_towers:ancient_temple",
+                "structory_towers:sacred_relic_temple"
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "requirements": [
+    [
+      "visited"
+    ]
+  ],
+  "rewards": {
+    "function": "magicstory:chapter_temple"
+  }
+}

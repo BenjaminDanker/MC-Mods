@@ -1,0 +1,46 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    " D ",
+    "PCP",
+    " T "
+  ],
+  "key": {
+    "P": "polyfactory:steel_plate",
+    "C": "polyfactory:integrated_circuit",
+    "D": "minecraft:diamond",
+    "T": "minecraft:stick"
+  },
+  "result": {
+    "id": "minecraft:diamond_sword",
+    "count": 1,
+    "components": {
+      "minecraft:custom_name": {
+        "text": "Reinforced Steel Sword",
+        "color": "aqua",
+        "italic": false
+      },
+      "minecraft:max_damage": 1700,
+      "minecraft:attribute_modifiers": [
+        {
+          "type": "minecraft:attack_damage",
+          "id": "techarms:reinforced_sword_damage",
+          "amount": 9.0,
+          "operation": "add_value",
+          "slot": "mainhand"
+        },
+        {
+          "type": "minecraft:attack_speed",
+          "id": "techarms:reinforced_sword_speed",
+          "amount": -2.4,
+          "operation": "add_value",
+          "slot": "mainhand"
+        }
+      ],
+      "minecraft:custom_data": {
+        "id": "techarms_reinforced_sword"
+      }
+    }
+  }
+}

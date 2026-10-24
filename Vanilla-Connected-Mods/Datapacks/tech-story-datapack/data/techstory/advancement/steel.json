@@ -1,0 +1,38 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:iron_ingot"
+    },
+    "title": {
+      "text": "The Age of Steel"
+    },
+    "description": {
+      "text": "Forge steel. The foundry was built from it, and so will you rebuild it."
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "techstory:crank",
+  "criteria": {
+    "granted": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "requirements": [
+    [
+      "granted"
+    ]
+  ],
+  "rewards": {
+    "function": "techstory:chapter_steel",
+    "recipes": [
+      "techarms:steel_sword",
+      "techarms:steel_helmet",
+      "techarms:steel_chestplate",
+      "techarms:steel_leggings",
+      "techarms:steel_boots"
+    ]
+  }
+}

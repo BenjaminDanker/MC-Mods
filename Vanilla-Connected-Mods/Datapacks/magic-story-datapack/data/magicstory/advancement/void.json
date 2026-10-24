@@ -1,0 +1,45 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:ender_eye"
+    },
+    "title": {
+      "text": "The Edge of Everything"
+    },
+    "description": {
+      "text": "Cross into the End and reach the rift. The void kept the last piece."
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "magicstory:fire",
+  "criteria": {
+    "visited": {
+      "trigger": "minecraft:location",
+      "conditions": {
+        "player": [
+          {
+            "condition": "minecraft:location_check",
+            "predicate": {
+              "structures": [
+                "nullscape:rift",
+                "nullscape:dragon_skeleton",
+                "structory_towers:end/end_tower"
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "requirements": [
+    [
+      "visited"
+    ]
+  ],
+  "rewards": {
+    "function": "magicstory:chapter_void"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "type": "minecraft:notice",
+  "title": {
+    "text": "Elemental Skills",
+    "color": "gold"
+  },
+  "body": [
+    {
+      "type": "minecraft:plain_message",
+      "contents": {
+        "text": "Spend skill points on elements, branches and combinations."
+      }
+    }
+  ],
+  "action": {
+    "label": {
+      "text": "Open skill tree"
+    },
+    "action": {
+      "type": "minecraft:run_command",
+      "command": "skills"
+    }
+  }
+}

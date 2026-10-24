@@ -1,0 +1,44 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    "P",
+    "P",
+    "T"
+  ],
+  "key": {
+    "P": "polyfactory:steel_plate",
+    "T": "minecraft:stick"
+  },
+  "result": {
+    "id": "minecraft:iron_sword",
+    "count": 1,
+    "components": {
+      "minecraft:custom_name": {
+        "text": "Steel Sword",
+        "color": "gray",
+        "italic": false
+      },
+      "minecraft:max_damage": 1000,
+      "minecraft:attribute_modifiers": [
+        {
+          "type": "minecraft:attack_damage",
+          "id": "techarms:steel_sword_damage",
+          "amount": 6.5,
+          "operation": "add_value",
+          "slot": "mainhand"
+        },
+        {
+          "type": "minecraft:attack_speed",
+          "id": "techarms:steel_sword_speed",
+          "amount": -2.4,
+          "operation": "add_value",
+          "slot": "mainhand"
+        }
+      ],
+      "minecraft:custom_data": {
+        "id": "techarms_steel_sword"
+      }
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    " N ",
+    "GCG",
+    " T "
+  ],
+  "key": {
+    "N": "minecraft:netherite_ingot",
+    "G": "polyfactory:large_steel_gear",
+    "C": "polyfactory:integrated_circuit",
+    "T": "minecraft:stick"
+  },
+  "result": {
+    "id": "minecraft:netherite_sword",
+    "count": 1,
+    "components": {
+      "minecraft:custom_name": {
+        "text": "Industrial Steel Sword",
+        "color": "gold",
+        "italic": false
+      },
+      "minecraft:max_damage": 2800,
+      "minecraft:attribute_modifiers": [
+        {
+          "type": "minecraft:attack_damage",
+          "id": "techarms:industrial_sword_damage",
+          "amount": 12.0,
+          "operation": "add_value",
+          "slot": "mainhand"
+        },
+        {
+          "type": "minecraft:attack_speed",
+          "id": "techarms:industrial_sword_speed",
+          "amount": -2.4,
+          "operation": "add_value",
+          "slot": "mainhand"
+        }
+      ],
+      "minecraft:custom_data": {
+        "id": "techarms_industrial_sword"
+      }
+    }
+  }
+}

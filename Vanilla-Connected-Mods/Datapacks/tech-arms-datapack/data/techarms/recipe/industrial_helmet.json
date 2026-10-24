@@ -1,0 +1,51 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    "NNN",
+    "PCP"
+  ],
+  "key": {
+    "P": "polyfactory:steel_plate",
+    "C": "polyfactory:integrated_circuit",
+    "N": "minecraft:netherite_ingot"
+  },
+  "result": {
+    "id": "minecraft:netherite_helmet",
+    "count": 1,
+    "components": {
+      "minecraft:custom_name": {
+        "text": "Industrial Steel Helmet",
+        "color": "gold",
+        "italic": false
+      },
+      "minecraft:max_damage": 550,
+      "minecraft:attribute_modifiers": [
+        {
+          "type": "minecraft:armor",
+          "id": "techarms:industrial_helmet_armor",
+          "amount": 5,
+          "operation": "add_value",
+          "slot": "head"
+        },
+        {
+          "type": "minecraft:armor_toughness",
+          "id": "techarms:industrial_helmet_toughness",
+          "amount": 3.0,
+          "operation": "add_value",
+          "slot": "head"
+        },
+        {
+          "type": "minecraft:knockback_resistance",
+          "id": "techarms:industrial_helmet_knockback",
+          "amount": 0.1,
+          "operation": "add_value",
+          "slot": "head"
+        }
+      ],
+      "minecraft:custom_data": {
+        "id": "techarms_industrial_helmet"
+      }
+    }
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    "NCN",
+    "P P"
+  ],
+  "key": {
+    "P": "polyfactory:steel_plate",
+    "C": "polyfactory:integrated_circuit",
+    "N": "minecraft:netherite_ingot"
+  },
+  "result": {
+    "id": "minecraft:netherite_boots",
+    "count": 1,
+    "components": {
+      "minecraft:custom_name": {
+        "text": "Industrial Steel Boots",
+        "color": "gold",
+        "italic": false
+      },
+      "minecraft:max_damage": 650,
+      "minecraft:attribute_modifiers": [
+        {
+          "type": "minecraft:armor",
+          "id": "techarms:industrial_boots_armor",
+          "amount": 4,
+          "operation": "add_value",
+          "slot": "feet"
+        },
+        {
+          "type": "minecraft:armor_toughness",
+          "id": "techarms:industrial_boots_toughness",
+          "amount": 3.0,
+          "operation": "add_value",
+          "slot": "feet"
+        },
+        {
+          "type": "minecraft:knockback_resistance",
+          "id": "techarms:industrial_boots_knockback",
+          "amount": 0.1,
+          "operation": "add_value",
+          "slot": "feet"
+        }
+      ],
+      "minecraft:custom_data": {
+        "id": "techarms_industrial_boots"
+      }
+    }
+  }
+}

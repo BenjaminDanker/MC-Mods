@@ -1,0 +1,43 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    "P P",
+    "PPP",
+    "PPP"
+  ],
+  "key": {
+    "P": "polyfactory:steel_plate"
+  },
+  "result": {
+    "id": "minecraft:iron_chestplate",
+    "count": 1,
+    "components": {
+      "minecraft:custom_name": {
+        "text": "Steel Chestplate",
+        "color": "gray",
+        "italic": false
+      },
+      "minecraft:max_damage": 352,
+      "minecraft:attribute_modifiers": [
+        {
+          "type": "minecraft:armor",
+          "id": "techarms:steel_chestplate_armor",
+          "amount": 6,
+          "operation": "add_value",
+          "slot": "chest"
+        },
+        {
+          "type": "minecraft:armor_toughness",
+          "id": "techarms:steel_chestplate_toughness",
+          "amount": 1.0,
+          "operation": "add_value",
+          "slot": "chest"
+        }
+      ],
+      "minecraft:custom_data": {
+        "id": "techarms_steel_chestplate"
+      }
+    }
+  }
+}

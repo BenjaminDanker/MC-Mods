@@ -1,0 +1,38 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:ender_chest"
+    },
+    "title": {
+      "text": "The Deep Vault"
+    },
+    "description": {
+      "text": "Build deep storage. Nothing the foundry makes should ever be lost again."
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "techstory:projection",
+  "criteria": {
+    "granted": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "requirements": [
+    [
+      "granted"
+    ]
+  ],
+  "rewards": {
+    "function": "techstory:chapter_vault",
+    "recipes": [
+      "techarms:industrial_sword",
+      "techarms:industrial_helmet",
+      "techarms:industrial_chestplate",
+      "techarms:industrial_leggings",
+      "techarms:industrial_boots"
+    ]
+  }
+}

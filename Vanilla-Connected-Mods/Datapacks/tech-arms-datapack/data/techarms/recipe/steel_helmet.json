@@ -1,0 +1,42 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    "PPP",
+    "P P"
+  ],
+  "key": {
+    "P": "polyfactory:steel_plate"
+  },
+  "result": {
+    "id": "minecraft:iron_helmet",
+    "count": 1,
+    "components": {
+      "minecraft:custom_name": {
+        "text": "Steel Helmet",
+        "color": "gray",
+        "italic": false
+      },
+      "minecraft:max_damage": 242,
+      "minecraft:attribute_modifiers": [
+        {
+          "type": "minecraft:armor",
+          "id": "techarms:steel_helmet_armor",
+          "amount": 3,
+          "operation": "add_value",
+          "slot": "head"
+        },
+        {
+          "type": "minecraft:armor_toughness",
+          "id": "techarms:steel_helmet_toughness",
+          "amount": 1.0,
+          "operation": "add_value",
+          "slot": "head"
+        }
+      ],
+      "minecraft:custom_data": {
+        "id": "techarms_steel_helmet"
+      }
+    }
+  }
+}

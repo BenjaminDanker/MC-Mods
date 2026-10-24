@@ -1,0 +1,15 @@
+{
+  "pack": {
+    "pack_format": 48,
+    "min_format": 48,
+    "max_format": [
+      107,
+      1
+    ],
+    "supported_formats": [
+      48,
+      107
+    ],
+    "description": "Find-the-structure advancements for Ruins and Towers"
+  }
+}

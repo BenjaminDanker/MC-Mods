@@ -1,0 +1,44 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    "PCP",
+    "PPP",
+    "PPP"
+  ],
+  "key": {
+    "P": "polyfactory:steel_plate",
+    "C": "polyfactory:integrated_circuit"
+  },
+  "result": {
+    "id": "minecraft:diamond_chestplate",
+    "count": 1,
+    "components": {
+      "minecraft:custom_name": {
+        "text": "Reinforced Steel Chestplate",
+        "color": "aqua",
+        "italic": false
+      },
+      "minecraft:max_damage": 608,
+      "minecraft:attribute_modifiers": [
+        {
+          "type": "minecraft:armor",
+          "id": "techarms:reinforced_chestplate_armor",
+          "amount": 7,
+          "operation": "add_value",
+          "slot": "chest"
+        },
+        {
+          "type": "minecraft:armor_toughness",
+          "id": "techarms:reinforced_chestplate_toughness",
+          "amount": 2.0,
+          "operation": "add_value",
+          "slot": "chest"
+        }
+      ],
+      "minecraft:custom_data": {
+        "id": "techarms_reinforced_chestplate"
+      }
+    }
+  }
+}

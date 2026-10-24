@@ -1,0 +1,38 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:repeater"
+    },
+    "title": {
+      "text": "Machines That Think"
+    },
+    "description": {
+      "text": "Give a machine memory, so it can decide for itself."
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "techstory:brewing",
+  "criteria": {
+    "granted": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "requirements": [
+    [
+      "granted"
+    ]
+  ],
+  "rewards": {
+    "function": "techstory:chapter_logic",
+    "recipes": [
+      "techarms:reinforced_sword",
+      "techarms:reinforced_helmet",
+      "techarms:reinforced_chestplate",
+      "techarms:reinforced_leggings",
+      "techarms:reinforced_boots"
+    ]
+  }
+}

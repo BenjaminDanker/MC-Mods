@@ -1,0 +1,43 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    "PCP",
+    "P P"
+  ],
+  "key": {
+    "P": "polyfactory:steel_plate",
+    "C": "polyfactory:integrated_circuit"
+  },
+  "result": {
+    "id": "minecraft:diamond_boots",
+    "count": 1,
+    "components": {
+      "minecraft:custom_name": {
+        "text": "Reinforced Steel Boots",
+        "color": "aqua",
+        "italic": false
+      },
+      "minecraft:max_damage": 494,
+      "minecraft:attribute_modifiers": [
+        {
+          "type": "minecraft:armor",
+          "id": "techarms:reinforced_boots_armor",
+          "amount": 3,
+          "operation": "add_value",
+          "slot": "feet"
+        },
+        {
+          "type": "minecraft:armor_toughness",
+          "id": "techarms:reinforced_boots_toughness",
+          "amount": 2.0,
+          "operation": "add_value",
+          "slot": "feet"
+        }
+      ],
+      "minecraft:custom_data": {
+        "id": "techarms_reinforced_boots"
+      }
+    }
+  }
+}

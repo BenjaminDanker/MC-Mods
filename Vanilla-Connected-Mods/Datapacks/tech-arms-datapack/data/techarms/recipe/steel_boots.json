@@ -1,0 +1,42 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    "P P",
+    "P P"
+  ],
+  "key": {
+    "P": "polyfactory:steel_plate"
+  },
+  "result": {
+    "id": "minecraft:iron_boots",
+    "count": 1,
+    "components": {
+      "minecraft:custom_name": {
+        "text": "Steel Boots",
+        "color": "gray",
+        "italic": false
+      },
+      "minecraft:max_damage": 286,
+      "minecraft:attribute_modifiers": [
+        {
+          "type": "minecraft:armor",
+          "id": "techarms:steel_boots_armor",
+          "amount": 2,
+          "operation": "add_value",
+          "slot": "feet"
+        },
+        {
+          "type": "minecraft:armor_toughness",
+          "id": "techarms:steel_boots_toughness",
+          "amount": 1.0,
+          "operation": "add_value",
+          "slot": "feet"
+        }
+      ],
+      "minecraft:custom_data": {
+        "id": "techarms_steel_boots"
+      }
+    }
+  }
+}
