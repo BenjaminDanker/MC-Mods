@@ -49,7 +49,9 @@ public final class ChronicleRuntime {
                 }
                 ServerPlayer player = server.getPlayerList().getPlayer(request.playerId());
                 if (player == null) {
-                    pending.put(request.nonce(), request.withNext(tick + RETRY_TICKS));
+                    // Count waiting for an offline player as an attempt, so the request expires instead of
+                    // filling the pending table until every Chronicle command answers "busy".
+                    pending.put(request.nonce(), request.withAttempt(request.attempts() + 1, tick + RETRY_TICKS));
                 } else {
                     send(player, request);
                 }

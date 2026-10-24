@@ -15,7 +15,9 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 @Pseudo
 @Mixin(targets = "com.silver.atlantis.protect.ProtectionService", remap = false)
 abstract class AtlantisProtectionServiceMixin {
-    @Redirect(method = "checkInnerAirEntry", at = @At(value = "INVOKE", target = "Ljava/util/Set;add(Ljava/lang/Object;)Z", ordinal = 1))
+    // The only Set.add in checkInnerAirEntry (entering the interior). require = 0: if Atlantis changes, this event is
+    // missed instead of the ocean server failing to start.
+    @Redirect(method = "checkInnerAirEntry", at = @At(value = "INVOKE", target = "Ljava/util/Set;add(Ljava/lang/Object;)Z", ordinal = 0), require = 0)
     private boolean chronicle$observeInteriorEntry(Set<UUID> insideSet, Object entry,
                                                    MinecraftServer server) {
         boolean wasAdded = insideSet.add((UUID) entry);
