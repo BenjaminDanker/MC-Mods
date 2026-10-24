@@ -1,0 +1,54 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version '1.17-SNAPSHOT'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+	archivesName = project.archives_base_name
+}
+
+loom {
+	splitEnvironmentSourceSets()
+
+	mods {
+		"boss-unlock" {
+			sourceSet sourceSets.main
+		}
+	}
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+	// MPDS (copied into libs/, not committed) stores the unlock.
+	compileOnly fileTree(dir: 'libs', include: '*.jar')
+	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.11.3'
+	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.11.3'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.3'
+}
+
+test {
+	useJUnitPlatform()
+}
+
+processResources {
+	inputs.property "version", project.version
+
+	filesMatching("fabric.mod.json") {
+		expand "version": project.version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 25
+}
+
+java {
+	withSourcesJar()
+
+	sourceCompatibility = JavaVersion.VERSION_25
+	targetCompatibility = JavaVersion.VERSION_25
+}
