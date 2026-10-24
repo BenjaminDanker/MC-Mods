@@ -1,0 +1,1104 @@
+{
+  "glyphs": {
+    "map": "\ue000",
+    "air": "\ue001",
+    "water": "\ue002",
+    "earth": "\ue003",
+    "fire": "\ue004"
+  },
+  "screens": {
+    "map": {
+      "nodes": [
+        {
+          "id": "water",
+          "kind": "realm",
+          "row": 0,
+          "col": 4,
+          "color": "water"
+        },
+        {
+          "id": "air",
+          "kind": "realm",
+          "row": 2,
+          "col": 8,
+          "color": "air"
+        },
+        {
+          "id": "fire",
+          "kind": "realm",
+          "row": 5,
+          "col": 4,
+          "color": "fire"
+        },
+        {
+          "id": "earth",
+          "kind": "realm",
+          "row": 2,
+          "col": 0,
+          "color": "earth"
+        },
+        {
+          "id": "ascendant",
+          "kind": "group",
+          "group": "AVATAR",
+          "row": 2,
+          "col": 4,
+          "color": "gold"
+        },
+        {
+          "id": "g:blood",
+          "kind": "group",
+          "group": "BLOOD",
+          "row": 1,
+          "col": 4,
+          "color": "water"
+        },
+        {
+          "id": "g:ice",
+          "kind": "group",
+          "group": "ICE",
+          "row": 1,
+          "col": 3,
+          "color": "water"
+        },
+        {
+          "id": "g:healing",
+          "kind": "group",
+          "group": "HEALING",
+          "row": 1,
+          "col": 5,
+          "color": "water"
+        },
+        {
+          "id": "g:metal",
+          "kind": "group",
+          "group": "METAL",
+          "row": 2,
+          "col": 2,
+          "color": "earth"
+        },
+        {
+          "id": "g:air_mastery",
+          "kind": "group",
+          "group": "AIR_MASTERY",
+          "row": 2,
+          "col": 6,
+          "color": "air"
+        },
+        {
+          "id": "g:combustion",
+          "kind": "group",
+          "group": "COMBUSTION",
+          "row": 4,
+          "col": 4,
+          "color": "fire"
+        },
+        {
+          "id": "g:lava",
+          "kind": "group",
+          "group": "LAVA",
+          "row": 4,
+          "col": 2,
+          "color": "fire"
+        },
+        {
+          "id": "g:lightning",
+          "kind": "group",
+          "group": "LIGHTNING",
+          "row": 4,
+          "col": 6,
+          "color": "air"
+        },
+        {
+          "id": "points",
+          "kind": "points",
+          "row": 0,
+          "col": 0,
+          "color": "gold"
+        },
+        {
+          "id": "resilience",
+          "kind": "resilience",
+          "row": 0,
+          "col": 8,
+          "color": "gold"
+        }
+      ],
+      "links": []
+    },
+    "air": {
+      "nodes": [
+        {
+          "id": "root",
+          "kind": "root",
+          "row": 5,
+          "col": 4,
+          "color": "air"
+        },
+        {
+          "id": "back",
+          "kind": "back",
+          "row": 5,
+          "col": 0,
+          "color": "gold"
+        },
+        {
+          "id": "points",
+          "kind": "points",
+          "row": 5,
+          "col": 8,
+          "color": "gold"
+        },
+        {
+          "id": "airblast",
+          "kind": "ability",
+          "row": 4,
+          "col": 3,
+          "color": "air"
+        },
+        {
+          "id": "airswipe",
+          "kind": "ability",
+          "row": 4,
+          "col": 4,
+          "color": "air"
+        },
+        {
+          "id": "airshield",
+          "kind": "ability",
+          "row": 4,
+          "col": 5,
+          "color": "air"
+        },
+        {
+          "id": "airspout",
+          "kind": "ability",
+          "row": 3,
+          "col": 2,
+          "color": "air"
+        },
+        {
+          "id": "airscooter",
+          "kind": "ability",
+          "row": 3,
+          "col": 3,
+          "color": "air"
+        },
+        {
+          "id": "airblade",
+          "kind": "ability",
+          "row": 3,
+          "col": 4,
+          "color": "air"
+        },
+        {
+          "id": "airpunch",
+          "kind": "ability",
+          "row": 3,
+          "col": 5,
+          "color": "air"
+        },
+        {
+          "id": "airbreath",
+          "kind": "ability",
+          "row": 3,
+          "col": 6,
+          "color": "air"
+        },
+        {
+          "id": "tornado",
+          "kind": "ability",
+          "row": 1,
+          "col": 1,
+          "color": "air",
+          "group": "AIR_MASTERY"
+        },
+        {
+          "id": "airwheel",
+          "kind": "ability",
+          "row": 1,
+          "col": 2,
+          "color": "air",
+          "group": "AIR_MASTERY"
+        },
+        {
+          "id": "airburst",
+          "kind": "ability",
+          "row": 1,
+          "col": 3,
+          "color": "air",
+          "group": "AIR_MASTERY"
+        },
+        {
+          "id": "skyglide",
+          "kind": "ability",
+          "row": 1,
+          "col": 4,
+          "color": "air",
+          "group": "AIR_MASTERY"
+        },
+        {
+          "id": "updraft",
+          "kind": "ability",
+          "row": 1,
+          "col": 5,
+          "color": "air",
+          "group": "AIR_MASTERY"
+        },
+        {
+          "id": "lightning",
+          "kind": "ability",
+          "row": 1,
+          "col": 6,
+          "color": "air",
+          "group": "LIGHTNING"
+        },
+        {
+          "id": "avatarstate",
+          "kind": "ability",
+          "row": 1,
+          "col": 7,
+          "color": "gold",
+          "group": "AVATAR"
+        }
+      ],
+      "links": [
+        [
+          "root",
+          "airblast"
+        ],
+        [
+          "root",
+          "airswipe"
+        ],
+        [
+          "root",
+          "airshield"
+        ],
+        [
+          "airblast",
+          "airspout"
+        ],
+        [
+          "airblast",
+          "airscooter"
+        ],
+        [
+          "airswipe",
+          "airblade"
+        ],
+        [
+          "airshield",
+          "airpunch"
+        ],
+        [
+          "airshield",
+          "airbreath"
+        ],
+        [
+          "airspout",
+          "tornado"
+        ],
+        [
+          "tornado",
+          "airwheel"
+        ],
+        [
+          "tornado",
+          "airburst"
+        ],
+        [
+          "tornado",
+          "skyglide"
+        ],
+        [
+          "tornado",
+          "updraft"
+        ],
+        [
+          "airbreath",
+          "lightning"
+        ],
+        [
+          "airbreath",
+          "avatarstate"
+        ]
+      ]
+    },
+    "water": {
+      "nodes": [
+        {
+          "id": "root",
+          "kind": "root",
+          "row": 5,
+          "col": 4,
+          "color": "water"
+        },
+        {
+          "id": "back",
+          "kind": "back",
+          "row": 5,
+          "col": 0,
+          "color": "gold"
+        },
+        {
+          "id": "points",
+          "kind": "points",
+          "row": 5,
+          "col": 8,
+          "color": "gold"
+        },
+        {
+          "id": "watermanipulation",
+          "kind": "ability",
+          "row": 4,
+          "col": 3,
+          "color": "water"
+        },
+        {
+          "id": "waterring",
+          "kind": "ability",
+          "row": 4,
+          "col": 4,
+          "color": "water"
+        },
+        {
+          "id": "tideward",
+          "kind": "ability",
+          "row": 4,
+          "col": 5,
+          "color": "water"
+        },
+        {
+          "id": "waterspout",
+          "kind": "ability",
+          "row": 3,
+          "col": 1,
+          "color": "water"
+        },
+        {
+          "id": "waterwave",
+          "kind": "ability",
+          "row": 3,
+          "col": 2,
+          "color": "water"
+        },
+        {
+          "id": "waterbubble",
+          "kind": "ability",
+          "row": 3,
+          "col": 3,
+          "color": "water"
+        },
+        {
+          "id": "torrent",
+          "kind": "ability",
+          "row": 3,
+          "col": 4,
+          "color": "water"
+        },
+        {
+          "id": "octopusform",
+          "kind": "ability",
+          "row": 3,
+          "col": 5,
+          "color": "water"
+        },
+        {
+          "id": "watergimbal",
+          "kind": "ability",
+          "row": 3,
+          "col": 6,
+          "color": "water"
+        },
+        {
+          "id": "gills",
+          "kind": "ability",
+          "row": 3,
+          "col": 7,
+          "color": "water"
+        },
+        {
+          "id": "icecrawl",
+          "kind": "ability",
+          "row": 1,
+          "col": 1,
+          "color": "water",
+          "group": "ICE"
+        },
+        {
+          "id": "icespike",
+          "kind": "ability",
+          "row": 1,
+          "col": 2,
+          "color": "water",
+          "group": "ICE"
+        },
+        {
+          "id": "icewall",
+          "kind": "ability",
+          "row": 1,
+          "col": 3,
+          "color": "water",
+          "group": "ICE"
+        },
+        {
+          "id": "iceberg",
+          "kind": "ability",
+          "row": 1,
+          "col": 4,
+          "color": "water",
+          "group": "ICE"
+        },
+        {
+          "id": "frostbreath",
+          "kind": "ability",
+          "row": 1,
+          "col": 5,
+          "color": "water",
+          "group": "ICE"
+        },
+        {
+          "id": "phasechange",
+          "kind": "ability",
+          "row": 1,
+          "col": 6,
+          "color": "water",
+          "group": "ICE"
+        },
+        {
+          "id": "healingwaters",
+          "kind": "ability",
+          "row": 1,
+          "col": 7,
+          "color": "water",
+          "group": "HEALING"
+        },
+        {
+          "id": "bloodbending",
+          "kind": "ability",
+          "row": 0,
+          "col": 1,
+          "color": "water",
+          "group": "BLOOD"
+        }
+      ],
+      "links": [
+        [
+          "root",
+          "watermanipulation"
+        ],
+        [
+          "root",
+          "waterring"
+        ],
+        [
+          "root",
+          "tideward"
+        ],
+        [
+          "watermanipulation",
+          "waterspout"
+        ],
+        [
+          "watermanipulation",
+          "waterwave"
+        ],
+        [
+          "watermanipulation",
+          "waterbubble"
+        ],
+        [
+          "waterring",
+          "torrent"
+        ],
+        [
+          "tideward",
+          "octopusform"
+        ],
+        [
+          "tideward",
+          "watergimbal"
+        ],
+        [
+          "tideward",
+          "gills"
+        ],
+        [
+          "waterspout",
+          "icecrawl"
+        ],
+        [
+          "icecrawl",
+          "icespike"
+        ],
+        [
+          "icecrawl",
+          "icewall"
+        ],
+        [
+          "icecrawl",
+          "iceberg"
+        ],
+        [
+          "icecrawl",
+          "frostbreath"
+        ],
+        [
+          "icecrawl",
+          "phasechange"
+        ],
+        [
+          "gills",
+          "healingwaters"
+        ],
+        [
+          "icecrawl",
+          "bloodbending"
+        ]
+      ]
+    },
+    "earth": {
+      "nodes": [
+        {
+          "id": "root",
+          "kind": "root",
+          "row": 5,
+          "col": 4,
+          "color": "earth"
+        },
+        {
+          "id": "back",
+          "kind": "back",
+          "row": 5,
+          "col": 0,
+          "color": "gold"
+        },
+        {
+          "id": "points",
+          "kind": "points",
+          "row": 5,
+          "col": 8,
+          "color": "gold"
+        },
+        {
+          "id": "earthblast",
+          "kind": "ability",
+          "row": 4,
+          "col": 3,
+          "color": "earth"
+        },
+        {
+          "id": "raiseearth",
+          "kind": "ability",
+          "row": 4,
+          "col": 4,
+          "color": "earth"
+        },
+        {
+          "id": "eartharmor",
+          "kind": "ability",
+          "row": 4,
+          "col": 5,
+          "color": "earth"
+        },
+        {
+          "id": "earthshot",
+          "kind": "ability",
+          "row": 3,
+          "col": 1,
+          "color": "earth"
+        },
+        {
+          "id": "earthline",
+          "kind": "ability",
+          "row": 3,
+          "col": 2,
+          "color": "earth"
+        },
+        {
+          "id": "earthglove",
+          "kind": "ability",
+          "row": 3,
+          "col": 3,
+          "color": "earth"
+        },
+        {
+          "id": "earthsmash",
+          "kind": "ability",
+          "row": 3,
+          "col": 4,
+          "color": "earth"
+        },
+        {
+          "id": "earthsurf",
+          "kind": "ability",
+          "row": 3,
+          "col": 5,
+          "color": "earth"
+        },
+        {
+          "id": "earthtunnel",
+          "kind": "ability",
+          "row": 3,
+          "col": 6,
+          "color": "earth"
+        },
+        {
+          "id": "collapse",
+          "kind": "ability",
+          "row": 3,
+          "col": 7,
+          "color": "earth"
+        },
+        {
+          "id": "shockwave",
+          "kind": "ability",
+          "row": 2,
+          "col": 1,
+          "color": "earth"
+        },
+        {
+          "id": "catapult",
+          "kind": "ability",
+          "row": 2,
+          "col": 2,
+          "color": "earth"
+        },
+        {
+          "id": "bulwark",
+          "kind": "ability",
+          "row": 2,
+          "col": 3,
+          "color": "earth"
+        },
+        {
+          "id": "earthpillars",
+          "kind": "ability",
+          "row": 2,
+          "col": 4,
+          "color": "earth"
+        },
+        {
+          "id": "earthshards",
+          "kind": "ability",
+          "row": 2,
+          "col": 5,
+          "color": "earth"
+        },
+        {
+          "id": "deepsight",
+          "kind": "ability",
+          "row": 2,
+          "col": 6,
+          "color": "earth"
+        },
+        {
+          "id": "metalcable",
+          "kind": "ability",
+          "row": 1,
+          "col": 1,
+          "color": "earth",
+          "group": "METAL"
+        },
+        {
+          "id": "ferrocontrol",
+          "kind": "ability",
+          "row": 1,
+          "col": 2,
+          "color": "earth",
+          "group": "METAL"
+        },
+        {
+          "id": "locksmithing",
+          "kind": "ability",
+          "row": 1,
+          "col": 3,
+          "color": "earth",
+          "group": "METAL"
+        },
+        {
+          "id": "lavadisk",
+          "kind": "ability",
+          "row": 1,
+          "col": 4,
+          "color": "fire",
+          "group": "LAVA"
+        },
+        {
+          "id": "lavaflux",
+          "kind": "ability",
+          "row": 1,
+          "col": 5,
+          "color": "fire",
+          "group": "LAVA"
+        }
+      ],
+      "links": [
+        [
+          "root",
+          "earthblast"
+        ],
+        [
+          "root",
+          "raiseearth"
+        ],
+        [
+          "root",
+          "eartharmor"
+        ],
+        [
+          "earthblast",
+          "earthshot"
+        ],
+        [
+          "earthblast",
+          "earthline"
+        ],
+        [
+          "earthblast",
+          "earthglove"
+        ],
+        [
+          "raiseearth",
+          "earthsmash"
+        ],
+        [
+          "eartharmor",
+          "earthsurf"
+        ],
+        [
+          "eartharmor",
+          "earthtunnel"
+        ],
+        [
+          "eartharmor",
+          "collapse"
+        ],
+        [
+          "earthshot",
+          "shockwave"
+        ],
+        [
+          "earthline",
+          "catapult"
+        ],
+        [
+          "earthglove",
+          "bulwark"
+        ],
+        [
+          "earthsmash",
+          "earthpillars"
+        ],
+        [
+          "earthsurf",
+          "earthshards"
+        ],
+        [
+          "earthtunnel",
+          "deepsight"
+        ],
+        [
+          "shockwave",
+          "metalcable"
+        ],
+        [
+          "metalcable",
+          "ferrocontrol"
+        ],
+        [
+          "metalcable",
+          "locksmithing"
+        ],
+        [
+          "earthpillars",
+          "lavadisk"
+        ],
+        [
+          "lavadisk",
+          "lavaflux"
+        ]
+      ]
+    },
+    "fire": {
+      "nodes": [
+        {
+          "id": "root",
+          "kind": "root",
+          "row": 5,
+          "col": 4,
+          "color": "fire"
+        },
+        {
+          "id": "back",
+          "kind": "back",
+          "row": 5,
+          "col": 0,
+          "color": "gold"
+        },
+        {
+          "id": "points",
+          "kind": "points",
+          "row": 5,
+          "col": 8,
+          "color": "gold"
+        },
+        {
+          "id": "fireblast",
+          "kind": "ability",
+          "row": 4,
+          "col": 3,
+          "color": "fire"
+        },
+        {
+          "id": "firejet",
+          "kind": "ability",
+          "row": 4,
+          "col": 4,
+          "color": "fire"
+        },
+        {
+          "id": "fireshield",
+          "kind": "ability",
+          "row": 4,
+          "col": 5,
+          "color": "fire"
+        },
+        {
+          "id": "blaze",
+          "kind": "ability",
+          "row": 3,
+          "col": 1,
+          "color": "fire"
+        },
+        {
+          "id": "firebreath",
+          "kind": "ability",
+          "row": 3,
+          "col": 2,
+          "color": "fire"
+        },
+        {
+          "id": "fireburst",
+          "kind": "ability",
+          "row": 3,
+          "col": 3,
+          "color": "fire"
+        },
+        {
+          "id": "firewall",
+          "kind": "ability",
+          "row": 3,
+          "col": 4,
+          "color": "fire"
+        },
+        {
+          "id": "flamerush",
+          "kind": "ability",
+          "row": 3,
+          "col": 5,
+          "color": "fire"
+        },
+        {
+          "id": "cinderveil",
+          "kind": "ability",
+          "row": 3,
+          "col": 6,
+          "color": "fire"
+        },
+        {
+          "id": "heatcontrol",
+          "kind": "ability",
+          "row": 3,
+          "col": 7,
+          "color": "fire"
+        },
+        {
+          "id": "firekick",
+          "kind": "ability",
+          "row": 2,
+          "col": 3,
+          "color": "fire"
+        },
+        {
+          "id": "firespin",
+          "kind": "ability",
+          "row": 2,
+          "col": 4,
+          "color": "fire"
+        },
+        {
+          "id": "firewheel",
+          "kind": "ability",
+          "row": 2,
+          "col": 5,
+          "color": "fire"
+        },
+        {
+          "id": "lavadisk",
+          "kind": "ability",
+          "row": 1,
+          "col": 1,
+          "color": "fire",
+          "group": "LAVA"
+        },
+        {
+          "id": "lavaflux",
+          "kind": "ability",
+          "row": 1,
+          "col": 2,
+          "color": "fire",
+          "group": "LAVA"
+        },
+        {
+          "id": "combustion",
+          "kind": "ability",
+          "row": 1,
+          "col": 3,
+          "color": "fire",
+          "group": "COMBUSTION"
+        },
+        {
+          "id": "lightning",
+          "kind": "ability",
+          "row": 1,
+          "col": 4,
+          "color": "air",
+          "group": "LIGHTNING"
+        }
+      ],
+      "links": [
+        [
+          "root",
+          "fireblast"
+        ],
+        [
+          "root",
+          "firejet"
+        ],
+        [
+          "root",
+          "fireshield"
+        ],
+        [
+          "fireblast",
+          "blaze"
+        ],
+        [
+          "fireblast",
+          "firebreath"
+        ],
+        [
+          "fireblast",
+          "fireburst"
+        ],
+        [
+          "firejet",
+          "firewall"
+        ],
+        [
+          "fireshield",
+          "flamerush"
+        ],
+        [
+          "fireshield",
+          "cinderveil"
+        ],
+        [
+          "fireshield",
+          "heatcontrol"
+        ],
+        [
+          "fireburst",
+          "firekick"
+        ],
+        [
+          "firewall",
+          "firespin"
+        ],
+        [
+          "flamerush",
+          "firewheel"
+        ],
+        [
+          "firekick",
+          "lavadisk"
+        ],
+        [
+          "lavadisk",
+          "lavaflux"
+        ],
+        [
+          "firekick",
+          "combustion"
+        ],
+        [
+          "firespin",
+          "lightning"
+        ]
+      ]
+    }
+  },
+  "groups": {
+    "ICE": {
+      "name": "Ice",
+      "needs": {
+        "water": 10
+      }
+    },
+    "HEALING": {
+      "name": "Healing",
+      "needs": {
+        "water": 10
+      }
+    },
+    "BLOOD": {
+      "name": "Blood",
+      "needs": {
+        "water": 15
+      }
+    },
+    "METAL": {
+      "name": "Metal",
+      "needs": {
+        "earth": 10
+      }
+    },
+    "COMBUSTION": {
+      "name": "Combustion",
+      "needs": {
+        "fire": 15
+      }
+    },
+    "AIR_MASTERY": {
+      "name": "Air Mastery",
+      "needs": {
+        "air": 10
+      }
+    },
+    "LAVA": {
+      "name": "Lava",
+      "needs": {
+        "earth": 12,
+        "fire": 8
+      }
+    },
+    "LIGHTNING": {
+      "name": "Lightning",
+      "needs": {
+        "fire": 10,
+        "air": 10
+      }
+    },
+    "AVATAR": {
+      "name": "Ascendant",
+      "needs": {
+        "air": 15,
+        "water": 15,
+        "earth": 15,
+        "fire": 15
+      }
+    }
+  }
+}

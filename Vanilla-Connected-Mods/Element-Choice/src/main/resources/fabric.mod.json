@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "element-choice",
+  "version": "${version}",
+  "name": "Element Choice",
+  "description": "One permanent Bending element per player, chosen from a list the first time they join.",
+  "authors": [
+    "BenjaminDanker"
+  ],
+  "license": "MIT",
+  "environment": "server",
+  "mixins": ["element-choice.mixins.json"],
+  "entrypoints": {
+    "main": [
+      "com.silver.elementchoice.ElementChoiceMod"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "fabric-api": "*",
+    "bending": ">=3.16.1",
+    "network_authorization": "*",
+    "minecraft": "~26.2",
+    "java": ">=25"
+  }
+}
