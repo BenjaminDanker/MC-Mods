@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "branch-reset",
+  "version": "${version}",
+  "name": "Branch Reset",
+  "description": "When a player leaves this branch (Magic or Tech) for the other, erases what this server holds about them: advancements, stats, saved player data and Open Parties and Claims claims.",
+  "authors": [
+    "BenjaminDanker"
+  ],
+  "license": "MIT",
+  "environment": "server",
+  "entrypoints": {
+    "main": [
+      "com.silver.branchreset.BranchResetMod"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "fabric-api": "*",
+    "mpds": "*",
+    "minecraft": "~26.2",
+    "java": ">=25"
+  },
+  "suggests": {
+    "openpartiesandclaims": "*"
+  }
+}
