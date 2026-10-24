@@ -6,18 +6,23 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import net.fabricmc.loader.api.FabricLoader;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+/**
+ * Settings for the stationary sky-island giants. Unknown keys are dropped and missing keys take their
+ * default, so the file is rewritten complete on every load.
+ */
 public final class GiantMobsConfig {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Logger LOGGER = LoggerFactory.getLogger(GiantMobsConfig.class);
 
+    // Population and placement
     public final boolean enabled;
     public final int minimumGiants;
     public final int activationRadiusBlocks;
@@ -30,12 +35,42 @@ public final class GiantMobsConfig {
     public final int groundSearchVerticalRangeBlocks;
     public final int groundSearchCooldownTicks;
     public final int groundCacheTtlTicks;
+
+    // Combat shared by every attack
+    public final double maxHealth;
     public final int attackRangeBlocks;
-    public final int attackCooldownTicks;
-    public final int projectileCount;
-    public final double projectileSpreadRadiusBlocks;
+    /** Minimum quiet time between the end of one attack and the start of the next. */
+    public final int attackGapTicks;
     public final float projectileImpactDamage;
+    public final float rainDamage;
     public final double projectileKnockbackStrength;
+    /** Below this fraction of max health a giant is enraged: shorter gaps and bigger attacks. */
+    public final double enrageHealthFraction;
+    public final double enrageGapScale;
+
+    // Boulder volley (long range)
+    public final int volleyBoulders;
+    public final int volleyMinRangeBlocks;
+    public final int volleyWindupTicks;
+    public final int volleyCooldownTicks;
+    public final double volleySpreadBlocks;
+    /** 0 aims at the target's current position, 1 fully leads their movement. Below 1 stays dodgeable. */
+    public final double volleyLeadFactor;
+
+    // Ground slam (close range, jump to avoid)
+    public final int slamRadiusBlocks;
+    public final int slamWindupTicks;
+    public final int slamCooldownTicks;
+    public final float slamDamage;
+
+    // Rock rain (punishes standing still)
+    public final int rainBoulders;
+    public final int rainRadiusBlocks;
+    public final int rainWindupTicks;
+    public final int rainCooldownTicks;
+    public final int rainStillTicks;
+
+    // Chunk handling
     public final boolean forceChunkLoadingEnabled;
     public final int preloadRadiusChunks;
     public final int preloadTicketLevel;
@@ -43,182 +78,151 @@ public final class GiantMobsConfig {
     public final int releaseTicketsAfterTicks;
     public final int virtualStateFlushIntervalMinutes;
 
-    private GiantMobsConfig(boolean enabled,
-                            int minimumGiants,
-                            int activationRadiusBlocks,
-                            int despawnRadiusBlocks,
-                            int minSpawnDistanceBlocks,
-                            int maxSpawnDistanceBlocks,
-                            int spawnHeightAboveGround,
-                            int spawnSearchAttempts,
-                            int groundSearchHorizontalRadiusBlocks,
-                            int groundSearchVerticalRangeBlocks,
-                            int groundSearchCooldownTicks,
-                            int groundCacheTtlTicks,
-                            int attackRangeBlocks,
-                            int attackCooldownTicks,
-                            int projectileCount,
-                            double projectileSpreadRadiusBlocks,
-                            float projectileImpactDamage,
-                            double projectileKnockbackStrength,
-                            boolean forceChunkLoadingEnabled,
-                            int preloadRadiusChunks,
-                            int preloadTicketLevel,
-                            int maxChunkLoadsPerTick,
-                            int releaseTicketsAfterTicks,
-                            int virtualStateFlushIntervalMinutes) {
-        this.enabled = enabled;
-        this.minimumGiants = Math.max(1, minimumGiants);
-        this.activationRadiusBlocks = Math.max(64, activationRadiusBlocks);
-        this.despawnRadiusBlocks = Math.max(this.activationRadiusBlocks + 64, despawnRadiusBlocks);
-        this.minSpawnDistanceBlocks = Math.max(0, minSpawnDistanceBlocks);
-        this.maxSpawnDistanceBlocks = Math.max(this.minSpawnDistanceBlocks + 16, maxSpawnDistanceBlocks);
-        this.spawnHeightAboveGround = Math.max(1, spawnHeightAboveGround);
-        this.spawnSearchAttempts = Math.max(1, spawnSearchAttempts);
-        this.groundSearchHorizontalRadiusBlocks = Math.max(0, groundSearchHorizontalRadiusBlocks);
-        this.groundSearchVerticalRangeBlocks = Math.max(16, groundSearchVerticalRangeBlocks);
-        this.groundSearchCooldownTicks = Math.max(1, groundSearchCooldownTicks);
-        this.groundCacheTtlTicks = Math.max(20, groundCacheTtlTicks);
-        this.attackRangeBlocks = Math.max(8, attackRangeBlocks);
-        this.attackCooldownTicks = Math.max(10, attackCooldownTicks);
-        this.projectileCount = Math.max(1, projectileCount);
-        this.projectileSpreadRadiusBlocks = Math.max(0.0, projectileSpreadRadiusBlocks);
-        this.projectileImpactDamage = Math.max(0.0F, projectileImpactDamage);
-        this.projectileKnockbackStrength = Math.max(0.0, projectileKnockbackStrength);
-        this.forceChunkLoadingEnabled = forceChunkLoadingEnabled;
-        this.preloadRadiusChunks = Math.max(0, preloadRadiusChunks);
-        this.preloadTicketLevel = clamp(preloadTicketLevel, 1, 33);
-        this.maxChunkLoadsPerTick = Math.max(0, maxChunkLoadsPerTick);
-        this.releaseTicketsAfterTicks = Math.max(20, releaseTicketsAfterTicks);
-        this.virtualStateFlushIntervalMinutes = Math.max(0, virtualStateFlushIntervalMinutes);
+    private GiantMobsConfig(JsonObject root) {
+        enabled = getBool(root, "enabled", true);
+        minimumGiants = Math.max(1, getInt(root, "minimumGiants", 4));
+        activationRadiusBlocks = Math.max(64, getInt(root, "activationRadiusBlocks", 192));
+        despawnRadiusBlocks = Math.max(activationRadiusBlocks + 64, getInt(root, "despawnRadiusBlocks", 320));
+        int minSpawn = Math.max(0, getInt(root, "minSpawnDistanceBlocks", 96));
+        minSpawnDistanceBlocks = minSpawn;
+        maxSpawnDistanceBlocks = Math.max(minSpawn + 16, getInt(root, "maxSpawnDistanceBlocks", 640));
+        spawnHeightAboveGround = Math.max(1, getInt(root, "spawnHeightAboveGround", 1));
+        spawnSearchAttempts = Math.max(1, getInt(root, "spawnSearchAttempts", 10));
+        groundSearchHorizontalRadiusBlocks = Math.max(0, getInt(root, "groundSearchHorizontalRadiusBlocks", 32));
+        groundSearchVerticalRangeBlocks = Math.max(16, getInt(root, "groundSearchVerticalRangeBlocks", 96));
+        groundSearchCooldownTicks = Math.max(1, getInt(root, "groundSearchCooldownTicks", 40));
+        groundCacheTtlTicks = Math.max(20, getInt(root, "groundCacheTtlTicks", 20 * 60));
+
+        maxHealth = Math.max(1.0, getDouble(root, "maxHealth", 100.0));
+        attackRangeBlocks = Math.max(16, getInt(root, "attackRangeBlocks", 56));
+        attackGapTicks = Math.max(10, getInt(root, "attackGapTicks", 40));
+        projectileImpactDamage = (float) Math.max(0.0, getDouble(root, "projectileImpactDamage", 14.0));
+        rainDamage = (float) Math.max(0.0, getDouble(root, "rainDamage", 12.0));
+        projectileKnockbackStrength = Math.max(0.0, getDouble(root, "projectileKnockbackStrength", 1.4));
+        enrageHealthFraction = clamp(getDouble(root, "enrageHealthFraction", 0.5), 0.0, 1.0);
+        enrageGapScale = clamp(getDouble(root, "enrageGapScale", 0.65), 0.2, 1.0);
+
+        volleyBoulders = clamp(getInt(root, "volleyBoulders", 6), 1, 24);
+        volleyMinRangeBlocks = Math.max(0, getInt(root, "volleyMinRangeBlocks", 14));
+        volleyWindupTicks = Math.max(10, getInt(root, "volleyWindupTicks", 26));
+        volleyCooldownTicks = Math.max(20, getInt(root, "volleyCooldownTicks", 90));
+        volleySpreadBlocks = Math.max(0.0, getDouble(root, "volleySpreadBlocks", 2.4));
+        volleyLeadFactor = clamp(getDouble(root, "volleyLeadFactor", 0.6), 0.0, 1.0);
+
+        slamRadiusBlocks = Math.max(4, getInt(root, "slamRadiusBlocks", 13));
+        slamWindupTicks = Math.max(10, getInt(root, "slamWindupTicks", 30));
+        slamCooldownTicks = Math.max(20, getInt(root, "slamCooldownTicks", 110));
+        slamDamage = (float) Math.max(0.0, getDouble(root, "slamDamage", 18.0));
+
+        rainBoulders = clamp(getInt(root, "rainBoulders", 8), 1, 32);
+        rainRadiusBlocks = Math.max(2, getInt(root, "rainRadiusBlocks", 6));
+        rainWindupTicks = Math.max(10, getInt(root, "rainWindupTicks", 30));
+        rainCooldownTicks = Math.max(20, getInt(root, "rainCooldownTicks", 160));
+        rainStillTicks = Math.max(20, getInt(root, "rainStillTicks", 60));
+
+        forceChunkLoadingEnabled = getBool(root, "forceChunkLoadingEnabled", true);
+        preloadRadiusChunks = Math.max(0, getInt(root, "preloadRadiusChunks", 3));
+        preloadTicketLevel = clamp(getInt(root, "preloadTicketLevel", 2), 1, 33);
+        maxChunkLoadsPerTick = Math.max(0, getInt(root, "maxChunkLoadsPerTick", 4));
+        releaseTicketsAfterTicks = Math.max(20, getInt(root, "releaseTicketsAfterTicks", 20 * 30));
+        virtualStateFlushIntervalMinutes = Math.max(0, getInt(root, "virtualStateFlushIntervalMinutes", 5));
     }
 
     public static GiantMobsConfig loadOrCreate() {
         Path configPath = FabricLoader.getInstance().getConfigDir().resolve("sky-islands-giantmobs.json");
-
-        if (!Files.exists(configPath)) {
-            GiantMobsConfig defaults = defaults();
-            write(configPath, defaults);
-            return defaults;
+        JsonObject root = new JsonObject();
+        if (Files.exists(configPath)) {
+            try {
+                root = JsonParser.parseString(Files.readString(configPath, StandardCharsets.UTF_8)).getAsJsonObject();
+            } catch (IOException | IllegalStateException | JsonParseException e) {
+                LOGGER.warn("[Sky-Islands][giants] failed to read config; using defaults. path={} err={}", configPath, e.toString());
+            }
         }
-
-        try {
-            String json = Files.readString(configPath, StandardCharsets.UTF_8);
-            JsonObject root = JsonParser.parseString(json).getAsJsonObject();
-
-            GiantMobsConfig parsed = new GiantMobsConfig(
-                    getBool(root, "enabled", true),
-                    getInt(root, "minimumGiants", 4),
-                    getInt(root, "activationRadiusBlocks", 192),
-                    getInt(root, "despawnRadiusBlocks", 320),
-                    getInt(root, "minSpawnDistanceBlocks", 0),
-                    getInt(root, "maxSpawnDistanceBlocks", 15_000),
-                    getInt(root, "spawnHeightAboveGround", 1),
-                    getInt(root, "spawnSearchAttempts", 10),
-                    getInt(root, "groundSearchHorizontalRadiusBlocks", 32),
-                    getInt(root, "groundSearchVerticalRangeBlocks", 96),
-                    getInt(root, "groundSearchCooldownTicks", 40),
-                    getInt(root, "groundCacheTtlTicks", 20 * 60),
-                    getInt(root, "attackRangeBlocks", 192),
-                    getInt(root, "attackCooldownTicks", 180),
-                    getInt(root, "projectileCount", 11),
-                    getDouble(root, "projectileSpreadRadiusBlocks", 1.6),
-                    (float) getDouble(root, "projectileImpactDamage", 8.0),
-                    getDouble(root, "projectileKnockbackStrength", 1.8),
-                    getBool(root, "forceChunkLoadingEnabled", true),
-                    getInt(root, "preloadRadiusChunks", 3),
-                    getInt(root, "preloadTicketLevel", 2),
-                    getInt(root, "maxChunkLoadsPerTick", 4),
-                    getInt(root, "releaseTicketsAfterTicks", 20 * 30),
-                    getInt(root, "virtualStateFlushIntervalMinutes", 5)
-            );
-
-            write(configPath, parsed);
-            return parsed;
-        } catch (IOException | IllegalStateException | JsonParseException e) {
-            GiantMobsConfig defaults = defaults();
-            write(configPath, defaults);
-            LOGGER.warn("[Sky-Islands][giants] failed to read config; using defaults. path={} err={}", configPath, e.toString());
-            return defaults;
-        }
+        GiantMobsConfig config = new GiantMobsConfig(root);
+        config.write(configPath);
+        return config;
     }
 
-    private static GiantMobsConfig defaults() {
-        return new GiantMobsConfig(true, 4, 192, 320, 0, 20_000, 1, 10, 32, 96, 40, 20 * 60, 192, 60, 11, 1.6, 8.0F, 1.8, true, 3, 2, 4, 20 * 30, 5);
+    private void write(Path path) {
+        JsonObject root = new JsonObject();
+        root.addProperty("enabled", enabled);
+        root.addProperty("minimumGiants", minimumGiants);
+        root.addProperty("activationRadiusBlocks", activationRadiusBlocks);
+        root.addProperty("despawnRadiusBlocks", despawnRadiusBlocks);
+        root.addProperty("minSpawnDistanceBlocks", minSpawnDistanceBlocks);
+        root.addProperty("maxSpawnDistanceBlocks", maxSpawnDistanceBlocks);
+        root.addProperty("spawnHeightAboveGround", spawnHeightAboveGround);
+        root.addProperty("spawnSearchAttempts", spawnSearchAttempts);
+        root.addProperty("groundSearchHorizontalRadiusBlocks", groundSearchHorizontalRadiusBlocks);
+        root.addProperty("groundSearchVerticalRangeBlocks", groundSearchVerticalRangeBlocks);
+        root.addProperty("groundSearchCooldownTicks", groundSearchCooldownTicks);
+        root.addProperty("groundCacheTtlTicks", groundCacheTtlTicks);
+        root.addProperty("maxHealth", maxHealth);
+        root.addProperty("attackRangeBlocks", attackRangeBlocks);
+        root.addProperty("attackGapTicks", attackGapTicks);
+        root.addProperty("projectileImpactDamage", projectileImpactDamage);
+        root.addProperty("rainDamage", rainDamage);
+        root.addProperty("projectileKnockbackStrength", projectileKnockbackStrength);
+        root.addProperty("enrageHealthFraction", enrageHealthFraction);
+        root.addProperty("enrageGapScale", enrageGapScale);
+        root.addProperty("volleyBoulders", volleyBoulders);
+        root.addProperty("volleyMinRangeBlocks", volleyMinRangeBlocks);
+        root.addProperty("volleyWindupTicks", volleyWindupTicks);
+        root.addProperty("volleyCooldownTicks", volleyCooldownTicks);
+        root.addProperty("volleySpreadBlocks", volleySpreadBlocks);
+        root.addProperty("volleyLeadFactor", volleyLeadFactor);
+        root.addProperty("slamRadiusBlocks", slamRadiusBlocks);
+        root.addProperty("slamWindupTicks", slamWindupTicks);
+        root.addProperty("slamCooldownTicks", slamCooldownTicks);
+        root.addProperty("slamDamage", slamDamage);
+        root.addProperty("rainBoulders", rainBoulders);
+        root.addProperty("rainRadiusBlocks", rainRadiusBlocks);
+        root.addProperty("rainWindupTicks", rainWindupTicks);
+        root.addProperty("rainCooldownTicks", rainCooldownTicks);
+        root.addProperty("rainStillTicks", rainStillTicks);
+        root.addProperty("forceChunkLoadingEnabled", forceChunkLoadingEnabled);
+        root.addProperty("preloadRadiusChunks", preloadRadiusChunks);
+        root.addProperty("preloadTicketLevel", preloadTicketLevel);
+        root.addProperty("maxChunkLoadsPerTick", maxChunkLoadsPerTick);
+        root.addProperty("releaseTicketsAfterTicks", releaseTicketsAfterTicks);
+        root.addProperty("virtualStateFlushIntervalMinutes", virtualStateFlushIntervalMinutes);
+        try {
+            Files.createDirectories(path.getParent());
+            Files.writeString(path, GSON.toJson(root), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            LOGGER.warn("[Sky-Islands][giants] failed to write config path={} err={}", path, e.toString());
+        }
     }
 
     private static int clamp(int value, int min, int max) {
         return Math.max(min, Math.min(max, value));
     }
 
-    private static float clamp(float value, float min, float max) {
+    private static double clamp(double value, double min, double max) {
         return Math.max(min, Math.min(max, value));
     }
 
     private static int getInt(JsonObject obj, String key, int def) {
-        if (!obj.has(key) || obj.get(key).isJsonNull()) {
-            return def;
-        }
         try {
-            return obj.get(key).getAsInt();
-        } catch (Exception ignored) {
+            return obj.has(key) && !obj.get(key).isJsonNull() ? obj.get(key).getAsInt() : def;
+        } catch (RuntimeException e) {
             return def;
         }
     }
 
     private static boolean getBool(JsonObject obj, String key, boolean def) {
-        if (!obj.has(key) || obj.get(key).isJsonNull()) {
-            return def;
-        }
         try {
-            return obj.get(key).getAsBoolean();
-        } catch (Exception ignored) {
+            return obj.has(key) && !obj.get(key).isJsonNull() ? obj.get(key).getAsBoolean() : def;
+        } catch (RuntimeException e) {
             return def;
         }
     }
 
     private static double getDouble(JsonObject obj, String key, double def) {
-        if (!obj.has(key) || obj.get(key).isJsonNull()) {
-            return def;
-        }
         try {
-            return obj.get(key).getAsDouble();
-        } catch (Exception ignored) {
+            return obj.has(key) && !obj.get(key).isJsonNull() ? obj.get(key).getAsDouble() : def;
+        } catch (RuntimeException e) {
             return def;
-        }
-    }
-
-    private static void write(Path path, GiantMobsConfig config) {
-        try {
-            Files.createDirectories(path.getParent());
-            JsonObject root = new JsonObject();
-            root.addProperty("enabled", config.enabled);
-            root.addProperty("minimumGiants", config.minimumGiants);
-            root.addProperty("activationRadiusBlocks", config.activationRadiusBlocks);
-            root.addProperty("despawnRadiusBlocks", config.despawnRadiusBlocks);
-            root.addProperty("minSpawnDistanceBlocks", config.minSpawnDistanceBlocks);
-            root.addProperty("maxSpawnDistanceBlocks", config.maxSpawnDistanceBlocks);
-            root.addProperty("spawnHeightAboveGround", config.spawnHeightAboveGround);
-            root.addProperty("spawnSearchAttempts", config.spawnSearchAttempts);
-            root.addProperty("groundSearchHorizontalRadiusBlocks", config.groundSearchHorizontalRadiusBlocks);
-            root.addProperty("groundSearchVerticalRangeBlocks", config.groundSearchVerticalRangeBlocks);
-            root.addProperty("groundSearchCooldownTicks", config.groundSearchCooldownTicks);
-            root.addProperty("groundCacheTtlTicks", config.groundCacheTtlTicks);
-            root.addProperty("attackRangeBlocks", config.attackRangeBlocks);
-            root.addProperty("attackCooldownTicks", config.attackCooldownTicks);
-            root.addProperty("projectileCount", config.projectileCount);
-            root.addProperty("projectileSpreadRadiusBlocks", config.projectileSpreadRadiusBlocks);
-            root.addProperty("projectileImpactDamage", config.projectileImpactDamage);
-            root.addProperty("projectileKnockbackStrength", config.projectileKnockbackStrength);
-            root.addProperty("forceChunkLoadingEnabled", config.forceChunkLoadingEnabled);
-            root.addProperty("preloadRadiusChunks", config.preloadRadiusChunks);
-            root.addProperty("preloadTicketLevel", config.preloadTicketLevel);
-            root.addProperty("maxChunkLoadsPerTick", config.maxChunkLoadsPerTick);
-            root.addProperty("releaseTicketsAfterTicks", config.releaseTicketsAfterTicks);
-            root.addProperty("virtualStateFlushIntervalMinutes", config.virtualStateFlushIntervalMinutes);
-            Files.writeString(path, GSON.toJson(root), StandardCharsets.UTF_8);
-        } catch (IOException ignored) {
-            LOGGER.warn("[Sky-Islands][giants] failed to write config path={}", path);
         }
     }
 }

@@ -4,7 +4,6 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.server.level.ServerPlayer;
 
 import org.slf4j.Logger;
@@ -121,25 +120,47 @@ public final class SpecialItemConversionManager {
         return true;
     }
 
+    /** Players whose reward is being granted right now, so a burst of inventory changes grants it once. */
+    private static final java.util.Set<java.util.UUID> GRANTING = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private static final java.util.concurrent.ExecutorService REWARD_IO = java.util.concurrent.Executors.newSingleThreadExecutor(task -> {
+        Thread thread = new Thread(task, "skyislands-boss-reward");
+        thread.setDaemon(true);
+        return thread;
+    });
+
+    /**
+     * Grants the sky-island boss reward through MPDS's API (it raises the player's SoulboundMax once), off the server
+     * thread because it talks to the database. The tag is added only after the grant succeeded, so a failure is
+     * retried next time. MPDS is called by name so this mod builds without it.
+     */
     private static void tryMarkSkyIslandDefeatedOnce(ServerPlayer player) {
-        if (player == null || player.entityTags().contains(MPDS_SKYISLAND_DEFEATED_TAG)) {
+        if (player == null || player.entityTags().contains(MPDS_SKYISLAND_DEFEATED_TAG) || !GRANTING.add(player.getUUID())) {
             return;
         }
-
-        MinecraftServer server = player.createCommandSourceStack().getServer();
-        if (server == null) {
-            return;
-        }
-
-        String playerName = player.getScoreboardName();
-        CommandSourceStack source = server.createCommandSourceStack();
-
-        try {
-            server.getCommands().performPrefixedCommand(source, "mpdsgrantbossreward " + playerName + " skyisland 1");
-            player.addTag(MPDS_SKYISLAND_DEFEATED_TAG);
-        } catch (Exception e) {
-            LOGGER.error("Failed to update MPDS skyisland defeated flag for {}", playerName, e);
-        }
+        MinecraftServer server = player.level().getServer();
+        String name = player.getScoreboardName();
+        String uuid = player.getStringUUID();
+        java.util.UUID id = player.getUUID();
+        REWARD_IO.execute(() -> {
+            try {
+                Class<?> api = Class.forName("mpds.mpds.api.BossRewards");
+                java.lang.reflect.Method grant = api.getMethod("grant", String.class, String.class, String.class, int.class);
+                boolean granted = (boolean) grant.invoke(null, name, uuid, "skyisland", 1);
+                LOGGER.info("sky-island boss reward for {}: {}", name, granted ? "granted" : "already had it");
+                server.execute(() -> {
+                    ServerPlayer online = server.getPlayerList().getPlayer(id);
+                    if (online != null) {
+                        online.addTag(MPDS_SKYISLAND_DEFEATED_TAG);
+                    }
+                });
+            } catch (java.lang.reflect.InvocationTargetException e) {
+                LOGGER.error("Failed to grant the MPDS sky-island boss reward for {}; it is retried next time", name, e.getCause());
+            } catch (ReflectiveOperationException e) {
+                LOGGER.error("MPDS boss-reward API not available; the sky-island reward for {} was not granted", name, e);
+            } finally {
+                GRANTING.remove(id);
+            }
+        });
     }
 
     private static int countSpecialFeathers(ServerPlayer player) {

@@ -14,9 +14,6 @@ sourceSets {
 	main {
 		java.srcDirs = ['src/main/java']
 		resources.srcDirs = ['src/main/resources']
-		java.exclude '**/enderdragons/mixins/EntityTrackerMixin.java'
-		java.exclude '**/giantmobs/mixins/EntityTrackerMixin.java'
-		java.exclude '**/nocreepers/mixins/MobSpawnerLogicMixin.java'
 	}
 }
 

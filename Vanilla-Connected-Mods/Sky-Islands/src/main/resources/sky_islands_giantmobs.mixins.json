@@ -3,6 +3,7 @@
   "package": "com.silver.skyislands.giantmobs.mixins",
   "compatibilityLevel": "JAVA_25",
   "mixins": [
+    "FallingBlockEntityInvoker",
     "ServerChunkLoadingManagerMixin"
   ],
   "injectors": {

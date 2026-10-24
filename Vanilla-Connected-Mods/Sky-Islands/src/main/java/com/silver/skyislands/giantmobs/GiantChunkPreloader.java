@@ -3,6 +3,8 @@ package com.silver.skyislands.giantmobs;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
+import net.fabricmc.fabric.api.networking.v1.context.PacketContext;
+import net.fabricmc.fabric.api.networking.v1.context.PacketContextProvider;
 import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
 import net.minecraft.network.protocol.game.ClientboundLightUpdatePacket;
 import net.minecraft.server.level.ServerPlayer;
@@ -162,10 +164,17 @@ final class GiantChunkPreloader {
             }
 
             LevelLightEngine lightingProvider = world.getChunkSource().getLightEngine();
-            ClientboundLevelChunkWithLightPacket packet = new ClientboundLevelChunkWithLightPacket(chunk, lightingProvider, null, null);
-            ClientboundLightUpdatePacket lightPacket = new ClientboundLightUpdatePacket(chunk.getPos(), lightingProvider, null, null);
+            ClientboundLightUpdatePacket lightPacket = null;
             for (ServerPlayer player : world.players()) {
                 if (Math.max(Math.abs(player.chunkPosition().x() - cx), Math.abs(player.chunkPosition().z() - cz)) <= 127) {
+                    // Built per player inside its packet context, so Polymer can map its custom blocks for that client.
+                    ClientboundLevelChunkWithLightPacket packet = player.connection instanceof PacketContextProvider provider
+                            ? PacketContext.supplyWithContext(provider,
+                                    () -> new ClientboundLevelChunkWithLightPacket(chunk, lightingProvider, null, null))
+                            : new ClientboundLevelChunkWithLightPacket(chunk, lightingProvider, null, null);
+                    if (lightPacket == null) {
+                        lightPacket = new ClientboundLightUpdatePacket(chunk.getPos(), lightingProvider, null, null);
+                    }
                     player.connection.send(packet);
                     player.connection.send(lightPacket);
                 }

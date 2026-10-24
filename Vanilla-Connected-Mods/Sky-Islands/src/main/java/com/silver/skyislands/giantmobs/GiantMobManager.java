@@ -1,11 +1,9 @@
 package com.silver.skyislands.giantmobs;
 
-import com.silver.skyislands.giantmobs.mixins.FallingBlockEntityInvoker;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -19,9 +17,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.network.chat.Component;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraft.core.Direction;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.level.storage.LevelData;
@@ -43,12 +39,6 @@ public final class GiantMobManager {
     private static final EntityType<?> GIANT_TYPE = BuiltInRegistries.ENTITY_TYPE
             .getValue(net.minecraft.resources.Identifier.fromNamespaceAndPath("minecraft", "giant"));
     public static final String MANAGED_TAG = "sky_islands_managed_giant";
-    public static final String PROJECTILE_TAG = "sky_islands_managed_giant_projectile";
-
-    private static final double PROJECTILE_DRAG = 0.98D;
-    private static final double PROJECTILE_GRAVITY = 0.04D;
-    private static final int MIN_SOLVER_FLIGHT_TICKS = 8;
-    private static final int EXTRA_PROJECTILE_LIFE_TICKS = 12;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(GiantMobManager.class);
 
@@ -56,21 +46,14 @@ public final class GiantMobManager {
     private static VirtualGiantStore virtualStore;
     private static GiantGroundFinder groundFinder;
     private static GiantChunkPreloader chunkPreloader;
+    private static GiantProjectiles projectiles;
+    private static GiantCombat combat;
 
     private static long serverTicks;
     private static boolean initialised;
 
     private static final Set<UUID> debugLoggedUnmanagedGiants = new HashSet<>();
     private static final Set<UUID> inactiveChunkReleaseDone = new HashSet<>();
-    private static final Map<UUID, Long> nextAttackTick = new HashMap<>();
-    private static final Map<UUID, ProjectileState> projectileStates = new HashMap<>();
-
-    private record ProjectileState(UUID ownerId, Vec3 launchPos, long expiresTick) {
-    }
-
-    private record ProjectileLaunch(Vec3 velocity, int flightTicks) {
-    }
-
     private GiantMobManager() {
     }
 
@@ -84,6 +67,8 @@ public final class GiantMobManager {
         virtualStore = new VirtualGiantStore();
         groundFinder = new GiantGroundFinder();
         chunkPreloader = new GiantChunkPreloader(config.preloadTicketLevel);
+        projectiles = new GiantProjectiles(config);
+        combat = new GiantCombat(config, projectiles);
 
         ServerTickEvents.END_SERVER_TICK.register(GiantMobManager::tick);
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
@@ -112,7 +97,7 @@ public final class GiantMobManager {
     }
 
     public static boolean isManagedProjectile(Entity entity) {
-        return entity != null && entity.entityTags().contains(PROJECTILE_TAG);
+        return GiantProjectiles.isProjectile(entity);
     }
 
     public static boolean shouldForceTrack(Entity entity) {
@@ -140,19 +125,19 @@ public final class GiantMobManager {
 
         List<VirtualGiantStore.VirtualGiantState> snapshot = virtualStore.snapshot();
         Map<UUID, Giant> loaded = new HashMap<>();
-        List<FallingBlockEntity> projectiles = new ArrayList<>();
+        List<FallingBlockEntity> thrown = new ArrayList<>();
 
         for (Entity entity : overworld.getAllEntities()) {
             if (entity instanceof Giant giant && isManaged(giant)) {
                 GiantIdTags.getId(giant).ifPresent(id -> loaded.put(id, giant));
             } else if (entity instanceof FallingBlockEntity fallingBlock && isManagedProjectile(fallingBlock)) {
-                projectiles.add(fallingBlock);
+                thrown.add(fallingBlock);
             }
         }
 
         int virtualCount = includeVirtual ? snapshot.size() : 0;
         int loadedCount = includeLoaded ? loaded.size() : 0;
-        int projectileCount = includeProjectiles ? projectiles.size() : 0;
+        int projectileCount = includeProjectiles ? thrown.size() : 0;
         source.sendSuccess(() -> Component.literal("Sky-Islands giants: virtual=" + virtualCount + " loaded=" + loadedCount + " projectiles=" + projectileCount +
                 " (activationRadius=" + config.activationRadiusBlocks + " despawnRadius=" + config.despawnRadiusBlocks + ")"), false);
 
@@ -182,14 +167,15 @@ public final class GiantMobManager {
                 Giant giant = entry.getValue();
                 String line = " - loaded id=" + shortId(entry.getKey()) +
                         " entityPos=(" + round1(giant.getX()) + ", " + round1(giant.getY()) + ", " + round1(giant.getZ()) + ")" +
-                        " yaw=" + round1(giant.getYRot());
+                        " yaw=" + round1(giant.getYRot()) +
+                        " hp=" + round1(giant.getHealth()) + "/" + round1(giant.getMaxHealth());
                 source.sendSuccess(() -> Component.literal(line), false);
                 shown++;
             }
         }
 
         if (includeProjectiles) {
-            for (FallingBlockEntity projectile : projectiles) {
+            for (FallingBlockEntity projectile : thrown) {
                 if (shown >= maxShow) {
                     break;
                 }
@@ -202,7 +188,7 @@ public final class GiantMobManager {
             }
         }
 
-        if ((includeVirtual && snapshot.size() > maxShow) || (includeLoaded && loaded.size() > maxShow) || (includeProjectiles && projectiles.size() > maxShow)) {
+        if ((includeVirtual && snapshot.size() > maxShow) || (includeLoaded && loaded.size() > maxShow) || (includeProjectiles && thrown.size() > maxShow)) {
             source.sendSuccess(() -> Component.literal("(output truncated; showing first " + maxShow + ")"), false);
         }
 
@@ -241,7 +227,8 @@ public final class GiantMobManager {
             ensureMinimumVirtualGiants(world);
         }
 
-        tickProjectiles(world);
+        combat.trackPlayers(world, serverTicks);
+        projectiles.tick(world, serverTicks);
         tickVirtualGiants(world);
     }
 
@@ -373,11 +360,11 @@ public final class GiantMobManager {
                 chunkBudget -= chunkPreloader.request(world, state.id(), desired, serverTicks, chunkBudget);
             }
 
-            tickLoadedGiant(world, state, giant, target);
+            combat.tick(world, giant, state.id(), playersWithin(world, giant.position(), config.attackRangeBlocks), serverTicks);
 
             if (!isAnyPlayerNear(world, giant.position(), config.despawnRadiusBlocks)) {
                 giant.discard();
-                nextAttackTick.remove(state.id());
+                combat.forget(state.id());
                 loaded.remove(state.id());
                 releaseInactiveChunks(world, state.id());
                 continue;
@@ -389,94 +376,6 @@ public final class GiantMobManager {
         if (config.forceChunkLoadingEnabled) {
             chunkPreloader.releaseUnused(world, serverTicks, config.releaseTicketsAfterTicks);
         }
-    }
-
-    private static void tickLoadedGiant(ServerLevel world, VirtualGiantStore.VirtualGiantState state, Giant giant, ServerPlayer target) {
-        if (target == null) {
-            return;
-        }
-
-        faceTarget(giant, target.position());
-
-        if (serverTicks < nextAttackTick.getOrDefault(state.id(), 0L)) {
-            return;
-        }
-
-        if (spawnThrownBlockCluster(world, state.id(), giant, target)) {
-            nextAttackTick.put(state.id(), serverTicks + getNextAttackDelayTicks(world));
-        } else {
-            nextAttackTick.put(state.id(), serverTicks + 10L);
-        }
-    }
-
-    private static boolean spawnThrownBlockCluster(ServerLevel world, UUID giantId, Giant giant, ServerPlayer target) {
-        double yawRadians = Math.toRadians(giant.getYRot());
-        Vec3 forward = new Vec3(-Math.sin(yawRadians), 0.0, Math.cos(yawRadians));
-        Vec3 startCenter = new Vec3(giant.getX(), giant.getEyeY() - 0.5, giant.getZ()).add(forward.scale(2.8));
-        Vec3 targetPos = new Vec3(target.getX(), target.getEyeY() - 0.2, target.getZ());
-        Vec3 delta = targetPos.subtract(startCenter);
-        Vec3 horizontal = new Vec3(delta.x, 0.0, delta.z);
-        double horizontalLength = horizontal.length();
-        if (horizontalLength < 1.0e-6 || horizontalLength > config.attackRangeBlocks) {
-            return false;
-        }
-
-        Vec3 horizontalDir = horizontal.scale(1.0 / horizontalLength);
-        Vec3 lateral = new Vec3(-horizontalDir.z, 0.0, horizontalDir.x);
-        int spawned = 0;
-
-        for (int i = 0; i < config.projectileCount; i++) {
-            double spreadScale = config.projectileSpreadRadiusBlocks;
-            double ring = i == 0 ? 0.0 : (0.35 + (0.65 * ((i + 2) / (double) config.projectileCount)));
-            double angle = i == 0 ? 0.0 : (2.0 * Math.PI * i / Math.max(1, config.projectileCount - 1));
-            double sideOffset = Math.cos(angle) * spreadScale * ring;
-            double verticalOffset = Math.sin(angle) * (spreadScale * 0.35) * ring;
-
-            Vec3 start = startCenter.add(lateral.scale(sideOffset)).add(0.0, verticalOffset, 0.0);
-            Vec3 spreadTarget = targetPos
-                    .add(lateral.scale(sideOffset * 1.8))
-                    .add(0.0, verticalOffset * 0.75, 0.0);
-
-            if (spawnSingleProjectile(world, giantId, giant, start, spreadTarget)) {
-                spawned++;
-            }
-        }
-
-        return spawned > 0;
-    }
-
-    private static boolean spawnSingleProjectile(ServerLevel world, UUID giantId, Giant giant, Vec3 start, Vec3 targetPos) {
-        BlockState projectileState = chooseProjectileBlockState(world, giant);
-        ProjectileLaunch launch = solveProjectileLaunch(start, targetPos, config.attackRangeBlocks);
-        if (launch == null) {
-            return false;
-        }
-
-        FallingBlockEntity projectile = FallingBlockEntity.fall(world, BlockPos.containing(start), projectileState);
-        projectile.setPos(start);
-        projectile.setDeltaMovement( launch.velocity());
-        projectile.setHurtsEntities(config.projectileImpactDamage, 40);
-        projectile.disableDrop();
-        projectile.dropItem = false;
-        projectile.time = 1;
-        projectile.addTag(PROJECTILE_TAG);
-        projectile.setStartPos(giant.blockPosition());
-
-        if (!world.addFreshEntity(projectile)) {
-            return false;
-        }
-
-        projectileStates.put(projectile.getUUID(), new ProjectileState(giantId, start, serverTicks + launch.flightTicks() + EXTRA_PROJECTILE_LIFE_TICKS));
-        return true;
-    }
-
-    private static BlockState chooseProjectileBlockState(ServerLevel world, Giant giant) {
-        BlockPos below = giant.blockPosition().below();
-        BlockState state = world.getBlockState(below);
-        if (state.isAir() || state.getCollisionShape(world, below).isEmpty() || !state.isFaceSturdy(world, below, Direction.UP)) {
-            return Blocks.COBBLESTONE.defaultBlockState();
-        }
-        return state;
     }
 
     private static Giant spawnGiantFromVirtual(ServerLevel world, VirtualGiantStore.VirtualGiantState state) {
@@ -493,6 +392,8 @@ public final class GiantMobManager {
         giant.setXRot(0.0F);
         giant.setNoAi(true);
         giant.setPersistenceRequired();
+        giant.getAttribute(Attributes.MAX_HEALTH).setBaseValue(config.maxHealth);
+        giant.setHealth((float) config.maxHealth);
 
         if (!world.noCollision(giant)) {
             if (LOGGER.isDebugEnabled()) {
@@ -510,7 +411,6 @@ public final class GiantMobManager {
             return null;
         }
 
-        nextAttackTick.put(state.id(), serverTicks + config.attackCooldownTicks);
         return giant;
     }
 
@@ -568,75 +468,10 @@ public final class GiantMobManager {
     private static void onManagedGiantDeath(Giant giant) {
         GiantIdTags.getId(giant).ifPresent(id -> {
             virtualStore.remove(id);
-            nextAttackTick.remove(id);
+            combat.forget(id);
             inactiveChunkReleaseDone.remove(id);
             LOGGER.info("[Sky-Islands] Managed giant died id={} uuid={}", shortId(id), giant.getStringUUID());
         });
-    }
-
-    private static void tickProjectiles(ServerLevel world) {
-        if (projectileStates.isEmpty()) {
-            return;
-        }
-
-        List<UUID> toRemove = new ArrayList<>();
-        for (Entity entity : world.getAllEntities()) {
-            if (!(entity instanceof FallingBlockEntity projectile) || !isManagedProjectile(projectile)) {
-                continue;
-            }
-
-            ProjectileState projectileState = projectileStates.get(projectile.getUUID());
-            if (projectileState == null) {
-                projectileStates.put(projectile.getUUID(), new ProjectileState(null, projectile.position(), serverTicks + getMaxSolverFlightTicks() + EXTRA_PROJECTILE_LIFE_TICKS));
-                projectileState = projectileStates.get(projectile.getUUID());
-            }
-
-            if (projectileState.expiresTick() <= serverTicks || projectile.position().distanceToSqr(projectileState.launchPos()) > (double) config.attackRangeBlocks * (double) config.attackRangeBlocks || projectile.onGround()) {
-                impactProjectile(world, projectile, projectileState);
-                toRemove.add(projectile.getUUID());
-                continue;
-            }
-
-            AABB impactBox = projectile.getBoundingBox().inflate(0.6);
-            boolean hitEntity = false;
-            for (Entity hit : world.getEntities(projectile, impactBox, candidate -> candidate instanceof LivingEntity living && !(candidate instanceof Giant) && candidate.isAlive())) {
-                if (!(hit instanceof LivingEntity living)) {
-                    continue;
-                }
-
-                if (!living.hurtServer(world, world.damageSources().fallingBlock(projectile), config.projectileImpactDamage)) {
-                    continue;
-                }
-
-                living.knockback(config.projectileKnockbackStrength, projectile.getX() - living.getX(), projectile.getZ() - living.getZ(), world.damageSources().fallingBlock(projectile), 0.0F);
-                hitEntity = true;
-            }
-
-            if (hitEntity) {
-                impactProjectile(world, projectile, projectileState);
-                toRemove.add(projectile.getUUID());
-            }
-        }
-
-        projectileStates.keySet().removeIf(id -> toRemove.contains(id));
-    }
-
-    private static void impactProjectile(ServerLevel world, FallingBlockEntity projectile, ProjectileState projectileState) {
-        if (projectile.isRemoved()) {
-            return;
-        }
-
-        AABB splashBox = projectile.getBoundingBox().inflate(1.25);
-        for (Entity hit : world.getEntities(projectile, splashBox, candidate -> candidate instanceof LivingEntity living && !(candidate instanceof Giant) && candidate.isAlive())) {
-            if (!(hit instanceof LivingEntity living)) {
-                continue;
-            }
-
-            living.hurtServer(world, world.damageSources().fallingBlock(projectile), Math.max(1.0F, config.projectileImpactDamage * 0.5F));
-            living.knockback(config.projectileKnockbackStrength * 0.65, projectile.getX() - living.getX(), projectile.getZ() - living.getZ(), world.damageSources().fallingBlock(projectile), 0.0F);
-        }
-
-        projectile.discard();
     }
 
     private static Optional<Vec3> pickPersistentSpawnPos(ServerLevel world) {
@@ -699,64 +534,15 @@ public final class GiantMobManager {
         return Math.max(min, Math.min(max, value));
     }
 
-    private static ProjectileLaunch solveProjectileLaunch(Vec3 start, Vec3 target, int maxHorizontalRange) {
-        Vec3 delta = target.subtract(start);
-        double horizontalDistance = Math.sqrt(delta.x * delta.x + delta.z * delta.z);
-        if (horizontalDistance < 1.0e-6 || horizontalDistance > maxHorizontalRange) {
-            return null;
-        }
-
-        double bestScore = Double.POSITIVE_INFINITY;
-        ProjectileLaunch best = null;
-
-        double sumCoeff = 0.0;
-        double coeff = 1.0;
-        double gravityVelocity = 0.0;
-        double gravityDisplacement = 0.0;
-
-        int maxFlightTicks = getMaxSolverFlightTicks();
-        double preferredMaxSpeed = Math.max(3.0, maxHorizontalRange / 24.0);
-
-        for (int ticks = 1; ticks <= maxFlightTicks; ticks++) {
-            sumCoeff += coeff;
-            gravityVelocity -= PROJECTILE_GRAVITY;
-            gravityDisplacement += gravityVelocity;
-            gravityVelocity *= PROJECTILE_DRAG;
-            coeff *= PROJECTILE_DRAG;
-
-            if (ticks < MIN_SOLVER_FLIGHT_TICKS) {
-                continue;
-            }
-
-            double velocityX = delta.x / sumCoeff;
-            double velocityZ = delta.z / sumCoeff;
-            double velocityY = (delta.y - gravityDisplacement) / sumCoeff;
-
-            double horizontalSpeed = Math.sqrt(velocityX * velocityX + velocityZ * velocityZ);
-            double launchSpeed = Math.sqrt(horizontalSpeed * horizontalSpeed + velocityY * velocityY);
-            double pitch = Math.abs(Math.atan2(velocityY, Math.max(horizontalSpeed, 1.0e-6)));
-
-            double score = pitch * 4.0 + (launchSpeed * 0.08) + (ticks * 0.002);
-            if (launchSpeed > preferredMaxSpeed) {
-                score += (launchSpeed - preferredMaxSpeed) * 0.75;
-            }
-
-            if (score < bestScore) {
-                bestScore = score;
-                best = new ProjectileLaunch(new Vec3(velocityX, velocityY, velocityZ), ticks);
+    private static List<ServerPlayer> playersWithin(ServerLevel world, Vec3 pos, int radiusBlocks) {
+        double maxDistanceSq = (double) radiusBlocks * (double) radiusBlocks;
+        List<ServerPlayer> result = new ArrayList<>();
+        for (ServerPlayer player : world.players()) {
+            if (!player.isSpectator() && player.isAlive() && player.position().distanceToSqr(pos) <= maxDistanceSq) {
+                result.add(player);
             }
         }
-
-        return best;
-    }
-
-    private static int getMaxSolverFlightTicks() {
-        return Math.max(40, Math.min(200, config.attackRangeBlocks + 20));
-    }
-
-    private static long getNextAttackDelayTicks(ServerLevel world) {
-        int jitter = world.getRandom().nextIntBetweenInclusive(-20, 20);
-        return Math.max(10L, (long) config.attackCooldownTicks + jitter);
+        return result;
     }
 
     private static boolean isAnyPlayerNear(ServerLevel world, Vec3 pos, int radiusBlocks) {
@@ -787,20 +573,6 @@ public final class GiantMobManager {
             best = player;
         }
         return best;
-    }
-
-    private static void faceTarget(Giant giant, Vec3 targetPos) {
-        Vec3 from = giant.getEyePosition();
-        Vec3 delta = targetPos.subtract(from);
-        double horizontal = Math.sqrt(delta.x * delta.x + delta.z * delta.z);
-
-        float yaw = (float) Math.toDegrees(Math.atan2(delta.z, delta.x)) - 90.0F;
-        float pitch = (float) -Math.toDegrees(Math.atan2(delta.y, Math.max(horizontal, 1.0e-6)));
-
-        giant.setYRot(yaw);
-        giant.setYHeadRot(yaw);
-        giant.setYBodyRot(yaw);
-        giant.setXRot(Mth.clamp(pitch, -30.0F, 45.0F));
     }
 
     private static String shortId(UUID id) {

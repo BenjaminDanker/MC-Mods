@@ -98,7 +98,7 @@ public final class PortalRedirector {
             return false;
         }
 
-        String secret = config.portalRequestSecret();
+        String secret = com.silver.portalprotocol.PortalRequestSecret.resolve(config.portalRequestSecret());
         if (secret == null || secret.isBlank()) {
             return false;
         }

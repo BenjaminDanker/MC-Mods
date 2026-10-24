@@ -1,8 +1,8 @@
 package com.silver.skyislands.config;
 
 public final class SkyIslandsPortalConfig {
-    public static final String DEFAULT_TARGET_SERVER = "vanilla1";
-    public static final String DEFAULT_PORTAL_REQUEST_SECRET = "silver";
+    public static final String DEFAULT_TARGET_SERVER = "vanilla";
+    public static final String DEFAULT_PORTAL_REQUEST_SECRET = ""; // the network secret comes from ~/.config/mc-network/shared.properties
 
     public static SkyIslandsPortalConfig createDefault() {
         return new SkyIslandsPortalConfig(true, DEFAULT_TARGET_SERVER, DEFAULT_PORTAL_REQUEST_SECRET);
