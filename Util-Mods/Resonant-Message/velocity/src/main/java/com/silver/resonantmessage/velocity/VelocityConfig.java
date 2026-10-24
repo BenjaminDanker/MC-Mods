@@ -14,7 +14,7 @@ import org.slf4j.Logger;
 
 final class VelocityConfig {
     static final Set<String> REQUIRED_BACKENDS = Set.of(
-            "waiting_lobby", "vanilla1", "sky-island", "ocean", "desert", "cave", "magic");
+            "waiting_lobby", "vanilla", "sky-island", "ocean", "desert", "cave", "magic");
 
     private VelocityConfig() {}
 
