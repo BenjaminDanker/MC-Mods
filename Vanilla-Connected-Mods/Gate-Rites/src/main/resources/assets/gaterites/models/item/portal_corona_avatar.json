@@ -1,0 +1,42 @@
+{
+ "textures": {
+  "0": "gaterites:item/portal_corona_avatar",
+  "particle": "gaterites:item/portal_corona_avatar"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    8.0
+   ],
+   "to": [
+    16,
+    16,
+    8.0
+   ],
+   "faces": {
+    "north": {
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ],
+     "texture": "#0",
+     "tintindex": 0
+    },
+    "south": {
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ],
+     "texture": "#0",
+     "tintindex": 0
+    }
+   }
+  }
+ ]
+}

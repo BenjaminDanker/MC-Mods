@@ -1,0 +1,29 @@
+{
+  "fabric:load_conditions": [
+    {
+      "condition": "fabric:all_mods_loaded",
+      "values": [
+        "polyfactory"
+      ]
+    }
+  ],
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "HDT",
+    "CLC",
+    "NSN"
+  ],
+  "key": {
+    "H": "polyfactory:hologram_projector",
+    "D": "polyfactory:deep_storage_container",
+    "T": "polyfactory:wireless_redstone_transmitter",
+    "C": "polyfactory:integrated_circuit",
+    "L": "polyfactory:large_steel_gear",
+    "N": "minecraft:netherite_ingot",
+    "S": "polyfactory:steel_block"
+  },
+  "result": {
+    "id": "gaterites:gate_core"
+  }
+}

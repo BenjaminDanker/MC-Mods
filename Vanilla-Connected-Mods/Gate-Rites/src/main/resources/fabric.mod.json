@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "gate-rites",
+  "version": "${version}",
+  "name": "Gate Rites",
+  "description": "How each faction reaches Magitech by its own pinnacle: Tech lights a steel gate with a Gate Core (owner-only, breaks as they enter); Magic casts a floating portal with a pinnacle ability that only the caster can enter.",
+  "authors": [
+    "BenjaminDanker"
+  ],
+  "license": "MIT",
+  "environment": "server",
+  "entrypoints": {
+    "main": [
+      "com.silver.gaterites.GateRitesMod"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "fabric-api": "*",
+    "server-portals": "*",
+    "minecraft": "~26.2",
+    "java": ">=25"
+  },
+  "suggests": {
+    "polymer-core": "*",
+    "bending": "*",
+    "element-choice": "*"
+  }
+}

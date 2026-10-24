@@ -1,0 +1,27 @@
+{
+ "model": {
+  "type": "minecraft:composite",
+  "models": [
+   {
+    "type": "minecraft:model",
+    "model": "gaterites:item/portal_surface_avatar",
+    "tints": [
+     {
+      "type": "minecraft:constant",
+      "value": 16777215
+     }
+    ]
+   },
+   {
+    "type": "minecraft:model",
+    "model": "gaterites:item/portal_ring_avatar",
+    "tints": [
+     {
+      "type": "minecraft:constant",
+      "value": 16777215
+     }
+    ]
+   }
+  ]
+ }
+}

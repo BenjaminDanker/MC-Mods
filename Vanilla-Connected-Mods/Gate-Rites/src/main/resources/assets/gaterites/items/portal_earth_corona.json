@@ -1,0 +1,12 @@
+{
+ "model": {
+  "type": "minecraft:model",
+  "model": "gaterites:item/portal_corona",
+  "tints": [
+   {
+    "type": "minecraft:constant",
+    "value": 9425231
+   }
+  ]
+ }
+}
