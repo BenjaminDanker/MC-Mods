@@ -24,9 +24,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Silently unlocks an element (stored in MPDS, so every server shares it) for the players who defeat a
- * configured secondary boss. The player is told nothing and given nothing: the choice appears later,
- * in the Magic server's skill tree.
+ * Unlocks an element (stored in MPDS, so every server shares it) for the players who defeat a configured
+ * secondary boss. The player only gets one cryptic line the first time; what it means appears later, in the
+ * Magic server's skill tree.
  */
 public final class BossUnlockMod implements ModInitializer {
     private static final Logger LOGGER = LoggerFactory.getLogger("boss-unlock");
@@ -102,6 +102,16 @@ public final class BossUnlockMod implements ModInitializer {
         return List.copyOf(result);
     }
 
+    /** The one line a slayer is told: something stayed with them, never what. */
+    static String omen(String element) {
+        return switch (element) {
+            case "air" -> "The wind lingers around you a moment longer than it should.";
+            case "water" -> "For a heartbeat, the sea beats with you.";
+            case "earth" -> "The stone under your feet hums, and then is still.";
+            default -> "A warmth settles in your chest, and stays.";
+        };
+    }
+
     private void award(ServerPlayer player, String element) {
         String name = player.getName().getString();
         String uuid = player.getStringUUID();
@@ -111,10 +121,21 @@ public final class BossUnlockMod implements ModInitializer {
             case "earth" -> sql.ElementProgress.EARTH;
             default -> sql.ElementProgress.FIRE;
         };
+        net.minecraft.server.MinecraftServer server = player.level().getServer();
+        java.util.UUID id = player.getUUID();
         io.execute(() -> {
             try {
                 boolean added = sql.unlockElement(name, uuid, bit);
                 LOGGER.info("{} defeated a boss: {} unlock recorded (new={})", name, element, added);
+                if (added) {
+                    server.execute(() -> {
+                        ServerPlayer online = server.getPlayerList().getPlayer(id);
+                        if (online != null) {
+                            online.sendSystemMessage(net.minecraft.network.chat.Component.literal(omen(element))
+                                .withStyle(net.minecraft.ChatFormatting.DARK_AQUA, net.minecraft.ChatFormatting.ITALIC));
+                        }
+                    });
+                }
             } catch (Exception failure) {
                 LOGGER.error("Could not record the {} unlock for {}", element, name, failure);
             }
