@@ -55,8 +55,8 @@ public final class SpawnSpecialConfig {
     /** Maximum amount for non-boss special drops at top difficulty. */
     public static final int SPECIAL_DROP_MAX_AMOUNT_NON_BOSS = 16;
 
-    /** Maximum amount for boss special drops at top difficulty. */
-    public static final int SPECIAL_DROP_MAX_AMOUNT_BOSS = 20;
+    /** Maximum amount for boss special drops at top difficulty (bosses scale from BOSS_SPECIAL_DROP_MIN up to this). */
+    public static final int SPECIAL_DROP_MAX_AMOUNT_BOSS = 60;
 
     /** Output item id for conversion reward. */
     public static final String SPECIAL_SEA_LANTERN_ITEM_ID = "minecraft:sea_lantern";
