@@ -31,7 +31,9 @@ public final class MagitechCoreMod implements ModInitializer {
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             MagitechConfig config = MagitechConfig.load(FabricLoader.getInstance().getConfigDir().resolve("magitech.json"));
             if (FabricLoader.getInstance().isModLoaded("server-portals")) {
-                server.execute(() -> new Landings(server, config).ensure());
+                Landings landings = new Landings(server, config);
+                server.execute(landings::ensure);
+                DockRespawn.register(server, landings);
             }
             if (FabricLoader.getInstance().isModLoaded("bending")) {
                 wells = new Wells(server, config);

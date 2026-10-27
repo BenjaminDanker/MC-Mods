@@ -5,6 +5,8 @@ import com.google.gson.JsonObject;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import net.kyrptonaught.customportalapi.portal.PortalIgnitionSource;
 import net.kyrptonaught.customportalapi.portal.PortalPlacer;
 import net.minecraft.core.BlockPos;
@@ -18,13 +20,15 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.storage.LevelResource;
+import net.minecraft.world.phys.Vec3;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Each faction arrives on its own landing dock: a flat stone pad on the nearest land to its corner of the map, with a lit
- * gate back to its home server. Built once; where it ended up is written to docks.json and logged, because the arrival
- * point has to be copied into the portal config of the home server.
+ * Each faction arrives on its own landing dock: a flat stone pad with a lit gate back to its home server. Both docks
+ * stand on one continent, each on its own side of it (magic to the west, tech to the east by default), so the two
+ * factions can always walk to each other. Built once; docks.json records where. When a dock is built or moved, its
+ * arrival point is written into this server's server-portals.json, which takes effect at the next start.
  */
 final class Landings {
     private static final Logger LOGGER = LoggerFactory.getLogger("magitech");
@@ -33,6 +37,8 @@ final class Landings {
     private final MinecraftServer server;
     private final MagitechConfig config;
     private final Path file;
+    /** docks.json as last read or written; set on the server thread. */
+    private volatile JsonObject state;
 
     Landings(MinecraftServer server, MagitechConfig config) {
         this.server = server;
@@ -40,26 +46,150 @@ final class Landings {
         this.file = server.getWorldPath(LevelResource.ROOT).resolve("magitech").resolve("docks.json");
     }
 
+    /** Server thread. The continent is read off the server thread (noise only); building happens back on it. */
     void ensure() {
         JsonObject state = read();
         ServerLevel level = server.overworld();
-        for (MagitechConfig.Dock dock : new MagitechConfig.Dock[] {config.magicDock, config.techDock}) {
-            if (state.has(dock.faction)) {
-                JsonObject at = state.getAsJsonObject(dock.faction);
-                LOGGER.info("Dock {} stands; arrival {} {} {}", dock.faction, at.get("x").getAsDouble(), at.get("y").getAsDouble(), at.get("z").getAsDouble());
-                continue;
+        if (state.has(config.magicDock.faction) && state.has(config.techDock.faction) && state.has("continent")) {
+            for (MagitechConfig.Dock dock : docks()) {
+                Vec3 at = arrival(state, dock.faction);
+                LOGGER.info("Dock {} stands; arrival {} {} {}", dock.faction, at.x, at.y, at.z);
             }
+            this.state = state;
+            return;
+        }
+        CompletableFuture.supplyAsync(() -> continentFor(level, state)).whenComplete((continent, failure) -> server.execute(() -> {
+            if (failure != null) {
+                LOGGER.error("ALERT: could not map the continent; docks left as they are", failure);
+                this.state = state;
+                return;
+            }
+            place(level, state, continent);
+        }));
+    }
+
+    private MagitechConfig.Dock[] docks() {
+        return new MagitechConfig.Dock[] {config.magicDock, config.techDock};
+    }
+
+    /**
+     * The landmass both docks must share. With docks already built: the one under the magic dock, or under the tech
+     * dock if that is larger. Otherwise the land nearest the middle of the two dock targets.
+     */
+    private ContinentMap continentFor(ServerLevel level, JsonObject state) {
+        ContinentMap best = null;
+        for (MagitechConfig.Dock dock : docks()) {
+            if (state.has(dock.faction)) {
+                Vec3 at = arrival(state, dock.faction);
+                ContinentMap map = ContinentMap.around(level, (int) Math.floor(at.x), (int) Math.floor(at.z));
+                if (best == null || map.size() > best.size()) {
+                    best = map;
+                }
+            }
+        }
+        if (best != null && best.size() > 0) {
+            return best;
+        }
+        int midX = (config.magicDock.x + config.techDock.x) / 2;
+        int midZ = (config.magicDock.z + config.techDock.z) / 2;
+        for (int ring = 0; ring <= ContinentMap.RADIUS / ContinentMap.STEP; ring++) {
+            for (int dx = -ring; dx <= ring; dx++) {
+                for (int dz = -ring; dz <= ring; dz++) {
+                    if (Math.max(Math.abs(dx), Math.abs(dz)) != ring) {
+                        continue;
+                    }
+                    ContinentMap map = ContinentMap.around(level, midX + dx * ContinentMap.STEP, midZ + dz * ContinentMap.STEP);
+                    if (map.size() > 0) {
+                        return map;
+                    }
+                }
+            }
+        }
+        throw new IllegalStateException("no land within " + ContinentMap.RADIUS + " blocks of " + midX + "," + midZ);
+    }
+
+    private void place(ServerLevel level, JsonObject state, ContinentMap continent) {
+        boolean moved = false;
+        for (MagitechConfig.Dock dock : docks()) {
+            if (state.has(dock.faction)) {
+                Vec3 at = arrival(state, dock.faction);
+                if (continent.touches(at.x, at.z)) {
+                    LOGGER.info("Dock {} stands on the shared continent; arrival {} {} {}", dock.faction, at.x, at.y, at.z);
+                    continue;
+                }
+                LOGGER.warn("Dock {} at {} {} is on another landmass; moving it to the shared continent", dock.faction, at.x, at.z);
+                removeGate(level, at, dock);
+            }
+            int[] target = continent.nearest(dock.x, dock.z);
             try {
-                state.add(dock.faction, build(level, dock));
-                write(state);
+                JsonObject at = build(level, dock, target[0], target[1], continent);
+                state.add(dock.faction, at);
+                writePortalArrival(dock, at);
+                moved = true;
             } catch (RuntimeException failure) {
                 LOGGER.error("ALERT: could not build the {} dock", dock.faction, failure);
             }
         }
+        state.addProperty("continent", continent.size());
+        write(state);
+        this.state = state;
+        if (moved) {
+            LOGGER.warn("ALERT: a dock was built or moved; restart this server so its portal arrivals take effect");
+        }
     }
 
-    private JsonObject build(ServerLevel level, MagitechConfig.Dock dock) {
-        BlockPos spot = findLand(level, dock.x, dock.z);
+    /** Where the given faction arrives and respawns (no bed), once the docks are known. */
+    Optional<Vec3> arrival(String faction) {
+        JsonObject known = state;
+        return known != null && known.has(faction) ? Optional.of(arrival(known, faction)) : Optional.empty();
+    }
+
+    private static Vec3 arrival(JsonObject state, String faction) {
+        JsonObject at = state.getAsJsonObject(faction);
+        return new Vec3(at.get("x").getAsDouble(), at.get("y").getAsDouble(), at.get("z").getAsDouble());
+    }
+
+    /** Clears the old gate (frame and portal) of a dock that moves; the pad is left as ruins. */
+    private void removeGate(ServerLevel level, Vec3 at, MagitechConfig.Dock dock) {
+        int cx = (int) Math.round(at.x + 0.5);
+        int cz = (int) Math.round(at.z - 2.5);
+        int y = (int) at.y;
+        int gateZ = cz - 3;
+        for (int gx = -2; gx <= 1; gx++) {
+            for (int gy = -1; gy <= 3; gy++) {
+                level.setBlock(new BlockPos(cx + gx, y + gy, gateZ), Blocks.AIR.defaultBlockState(), 2);
+            }
+        }
+        LOGGER.info("Removed the old {} gate at {} {} {}", dock.faction, cx, y, gateZ);
+    }
+
+    /** Points this dock's portal registration at the new arrival (read by server-portals at the next start). */
+    private void writePortalArrival(MagitechConfig.Dock dock, JsonObject at) {
+        Path portals = server.getServerDirectory().resolve("config").resolve("server-portals.json");
+        try {
+            JsonObject root = new Gson().fromJson(Files.readString(portals), JsonObject.class);
+            for (var element : root.getAsJsonArray("portals")) {
+                JsonObject portal = element.getAsJsonObject();
+                if (dock.portal.equals(portal.get("index").getAsString())) {
+                    JsonObject location = new JsonObject();
+                    location.addProperty("world", "minecraft:overworld");
+                    location.addProperty("x", at.get("x").getAsDouble());
+                    location.addProperty("y", at.get("y").getAsDouble());
+                    location.addProperty("z", at.get("z").getAsDouble());
+                    portal.add("arrivalLocation", location);
+                    writeAtomically(portals, new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(root));
+                    LOGGER.info("Portal {} now arrives at {} {} {}", dock.portal, at.get("x"), at.get("y"), at.get("z"));
+                    return;
+                }
+            }
+            LOGGER.error("ALERT: server-portals.json has no portal {}; set its arrival by hand", dock.portal);
+        } catch (IOException | RuntimeException failure) {
+            LOGGER.error("ALERT: could not update the arrival of portal {} in {}", dock.portal, portals, failure);
+        }
+    }
+
+    private JsonObject build(ServerLevel level, MagitechConfig.Dock dock, int targetX, int targetZ, ContinentMap continent) {
+        BlockPos spot = findLand(level, targetX, targetZ, continent);
         int cx = spot.getX();
         int cz = spot.getZ();
         int y = spot.getY();
@@ -90,13 +220,12 @@ final class Landings {
         at.addProperty("x", cx - 0.5);
         at.addProperty("y", (double) y);
         at.addProperty("z", cz + 2.5);
-        LOGGER.info("Built the {} dock at {} {} {}; gate lit={}; ARRIVAL x={} y={} z={} (copy into the home server's portal config)",
-            dock.faction, cx, y, cz, lit, cx - 0.5, y, cz + 2.5);
+        LOGGER.info("Built the {} dock at {} {} {}; gate lit={}; arrival x={} y={} z={}", dock.faction, cx, y, cz, lit, cx - 0.5, y, cz + 2.5);
         return at;
     }
 
-    /** The nearest flat dry land to (x, z), searched in widening squares. */
-    private BlockPos findLand(ServerLevel level, int x, int z) {
+    /** The nearest flat dry land to (x, z) on the continent, searched in widening squares. */
+    private BlockPos findLand(ServerLevel level, int x, int z, ContinentMap continent) {
         for (int ring = 0; ring <= 40; ring++) {
             for (int dx = -ring; dx <= ring; dx++) {
                 for (int dz = -ring; dz <= ring; dz++) {
@@ -105,6 +234,9 @@ final class Landings {
                     }
                     int cx = x + dx * 24;
                     int cz = z + dz * 24;
+                    if (!continent.contains(cx, cz)) {
+                        continue;
+                    }
                     level.getChunk(cx >> 4, cz >> 4);
                     int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, cx, cz);
                     if (y < level.getSeaLevel() + 1 || level.getBiome(new BlockPos(cx, y, cz)).is(BiomeTags.IS_OCEAN)
@@ -145,9 +277,16 @@ final class Landings {
     private void write(JsonObject state) {
         try {
             Files.createDirectories(file.getParent());
-            Files.writeString(file, new Gson().toJson(state));
+            writeAtomically(file, new Gson().toJson(state));
         } catch (IOException failure) {
             LOGGER.error("ALERT: could not save {}", file, failure);
         }
+    }
+
+    /** Writes through a temporary sibling, so a crash never leaves a half-written file. */
+    private static void writeAtomically(Path target, String text) throws IOException {
+        Path temporary = target.resolveSibling(target.getFileName() + ".tmp");
+        Files.writeString(temporary, text);
+        Files.move(temporary, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
     }
 }

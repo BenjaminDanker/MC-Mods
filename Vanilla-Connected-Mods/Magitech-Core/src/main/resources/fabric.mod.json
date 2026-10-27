@@ -24,6 +24,7 @@
   },
   "suggests": {
     "bending": "*",
-    "server-portals": "*"
+    "server-portals": "*",
+    "faction-lock": "*"
   }
 }
