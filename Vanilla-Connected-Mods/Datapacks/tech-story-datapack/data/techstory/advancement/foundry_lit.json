@@ -26,6 +26,9 @@
     ]
   ],
   "rewards": {
-    "function": "techstory:complete"
+    "function": "techstory:complete",
+    "recipes": [
+      "gaterites:gate_core"
+    ]
   }
 }

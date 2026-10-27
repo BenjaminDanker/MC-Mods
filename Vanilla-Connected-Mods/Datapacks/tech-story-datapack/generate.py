@@ -94,7 +94,7 @@ def main():
                     "frame": "challenge", "show_toast": True, "announce_to_chat": True, "hidden": False},
         "parent": f"techstory:{previous}",
         "criteria": {"granted": {"trigger": "minecraft:impossible"}}, "requirements": [["granted"]],
-        "rewards": {"function": "techstory:complete"},
+        "rewards": {"function": "techstory:complete", "recipes": ["gaterites:gate_core"]},
     })
     check.append(f"execute as @a[advancements={{techstory:{previous}=true}}] unless entity @s[advancements={{techstory:foundry_lit=true}}] run advancement grant @s only techstory:foundry_lit")
     check.append("schedule function techstory:check 20t")
