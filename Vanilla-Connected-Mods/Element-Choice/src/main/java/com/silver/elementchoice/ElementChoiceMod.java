@@ -161,6 +161,7 @@ public final class ElementChoiceMod implements ModInitializer {
             skills = new SkillManager(server, store, requiredFaction());
             GameProvider.get().eventBus().subscribe(ElementChangeEvent.class, this::guardChange);
             BendingCommandTweaks.install(server);
+            StoryCalls.register(server);
             if (claimsGuarded) {
                 ClaimWatch.attach(server);
             } else {

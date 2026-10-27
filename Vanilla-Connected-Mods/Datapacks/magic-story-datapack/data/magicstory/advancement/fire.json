@@ -7,7 +7,7 @@
       "text": "Into the Embers"
     },
     "description": {
-      "text": "Descend through the Nether and reach one of its strongholds. The fire kept its piece close."
+      "text": "Reach a stronghold of the Nether and call your element there. The fire kept its piece close."
     },
     "frame": "task",
     "show_toast": true,
@@ -16,28 +16,13 @@
   },
   "parent": "magicstory:wizard",
   "criteria": {
-    "visited": {
-      "trigger": "minecraft:location",
-      "conditions": {
-        "player": [
-          {
-            "condition": "minecraft:location_check",
-            "predicate": {
-              "structures": [
-                "incendium:forbidden_castle",
-                "incendium:infernal_altar",
-                "incendium:sanctum",
-                "incendium:nether_reactor"
-              ]
-            }
-          }
-        ]
-      }
+    "called": {
+      "trigger": "minecraft:impossible"
     }
   },
   "requirements": [
     [
-      "visited"
+      "called"
     ]
   ],
   "rewards": {

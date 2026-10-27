@@ -7,7 +7,7 @@
       "text": "The Wizard's Warning"
     },
     "description": {
-      "text": "Climb a wizard's tower. One last scholar left a warning: the fire and the void each keep a piece."
+      "text": "Call your element in a wizard's tower. One last scholar left a warning: the Spire did not fall on its own, and the fire and the void each keep a piece."
     },
     "frame": "task",
     "show_toast": true,
@@ -16,25 +16,13 @@
   },
   "parent": "magicstory:temple",
   "criteria": {
-    "visited": {
-      "trigger": "minecraft:location",
-      "conditions": {
-        "player": [
-          {
-            "condition": "minecraft:location_check",
-            "predicate": {
-              "structures": [
-                "structory_towers:wizard_tower"
-              ]
-            }
-          }
-        ]
-      }
+    "called": {
+      "trigger": "minecraft:impossible"
     }
   },
   "requirements": [
     [
-      "visited"
+      "called"
     ]
   ],
   "rewards": {

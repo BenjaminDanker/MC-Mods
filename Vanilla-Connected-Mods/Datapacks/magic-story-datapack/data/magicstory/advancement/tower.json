@@ -7,7 +7,7 @@
       "text": "Where the Mages Studied"
     },
     "description": {
-      "text": "Find a mage tower. The scholars left their notes behind when the Spire fell."
+      "text": "Find a mage tower and call your element inside it. The scholars left their notes behind when the Spire fell."
     },
     "frame": "task",
     "show_toast": true,
@@ -16,29 +16,13 @@
   },
   "parent": "magicstory:awakened",
   "criteria": {
-    "visited": {
-      "trigger": "minecraft:location",
-      "conditions": {
-        "player": [
-          {
-            "condition": "minecraft:location_check",
-            "predicate": {
-              "structures": [
-                "terralith:mage_tower",
-                "terralith:mage_tower_autumn",
-                "terralith:mage_tower_spring",
-                "terralith:mage_tower_summer",
-                "terralith:mage_tower_winter"
-              ]
-            }
-          }
-        ]
-      }
+    "called": {
+      "trigger": "minecraft:impossible"
     }
   },
   "requirements": [
     [
-      "visited"
+      "called"
     ]
   ],
   "rewards": {

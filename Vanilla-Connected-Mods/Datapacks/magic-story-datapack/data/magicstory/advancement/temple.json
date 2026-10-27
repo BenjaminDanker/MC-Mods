@@ -7,7 +7,7 @@
       "text": "An Older Faith"
     },
     "description": {
-      "text": "Stand in an ancient temple. The currents were worshipped here before anyone studied them."
+      "text": "Call your element inside an ancient temple. The currents were worshipped here long before the four kings took them home."
     },
     "frame": "task",
     "show_toast": true,
@@ -16,26 +16,13 @@
   },
   "parent": "magicstory:tower",
   "criteria": {
-    "visited": {
-      "trigger": "minecraft:location",
-      "conditions": {
-        "player": [
-          {
-            "condition": "minecraft:location_check",
-            "predicate": {
-              "structures": [
-                "structory_towers:ancient_temple",
-                "structory_towers:sacred_relic_temple"
-              ]
-            }
-          }
-        ]
-      }
+    "called": {
+      "trigger": "minecraft:impossible"
     }
   },
   "requirements": [
     [
-      "visited"
+      "called"
     ]
   ],
   "rewards": {

@@ -7,7 +7,7 @@
       "text": "The Edge of Everything"
     },
     "description": {
-      "text": "Cross into the End and reach the rift. The void kept the last piece."
+      "text": "Cross into the End, reach the rift, and call your element there. The void kept the last piece."
     },
     "frame": "task",
     "show_toast": true,
@@ -16,27 +16,13 @@
   },
   "parent": "magicstory:fire",
   "criteria": {
-    "visited": {
-      "trigger": "minecraft:location",
-      "conditions": {
-        "player": [
-          {
-            "condition": "minecraft:location_check",
-            "predicate": {
-              "structures": [
-                "nullscape:rift",
-                "nullscape:dragon_skeleton",
-                "structory_towers:end/end_tower"
-              ]
-            }
-          }
-        ]
-      }
+    "called": {
+      "trigger": "minecraft:impossible"
     }
   },
   "requirements": [
     [
-      "visited"
+      "called"
     ]
   ],
   "rewards": {
