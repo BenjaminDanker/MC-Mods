@@ -42,6 +42,16 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
 public final class ConversationManager {
+    /**
+     * Reading a reply stream holds a thread for the whole reply, so streams get their own small pool instead of the
+     * JVM-wide common pool (which other mods and the server share). Extra conversations wait their turn.
+     */
+    private static final java.util.concurrent.ExecutorService STREAMS = java.util.concurrent.Executors.newFixedThreadPool(8, task -> {
+        Thread thread = new Thread(task, "villager-reply-stream");
+        thread.setDaemon(true);
+        return thread;
+    });
+
     private static final Set<String> EXIT_KEYWORDS = Set.of("!exit");
     private static final String SYSTEM_FALLBACK_PROMPT = "You have amnesia.";
     private static final int INTERACT_COOLDOWN_TICKS = 60;
@@ -369,7 +379,7 @@ public final class ConversationManager {
                         return;
                     }
 
-                    CompletableFuture.runAsync(() -> consumeConversationStream(server, player.getUUID(), session, lines, config.conversation().activeProvider()));
+                    CompletableFuture.runAsync(() -> consumeConversationStream(server, player.getUUID(), session, lines, config.conversation().activeProvider()), STREAMS);
                 });
             });
     }
@@ -418,7 +428,7 @@ public final class ConversationManager {
                     }
 
                     Stream<String> lines = response.body();
-                    CompletableFuture.runAsync(() -> consumeTestStream(server, player.getUUID(), entry.id(), index, lines, startedAt, config.conversation().activeProvider()));
+                    CompletableFuture.runAsync(() -> consumeTestStream(server, player.getUUID(), entry.id(), index, lines, startedAt, config.conversation().activeProvider()), STREAMS);
                 });
             });
     }

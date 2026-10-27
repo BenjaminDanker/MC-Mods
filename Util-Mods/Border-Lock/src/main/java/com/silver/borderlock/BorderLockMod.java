@@ -28,10 +28,6 @@ public final class BorderLockMod implements ModInitializer {
     }
 
     private static void enforceBorder(ServerPlayer player) {
-        if (AuthorizationChecks.has(player, PermissionNodes.BORDER_BYPASS)) {
-            return;
-        }
-
         ServerLevel world = player.level();
         WorldBorder border = world.getWorldBorder();
 
@@ -44,7 +40,8 @@ public final class BorderLockMod implements ModInitializer {
         double south = border.getMaxZ();
 
         boolean inside = x > west && x < east && z > north && z < south;
-        if (inside) {
+        // Runs for every player every tick: the permission lookup only for players outside the border.
+        if (inside || AuthorizationChecks.has(player, PermissionNodes.BORDER_BYPASS)) {
             return;
         }
 

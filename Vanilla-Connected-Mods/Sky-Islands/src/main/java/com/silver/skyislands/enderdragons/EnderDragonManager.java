@@ -686,6 +686,10 @@ public final class EnderDragonManager {
                     config.forceChunkLoadingEnabled);
         }
 
+        if (snapshot.isEmpty()) {
+            return; // no virtual dragons: skip the scan over every entity in the overworld
+        }
+
         // Build a quick index of currently-loaded managed dragons by our internal dragon id.
         Map<UUID, EnderDragon> loaded = new HashMap<>();
         for (Entity entity : world.getAllEntities()) {
