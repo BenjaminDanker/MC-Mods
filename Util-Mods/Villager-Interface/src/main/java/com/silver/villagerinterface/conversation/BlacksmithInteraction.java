@@ -87,46 +87,88 @@ public final class BlacksmithInteraction {
             return true;
         }
 
-        int soulboundMax;
-        try {
-            soulboundMax = MpdsSoulboundApi.getSoulboundMax(player.getName().getString(), player.getUUID().toString());
-        } catch (Exception e) {
-            manager.sendDeterministicReply(player, session, "The Soulbound capacity system is unavailable. Try again later.");
-            return true;
-        }
+        withSoulboundMax(player, soulboundMax -> {
+            int soulboundCount = countSoulboundItems(player);
+            if (soulboundCount >= soulboundMax) {
+                manager.sendDeterministicReply(player, session, "Your Soul isn't large enough or you have too many Soulbound items.\nYour Soulbound capacity is " + soulboundCount + " out of a maximum of " + soulboundMax + " items.");
+                return;
+            }
 
-        int soulboundCount = countSoulboundItems(player);
-        if (soulboundCount >= soulboundMax) {
-            manager.sendDeterministicReply(player, session, "Your Soul isn't large enough or you have too many Soulbound items.\nYour Soulbound capacity is " + soulboundCount + " out of a maximum of " + soulboundMax + " items.");
-            return true;
-        }
+            PendingModification pending = new PendingModification(main.getItem(), MOD_SOULBOUND);
+            session.setPendingModification(pending);
 
-        PendingModification pending = new PendingModification(main.getItem(), MOD_SOULBOUND);
-        session.setPendingModification(pending);
-
-        String itemName = safeItemName(main);
-        manager.sendDeterministicReply(player, session, "The cost is one additional " + itemName + ". Soulbound items travel across dimensions and are not dropped on death, but can still be manually dropped and used by others. This cannot be undone by normal means.\nYour Soulbound capacity is " + soulboundCount + " out of a maximum of " + soulboundMax + " items.\n" + CONFIRM_PROMPT);
+            String itemName = safeItemName(main);
+            manager.sendDeterministicReply(player, session, "The cost is one additional " + itemName + ". Soulbound items travel across dimensions and are not dropped on death, but can still be manually dropped and used by others. This cannot be undone by normal means.\nYour Soulbound capacity is " + soulboundCount + " out of a maximum of " + soulboundMax + " items.\n" + CONFIRM_PROMPT);
+        }, () -> manager.sendDeterministicReply(player, session, "The Soulbound capacity system is unavailable. Try again later."));
         return true;
     }
 
+    private static final java.util.concurrent.ExecutorService CAP_LOOKUP = java.util.concurrent.Executors.newSingleThreadExecutor(task -> {
+        Thread thread = new Thread(task, "blacksmith-soulbound-cap");
+        thread.setDaemon(true);
+        return thread;
+    });
+
+    /**
+     * Reads the player's Soulbound cap off the server thread (it can query the database) and continues on the server
+     * thread, only while the same player is still online. {@code onUnavailable} runs when the cap can't be read.
+     */
+    private static void withSoulboundMax(ServerPlayer player, java.util.function.IntConsumer onValue, Runnable onUnavailable) {
+        net.minecraft.server.MinecraftServer server = player.level().getServer();
+        String name = player.getName().getString();
+        String uuid = player.getUUID().toString();
+        java.util.UUID id = player.getUUID();
+        CAP_LOOKUP.execute(() -> {
+            Integer max;
+            try {
+                max = MpdsSoulboundApi.getSoulboundMax(name, uuid);
+            } catch (Exception e) {
+                max = null;
+            }
+            Integer result = max;
+            server.execute(() -> {
+                if (server.getPlayerList().getPlayer(id) != player) {
+                    return;
+                }
+                if (result == null) {
+                    onUnavailable.run();
+                } else {
+                    onValue.accept(result);
+                }
+            });
+        });
+    }
+
     private static boolean handleConfirm(ConversationManager manager, ServerPlayer player, ConversationSession session) {
-        PendingModification pending = session.getPendingModification();
-        if (pending == null) {
+        if (session.getPendingModification() == null) {
             // Ignore stray confirmations unless a prior !modify created a pending quote.
             return true;
+        }
+        // Everything is checked again after the cap arrives: the player may have changed hands in the meantime.
+        withSoulboundMax(player, soulboundMax -> confirmWithCap(manager, player, session, soulboundMax), () -> {
+            session.setPendingModification(null);
+            manager.sendDeterministicReply(player, session, "The Soulbound capacity system is unavailable. Try !modify Soulbound again later.");
+        });
+        return true;
+    }
+
+    private static void confirmWithCap(ConversationManager manager, ServerPlayer player, ConversationSession session, int soulboundMax) {
+        PendingModification pending = session.getPendingModification();
+        if (pending == null) {
+            return;
         }
 
         ItemStack main = player.getInventory().getSelectedItem();
         if (main == null || main.isEmpty() || main.getItem() != pending.item()) {
             session.setPendingModification(null);
             manager.sendDeterministicReply(player, session, "The pending quote was cancelled because you are not holding the expected item. Retry with !modify Soulbound.");
-            return true;
+            return;
         }
 
         if (main.getCount() != 1) {
             session.setPendingModification(null);
             manager.sendDeterministicReply(player, session, "Hold exactly one item, not a stack, then retry with !modify Soulbound.");
-            return true;
+            return;
         }
 
         int paymentSlot = findPaymentSlot(player, pending.item());
@@ -134,23 +176,14 @@ public final class BlacksmithInteraction {
             session.setPendingModification(null);
             String itemName = safeItemName(main);
             manager.sendDeterministicReply(player, session, "You no longer have the additional " + itemName + " required as payment. Retry with !modify Soulbound.");
-            return true;
-        }
-
-        int soulboundMax;
-        try {
-            soulboundMax = MpdsSoulboundApi.getSoulboundMax(player.getName().getString(), player.getUUID().toString());
-        } catch (Exception e) {
-            session.setPendingModification(null);
-            manager.sendDeterministicReply(player, session, "The Soulbound capacity system is unavailable. Try !modify Soulbound again later.");
-            return true;
+            return;
         }
 
         int soulboundCount = countSoulboundItems(player);
         if (soulboundCount >= soulboundMax) {
             session.setPendingModification(null);
             manager.sendDeterministicReply(player, session, "Your Soul isn't large enough or you have too many Soulbound items.\nYour Soulbound capacity is " + soulboundCount + " out of a maximum of " + soulboundMax + " items.");
-            return true;
+            return;
         }
 
         // Consume payment item.
@@ -176,7 +209,7 @@ public final class BlacksmithInteraction {
         session.setPendingModification(null);
         String itemName = safeItemName(modified);
         manager.sendDeterministicReply(player, session, itemName + " is now Soulbound. It travels across dimensions and is not dropped on death, but can still be manually dropped and used by others. This cannot be undone by normal means.");
-        return true;
+        return;
     }
 
     private static int findPaymentSlot(ServerPlayer player, Item item) {
