@@ -36,6 +36,8 @@ public final class BlacksmithInteraction {
                 + "Soulbound also does NOT stop the player from manually dropping the item; do not claim it prevents accidental dropping/removal. "
                 + "Its purpose is to keep the item with the player across dimension travel and to not be dropped on death. "
                 + "Do NOT mention internal implementation details like NBT, custom data, tags, or keys (for example: idType=...). "
+                + "The price of a Soulbound modification is one more of the same item, or a spare fragment from the four worlds: "
+                + "a second Special Arrow, Special Sea Lantern, Special Dead Bush or Special Coal Ore (the player always keeps one). "
                 + "The only way to start a Soulbound modification is the player typing exactly: !modify Soulbound. "
                 + "Do NOT tell the player to type !confirm unless the server explicitly tells you that a modification quote is pending confirmation."
         );
@@ -80,10 +82,15 @@ public final class BlacksmithInteraction {
             return true;
         }
 
-        int paymentSlot = findPaymentSlot(player, main.getItem());
-        if (paymentSlot == -1) {
+        if (isSoulboundTagged(main) || fragmentId(main) != null) {
+            manager.sendDeterministicReply(player, session, "That is already Soulbound.");
+            return true;
+        }
+
+        Payment quoted = findPayment(player, main.getItem());
+        if (quoted == null) {
             String itemName = safeItemName(main);
-            manager.sendDeterministicReply(player, session, "Bring one additional " + itemName + " as payment, then try again.");
+            manager.sendDeterministicReply(player, session, "Bring one additional " + itemName + " as payment, or a spare fragment from one of the four worlds, then try again.");
             return true;
         }
 
@@ -97,8 +104,7 @@ public final class BlacksmithInteraction {
             PendingModification pending = new PendingModification(main.getItem(), MOD_SOULBOUND);
             session.setPendingModification(pending);
 
-            String itemName = safeItemName(main);
-            manager.sendDeterministicReply(player, session, "The cost is one additional " + itemName + ". Soulbound items travel across dimensions and are not dropped on death, but can still be manually dropped and used by others. This cannot be undone by normal means.\nYour Soulbound capacity is " + soulboundCount + " out of a maximum of " + soulboundMax + " items.\n" + CONFIRM_PROMPT);
+            manager.sendDeterministicReply(player, session, "The cost is " + quoted.label() + ". Soulbound items travel across dimensions and are not dropped on death, but can still be manually dropped and used by others. This cannot be undone by normal means.\nYour Soulbound capacity is " + soulboundCount + " out of a maximum of " + soulboundMax + " items.\n" + CONFIRM_PROMPT);
         }, () -> manager.sendDeterministicReply(player, session, "The Soulbound capacity system is unavailable. Try again later."));
         return true;
     }
@@ -171,11 +177,11 @@ public final class BlacksmithInteraction {
             return;
         }
 
-        int paymentSlot = findPaymentSlot(player, pending.item());
-        if (paymentSlot == -1) {
+        Payment payment = findPayment(player, pending.item());
+        if (payment == null) {
             session.setPendingModification(null);
             String itemName = safeItemName(main);
-            manager.sendDeterministicReply(player, session, "You no longer have the additional " + itemName + " required as payment. Retry with !modify Soulbound.");
+            manager.sendDeterministicReply(player, session, "You no longer have the payment (an additional " + itemName + " or a spare fragment). Retry with !modify Soulbound.");
             return;
         }
 
@@ -187,10 +193,10 @@ public final class BlacksmithInteraction {
         }
 
         // Consume payment item.
-        ItemStack payment = player.getInventory().getItem(paymentSlot);
-        payment.shrink(1);
-        if (payment.isEmpty()) {
-            player.getInventory().setItem(paymentSlot, ItemStack.EMPTY);
+        ItemStack paid = player.getInventory().getItem(payment.slot());
+        paid.shrink(1);
+        if (paid.isEmpty()) {
+            player.getInventory().setItem(payment.slot(), ItemStack.EMPTY);
         }
 
         // Replace main-hand item with a Soulbound-tagged copy.
@@ -210,6 +216,51 @@ public final class BlacksmithInteraction {
         String itemName = safeItemName(modified);
         manager.sendDeterministicReply(player, session, itemName + " is now Soulbound. It travels across dimensions and is not dropped on death, but can still be manually dropped and used by others. This cannot be undone by normal means.");
         return;
+    }
+
+    /** The four worlds' keys; a player carrying two of one may pay with the spare and keep the other. */
+    private static final java.util.Set<String> FRAGMENTS = java.util.Set.of("special_arrow", "special_sea_lantern", "special_dead_bush", "special_coal_ore");
+
+    private record Payment(int slot, String label) {
+    }
+
+    /** One more of the held item, or else a spare fragment (never a player's only one of it); null when neither is carried. */
+    private static Payment findPayment(ServerPlayer player, Item item) {
+        int copy = findPaymentSlot(player, item);
+        if (copy != -1) {
+            return new Payment(copy, "one additional " + safeItemName(player.getInventory().getItem(copy)));
+        }
+        int selected = player.getInventory().getSelectedSlot();
+        int limit = Math.min(36, player.getInventory().getContainerSize());
+        java.util.Map<String, Integer> counts = new java.util.HashMap<>();
+        java.util.Map<String, Integer> slots = new java.util.HashMap<>();
+        for (int i = 0; i < limit; i++) {
+            String fragment = fragmentId(player.getInventory().getItem(i));
+            if (fragment != null) {
+                counts.merge(fragment, player.getInventory().getItem(i).getCount(), Integer::sum);
+                if (i != selected) {
+                    slots.putIfAbsent(fragment, i);
+                }
+            }
+        }
+        for (var entry : slots.entrySet()) {
+            if (counts.getOrDefault(entry.getKey(), 0) >= 2) {
+                return new Payment(entry.getValue(), "one spare " + safeItemName(player.getInventory().getItem(entry.getValue())) + " (you keep the other)");
+            }
+        }
+        return null;
+    }
+
+    private static String fragmentId(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return null;
+        }
+        CustomData data = stack.get(DataComponents.CUSTOM_DATA);
+        if (data == null) {
+            return null;
+        }
+        String id = data.copyTag().getString("id").orElse("");
+        return FRAGMENTS.contains(id) ? id : null;
     }
 
     private static int findPaymentSlot(ServerPlayer player, Item item) {
