@@ -1,4 +1,4 @@
-$bossbar add petroglpyh-pharao-$(score) "Awakend Pharao"
+$bossbar add petroglpyh-pharao-$(score) "Awakened Pharao"
 $bossbar add petroglpyh-pharao-$(score) name 
 $bossbar set petroglpyh-pharao-$(score) max 120
 $bossbar set petroglpyh-pharao-$(score) style notched_20

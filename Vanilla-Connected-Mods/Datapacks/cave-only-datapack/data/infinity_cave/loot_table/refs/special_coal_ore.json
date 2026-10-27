@@ -27,7 +27,19 @@
                 "minecraft:custom_data": {
                   "id": "special_coal_ore",
                   "idType": "Soulbound"
-                }
+                },
+                "minecraft:lore": [
+                  {
+                    "text": "A fragment of the deep. It is warm, as if something below still burns.",
+                    "color": "gray",
+                    "italic": true
+                  },
+                  {
+                    "text": "One of four.",
+                    "color": "dark_gray",
+                    "italic": true
+                  }
+                ]
               }
             }
           ]

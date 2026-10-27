@@ -7,7 +7,7 @@
       }
     },
     "title": "A Totem of Eternal Life",
-    "description": "Collect and equip the Totem of eternal life from the Pharao. You are Immortal now*. (* Not guaranteed to allways work, use with care.)",
+    "description": "Collect and equip the Totem of eternal life from the Pharao. You are Immortal now*. (* Not guaranteed to always work, use with care.)",
     "frame": "goal",
     "show_toast": true,
     "announce_to_chat": true,

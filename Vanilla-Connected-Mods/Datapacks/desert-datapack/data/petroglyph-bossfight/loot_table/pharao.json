@@ -20,7 +20,19 @@
                 "minecraft:custom_data": {
                   "id": "special_dead_bush",
                   "idType": "Soulbound"
-                }
+                },
+                "minecraft:lore": [
+                  {
+                    "text": "A fragment of the sand. Nothing has grown from it since the Pharao fell.",
+                    "color": "gray",
+                    "italic": true
+                  },
+                  {
+                    "text": "One of four.",
+                    "color": "dark_gray",
+                    "italic": true
+                  }
+                ]
               }
             }
           ]

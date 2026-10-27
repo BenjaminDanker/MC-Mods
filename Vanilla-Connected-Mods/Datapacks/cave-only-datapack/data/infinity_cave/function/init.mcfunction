@@ -18,6 +18,7 @@ scoreboard objectives add ic.epic_killed dummy
 scoreboard objectives add ic.legendary_killed dummy
 scoreboard objectives add ic.playtime custom:play_time
 scoreboard objectives add ic.progression dummy
+scoreboard objectives add ic.milestone dummy
 
 # In order for motion to work
 forceload add 0 0 0 0
