@@ -1,0 +1,38 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:raw_iron"
+    },
+    "title": {
+      "text": "Deep Iron"
+    },
+    "description": {
+      "text": "Hold Raw Deep Ore, however you came by it."
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": false,
+    "hidden": false
+  },
+  "parent": "magitech:old_city/root",
+  "criteria": {
+    "got": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": "magitech:raw_deep_ore"
+          }
+        ]
+      }
+    }
+  },
+  "requirements": [
+    [
+      "got"
+    ]
+  ],
+  "rewards": {
+    "experience": 50
+  }
+}

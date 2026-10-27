@@ -1,0 +1,60 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:netherite_sword"
+    },
+    "title": {
+      "text": "Tempered"
+    },
+    "description": {
+      "text": "Temper a weapon of the Tech Arsenal with Deepsteel."
+    },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "magitech:old_city/deepsteel",
+  "criteria": {
+    "got": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "arsenal:arc_caster_tempered",
+              "arsenal:arc_saber_tempered",
+              "arsenal:chain_cleaver_tempered",
+              "arsenal:coil_rifle_tempered",
+              "arsenal:combat_knife_tempered",
+              "arsenal:flame_projector_tempered",
+              "arsenal:flare_gun_tempered",
+              "arsenal:grenade_launcher_tempered",
+              "arsenal:harpoon_gun_tempered",
+              "arsenal:monowire_whip_tempered",
+              "arsenal:pipe_hammer_tempered",
+              "arsenal:piston_gauntlets_tempered",
+              "arsenal:rail_lance_tempered",
+              "arsenal:rivet_pistol_tempered",
+              "arsenal:rocket_launcher_tempered",
+              "arsenal:rotary_cutter_tempered",
+              "arsenal:scatter_cannon_tempered",
+              "arsenal:shock_baton_tempered",
+              "arsenal:taser_tempered",
+              "arsenal:thermal_lance_tempered",
+              "arsenal:vibro_blade_tempered"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "requirements": [
+    [
+      "got"
+    ]
+  ],
+  "rewards": {
+    "experience": 100
+  }
+}

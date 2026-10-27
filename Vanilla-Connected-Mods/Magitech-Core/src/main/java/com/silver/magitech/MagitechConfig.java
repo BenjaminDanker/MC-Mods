@@ -27,9 +27,13 @@ public final class MagitechConfig {
     /** A player's uses closer together than this do not count twice. */
     public long countGapMillis = 400;
 
-    /** Where each faction's landing dock is sought (it moves to the nearest flat land) and what its return gate is made of. */
-    public Dock magicDock = new Dock("magic", -2000, 0, "minecraft:amethyst_block", "magitech_landing_magic");
-    public Dock techDock = new Dock("tech", 2000, 0, "polyfactory:steel_block", "magitech_landing_tech");
+    /**
+     * Where each faction's landing dock is sought (it moves to the nearest flat land on the shared continent) and what its
+     * return gate is made of. 1200 blocks apart: far enough to be each side's own, near enough that the sides meet.
+     * Changing a target moves that dock at the next start.
+     */
+    public Dock magicDock = new Dock("magic", -600, 0, "minecraft:amethyst_block", "magitech_landing_magic");
+    public Dock techDock = new Dock("tech", 600, 0, "polyfactory:steel_block", "magitech_landing_tech");
     /** An item nobody can hold, so the return gates are only ever lit by the server. */
     public String ignitionItem = "minecraft:barrier";
 

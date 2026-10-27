@@ -1,0 +1,7 @@
+{
+  "required": true,
+  "package": "com.silver.magitech.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": ["LootTableTriggerMixin"],
+  "injectors": { "defaultRequire": 1 }
+}

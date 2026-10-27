@@ -1,0 +1,29 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "equipment",
+  "ingredients": [
+    "minecraft:compass",
+    "magitech:ley_crystal"
+  ],
+  "result": {
+    "id": "minecraft:compass",
+    "count": 1,
+    "components": {
+      "minecraft:custom_data": {
+        "magitech": "ley_compass"
+      },
+      "minecraft:item_name": {
+        "text": "Ley Compass",
+        "color": "light_purple"
+      },
+      "minecraft:enchantment_glint_override": true,
+      "minecraft:lore": [
+        {
+          "text": "Use it to find the nearest ley well.",
+          "color": "gray",
+          "italic": true
+        }
+      ]
+    }
+  }
+}

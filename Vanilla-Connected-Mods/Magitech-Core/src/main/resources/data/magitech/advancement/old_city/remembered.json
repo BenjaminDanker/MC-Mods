@@ -1,0 +1,31 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:bell"
+    },
+    "title": {
+      "text": "The City Remembers"
+    },
+    "description": {
+      "text": "Help your side lead the old city for a week."
+    },
+    "frame": "challenge",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "magitech:old_city/reclaimer",
+  "criteria": {
+    "granted": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "requirements": [
+    [
+      "granted"
+    ]
+  ],
+  "rewards": {
+    "experience": 250
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:compass"
+    },
+    "title": {
+      "text": "Following the Ley"
+    },
+    "description": {
+      "text": "Make a Ley Compass."
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": false,
+    "hidden": false
+  },
+  "parent": "magitech:old_city/ley",
+  "criteria": {
+    "got": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": "minecraft:compass",
+            "predicates": {
+              "minecraft:custom_data": {
+                "magitech": "ley_compass"
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "requirements": [
+    [
+      "got"
+    ]
+  ],
+  "rewards": {
+    "experience": 50
+  }
+}

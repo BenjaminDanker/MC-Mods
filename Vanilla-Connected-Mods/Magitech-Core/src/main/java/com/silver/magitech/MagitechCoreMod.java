@@ -5,6 +5,7 @@ import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.biome.v1.BiomeModifications;
 import net.fabricmc.fabric.api.biome.v1.BiomeSelectors;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
@@ -28,12 +29,19 @@ public final class MagitechCoreMod implements ModInitializer {
         PolymerResourcePackUtils.addModAssets("magitech");
         BiomeModifications.addFeature(BiomeSelectors.foundInOverworld(), GenerationStep.Decoration.UNDERGROUND_ORES,
             ResourceKey.create(Registries.PLACED_FEATURE, Identifier.fromNamespaceAndPath("magitech", "deep_vein")));
+        CityEvents.register();
+        LeyCompass.register();
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             MagitechConfig config = MagitechConfig.load(FabricLoader.getInstance().getConfigDir().resolve("magitech.json"));
             if (FabricLoader.getInstance().isModLoaded("server-portals")) {
                 Landings landings = new Landings(server, config);
                 server.execute(landings::ensure);
                 DockRespawn.register(server, landings);
+                Arrival.register(server, landings);
+            }
+            if (Factions.available()) {
+                Standing standing = Standing.start(server);
+                ServerTickEvents.END_SERVER_TICK.register(ticking -> standing.tick());
             }
             if (FabricLoader.getInstance().isModLoaded("bending")) {
                 wells = new Wells(server, config);
@@ -44,6 +52,9 @@ public final class MagitechCoreMod implements ModInitializer {
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
             if (wells != null) {
                 wells.save();
+            }
+            if (Standing.get() != null) {
+                Standing.get().save();
             }
         });
         LOGGER.info("Magitech Core loaded");

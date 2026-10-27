@@ -1,0 +1,45 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:end_stone"
+    },
+    "title": {
+      "text": "The City's Edge"
+    },
+    "description": {
+      "text": "Reach the city's last outposts at the End."
+    },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "magitech:old_city/embers",
+  "criteria": {
+    "visited": {
+      "trigger": "minecraft:location",
+      "conditions": {
+        "player": [
+          {
+            "condition": "minecraft:location_check",
+            "predicate": {
+              "structures": [
+                "nullscape:rift",
+                "nullscape:dragon_skeleton",
+                "structory_towers:end/end_tower"
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "requirements": [
+    [
+      "visited"
+    ]
+  ],
+  "rewards": {
+    "experience": 100
+  }
+}

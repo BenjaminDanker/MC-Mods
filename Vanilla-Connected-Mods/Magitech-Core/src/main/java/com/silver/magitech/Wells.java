@@ -97,7 +97,14 @@ final class Wells {
         // The crystals appear at the bender's feet; the shrine's box is not an exact marker of its core.
         BlockPos core = player.blockPosition();
         int count = config.minYield + level.getRandom().nextInt(Math.max(1, config.maxYield - config.minYield + 1));
+        Standing standing = Standing.get();
+        if (standing != null && "magic".equals(standing.favoured())) {
+            count++; // the old city favours Magic this week
+        }
         drop(level, player, count);
+        if (standing != null) {
+            standing.award(player, StandingRules.CRYSTAL * count, "crystal");
+        }
         level.sendParticles(ParticleTypes.END_ROD, player.getX(), player.getY() + 1.0, player.getZ(), 40, 0.5, 0.8, 0.5, 0.1);
         level.playSound(null, core, SoundEvents.AMETHYST_CLUSTER_BREAK, SoundSource.BLOCKS, 2.0f, 0.8f);
         player.sendSystemMessage(Component.literal("The well gives up " + count + " Ley Crystal" + (count == 1 ? "" : "s") + ".")
@@ -121,6 +128,9 @@ final class Wells {
             int give = Math.min(extras, config.coopBonusPerBender);
             drop(level, helper, give);
             extras -= give;
+            if (Standing.get() != null) {
+                Standing.get().award(helper, StandingRules.CRYSTAL * give, "crystal");
+            }
             helper.sendSystemMessage(Component.literal("Channelling together draws " + give + " more Ley Crystal" + (give == 1 ? "" : "s") + " to you.")
                 .withStyle(ChatFormatting.AQUA));
             LOGGER.info("{} shared in the well's yield with {} (+{})", helper.getName().getString(), lead.getName().getString(), give);

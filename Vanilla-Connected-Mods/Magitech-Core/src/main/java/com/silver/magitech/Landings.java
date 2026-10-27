@@ -50,7 +50,8 @@ final class Landings {
     void ensure() {
         JsonObject state = read();
         ServerLevel level = server.overworld();
-        if (state.has(config.magicDock.faction) && state.has(config.techDock.faction) && state.has("continent")) {
+        if (state.has(config.magicDock.faction) && state.has(config.techDock.faction) && state.has("continent")
+                && !moved(state, config.magicDock) && !moved(state, config.techDock)) {
             for (MagitechConfig.Dock dock : docks()) {
                 Vec3 at = arrival(state, dock.faction);
                 LOGGER.info("Dock {} stands; arrival {} {} {}", dock.faction, at.x, at.y, at.z);
@@ -113,16 +114,23 @@ final class Landings {
         for (MagitechConfig.Dock dock : docks()) {
             if (state.has(dock.faction)) {
                 Vec3 at = arrival(state, dock.faction);
-                if (continent.touches(at.x, at.z)) {
+                if (moved(state, dock)) {
+                    LOGGER.warn("Dock {} has a new target ({} {}); moving it", dock.faction, dock.x, dock.z);
+                } else if (continent.touches(at.x, at.z)) {
                     LOGGER.info("Dock {} stands on the shared continent; arrival {} {} {}", dock.faction, at.x, at.y, at.z);
                     continue;
+                } else {
+                    LOGGER.warn("Dock {} at {} {} is on another landmass; moving it to the shared continent", dock.faction, at.x, at.z);
                 }
-                LOGGER.warn("Dock {} at {} {} is on another landmass; moving it to the shared continent", dock.faction, at.x, at.z);
                 removeGate(level, at, dock);
             }
             int[] target = continent.nearest(dock.x, dock.z);
             try {
                 JsonObject at = build(level, dock, target[0], target[1], continent);
+                JsonObject wanted = new JsonObject();
+                wanted.addProperty("x", dock.x);
+                wanted.addProperty("z", dock.z);
+                at.add("target", wanted);
                 state.add(dock.faction, at);
                 writePortalArrival(dock, at);
                 moved = true;
@@ -136,6 +144,20 @@ final class Landings {
         if (moved) {
             LOGGER.warn("ALERT: a dock was built or moved; restart this server so its portal arrivals take effect");
         }
+    }
+
+    /**
+     * True when the dock was built for another target than the config's now. Docks from before targets were recorded
+     * were built for the old default, 2000 blocks either side of 0.
+     */
+    private static boolean moved(JsonObject state, MagitechConfig.Dock dock) {
+        if (!state.has(dock.faction)) {
+            return false;
+        }
+        JsonObject at = state.getAsJsonObject(dock.faction);
+        int x = at.has("target") ? at.getAsJsonObject("target").get("x").getAsInt() : ("magic".equals(dock.faction) ? -2000 : 2000);
+        int z = at.has("target") ? at.getAsJsonObject("target").get("z").getAsInt() : 0;
+        return x != dock.x || z != dock.z;
     }
 
     /** Where the given faction arrives and respawns (no bed), once the docks are known. */

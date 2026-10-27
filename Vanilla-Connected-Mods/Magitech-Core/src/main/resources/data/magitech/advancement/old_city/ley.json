@@ -1,0 +1,38 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:amethyst_shard"
+    },
+    "title": {
+      "text": "Ley-Touched"
+    },
+    "description": {
+      "text": "Hold a Ley Crystal, however you came by it."
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": false,
+    "hidden": false
+  },
+  "parent": "magitech:old_city/root",
+  "criteria": {
+    "got": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": "magitech:ley_crystal"
+          }
+        ]
+      }
+    }
+  },
+  "requirements": [
+    [
+      "got"
+    ]
+  ],
+  "rewards": {
+    "experience": 50
+  }
+}
