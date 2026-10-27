@@ -22,6 +22,9 @@ public final class SpecialArrowItem {
             tag.putString(KEY_ID_TYPE, "Soulbound");
         });
         stack.set(DataComponents.CUSTOM_NAME, Component.literal("Special Arrow"));
+        stack.set(DataComponents.LORE, new net.minecraft.world.item.component.ItemLore(java.util.List.of(
+            Component.literal("A fragment of the sky, fletched from its dragons.").withStyle(net.minecraft.ChatFormatting.GRAY, net.minecraft.ChatFormatting.ITALIC),
+            Component.literal("One of four.").withStyle(net.minecraft.ChatFormatting.DARK_GRAY, net.minecraft.ChatFormatting.ITALIC))));
         return stack;
     }
 

@@ -146,6 +146,9 @@ public final class SpecialItemConversionManager {
                 Class<?> api = Class.forName("mpds.mpds.api.BossRewards");
                 java.lang.reflect.Method grant = api.getMethod("grant", String.class, String.class, String.class, int.class);
                 boolean granted = (boolean) grant.invoke(null, name, uuid, "skyisland", 1);
+                if (granted) {
+                    api.getMethod("announce", MinecraftServer.class, java.util.UUID.class, String.class).invoke(null, server, id, "skyisland");
+                }
                 LOGGER.info("sky-island boss reward for {}: {}", name, granted ? "granted" : "already had it");
                 server.execute(() -> {
                     ServerPlayer online = server.getPlayerList().getPlayer(id);

@@ -59,7 +59,15 @@ public final class DragonBreathTracking {
         } else {
             Vec3 p = nearest.pos();
             float yaw = nearest.headingYawDegrees();
-            player.sendSystemMessage(Component.literal("Nearest dragon: x=" + Mth.floor(p.x) + " y=" + Mth.floor(p.y) + " z=" + Mth.floor(p.z) + " headingYaw=" + Mth.floor(yaw)), false);
+            double dx = p.x - player.getX();
+            double dz = p.z - player.getZ();
+            int distance = Mth.floor(Math.sqrt(dx * dx + dz * dz));
+            // Minecraft yaw 0 faces south (+z) and turns toward west (-x).
+            double headingX = -Math.sin(Math.toRadians(yaw));
+            double headingZ = Math.cos(Math.toRadians(yaw));
+            player.sendSystemMessage(Component.literal("Nearest dragon: " + distance + " blocks " + compass(dx, dz)
+                + ", at x=" + Mth.floor(p.x) + " y=" + Mth.floor(p.y) + " z=" + Mth.floor(p.z)
+                + ", flying " + compass(headingX, headingZ)), false);
         }
 
         int newUses = usesLeft - 1;
@@ -84,6 +92,17 @@ public final class DragonBreathTracking {
         SpecialDragonBreathItem.setUsesLeft(inHand, newUses);
         SpecialDragonBreathItem.setDisplayName(inHand, newUses, usesMax);
         return InteractionResult.SUCCESS;
+    }
+
+    /** The eight-point compass direction of (dx, dz); north is -z, east is +x. */
+    static String compass(double dx, double dz) {
+        if (dx * dx + dz * dz < 1.0E-6) {
+            return "right here";
+        }
+        String[] names = {"south", "south-west", "west", "north-west", "north", "north-east", "east", "south-east"};
+        double degrees = Math.toDegrees(Math.atan2(-dx, dz));
+        int sector = Math.floorMod((int) Math.round(degrees / 45.0), 8);
+        return names[sector];
     }
 
     private static void deleteOneFromHand(ServerPlayer player, InteractionHand hand, ItemStack inHand) {
