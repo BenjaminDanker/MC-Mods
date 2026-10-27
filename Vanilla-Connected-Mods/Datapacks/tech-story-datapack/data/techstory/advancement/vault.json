@@ -14,7 +14,7 @@
     "announce_to_chat": true,
     "hidden": false
   },
-  "parent": "techstory:projection",
+  "parent": "techstory:end_plans",
   "criteria": {
     "granted": {
       "trigger": "minecraft:impossible"

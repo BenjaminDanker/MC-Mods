@@ -14,7 +14,7 @@
     "announce_to_chat": true,
     "hidden": false
   },
-  "parent": "techstory:brewing",
+  "parent": "techstory:fire_plans",
   "criteria": {
     "granted": {
       "trigger": "minecraft:impossible"
@@ -32,7 +32,25 @@
       "techarms:reinforced_helmet",
       "techarms:reinforced_chestplate",
       "techarms:reinforced_leggings",
-      "techarms:reinforced_boots"
+      "techarms:reinforced_boots",
+      "arsenal:arc_caster",
+      "arsenal:arc_saber",
+      "arsenal:barrier_emitter",
+      "arsenal:coil_rifle",
+      "arsenal:coil_slug",
+      "arsenal:emp_grenade",
+      "arsenal:flame_projector",
+      "arsenal:fuel_cell",
+      "arsenal:grenade_launcher",
+      "arsenal:grenade_round",
+      "arsenal:harpoon_bolt",
+      "arsenal:harpoon_gun",
+      "arsenal:monowire_whip",
+      "arsenal:piston_gauntlets",
+      "arsenal:power_cell",
+      "arsenal:proximity_mine",
+      "arsenal:shock_baton",
+      "arsenal:taser"
     ]
   }
 }

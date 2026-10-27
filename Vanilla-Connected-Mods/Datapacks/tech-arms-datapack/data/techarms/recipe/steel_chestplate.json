@@ -36,7 +36,8 @@
         }
       ],
       "minecraft:custom_data": {
-        "id": "techarms_steel_chestplate"
+        "id": "techarms_steel_chestplate",
+        "faction": "tech"
       }
     }
   }

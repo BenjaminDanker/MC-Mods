@@ -44,7 +44,8 @@
         }
       ],
       "minecraft:custom_data": {
-        "id": "techarms_industrial_helmet"
+        "id": "techarms_industrial_helmet",
+        "faction": "tech"
       }
     }
   }

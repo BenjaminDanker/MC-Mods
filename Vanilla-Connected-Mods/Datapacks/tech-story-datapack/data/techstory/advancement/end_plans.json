@@ -1,0 +1,31 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:end_stone"
+    },
+    "title": {
+      "text": "The Last Blueprint"
+    },
+    "description": {
+      "text": "Recover the last blueprint from a tower at the End."
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "techstory:projection",
+  "criteria": {
+    "granted": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "requirements": [
+    [
+      "granted"
+    ]
+  ],
+  "rewards": {
+    "function": "techstory:chapter_end_plans"
+  }
+}

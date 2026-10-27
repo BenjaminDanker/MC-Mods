@@ -32,7 +32,20 @@
       "techarms:steel_helmet",
       "techarms:steel_chestplate",
       "techarms:steel_leggings",
-      "techarms:steel_boots"
+      "techarms:steel_boots",
+      "arsenal:chain_cleaver",
+      "arsenal:combat_knife",
+      "arsenal:flare",
+      "arsenal:flare_gun",
+      "arsenal:grapple_gun",
+      "arsenal:pipe_hammer",
+      "arsenal:rivet_pistol",
+      "arsenal:rivets",
+      "arsenal:scatter_cannon",
+      "arsenal:shells",
+      "arsenal:smoke_grenade",
+      "arsenal:stim_pack",
+      "arsenal:vibro_blade"
     ]
   }
 }

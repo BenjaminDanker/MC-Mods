@@ -16,6 +16,7 @@ public final class GateRitesMod implements ModInitializer {
         switch (config.role) {
             case "tech" -> {
                 TechGate.register();
+                EngineerPlans.register();
                 ServerLifecycleEvents.SERVER_STARTED.register(server -> {
                     TechPortal portal = new TechPortal(server, config);
                     ServerLifecycleEvents.SERVER_STOPPING.register(stopping -> portal.shutdown());

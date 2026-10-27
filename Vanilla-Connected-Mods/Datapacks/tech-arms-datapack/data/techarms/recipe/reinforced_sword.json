@@ -39,7 +39,8 @@
         }
       ],
       "minecraft:custom_data": {
-        "id": "techarms_reinforced_sword"
+        "id": "techarms_reinforced_sword",
+        "faction": "tech"
       }
     }
   }

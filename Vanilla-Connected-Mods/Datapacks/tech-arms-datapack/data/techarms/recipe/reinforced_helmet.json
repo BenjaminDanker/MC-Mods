@@ -36,7 +36,8 @@
         }
       ],
       "minecraft:custom_data": {
-        "id": "techarms_reinforced_helmet"
+        "id": "techarms_reinforced_helmet",
+        "faction": "tech"
       }
     }
   }

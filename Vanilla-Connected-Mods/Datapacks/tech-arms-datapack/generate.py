@@ -29,7 +29,7 @@ def sword(tier):
         "minecraft:attribute_modifiers": [
             {"type": "minecraft:attack_damage", "id": f"techarms:{tier}_sword_damage", "amount": damage, "operation": "add_value", "slot": "mainhand"},
             {"type": "minecraft:attack_speed", "id": f"techarms:{tier}_sword_speed", "amount": -2.4, "operation": "add_value", "slot": "mainhand"}],
-        "minecraft:custom_data": {"id": f"techarms_{tier}_sword"}}}
+        "minecraft:custom_data": {"id": f"techarms_{tier}_sword", "faction": "tech"}}}
 
 def armor(tier, piece, slot, base_durability):
     label, colour, _, _, _, prefix, points, toughness, knockback, multiplier = TIERS[tier]
@@ -43,7 +43,7 @@ def armor(tier, piece, slot, base_durability):
         "minecraft:custom_name": name(f"{label} {piece.capitalize()}", colour),
         "minecraft:max_damage": base_durability * multiplier,
         "minecraft:attribute_modifiers": modifiers,
-        "minecraft:custom_data": {"id": f"techarms_{tier}_{piece}"}}}
+        "minecraft:custom_data": {"id": f"techarms_{tier}_{piece}", "faction": "tech"}}}
 
 # Shapes: P steel plate, C integrated circuit, D diamond, N netherite ingot, G large steel gear, T stick
 SWORD_SHAPES = {

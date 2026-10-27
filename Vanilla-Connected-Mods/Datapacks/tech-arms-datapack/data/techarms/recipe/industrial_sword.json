@@ -39,7 +39,8 @@
         }
       ],
       "minecraft:custom_data": {
-        "id": "techarms_industrial_sword"
+        "id": "techarms_industrial_sword",
+        "faction": "tech"
       }
     }
   }

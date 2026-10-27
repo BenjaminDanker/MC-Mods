@@ -26,6 +26,15 @@
     ]
   ],
   "rewards": {
-    "function": "techstory:chapter_projection"
+    "function": "techstory:chapter_projection",
+    "recipes": [
+      "arsenal:rail_lance",
+      "arsenal:rail_slug",
+      "arsenal:rocket",
+      "arsenal:rocket_launcher",
+      "arsenal:rotary_cutter",
+      "arsenal:sentry_turret",
+      "arsenal:thermal_lance"
+    ]
   }
 }

@@ -1,0 +1,31 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:magma_block"
+    },
+    "title": {
+      "text": "Plans in the Fire"
+    },
+    "description": {
+      "text": "Recover the engineers' plans from a reactor or a lab in the Nether."
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "techstory:brewing",
+  "criteria": {
+    "granted": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "requirements": [
+    [
+      "granted"
+    ]
+  ],
+  "rewards": {
+    "function": "techstory:chapter_fire_plans"
+  }
+}

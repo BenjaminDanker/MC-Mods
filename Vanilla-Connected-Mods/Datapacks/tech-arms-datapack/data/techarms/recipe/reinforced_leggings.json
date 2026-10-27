@@ -37,7 +37,8 @@
         }
       ],
       "minecraft:custom_data": {
-        "id": "techarms_reinforced_leggings"
+        "id": "techarms_reinforced_leggings",
+        "faction": "tech"
       }
     }
   }

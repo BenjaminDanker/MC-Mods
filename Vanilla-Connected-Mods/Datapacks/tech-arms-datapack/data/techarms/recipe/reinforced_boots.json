@@ -36,7 +36,8 @@
         }
       ],
       "minecraft:custom_data": {
-        "id": "techarms_reinforced_boots"
+        "id": "techarms_reinforced_boots",
+        "faction": "tech"
       }
     }
   }

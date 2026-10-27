@@ -1,0 +1,24 @@
+{
+  "criteria": {
+    "found": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": "minecraft:paper",
+            "predicates": {
+              "minecraft:custom_data": {
+                "techstory_plans": "overworld"
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "requirements": [
+    [
+      "found"
+    ]
+  ]
+}
