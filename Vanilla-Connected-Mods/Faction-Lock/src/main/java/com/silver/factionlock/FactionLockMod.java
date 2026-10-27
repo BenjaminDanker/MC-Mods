@@ -9,6 +9,7 @@ import mpds.mpds.sql;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
@@ -21,6 +22,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.CustomData;
@@ -67,6 +69,12 @@ public final class FactionLockMod implements ModInitializer {
             denied(player, ownerOfItem(player.getItemInHand(hand))) ? InteractionResult.FAIL : InteractionResult.PASS);
         PlayerBlockBreakEvents.BEFORE.register((world, player, pos, state, entity) ->
             !denied(player, ownerOfItem(player.getMainHandItem())));
+        // Armor is worn, not used, so it is checked once a second: the other faction's armor comes off into the inventory.
+        ServerTickEvents.END_SERVER_TICK.register(server -> {
+            if (server.getTickCount() % 20 == 0) {
+                server.getPlayerList().getPlayers().forEach(FactionLockMod::shedForeignArmor);
+            }
+        });
 
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
             dispatcher.register(Commands.literal("faction").executes(context -> {
@@ -102,6 +110,21 @@ public final class FactionLockMod implements ModInitializer {
                 LOGGER.error("ALERT: could not read the faction of {}; they stay without one", name, failure);
             }
         });
+    }
+
+    private static final EquipmentSlot[] ARMOR = {EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET};
+
+    private static void shedForeignArmor(ServerPlayer player) {
+        if (player.isCreative() || player.isSpectator() || !FACTIONS.containsKey(player.getUUID())) {
+            return; // staff, or the faction has not been read yet (just joined)
+        }
+        for (EquipmentSlot slot : ARMOR) {
+            ItemStack worn = player.getItemBySlot(slot);
+            if (!worn.isEmpty() && denied(player, ownerOfItem(worn))) {
+                player.setItemSlot(slot, ItemStack.EMPTY);
+                player.getInventory().placeItemBackInInventory(worn);
+            }
+        }
     }
 
     private static Faction ownerOfItem(ItemStack stack) {
