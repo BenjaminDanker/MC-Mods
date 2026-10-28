@@ -52,6 +52,9 @@ final class Arrival {
     private final MinecraftServer server;
     private final Landings landings;
     private final Map<UUID, Integer> waiting = new HashMap<>();
+    /** Welcomes held back until the arrival scene has played. */
+    private final Map<UUID, Integer> welcomeAt = new HashMap<>();
+    private static Arrival instance;
 
     private Arrival(MinecraftServer server, Landings landings) {
         this.server = server;
@@ -63,9 +66,13 @@ final class Arrival {
             return;
         }
         Arrival arrival = new Arrival(server, landings);
+        instance = arrival;
         ServerPlayConnectionEvents.JOIN.register((handler, sender, joined) ->
             arrival.waiting.put(handler.getPlayer().getUUID(), server.getTickCount() + WELCOME_DELAY));
-        ServerPlayConnectionEvents.DISCONNECT.register((handler, left) -> arrival.waiting.remove(handler.getPlayer().getUUID()));
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, left) -> {
+            arrival.waiting.remove(handler.getPlayer().getUUID());
+            arrival.welcomeAt.remove(handler.getPlayer().getUUID());
+        });
         ServerTickEvents.END_SERVER_TICK.register(ticking -> arrival.tick());
         UseItemCallback.EVENT.register((player, world, hand) -> {
             if (world.isClientSide() || !(player instanceof ServerPlayer user)) {
@@ -78,10 +85,23 @@ final class Arrival {
     }
 
     private void tick() {
+        int now = server.getTickCount();
+        if (!welcomeAt.isEmpty()) {
+            welcomeAt.entrySet().removeIf(entry -> {
+                if (now < entry.getValue()) {
+                    return false;
+                }
+                ServerPlayer player = server.getPlayerList().getPlayer(entry.getKey());
+                String faction = player == null ? null : Factions.of(player.getUUID());
+                if (faction != null) {
+                    welcome(player, faction);
+                }
+                return true;
+            });
+        }
         if (waiting.isEmpty()) {
             return;
         }
-        int now = server.getTickCount();
         waiting.entrySet().removeIf(entry -> {
             if (now < entry.getValue()) {
                 return false;
@@ -95,13 +115,52 @@ final class Arrival {
                 if (!player.entityTags().contains(ARRIVED_TAG)) {
                     String faction = Factions.of(player.getUUID());
                     if (faction != null) {
-                        welcome(player, faction);
                         player.addTag(ARRIVED_TAG);
+                        int scene = playArrivalScene(player, faction);
+                        if (scene > 0) {
+                            welcomeAt.put(player.getUUID(), now + scene + 10);
+                        } else {
+                            welcome(player, faction);
+                        }
                     }
                 }
             }
             return true;
         });
+    }
+
+    /**
+     * The first arrival's scene (Villager-Interface's cutscenes, called by name): from the player's dock out toward the
+     * other side's. Returns its length in ticks, or 0 when it did not play.
+     */
+    private int playArrivalScene(ServerPlayer player, String faction) {
+        Vec3 own = landings.arrival(faction).orElse(null);
+        Vec3 other = landings.arrival("magic".equals(faction) ? "tech" : "magic").orElse(null);
+        if (own == null || other == null) {
+            return 0;
+        }
+        float yaw = (float) Math.toDegrees(Math.atan2(-(other.x - own.x), other.z - own.z));
+        try {
+            Class<?> scenes = Class.forName("com.silver.villagerinterface.cutscene.Cutscenes");
+            return (int) scenes.getMethod("play", ServerPlayer.class, String.class, double.class, double.class, double.class, float.class)
+                .invoke(null, player, "magitech_arrival_" + faction, own.x, own.y, own.z, yaw);
+        } catch (ReflectiveOperationException notHere) {
+            return 0;
+        }
+    }
+
+    /** For a quartermaster NPC: turns in the Seal the player holds. False when they hold no Seal. */
+    static boolean turnInHeld(ServerPlayer player) {
+        if (instance == null) {
+            return false;
+        }
+        ItemStack held = player.getMainHandItem();
+        String sealOf = sealFaction(held);
+        if (sealOf == null) {
+            return false;
+        }
+        instance.turnIn(player, held, sealOf);
+        return true;
     }
 
     private static void welcome(ServerPlayer player, String faction) {
@@ -116,7 +175,7 @@ final class Arrival {
             say(player, "Deepsteel lies under the ruins, in ancient debris that only a drill can bring up. "
                 + "The mages' wells give Ley Crystals your energy weapons can use, if you can get them.", ChatFormatting.GRAY);
         }
-        say(player, "Use your Seal at your dock: your side left supplies behind. Dying without a bed brings you back to the dock.", ChatFormatting.GRAY);
+        say(player, "Hand your Seal to your side's quartermaster at the dock (or use it there): your side left supplies behind. Dying without a bed brings you back to the dock.", ChatFormatting.GRAY);
         say(player, "Everything you do for your side counts toward this week's standing, alone or together. "
             + "Your advancements (L) have a new tab: The Old City.", ChatFormatting.GRAY);
     }
