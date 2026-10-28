@@ -1,0 +1,53 @@
+{
+  "keyframes": [
+    {
+      "t": 0,
+      "forward": 0,
+      "right": 0,
+      "up": 1.6,
+      "yaw": 0,
+      "pitch": 0
+    },
+    {
+      "t": 35,
+      "forward": 0,
+      "right": 0,
+      "up": 1.8,
+      "yaw": 0,
+      "pitch": -55
+    },
+    {
+      "t": 75,
+      "forward": 0,
+      "right": 0,
+      "up": 6,
+      "yaw": 20,
+      "pitch": -82
+    },
+    {
+      "t": 150,
+      "forward": 0,
+      "right": 0,
+      "up": 95,
+      "yaw": 60,
+      "pitch": -90
+    }
+  ],
+  "lines": [
+    {
+      "t": 15,
+      "title": "",
+      "subtitle": "The four fragments fall silent."
+    },
+    {
+      "t": 60,
+      "title": "",
+      "subtitle": "Something above you answers."
+    },
+    {
+      "t": 105,
+      "title": "Ascend",
+      "subtitle": ""
+    }
+  ]
+}

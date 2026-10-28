@@ -353,7 +353,10 @@ public final class BabylonMod implements ModInitializer {
 
         player.addTag(TAG_STAGE1_PROCESSING);
         long nowTick = world.getGameTime();
-        long delayTicks = Math.max(1, config.particleSeconds) * 20L;
+        // The ascension scene (Villager-Interface's cutscenes, called by name): the player looks up and rises into the
+        // sky; the transfer waits until it has played (sneaking skips it, the timer still runs).
+        int sceneTicks = playAscension(player);
+        long delayTicks = Math.max(Math.max(1, config.particleSeconds) * 20L, sceneTicks);
         stage1.put(player.getUUID(), new Stage1State(nowTick + delayTicks, consumed, choice));
         if (choice != null) {
             player.sendSystemMessage(Component.literal("You chose " + (choice.label.isBlank() ? choice.id : choice.label) + ".")
@@ -361,6 +364,16 @@ public final class BabylonMod implements ModInitializer {
         }
         LOGGER.info("{} processing started; teleport in {}s", player.getScoreboardName(), Math.max(1, config.particleSeconds));
         runParticles(world, player);
+    }
+
+    private static int playAscension(ServerPlayer player) {
+        try {
+            Class<?> scenes = Class.forName("com.silver.villagerinterface.cutscene.Cutscenes");
+            return (int) scenes.getMethod("play", ServerPlayer.class, String.class, double.class, double.class, double.class, float.class)
+                .invoke(null, player, "babylon_ascension", player.getX(), player.getY(), player.getZ(), player.getYRot());
+        } catch (ReflectiveOperationException notHere) {
+            return 0;
+        }
     }
 
     private ConsumedItems consumeFour(ServerPlayer player) {
