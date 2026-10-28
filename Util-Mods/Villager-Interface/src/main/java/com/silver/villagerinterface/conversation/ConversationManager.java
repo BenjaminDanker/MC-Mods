@@ -76,7 +76,7 @@ public final class ConversationManager {
         this.villagerManager = villagerManager;
     }
 
-    public boolean startConversation(ServerPlayer player, Villager villager) {
+    public boolean startConversation(ServerPlayer player, net.minecraft.world.entity.Entity villager) {
         ConversationSession existing = sessions.get(player.getUUID());
         VillagerConfigEntry entry = villagerManager.getEntryForVillager(villager);
         if (entry == null) {
@@ -101,9 +101,13 @@ public final class ConversationManager {
         }
         sessions.put(player.getUUID(), session);
 
-        player.sendSystemMessage(Component.literal("Please be patient with the dumb villagers. Type '!exit' to end the conversation.").withStyle(ChatFormatting.GRAY), false);
+        String intro = villager instanceof Villager
+            ? "Please be patient with the dumb villagers. Type '!exit' to end the conversation."
+            : "Type '!exit' to end the conversation.";
+        player.sendSystemMessage(Component.literal(intro).withStyle(ChatFormatting.GRAY), false);
         player.sendSystemMessage(Component.empty(), false);
-        sendDeterministicReply(player, session, "Hmph. What do you need?");
+        String greeting = entry.greeting() != null && !entry.greeting().isBlank() ? entry.greeting() : "Hmph. What do you need?";
+        sendDeterministicReply(player, session, greeting);
         return true;
     }
 

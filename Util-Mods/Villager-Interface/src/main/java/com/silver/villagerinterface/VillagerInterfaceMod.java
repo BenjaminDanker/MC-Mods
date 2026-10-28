@@ -36,6 +36,30 @@ public final class VillagerInterfaceMod implements ModInitializer {
         ServerTickEvents.END_SERVER_TICK.register(conversationManager::onServerTick);
         ServerPlayConnectionEvents.DISCONNECT.register(conversationManager::onPlayerDisconnect);
         VillagerInterfaceCommands.register();
+        // Villagers are handled by VillagerMixin; any other NPC (mannequins) by a plain interaction hook.
+        net.fabricmc.fabric.api.event.player.UseEntityCallback.EVENT.register((player, world, hand, entity, hit) -> {
+            if (world.isClientSide() || hand != net.minecraft.world.InteractionHand.MAIN_HAND
+                    || !(player instanceof net.minecraft.server.level.ServerPlayer serverPlayer)
+                    || entity instanceof net.minecraft.world.entity.npc.villager.Villager || !villagerManager.isCustomNpc(entity)) {
+                return net.minecraft.world.InteractionResult.PASS;
+            }
+            var entry = villagerManager.getEntryForVillager(entity);
+            if (entry != null && entry.sealTurnIn() && com.silver.villagerinterface.conversation.SealTurnIn.tryTurnIn(serverPlayer)) {
+                return net.minecraft.world.InteractionResult.SUCCESS;
+            }
+            conversationManager.startConversation(serverPlayer, entity);
+            return net.minecraft.world.InteractionResult.SUCCESS;
+        });
+        if (net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("polymer-resource-pack")) {
+            // The NPC skins (assets/villagerinterface/textures/entity/npc) travel in the server's Polymer pack.
+            try {
+                Class.forName("eu.pb4.polymer.resourcepack.api.PolymerResourcePackUtils")
+                    .getMethod("addModAssets", String.class).invoke(null, MOD_ID);
+            } catch (ReflectiveOperationException failure) {
+                LOGGER.error("ALERT: could not add the NPC skins to the Polymer pack", failure);
+            }
+        }
+        com.silver.villagerinterface.cutscene.Cutscenes.register();
 
         LOGGER.info("Villager Interface initialized");
     }

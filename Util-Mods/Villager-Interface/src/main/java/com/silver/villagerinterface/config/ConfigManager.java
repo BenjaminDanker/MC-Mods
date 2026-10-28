@@ -122,7 +122,8 @@ public final class ConfigManager {
                     entry.position() != null ? entry.position() : new VillagerPosition(0.0, 64.0, 0.0),
                     entry.yaw(), entry.pitch(),
                     entry.maxDistance() > 0.0 ? entry.maxDistance() : 5.0,
-                    nonBlank(entry.systemPrompt(), VillagerInterfaceConfig.DEFAULT_SYSTEM_PROMPT)
+                    nonBlank(entry.systemPrompt(), VillagerInterfaceConfig.DEFAULT_SYSTEM_PROMPT),
+                    entry.entity(), entry.skin(), entry.slim(), entry.greeting(), entry.sealTurnIn()
                 ));
             }
         }

@@ -1,0 +1,63 @@
+{
+  "keyframes": [
+    {
+      "t": 0,
+      "forward": 0,
+      "right": 0,
+      "up": 2.5,
+      "yaw": 0,
+      "pitch": 8
+    },
+    {
+      "t": 70,
+      "forward": -10,
+      "right": 3,
+      "up": 16,
+      "yaw": -8,
+      "pitch": 22
+    },
+    {
+      "t": 170,
+      "forward": 35,
+      "right": 0,
+      "up": 42,
+      "yaw": 0,
+      "pitch": 14
+    },
+    {
+      "t": 290,
+      "forward": 110,
+      "right": -6,
+      "up": 58,
+      "yaw": 4,
+      "pitch": 9
+    }
+  ],
+  "lines": [
+    {
+      "t": 10,
+      "title": "The Old City",
+      "subtitle": ""
+    },
+    {
+      "t": 70,
+      "title": "",
+      "subtitle": "Mages and engineers built it together."
+    },
+    {
+      "t": 130,
+      "title": "",
+      "subtitle": "They broke it together, too."
+    },
+    {
+      "t": 190,
+      "title": "",
+      "subtitle": "Your side keeps to the east. Theirs lies to the west."
+    },
+    {
+      "t": 250,
+      "title": "",
+      "subtitle": "Whatever you take from here, you take with your own hands."
+    }
+  ]
+}

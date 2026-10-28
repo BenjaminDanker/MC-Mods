@@ -7,6 +7,11 @@ import com.silver.villagerinterface.config.VillagerInterfaceConfig;
 import com.silver.villagerinterface.config.VillagerPosition;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.decoration.Mannequin;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.TagParser;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.level.entity.EntityTypeTest;
@@ -25,8 +30,14 @@ import net.minecraft.world.level.Level;
 import java.util.List;
 import java.util.Objects;
 
+/**
+ * Keeps each configured NPC in the world at its spot: a villager (the original kind) or a mannequin (player-shaped,
+ * skinned from the server's resource pack). Villagers carry their id through VillagerMixin; mannequins carry it as an
+ * entity tag ({@link #NPC_TAG_PREFIX} + id).
+ */
 public final class CustomVillagerManager {
     private static final double SEARCH_RADIUS = 32.0;
+    public static final String NPC_TAG_PREFIX = "villagerinterface_npc:";
 
     private final ConfigManager configManager;
     private long lastCheckTick;
@@ -54,14 +65,23 @@ public final class CustomVillagerManager {
         return getCustomId(villager) != null;
     }
 
-    public String getCustomId(Villager villager) {
-        if (villager instanceof CustomVillagerData data) {
+    public boolean isCustomNpc(Entity entity) {
+        return getCustomId(entity) != null;
+    }
+
+    public String getCustomId(Entity entity) {
+        if (entity instanceof CustomVillagerData data && data.villagerinterface$getCustomId() != null) {
             return data.villagerinterface$getCustomId();
+        }
+        for (String tag : entity.entityTags()) {
+            if (tag.startsWith(NPC_TAG_PREFIX)) {
+                return tag.substring(NPC_TAG_PREFIX.length());
+            }
         }
         return null;
     }
 
-    public VillagerConfigEntry getEntryForVillager(Villager villager) {
+    public VillagerConfigEntry getEntryForVillager(Entity villager) {
         String id = getCustomId(villager);
         if (id == null) {
             return null;
@@ -97,116 +117,132 @@ public final class CustomVillagerManager {
             }
         }
 
-        Villager villager = findCustomVillager(world, entry);
-        if (villager == null) {
-            spawnVillager(world, entry);
+        LivingEntity npc = findCustomNpc(world, entry);
+        if (npc == null) {
+            spawnNpc(world, entry);
             return;
         }
 
-        refreshVillagerState(villager, entry);
+        refreshState(npc, entry);
     }
 
-    private Villager findCustomVillager(ServerLevel world, VillagerConfigEntry entry) {
+    private LivingEntity findCustomNpc(ServerLevel world, VillagerConfigEntry entry) {
         VillagerPosition pos = entry.position();
         Vec3 center = pos != null ? pos.toVec3() : Vec3.ZERO;
         AABB searchBox = new AABB(
             center.x - SEARCH_RADIUS, center.y - SEARCH_RADIUS, center.z - SEARCH_RADIUS,
             center.x + SEARCH_RADIUS, center.y + SEARCH_RADIUS, center.z + SEARCH_RADIUS
         );
-        List<Villager> villagers = world.getEntities(
-            EntityTypeTest.forClass(Villager.class),
+        Class<? extends LivingEntity> kind = entry.isMannequin() ? Mannequin.class : Villager.class;
+        List<? extends LivingEntity> found = world.getEntities(
+            EntityTypeTest.forClass(kind),
             searchBox,
-            villager -> Objects.equals(entry.id(), getCustomId(villager))
+            npc -> Objects.equals(entry.id(), getCustomId(npc))
         );
 
-        if (villagers.isEmpty()) {
+        if (found.isEmpty()) {
             return null;
         }
 
-        Villager primary = selectPrimaryVillager(villagers, center);
-        for (Villager candidate : villagers) {
+        LivingEntity primary = found.get(0);
+        for (LivingEntity candidate : found) {
+            if (squaredDistance(candidate, center) < squaredDistance(primary, center)) {
+                primary = candidate;
+            }
+        }
+        for (LivingEntity candidate : found) {
             if (candidate == primary) {
                 continue;
             }
             candidate.discard();
-            VillagerInterfaceMod.LOGGER.warn("Removed duplicate villager '{}' in {}", entry.id(), entry.dimension());
+            VillagerInterfaceMod.LOGGER.warn("Removed duplicate NPC '{}' in {}", entry.id(), entry.dimension());
         }
 
         return primary;
     }
 
-    private Villager selectPrimaryVillager(List<Villager> villagers, Vec3 target) {
-        Villager primary = villagers.get(0);
-        double bestDistance = squaredDistance(primary, target);
-        for (int i = 1; i < villagers.size(); i++) {
-            Villager candidate = villagers.get(i);
-            double distance = squaredDistance(candidate, target);
-            if (distance < bestDistance) {
-                bestDistance = distance;
-                primary = candidate;
-            }
-        }
-        return primary;
-    }
-
-    private double squaredDistance(Villager villager, Vec3 target) {
-        double dx = villager.getX() - target.x;
-        double dy = villager.getY() - target.y;
-        double dz = villager.getZ() - target.z;
+    private double squaredDistance(Entity entity, Vec3 target) {
+        double dx = entity.getX() - target.x;
+        double dy = entity.getY() - target.y;
+        double dz = entity.getZ() - target.z;
         return dx * dx + dy * dy + dz * dz;
     }
 
-    private void spawnVillager(ServerLevel world, VillagerConfigEntry entry) {
+    private void spawnNpc(ServerLevel world, VillagerConfigEntry entry) {
+        LivingEntity npc = entry.isMannequin() ? createMannequin(world, entry) : createVillager(world, entry);
+        if (npc == null) {
+            VillagerInterfaceMod.LOGGER.warn("Unable to create the {} for NPC {}", entry.entity(), entry.id());
+            return;
+        }
+        refreshState(npc, entry);
+        world.addFreshEntity(npc);
+        refreshState(npc, entry);
+        VillagerInterfaceMod.LOGGER.info("Spawned {} '{}' in {}", entry.entity(), entry.id(), entry.dimension());
+    }
+
+    private Villager createVillager(ServerLevel world, VillagerConfigEntry entry) {
         @SuppressWarnings("unchecked")
         EntityType<Villager> villagerType = (EntityType<Villager>) BuiltInRegistries.ENTITY_TYPE.getValue(Identifier.parse("minecraft:villager"));
         Villager villager = villagerType.create(world, EntitySpawnReason.COMMAND);
-        if (villager == null) {
-            VillagerInterfaceMod.LOGGER.warn("Unable to create villager entity for {}", entry.id());
-            return;
+        if (villager != null && villager instanceof CustomVillagerData data) {
+            data.villagerinterface$setCustomId(entry.id());
         }
-
-        applyCustomId(villager, entry.id());
-        refreshVillagerState(villager, entry);
-        world.addFreshEntity(villager);
-        refreshVillagerState(villager, entry);
-        VillagerInterfaceMod.LOGGER.info("Spawned villager '{}' in {}", entry.id(), entry.dimension());
+        return villager;
     }
 
-    private void refreshVillagerState(Villager villager, VillagerConfigEntry entry) {
+    /** A mannequin from its saved form: the skin, immovable, the description line hidden, tagged with the NPC id. */
+    private Mannequin createMannequin(ServerLevel world, VillagerConfigEntry entry) {
+        StringBuilder snbt = new StringBuilder("{immovable:1b,hide_description:1b,Invulnerable:1b,PersistenceRequired:1b,profile:{");
+        if (entry.skin() != null && !entry.skin().isBlank()) {
+            snbt.append("texture:").append(quote(entry.skin())).append(',');
+        }
+        snbt.append("model:").append(entry.slim() ? "\"slim\"" : "\"wide\"").append("}}");
+        try {
+            CompoundTag tag = TagParser.parseCompoundFully(snbt.toString());
+            Entity loaded = EntityType.loadEntityRecursive(net.minecraft.world.entity.EntityTypes.MANNEQUIN, tag, world, EntitySpawnReason.COMMAND, entity -> entity);
+            if (loaded instanceof Mannequin mannequin) {
+                mannequin.addTag(NPC_TAG_PREFIX + entry.id());
+                return mannequin;
+            }
+        } catch (Exception failure) {
+            VillagerInterfaceMod.LOGGER.error("Could not create the mannequin for NPC {}", entry.id(), failure);
+        }
+        return null;
+    }
+
+    private static String quote(String value) {
+        return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+    }
+
+    private void refreshState(LivingEntity npc, VillagerConfigEntry entry) {
         if (entry.displayName() != null && !entry.displayName().isBlank()) {
-            villager.setCustomName(Component.literal(entry.displayName()));
-            villager.setCustomNameVisible(true);
+            npc.setCustomName(Component.literal(entry.displayName()));
+            npc.setCustomNameVisible(true);
         }
 
         VillagerPosition position = entry.position();
         if (position != null) {
             Vec3 target = position.toVec3();
-            Vec3 current = new Vec3(villager.getX(), villager.getY(), villager.getZ());
+            Vec3 current = new Vec3(npc.getX(), npc.getY(), npc.getZ());
             if (current.distanceToSqr(target) > 0.25) {
-                if (villager.isPassenger()) {
-                    villager.stopRiding();
+                if (npc.isPassenger()) {
+                    npc.stopRiding();
                 }
-                villager.setPos(target.x, target.y, target.z);
-                villager.setDeltaMovement(Vec3.ZERO);
+                npc.setPos(target.x, target.y, target.z);
+                npc.setDeltaMovement(Vec3.ZERO);
             }
 
-            applyRotation(villager, entry.yaw(), entry.pitch());
+            npc.setYRot(entry.yaw());
+            npc.setXRot(entry.pitch());
+            npc.setYBodyRot(entry.yaw());
+            npc.setYHeadRot(entry.yaw());
         }
 
-        villager.setNoAi(true);
-        villager.setPersistenceRequired();
-    }
-
-    private void applyRotation(Villager villager, float yaw, float pitch) {
-        villager.setYRot(yaw);
-        villager.setXRot(pitch);
-        villager.setYBodyRot(yaw);
-        villager.setYHeadRot(yaw);
-    }
-
-    private void applyCustomId(Villager villager, String id) {
-        if (villager instanceof CustomVillagerData data) {
-            data.villagerinterface$setCustomId(id);
+        if (npc instanceof Villager villager) {
+            villager.setNoAi(true);
+            villager.setPersistenceRequired();
+        } else {
+            npc.setInvulnerable(true);
         }
     }
 
