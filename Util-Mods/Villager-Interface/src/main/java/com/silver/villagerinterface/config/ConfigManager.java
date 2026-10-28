@@ -100,7 +100,7 @@ public final class ConfigManager {
         );
         OpenAiSettings safeOpenAi = new OpenAiSettings(
             nonBlank(openai != null ? openai.baseUrl() : null, defaults.openai().baseUrl()),
-            openai != null && openai.apiKey() != null ? openai.apiKey().trim() : "",
+            sharedApiKey(openai != null && openai.apiKey() != null ? openai.apiKey().trim() : ""),
             nonBlank(openai != null ? openai.model() : null, defaults.openai().model()),
             reasoningEffort(openai != null ? openai.reasoningEffort() : null, defaults.openai().reasoningEffort()),
             Math.max(0, openai != null ? openai.maxCompletionTokens() : 0),
@@ -153,7 +153,16 @@ public final class ConfigManager {
         try {
             Files.createDirectories(configPath.getParent());
             try (BufferedWriter writer = Files.newBufferedWriter(configPath, StandardCharsets.UTF_8)) {
-                GSON.toJson(config, writer);
+                com.google.gson.JsonElement tree = GSON.toJsonTree(config);
+                // The shared key stays in the shared file; never copy it into this server's config.
+                if (tree.isJsonObject() && tree.getAsJsonObject().has("openai")) {
+                    JsonObject openai = tree.getAsJsonObject().getAsJsonObject("openai");
+                    String shared = sharedApiKey("");
+                    if (!shared.isEmpty() && openai.has("apiKey") && shared.equals(openai.get("apiKey").getAsString())) {
+                        openai.addProperty("apiKey", "");
+                    }
+                }
+                GSON.toJson(tree, writer);
             }
         } catch (IOException ex) {
             VillagerInterfaceMod.LOGGER.error("Unable to write config file {}", configPath, ex);
@@ -177,5 +186,17 @@ public final class ConfigManager {
         private int ollamaTimeoutSeconds;
         private int maxHistoryTurns;
         private List<VillagerConfigEntry> villagers;
+    }
+
+    /**
+     * The OpenAI key lives once per host, in ~/.config/mc-network/shared.properties (openai_api_key, written by mc-net
+     * from the network registry). A key in this server's own file is used only when the shared one is missing.
+     */
+    private static String sharedApiKey(String local) {
+        try {
+            return com.silver.authorization.NetworkShared.get("openai_api_key", local);
+        } catch (LinkageError notInstalled) {
+            return local; // network-authorization (which carries the shared reader) is not on this server
+        }
     }
 }
