@@ -194,10 +194,17 @@ final class Landings {
                 JsonObject portal = element.getAsJsonObject();
                 if (dock.portal.equals(portal.get("index").getAsString())) {
                     JsonObject location = new JsonObject();
+                    JsonObject previous = portal.has("arrivalLocation") ? portal.getAsJsonObject("arrivalLocation") : new JsonObject();
                     location.addProperty("world", "minecraft:overworld");
                     location.addProperty("x", at.get("x").getAsDouble());
                     location.addProperty("y", at.get("y").getAsDouble());
                     location.addProperty("z", at.get("z").getAsDouble());
+                    // The facing (yaw, pitch) set in the config stays as it was.
+                    for (String kept : new String[] {"yaw", "pitch"}) {
+                        if (previous.has(kept)) {
+                            location.add(kept, previous.get(kept));
+                        }
+                    }
                     portal.add("arrivalLocation", location);
                     writeAtomically(portals, new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(root));
                     LOGGER.info("Portal {} now arrives at {} {} {}", dock.portal, at.get("x"), at.get("y"), at.get("z"));

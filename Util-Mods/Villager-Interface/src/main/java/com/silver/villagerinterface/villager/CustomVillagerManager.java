@@ -241,8 +241,34 @@ public final class CustomVillagerManager {
         if (npc instanceof Villager villager) {
             villager.setNoAi(true);
             villager.setPersistenceRequired();
+            applyLook(villager, entry);
         } else {
             npc.setInvulnerable(true);
+        }
+    }
+
+    /** A villager's profession (with the master's badge, so it never loses it) and biome look, when configured. */
+    private void applyLook(Villager villager, VillagerConfigEntry entry) {
+        var data = villager.getVillagerData();
+        var wanted = data;
+        if (entry.profession() != null && !entry.profession().isBlank()) {
+            var profession = BuiltInRegistries.VILLAGER_PROFESSION.get(Identifier.parse(entry.profession()));
+            if (profession.isPresent()) {
+                wanted = new net.minecraft.world.entity.npc.villager.VillagerData(wanted.type(), profession.get(), 5);
+            } else {
+                VillagerInterfaceMod.LOGGER.warn("NPC '{}' has unknown profession {}", entry.id(), entry.profession());
+            }
+        }
+        if (entry.biome() != null && !entry.biome().isBlank()) {
+            var type = BuiltInRegistries.VILLAGER_TYPE.get(Identifier.parse(entry.biome()));
+            if (type.isPresent()) {
+                wanted = wanted.withType(type.get());
+            } else {
+                VillagerInterfaceMod.LOGGER.warn("NPC '{}' has unknown villager biome {}", entry.id(), entry.biome());
+            }
+        }
+        if (!wanted.equals(data)) {
+            villager.setVillagerData(wanted);
         }
     }
 

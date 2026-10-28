@@ -20,6 +20,10 @@ public final class VillagerConfigEntry {
     private final String greeting;
     /** Right-clicking this NPC while holding a story's Seal turns it in (Magitech). */
     private final boolean sealTurnIn;
+    /** Villagers: their profession, e.g. "minecraft:librarian" (empty keeps none). */
+    private final String profession;
+    /** Villagers: their biome look, e.g. "minecraft:desert" (empty keeps plains). */
+    private final String biome;
 
     public VillagerConfigEntry(
         String id,
@@ -32,7 +36,7 @@ public final class VillagerConfigEntry {
         double maxDistance,
         String systemPrompt
     ) {
-        this(id, villagerType, displayName, dimension, position, yaw, pitch, maxDistance, systemPrompt, "villager", null, false, null, false);
+        this(id, villagerType, displayName, dimension, position, yaw, pitch, maxDistance, systemPrompt, "villager", null, false, null, false, null, null);
     }
 
     public VillagerConfigEntry(
@@ -49,7 +53,9 @@ public final class VillagerConfigEntry {
         String skin,
         boolean slim,
         String greeting,
-        boolean sealTurnIn
+        boolean sealTurnIn,
+        String profession,
+        String biome
     ) {
         this.id = id;
         this.villagerType = villagerType;
@@ -65,6 +71,8 @@ public final class VillagerConfigEntry {
         this.slim = slim;
         this.greeting = greeting;
         this.sealTurnIn = sealTurnIn;
+        this.profession = profession;
+        this.biome = biome;
     }
 
     public String id() {
@@ -125,5 +133,13 @@ public final class VillagerConfigEntry {
 
     public boolean sealTurnIn() {
         return sealTurnIn;
+    }
+
+    public String profession() {
+        return profession;
+    }
+
+    public String biome() {
+        return biome;
     }
 }
