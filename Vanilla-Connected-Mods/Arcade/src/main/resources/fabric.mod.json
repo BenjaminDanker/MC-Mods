@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "arcade",
+  "version": "${version}",
+  "name": "The Gamemaster's Arcade",
+  "description": "An optional game realm outside the world's story: the Gamemaster's doors appear now and then on every server; behind them, an endless ladder of challenge rooms with prizes for the world you came from.",
+  "authors": ["BenjaminDanker"],
+  "license": "MIT",
+  "environment": "server",
+  "entrypoints": {
+    "main": ["com.silver.arcade.ArcadeMod"]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "fabric-api": "*",
+    "network_authorization": "*",
+    "server-portals": "*",
+    "minecraft": "~26.2",
+    "java": ">=25"
+  },
+  "suggests": {
+    "villagerinterface": "*",
+    "polymer-resource-pack": "*"
+  }
+}

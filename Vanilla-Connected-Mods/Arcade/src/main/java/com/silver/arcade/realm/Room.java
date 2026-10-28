@@ -1,0 +1,74 @@
+package com.silver.arcade.realm;
+
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerPlayer;
+
+/**
+ * One challenge room. A room is created for one group of players at one tier, built in its own arena, ticked until
+ * {@link #finished()}, then torn down. Tier 1 is easy; there is no upper limit, so every knob must keep scaling
+ * (or saturate gracefully) as tiers climb.
+ */
+public interface Room {
+    enum Kind { SOLO, DUO, GROUP }
+
+    /** Stable id (used for "explained once" tracking). */
+    String id();
+
+    String title();
+
+    /** The Gamemaster's explanation, said the first time a player meets this room (or on !explain). */
+    String explain();
+
+    /** Hard time limit at this tier. */
+    int timeLimitTicks(int tier);
+
+    /** Builds the room in the arena and places the players at their starts. */
+    void start(Arena arena, List<ServerPlayer> players, int tier);
+
+    /** Every tick while running. */
+    void tick(long tickInRoom);
+
+    /** True once every player has either cleared or failed. */
+    boolean finished();
+
+    /** Who cleared the room (asked once it is finished or the time ran out). */
+    Set<UUID> cleared();
+
+    /** Chat typed by a player in this room; return true to keep it out of public chat. */
+    default boolean chat(ServerPlayer player, String message) {
+        return false;
+    }
+
+    /** A player right-clicked a block in the arena; return true when the room handled it. */
+    default boolean use(ServerPlayer player, BlockPos pos) {
+        return false;
+    }
+
+    /** A player hit (left-clicked) a block in the arena; return true when the room handled it. */
+    default boolean hit(ServerPlayer player, BlockPos pos) {
+        return false;
+    }
+
+    /** A player fell below the arena floor. Default: back to their start. */
+    default void fell(ServerPlayer player) {
+    }
+
+    /** A player left mid-room: they fail it. */
+    void left(UUID player);
+
+    /** A stand-in when no room fits: everyone clears it at once. */
+    final class Pass implements Room {
+        public String id() { return "pass"; }
+        public String title() { return "A free step"; }
+        public String explain() { return "Nothing here. Take it."; }
+        public int timeLimitTicks(int tier) { return 1; }
+        public void start(Arena arena, List<ServerPlayer> players, int tier) { }
+        public void tick(long tickInRoom) { }
+        public boolean finished() { return true; }
+        public Set<UUID> cleared() { return Set.of(); }
+        public void left(UUID player) { }
+    }
+}
