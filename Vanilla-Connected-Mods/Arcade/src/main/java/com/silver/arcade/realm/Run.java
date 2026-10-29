@@ -24,6 +24,7 @@ import net.minecraft.world.level.block.Blocks;
  * for the highest tier cleared), the emerald side goes on to the next tier. Who fails loses the run.
  */
 public final class Run {
+    private static final org.slf4j.Logger LOGGER = org.slf4j.LoggerFactory.getLogger("arcade");
     private enum Phase { ROOMS, CHOICE, DONE }
 
     /** What the realm needs from a run when players leave it. */
@@ -39,6 +40,8 @@ public final class Run {
     }
 
     private static final int CHOICE_TICKS = 20 * 20;
+    /** How long a disconnected player's room waits for them (paused) before the others move on. */
+    static final int GRACE_TICKS = 90 * 20;
 
     private final MinecraftServer server;
     private final ServerLevel level;
@@ -46,6 +49,10 @@ public final class Run {
     private final Random random = new Random();
     private final Set<UUID> players = new LinkedHashSet<>();
     private final Map<UUID, String> lastRoom = new HashMap<>();
+    /** Disconnected players inside their grace period (tick they left). Their room is paused meanwhile. */
+    private final Map<UUID, Long> away = new HashMap<>();
+    /** Players who were dropped after the grace period; they may rejoin the climb while it lasts. */
+    private final Set<UUID> dropped = new HashSet<>();
     private int tier;
     private int prizeTier;
     private Phase phase = Phase.ROOMS;
@@ -59,7 +66,7 @@ public final class Run {
         final Arena arena;
         final List<UUID> members;
         final long limit;
-        final long startedAt;
+        long startedAt;
         final ServerBossEvent bar;
         boolean over;
         /** Cancelled because a teammate left: its players moved on to fresh rooms; no outcome here. */
@@ -93,6 +100,15 @@ public final class Run {
 
     public boolean has(UUID player) {
         return players.contains(player);
+    }
+
+    public boolean isAway(UUID player) {
+        return away.containsKey(player);
+    }
+
+    /** True when this player was dropped from this climb after their grace period and the climb still goes on. */
+    public boolean canRejoin(UUID player) {
+        return dropped.contains(player) && phase != Phase.DONE && !players.isEmpty();
     }
 
     public boolean done() {
@@ -174,10 +190,44 @@ public final class Run {
 
     public void tick() {
         long now = server.getTickCount();
+        // Safety net: anyone who vanished without a disconnect event is treated as disconnected.
+        for (UUID id : new ArrayList<>(players)) {
+            if (!away.containsKey(id) && server.getPlayerList().getPlayer(id) == null) {
+                left(id);
+            }
+        }
+        for (UUID id : new ArrayList<>(away.keySet())) {
+            if (now - away.get(id) >= GRACE_TICKS) {
+                away.remove(id);
+                drop(id);
+            }
+        }
+        if (phase == Phase.DONE) {
+            return;
+        }
         if (phase == Phase.ROOMS) {
             boolean allOver = true;
             for (Party party : parties) {
+                if (!party.voided) {
+                    keepSpectatorsIn(party);
+                }
                 if (party.over) {
+                    continue;
+                }
+                UUID missing = party.members.stream().filter(away::containsKey).findFirst().orElse(null);
+                if (missing != null) {
+                    // Paused: the clock waits with the room for the missing player.
+                    party.startedAt++;
+                    allOver = false;
+                    if (now % 20 == 0) {
+                        long left = Math.max(0, (GRACE_TICKS - (now - away.get(missing))) / 20);
+                        for (UUID id : party.members) {
+                            ServerPlayer player = server.getPlayerList().getPlayer(id);
+                            if (player != null) {
+                                Gamemaster.bar(player, "Paused: waiting for your partner to reconnect (" + left + "s)");
+                            }
+                        }
+                    }
                     continue;
                 }
                 long elapsed = now - party.startedAt;
@@ -347,11 +397,106 @@ public final class Run {
         return false;
     }
 
-    /** A player disconnected: their room counts as failed for them, but the run is kept for them for a while. */
+    /**
+     * A player disconnected. Inside a room, the room pauses for up to {@link #GRACE_TICKS} so they can come back to it.
+     * Elsewhere (or once the grace runs out) they are dropped from the climb: partners get rooms of their own, and the
+     * climb is kept for the leaver (they rejoin it while it lasts, or resume alone within 30 minutes).
+     */
     public void left(UUID id) {
+        if (!players.contains(id)) {
+            return;
+        }
+        if (phase == Phase.ROOMS && partyOf(id) != null) {
+            away.put(id, (long) server.getTickCount());
+            LOGGER.info("Arcade: {} disconnected mid-room; their room waits", id);
+            for (UUID other : partyOf(id).members) {
+                ServerPlayer player = server.getPlayerList().getPlayer(other);
+                if (player != null && !other.equals(id)) {
+                    Gamemaster.say(player, "Your partner has lost their connection. The room waits a minute and a half for them.");
+                }
+            }
+            return;
+        }
+        drop(id);
+    }
+
+    /** The disconnected player is back within the grace period: they pick up the room where they left it. */
+    public void returned(ServerPlayer player) {
+        UUID id = player.getUUID();
+        if (away.remove(id) == null) {
+            return;
+        }
+        Party party = partyOf(id);
+        if (party == null) {
+            return;
+        }
+        party.room.rejoined(player);
+        LOGGER.info("Arcade: {} came back within the grace period", player.getName().getString());
+        party.bar.addPlayer(player);
+        Gamemaster.say(player, "There you are. The room waited for you.");
+        for (UUID other : party.members) {
+            ServerPlayer partner = server.getPlayerList().getPlayer(other);
+            if (partner != null && !other.equals(id)) {
+                Gamemaster.say(partner, player.getName().getString() + " is back. Carry on.");
+            }
+        }
+    }
+
+    /**
+     * A dropped player came back while the climb still goes on: they rejoin at its current tier, in a fresh room of
+     * their own this round (never the one they left), and play with the group again from the next round.
+     */
+    public void rejoinLate(ServerPlayer player) {
+        UUID id = player.getUUID();
+        if (!dropped.remove(id)) {
+            return;
+        }
+        players.add(id);
+        LOGGER.info("Arcade: {} rejoined their group's climb at tier {}", player.getName().getString(), tier);
+        player.setGameMode(net.minecraft.world.level.GameType.ADVENTURE);
+        Gamemaster.say(player, "Back in the game. Your group is at tier " + tier + "; you'll join them from the next round.");
+        if (phase == Phase.ROOMS) {
+            launch(List.of(id), Rooms.pick(1, tier, lastRoom.get(id), random));
+        } else if (phase == Phase.CHOICE && choiceArena != null) {
+            choiceArena.put(player, 0.5, 1, 0.5, 180F);
+            Gamemaster.title(player, "Tier " + prizeTier + " cleared", "Gold: take your prize  |  Emerald: tier " + tier);
+        }
+    }
+
+    private Party partyOf(UUID id) {
+        for (Party party : parties) {
+            if (!party.over && party.members.contains(id)) {
+                return party;
+            }
+        }
+        return null;
+    }
+
+    /** Spectators (players who failed mid-room) stay inside the room's box. */
+    private void keepSpectatorsIn(Party party) {
+        int[] b = party.room.bounds();
+        var o = party.arena.origin();
+        for (UUID id : party.members) {
+            ServerPlayer player = server.getPlayerList().getPlayer(id);
+            if (player == null || !player.isSpectator()) {
+                continue;
+            }
+            double x = net.minecraft.util.Mth.clamp(player.getX(), o.getX() + b[0], o.getX() + b[3]);
+            double y = net.minecraft.util.Mth.clamp(player.getY(), o.getY() + b[1], o.getY() + b[4]);
+            double z = net.minecraft.util.Mth.clamp(player.getZ(), o.getZ() + b[2], o.getZ() + b[5]);
+            if (x != player.getX() || y != player.getY() || z != player.getZ()) {
+                player.teleportTo(party.arena.level(), x, y, z, Set.of(), player.getYRot(), player.getXRot(), false);
+            }
+        }
+    }
+
+    /** Out of the climb for now: their room counts as failed, partners get fresh rooms, the climb is kept for them. */
+    private void drop(UUID id) {
         if (!players.remove(id)) {
             return;
         }
+        dropped.add(id);
+        LOGGER.info("Arcade: {} dropped from the climb (tier {})", id, tier);
         List<UUID> rehome = new ArrayList<>();
         for (Party party : parties) {
             if (party.members.contains(id) && !party.over) {
@@ -372,7 +517,7 @@ public final class Run {
         for (UUID other : rehome) {
             ServerPlayer player = server.getPlayerList().getPlayer(other);
             if (player != null) {
-                Gamemaster.say(player, "Your partner has left the game. No matter: a room of your own, same tier.");
+                Gamemaster.say(player, "Your partner hasn't come back. No matter: a room of your own, same tier.");
                 launch(List.of(other), Rooms.pick(1, tier, lastRoom.get(other), random));
             }
         }

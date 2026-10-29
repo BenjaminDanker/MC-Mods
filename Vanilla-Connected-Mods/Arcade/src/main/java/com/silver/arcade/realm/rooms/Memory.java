@@ -82,6 +82,12 @@ public final class Memory extends BaseRoom {
     }
 
     @Override
+    public void rejoined(ServerPlayer player) {
+        super.rejoined(player);
+        order.replaceAll(p -> p.getUUID().equals(player.getUUID()) ? player : p);
+    }
+
+    @Override
     public boolean hit(ServerPlayer player, BlockPos pos) {
         return press(player, pos);
     }

@@ -58,6 +58,14 @@ public final class Parkour extends BaseRoom {
         return 1.0;
     }
 
+    /** Spectator box, set once the course is laid out. */
+    private int[] box = super.bounds();
+
+    @Override
+    public int[] bounds() {
+        return box;
+    }
+
     @Override
     protected void build() {
         arena.fill(-2, 0, -2, 2, 0, 2, Blocks.STONE_BRICKS.defaultBlockState());
@@ -92,6 +100,13 @@ public final class Parkour extends BaseRoom {
         }
         arena.fill(x - 1, y, z + 2, x + 1, y, z + 4, Blocks.GOLD_BLOCK.defaultBlockState());
         finish = arena.at(x, y, z + 3);
+        int minX = 0;
+        int maxX = 0;
+        for (int[] jump : jumps) {
+            minX = Math.min(minX, jump[0]);
+            maxX = Math.max(maxX, jump[0]);
+        }
+        box = new int[] {minX - 8, -12, -8, maxX + 8, 24, z + 10};
         for (ServerPlayer player : players.values()) {
             checkpoint.put(player.getUUID(), new int[] {0, 0, 0});
             arena.put(player, 0.5, 1, 0.5, 0F);

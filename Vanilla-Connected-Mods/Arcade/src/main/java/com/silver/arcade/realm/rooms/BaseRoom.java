@@ -59,6 +59,11 @@ abstract class BaseRoom implements Room {
     }
 
     @Override
+    public void rejoined(ServerPlayer player) {
+        players.replace(player.getUUID(), player);
+    }
+
+    @Override
     public void left(UUID player) {
         if (!decided(player)) {
             failed.add(player);

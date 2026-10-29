@@ -56,6 +56,18 @@ public interface Room {
     default void fell(ServerPlayer player) {
     }
 
+    /** A player reconnected within the grace period: the room swaps in their new player object. */
+    default void rejoined(ServerPlayer player) {
+    }
+
+    /**
+     * Where spectators of this room may fly, as offsets from the arena origin {minX, minY, minZ, maxX, maxY, maxZ}.
+     * Default: a generous box around the usual room footprint.
+     */
+    default int[] bounds() {
+        return new int[] {-48, -24, -48, 48, 40, 48};
+    }
+
     /** A player left mid-room: they fail it. */
     void left(UUID player);
 

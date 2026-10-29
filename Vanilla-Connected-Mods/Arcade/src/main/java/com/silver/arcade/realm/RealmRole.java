@@ -159,6 +159,12 @@ public final class RealmRole implements Run.Host {
     }
 
     private void onJoin(ServerPlayer player) {
+        Run waiting = runOf(player.getUUID());
+        if (waiting != null && waiting.isAway(player.getUUID())) {
+            // Back within the grace period: straight back into the paused room, kit and all.
+            waiting.returned(player);
+            return;
+        }
         player.setGameMode(GameType.ADVENTURE);
         player.getInventory().clearContent();
         UUID id = player.getUUID();
@@ -178,6 +184,12 @@ public final class RealmRole implements Run.Host {
                 @SuppressWarnings("unchecked")
                 var suspended = (java.util.Optional<ArcadeDb.Suspended>) both[1];
                 origins.put(id, origin.orElse("vanilla"));
+                for (Run run : runs) {
+                    if (run.canRejoin(id)) {
+                        run.rejoinLate(online);
+                        return;
+                    }
+                }
                 if (suspended.isPresent() && suspended.get().ageSeconds() <= RESUME_SECONDS) {
                     ArcadeDb.Suspended s = suspended.get();
                     Gamemaster.say(online, "You came back. Your climb is where you left it: tier " + s.prizeTier() + " is yours to keep, tier "

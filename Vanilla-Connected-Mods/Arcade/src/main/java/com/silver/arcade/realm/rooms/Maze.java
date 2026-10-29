@@ -29,6 +29,12 @@ public final class Maze extends BaseRoom {
     }
 
     @Override
+    public int[] bounds() {
+        int size = 2 * cells + 1;
+        return new int[] {-6, -8, -6, size + 6, 16, size + 6};
+    }
+
+    @Override
     protected void build() {
         cells = cells();
         boolean[][] wall = MazeGen.generate(cells, cells, random);

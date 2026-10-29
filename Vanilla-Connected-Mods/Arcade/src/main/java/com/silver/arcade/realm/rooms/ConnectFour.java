@@ -40,6 +40,14 @@ public final class ConnectFour extends BaseRoom {
     }
 
     @Override
+    public void rejoined(ServerPlayer who) {
+        super.rejoined(who);
+        if (player != null && player.getUUID().equals(who.getUUID())) {
+            player = who;
+        }
+    }
+
+    @Override
     public boolean use(ServerPlayer who, BlockPos pos) {
         if (who != player || decided(who.getUUID()) || botMoveAt >= 0) {
             return true;
