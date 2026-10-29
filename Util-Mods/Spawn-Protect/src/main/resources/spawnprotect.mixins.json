@@ -14,7 +14,8 @@
     "ServerPlayerEntityMixin",
     "EntityMixin",
     "OpenPacFeedbackMixin",
-    "ServerPlayerSystemMessageMixin"
+    "ServerPlayerSystemMessageMixin",
+    "ActionBarYieldMixin"
   ],
   "injectors": {
     "defaultRequire": 1
