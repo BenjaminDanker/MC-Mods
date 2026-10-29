@@ -21,6 +21,10 @@ public final class ArcadeMod implements ModInitializer {
             LOGGER.error("ALERT: could not read config/arcade.json; the arcade is off on this server", failure);
             return;
         }
+        if ("realm".equals(config.role) && FabricLoader.getInstance().isModLoaded("polymer-resource-pack")) {
+            // The Gamemaster's skin (assets/arcade) travels in the arcade's Polymer pack.
+            eu.pb4.polymer.resourcepack.api.PolymerResourcePackUtils.addModAssets("arcade");
+        }
         ArcadeDb db = new ArcadeDb();
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             switch (config.role) {

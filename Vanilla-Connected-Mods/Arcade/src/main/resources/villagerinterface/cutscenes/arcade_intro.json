@@ -1,66 +1,223 @@
 {
-  "keyframes": [
+ "keyframes": [
+  {
+   "t": 0,
+   "forward": -6,
+   "right": 2,
+   "up": 3,
+   "yaw": -45.0,
+   "pitch": 1.4
+  },
+  {
+   "t": 90,
+   "forward": -4,
+   "right": 3,
+   "up": 2.5,
+   "yaw": -26.6,
+   "pitch": 7.6
+  },
+  {
+   "t": 150,
+   "forward": -3,
+   "right": 3.5,
+   "up": 2.4,
+   "yaw": -35.0,
+   "pitch": 7.5
+  },
+  {
+   "t": 200,
+   "forward": 1,
+   "right": 4,
+   "up": 2.2,
+   "yaw": -38.7,
+   "pitch": 5.4
+  },
+  {
+   "t": 260,
+   "forward": 1,
+   "right": 4,
+   "up": 2.2,
+   "yaw": -45.0,
+   "pitch": 6.1
+  },
+  {
+   "t": 360,
+   "forward": -2,
+   "right": 4,
+   "up": 2.2,
+   "yaw": -135.0,
+   "pitch": 6.1
+  },
+  {
+   "t": 430,
+   "forward": -2,
+   "right": 4,
+   "up": 2.2,
+   "yaw": -135.0,
+   "pitch": 6.1
+  },
+  {
+   "t": 480,
+   "forward": -5,
+   "right": 1,
+   "up": 2.6,
+   "yaw": -45.0,
+   "pitch": -1.6
+  },
+  {
+   "t": 540,
+   "forward": -5,
+   "right": 1,
+   "up": 2.6,
+   "yaw": -45.0,
+   "pitch": -1.6
+  }
+ ],
+ "lines": [
+  {
+   "t": 5,
+   "title": "The Arcade",
+   "subtitle": ""
+  }
+ ],
+ "actors": [
+  {
+   "skin": "arcade:entity/gamemaster",
+   "name": "The Gamemaster",
+   "keys": [
     {
-      "t": 0,
-      "forward": 0,
-      "right": 0,
-      "up": 1.6,
-      "yaw": 0,
-      "pitch": 0
+     "t": 0,
+     "forward": 0,
+     "right": -4,
+     "up": 1.2,
+     "pose": "standing",
+     "lookAtCamera": true
     },
     {
-      "t": 50,
-      "forward": -5,
-      "right": 0,
-      "up": 7,
-      "yaw": 0,
-      "pitch": 28
+     "t": 60,
+     "forward": 0,
+     "right": -4,
+     "up": 1.2,
+     "lookAtCamera": true
     },
     {
-      "t": 120,
-      "forward": 1.5,
-      "right": -1.0,
-      "up": 3.4,
-      "yaw": -75,
-      "pitch": 4
+     "t": 90,
+     "forward": 2,
+     "right": 0,
+     "up": 0,
+     "lookAtCamera": true
     },
     {
-      "t": 200,
-      "forward": 0.5,
-      "right": -2.4,
-      "up": 2.9,
-      "yaw": -90,
-      "pitch": -2
+     "t": 100,
+     "forward": 2,
+     "right": 0,
+     "up": 0,
+     "pose": "crouching",
+     "lookAtCamera": true
     },
     {
-      "t": 260,
-      "forward": 0,
-      "right": 0,
-      "up": 1.6,
-      "yaw": 0,
-      "pitch": 6
+     "t": 112,
+     "forward": 2,
+     "right": 0,
+     "up": 0,
+     "pose": "standing",
+     "lookAtCamera": true
+    },
+    {
+     "t": 150,
+     "forward": 2,
+     "right": 0,
+     "up": 0,
+     "yaw": 0
+    },
+    {
+     "t": 200,
+     "forward": 6,
+     "right": 0,
+     "up": 0,
+     "yaw": 0
+    },
+    {
+     "t": 205,
+     "forward": 6,
+     "right": 0,
+     "up": 0,
+     "lookAtCamera": true,
+     "swing": true
+    },
+    {
+     "t": 260,
+     "forward": 6,
+     "right": 0,
+     "up": 0,
+     "yaw": 180
+    },
+    {
+     "t": 360,
+     "forward": -6,
+     "right": 0,
+     "up": 0,
+     "yaw": 180
+    },
+    {
+     "t": 365,
+     "forward": -6,
+     "right": 0,
+     "up": 0,
+     "lookAtCamera": true,
+     "swing": true
+    },
+    {
+     "t": 440,
+     "forward": -6,
+     "right": 0,
+     "up": 0,
+     "lookAtCamera": true
+    },
+    {
+     "t": 480,
+     "forward": 0,
+     "right": -4,
+     "up": 1.2,
+     "lookAtCamera": true
+    },
+    {
+     "t": 540,
+     "forward": 0,
+     "right": -4,
+     "up": 1.2,
+     "lookAtCamera": true
     }
-  ],
-  "lines": [
+   ],
+   "says": [
     {
-      "t": 10,
-      "title": "The Arcade",
-      "subtitle": ""
+     "t": 15,
+     "text": "Ah. A visitor."
     },
     {
-      "t": 60,
-      "title": "",
-      "subtitle": "Every game here is fair. Mostly."
+     "t": 115,
+     "text": "Welcome to my arcade. I am the Gamemaster."
     },
     {
-      "t": 130,
-      "title": "",
-      "subtitle": "I am the Gamemaster. Play well, and your world will thank you."
+     "t": 205,
+     "text": "The purple circle starts a game. Bring friends, or don't."
     },
     {
-      "t": 205,
-      "title": "",
-      "subtitle": "The purple circle starts a game. The crying obsidian takes you home."
+     "t": 290,
+     "text": "The crying obsidian takes you home."
+    },
+    {
+     "t": 368,
+     "text": "After every room: gold takes your prize home, emerald climbs higher."
+    },
+    {
+     "t": 470,
+     "text": "Every game here is fair. Mostly."
     }
-  ]
+   ]
+  }
+ ],
+ "hide": [
+  "arcade_gamemaster"
+ ]
 }

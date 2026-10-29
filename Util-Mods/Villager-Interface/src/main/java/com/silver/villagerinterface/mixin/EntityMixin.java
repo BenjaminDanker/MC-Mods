@@ -23,4 +23,13 @@ public abstract class EntityMixin {
         cir.setReturnValue(false);
         cir.cancel();
     }
+
+    /** A cutscene may hide an entity from the one player watching it (they see a scripted copy instead). */
+    @Inject(method = "broadcastToPlayer", at = @At("HEAD"), cancellable = true)
+    private void villagerinterface$hiddenInScene(net.minecraft.server.level.ServerPlayer player,
+            org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable<Boolean> cir) {
+        if (com.silver.villagerinterface.cutscene.Actors.hiddenFrom(player, (Entity) (Object) this)) {
+            cir.setReturnValue(false);
+        }
+    }
 }

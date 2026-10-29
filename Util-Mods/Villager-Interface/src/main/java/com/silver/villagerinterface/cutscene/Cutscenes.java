@@ -73,9 +73,21 @@ public final class Cutscenes {
     static final class Scene {
         List<Keyframe> keyframes = new ArrayList<>();
         List<Line> lines = new ArrayList<>();
+        /** Java viewers: actors that perform for them alone (see {@link Actors}). */
+        List<Actors.Spec> actors = new ArrayList<>();
+        /** Java viewers: entity tags hidden from them while the scene plays. */
+        List<String> hide = new ArrayList<>();
 
         int duration() {
             int end = 0;
+            for (Actors.Spec actor : actors) {
+                for (Actors.Key k : actor.keys) {
+                    end = Math.max(end, k.t);
+                }
+                for (Actors.Say s : actor.says) {
+                    end = Math.max(end, s.t + (s.text == null ? 0 : s.text.length() / 2) + 30);
+                }
+            }
             for (Keyframe k : keyframes) {
                 end = Math.max(end, k.t);
             }
@@ -107,6 +119,9 @@ public final class Cutscenes {
         final float anchorYaw;
         int nextLine;
         boolean wasSneaking = true;
+        Actors.Cast cast;
+        /** Bedrock viewers: actors' lines shown as titles instead. */
+        int nextSay;
 
         Running(Scene scene, Entity camera, long startTick, double ax, double ay, double az, float anchorYaw) {
             this.scene = scene;
@@ -191,7 +206,11 @@ public final class Cutscenes {
                 player.setCamera(camera);
             }
         }
-        RUNNING.put(player.getUUID(), new Running(scene, camera, server.getTickCount(), x, y, z, yaw));
+        Running running = new Running(scene, camera, server.getTickCount(), x, y, z, yaw);
+        if (camera != null) {
+            running.cast = Actors.start(player, scene.actors, scene.hide, new Actors.Placement(x, y, z, yaw));
+        }
+        RUNNING.put(player.getUUID(), running);
         player.connection.send(new ClientboundSetTitlesAnimationPacket(10, 70, 15));
         VillagerInterfaceMod.LOGGER.info("{} is watching cutscene {}{}", player.getName().getString(), id, camera == null ? " (titles only)" : "");
         return scene.duration();
@@ -214,6 +233,7 @@ public final class Cutscenes {
             if (player == null) {
                 it.remove();
                 discard(running);
+                Actors.forget(entry.getKey());
                 continue;
             }
             int t = (int) (now - running.startTick);
@@ -233,6 +253,12 @@ public final class Cutscenes {
             }
             if (running.camera != null) {
                 move(running, t);
+                if (running.cast != null) {
+                    Actors.tick(player, running.cast, t, new Actors.Placement(running.ax, running.ay, running.az, running.anchorYaw),
+                        running.camera.position());
+                }
+            } else {
+                sayAsTitles(player, running, t);
             }
             while (running.nextLine < running.scene.lines.size() && running.scene.lines.get(running.nextLine).t <= t) {
                 show(player, running.scene.lines.get(running.nextLine++));
@@ -240,6 +266,19 @@ public final class Cutscenes {
             if (t % 20 == 0) {
                 player.sendSystemMessage(Component.literal("Sneak to skip").withStyle(ChatFormatting.DARK_GRAY), true);
             }
+        }
+    }
+
+    /** Bedrock: what the actors say appears as subtitles, in order. */
+    private static void sayAsTitles(ServerPlayer player, Running running, int t) {
+        List<Actors.Say> all = new ArrayList<>();
+        running.scene.actors.forEach(actor -> all.addAll(actor.says));
+        all.sort(java.util.Comparator.comparingInt(s -> s.t));
+        while (running.nextSay < all.size() && all.get(running.nextSay).t <= t) {
+            Line line = new Line();
+            line.subtitle = all.get(running.nextSay++).text;
+            line.title = "";
+            show(player, line);
         }
     }
 
@@ -303,6 +342,9 @@ public final class Cutscenes {
 
     private static void end(ServerPlayer player, Running running) {
         discard(running);
+        if (running.cast != null) {
+            Actors.stop(player, running.cast);
+        }
         player.connection.send(new ClientboundSetTitleTextPacket(Component.empty()));
         Saved state = saved.get(player.getStringUUID());
         if (state != null) {

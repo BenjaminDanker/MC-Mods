@@ -3,10 +3,13 @@
   "package": "com.silver.villagerinterface.mixin",
   "compatibilityLevel": "JAVA_25",
   "mixins": [
+    "ChunkMapAccessor",
     "CustomClickMixin",
     "EntityMixin",
     "PlayerListMixin",
     "ServerGamePacketListenerImplMixin",
+    "TextDisplayAccessor",
+    "TrackedEntityInvoker",
     "VillagerMixin"
   ],
   "client": [],
