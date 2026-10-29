@@ -57,6 +57,12 @@ public final class GamemasterNpc {
     }
 
     public void register() {
+        // He is saved with the world, so every restart would add one more: any copy that is not the live one goes.
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents.ENTITY_LOAD.register((entity, world) -> {
+            if (entity.entityTags().contains(TAG) && entity != body && body != null && !body.isRemoved()) {
+                entity.discard();
+            }
+        });
         UseEntityCallback.EVENT.register((player, world, hand, entity, hit) -> {
             if (hand != InteractionHand.MAIN_HAND || !(player instanceof ServerPlayer user) || !entity.entityTags().contains(TAG)) {
                 return InteractionResult.PASS;
@@ -71,7 +77,7 @@ public final class GamemasterNpc {
         if (!level.isPositionEntityTicking(net.minecraft.core.BlockPos.containing(HOME))) {
             return;
         }
-        AABB around = new AABB(-16, 90, -16, 16, 120, 16);
+        AABB around = new AABB(-48, 60, -48, 48, 160, 48);
         level.getEntities(EntityTypeTest.forClass(Mannequin.class), around, e -> e.entityTags().contains(TAG)).forEach(Entity::discard);
         try {
             CompoundTag tag = TagParser.parseCompoundFully("{NoGravity:1b,Invulnerable:1b,immovable:1b,hide_description:1b,"

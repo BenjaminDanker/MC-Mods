@@ -1,6 +1,8 @@
 package com.silver.arcade.realm;
 
 import com.silver.arcade.realm.rooms.Archery;
+import com.silver.arcade.realm.rooms.Hanoi;
+import com.silver.arcade.realm.rooms.WhackAMole;
 import com.silver.arcade.realm.rooms.BlockParty;
 import com.silver.arcade.realm.rooms.HideAndSeek;
 import com.silver.arcade.realm.rooms.HotPotato;
@@ -63,5 +65,8 @@ public final class RoomCatalog {
         Rooms.add(new RoomType("hot_potato", Room.Kind.GROUP, 3, 16, 1, HotPotato::new));
         Rooms.add(new RoomType("king_hill", Room.Kind.GROUP, 2, 16, 1, KingOfTheHill::new));
         Rooms.add(new RoomType("hide_seek", Room.Kind.GROUP, 3, 16, 1, HideAndSeek::new));
+        // Batch 4 (solo first).
+        Rooms.add(new RoomType("whack", Room.Kind.DUO, 1, 2, 1, WhackAMole::new));
+        Rooms.add(new RoomType("hanoi", Room.Kind.DUO, 1, 2, 1, Hanoi::new));
     }
 }

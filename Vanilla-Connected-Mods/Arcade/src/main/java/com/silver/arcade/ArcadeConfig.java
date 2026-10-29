@@ -25,10 +25,35 @@ public final class ArcadeConfig {
     public Event event = new Event();
 
     public static final class Event {
-        /** Players needed on the pad (counting only players free in the hall). */
+        /** Players needed for a Grand Game (free in the hall or waiting behind a door). */
         public int minPlayers = 6;
         public int maxPlayers = 16;
-        public int countdownSeconds = 15;
+        /** How long the Gamemaster's call stays open: every door leads to the Grand Game meanwhile. */
+        public int windowSeconds = 30;
+        /** At most one Grand Game call per this many minutes. */
+        public int cooldownMinutes = 15;
+    }
+
+    /** The hall's doors (realm role). Walking through one takes you to the waiting room behind it. */
+    public Hall hall = new Hall();
+
+    public static final class Hall {
+        public java.util.List<HallDoor> doors = new java.util.ArrayList<>();
+    }
+
+    public static final class HallDoor {
+        /** The doorway: a box from (x, y, z), width along the axis ("x" or "z"), height up, one block deep. */
+        public int x;
+        public int y;
+        public int z;
+        public int width = 3;
+        public int height = 4;
+        public String axis = "x";
+        /** Where a player waits behind this door (feet position and facing). */
+        public double waitX;
+        public double waitY;
+        public double waitZ;
+        public float waitYaw;
     }
     /** Prize bands of this world, by the highest tier a run cashed out at. */
     public List<RewardBand> rewards = new ArrayList<>();

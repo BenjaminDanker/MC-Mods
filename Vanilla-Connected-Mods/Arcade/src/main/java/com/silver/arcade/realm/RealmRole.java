@@ -42,9 +42,7 @@ public final class RealmRole implements Run.Host {
     private static final BlockPos HALL = new BlockPos(0, 100, 0);
     private static final BlockPos START = new BlockPos(0, 100, 8);
     private static final BlockPos EXIT = new BlockPos(0, 100, -8);
-    /** The Grand Game pad, west side of the hall. */
-    private static final BlockPos EVENT = new BlockPos(-8, 100, 0);
-    private long eventStartedAt = -1;
+    private HallDoors doors;
 
     private final MinecraftServer server;
     private final ArcadeConfig config;
@@ -69,6 +67,7 @@ public final class RealmRole implements Run.Host {
         Arena.clearLeftovers(level(), server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("arcade-arenas"));
         ensureHall();
         previews = new Previews(level());
+        doors = new HallDoors(server, config, this::startRun);
         gamemaster = new GamemasterNpc(level());
         gamemaster.register();
         level().setChunkForced(0, 0, true);
@@ -151,7 +150,6 @@ public final class RealmRole implements Run.Host {
     private void ensureHall() {
         ServerLevel level = level();
         level.getChunk(HALL.getX() >> 4, HALL.getZ() >> 4);
-        ensureEventPad(level);
         if (!level.getBlockState(HALL).isAir()) {
             return;
         }
@@ -172,32 +170,6 @@ public final class RealmRole implements Run.Host {
             level.setBlock(HALL.offset(c[0], 1, c[1]), Blocks.LANTERN.defaultBlockState(), 2);
         }
         LOGGER.info("Built a plain arcade hall at {}", HALL);
-    }
-
-    /** The Grand Game pad: a ring of magenta glazed terracotta with a sign over it. */
-    private void ensureEventPad(ServerLevel level) {
-        if (level.getBlockState(EVENT).is(Blocks.GLAZED_TERRACOTTA.magenta())) {
-            return;
-        }
-        for (int x = -2; x <= 2; x++) {
-            for (int z = -2; z <= 2; z++) {
-                if (x * x + z * z <= 5) {
-                    level.setBlock(EVENT.offset(x, 0, z), Blocks.GLAZED_TERRACOTTA.magenta().defaultBlockState(), 2);
-                }
-            }
-        }
-        try {
-            var tag = net.minecraft.nbt.TagParser.parseCompoundFully("{billboard:\"center\",text:{text:\"Grand Game\\n" + config.event.minPlayers + " or more players, same rooms\","
-                + "color:\"light_purple\"},Tags:[\"arcade_event_sign\"]}");
-            var sign = net.minecraft.world.entity.EntityType.loadEntityRecursive(net.minecraft.world.entity.EntityTypes.TEXT_DISPLAY, tag, level,
-                net.minecraft.world.entity.EntitySpawnReason.COMMAND, e -> e);
-            if (sign != null) {
-                sign.snapTo(EVENT.getX() + 0.5, EVENT.getY() + 3.2, EVENT.getZ() + 0.5, 0F, 0F);
-                level.addFreshEntity(sign);
-            }
-        } catch (Exception failure) {
-            LOGGER.error("ALERT: could not put up the Grand Game sign", failure);
-        }
     }
 
     private void onJoin(ServerPlayer player) {
@@ -316,23 +288,23 @@ public final class RealmRole implements Run.Host {
         if (server.getTickCount() % 5 != 0) {
             return;
         }
-        List<ServerPlayer> onCircle = new ArrayList<>();
-        List<ServerPlayer> onEvent = new ArrayList<>();
+        List<ServerPlayer> free = new ArrayList<>();
         for (ServerPlayer player : level().players()) {
-            if (runOf(player.getUUID()) != null) {
+            if (runOf(player.getUUID()) != null || player.isSpectator()) {
                 continue;
             }
             BlockPos below = player.blockPosition().below();
-            if (near(below, EVENT)) {
-                onEvent.add(player);
-            } else if (near(below, START)) {
-                onCircle.add(player);
-            } else if (near(below, EXIT)) {
+            if (near(below, EXIT)) {
                 leave(player);
+            } else {
+                free.add(player);
             }
         }
-        gather(onCircle);
-        gatherEvent(onEvent);
+        if (config.hall.doors.isEmpty()) {
+            gather(free.stream().filter(p -> near(p.blockPosition().below(), START)).toList());
+        } else {
+            doors.tick(server.getTickCount(), free);
+        }
     }
 
     private static boolean near(BlockPos pos, BlockPos centre) {
@@ -341,28 +313,10 @@ public final class RealmRole implements Run.Host {
         return pos.getY() == centre.getY() && dx * dx + dz * dz <= 5;
     }
 
-    /** The Grand Game starts once enough players stand on its pad; it fills up to the cap, first come first served. */
-    private void gatherEvent(List<ServerPlayer> onPad) {
-        long now = server.getTickCount();
-        int min = Math.max(2, config.event.minPlayers);
-        if (onPad.size() < min) {
-            eventStartedAt = -1;
-            onPad.forEach(p -> Gamemaster.bar(p, "Grand Game: " + onPad.size() + " of " + min + " players. Wait for more."));
-            return;
-        }
-        if (eventStartedAt < 0) {
-            eventStartedAt = now;
-            onPad.forEach(p -> Gamemaster.say(p, "A crowd! A Grand Game it is. Everyone plays the same rooms. Last chance to step on."));
-        }
-        long left = config.event.countdownSeconds * 20L - (now - eventStartedAt);
-        if (left > 0) {
-            onPad.forEach(p -> Gamemaster.bar(p, "The Grand Game begins in " + (left / 20 + 1) + "... (" + Math.min(onPad.size(), config.event.maxPlayers) + " playing)"));
-            return;
-        }
-        List<ServerPlayer> group = new ArrayList<>(onPad.subList(0, Math.min(config.event.maxPlayers, onPad.size())));
-        LOGGER.info("Arcade Grand Game starts for {}", group.stream().map(p -> p.getName().getString()).toList());
-        runs.add(new Run(server, level(), this, group, 1, 0, false, true));
-        eventStartedAt = -1;
+    /** Starts a climb for a group (together = a Grand Game: everyone always in the same room). */
+    private void startRun(List<ServerPlayer> group, boolean together) {
+        LOGGER.info("Arcade {} starts for {}", together ? "Grand Game" : "run", group.stream().map(p -> p.getName().getString()).toList());
+        runs.add(new Run(server, level(), this, new ArrayList<>(group), 1, 0, false, together));
     }
 
     private void gather(List<ServerPlayer> onCircle) {
@@ -376,7 +330,7 @@ public final class RealmRole implements Run.Host {
         }
         long left = GATHER_TICKS - (now - gatherStartedAt);
         if (left > 0) {
-            onCircle.forEach(p -> Gamemaster.bar(p, "The game begins in " + (left / 20 + 1) + "... (" + Math.min(onCircle.size(), MAX_GROUP) + " playing)"));
+            onCircle.forEach(p -> Gamemaster.bar(p, "The game begins in " + ((left + 19) / 20) + "... (" + Math.min(onCircle.size(), MAX_GROUP) + " playing)"));
             return;
         }
         List<ServerPlayer> group = onCircle.subList(0, Math.min(MAX_GROUP, onCircle.size()));
