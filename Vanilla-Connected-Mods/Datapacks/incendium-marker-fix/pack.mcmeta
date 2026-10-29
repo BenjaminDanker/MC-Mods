@@ -1,0 +1,7 @@
+{
+  "pack": {
+    "min_format": [107, 1],
+    "max_format": [107, 1],
+    "description": "Keeps one Incendium spawn marker (Incendium adds one at every start while the spawn chunk isn't loaded)"
+  }
+}

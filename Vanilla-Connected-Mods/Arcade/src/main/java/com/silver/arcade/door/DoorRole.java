@@ -49,6 +49,8 @@ public final class DoorRole {
     private final List<Door> doors = new ArrayList<>();
     private final Map<UUID, Long> lastDoorAt = new HashMap<>();
     private final Map<UUID, Long> nextCheckAt = new HashMap<>();
+    private final Map<UUID, ArcadeDb.Profile> profiles = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<UUID, Long> dieRolledAt = new HashMap<>();
 
     private static final class Door {
         final ServerLevel level;
@@ -56,6 +58,7 @@ public final class DoorRole {
         final AABB inside;
         final List<Entity> parts;
         final long closesAt;
+        final java.util.Set<UUID> entered = new java.util.HashSet<>();
 
         Door(ServerLevel level, Vec3 centre, AABB inside, List<Entity> parts, long closesAt) {
             this.level = level;
@@ -75,7 +78,18 @@ public final class DoorRole {
 
     public void register() {
         ServerTickEvents.END_SERVER_TICK.register(ticking -> tick());
-        ServerPlayConnectionEvents.JOIN.register((handler, sender, joined) -> deliverPrizes(handler.getPlayer()));
+        ServerPlayConnectionEvents.JOIN.register((handler, sender, joined) -> {
+            deliverPrizes(handler.getPlayer());
+            loadProfile(handler.getPlayer());
+        });
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, left) -> profiles.remove(handler.getPlayer().getUUID()));
+        net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, world, hand) -> {
+            if (!(player instanceof ServerPlayer user) || !Die.is(user.getItemInHand(hand))) {
+                return net.minecraft.world.InteractionResult.PASS;
+            }
+            roll(user);
+            return net.minecraft.world.InteractionResult.SUCCESS;
+        });
         // Doors are never saved: any door entity found when a chunk loads is a leftover.
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents.ENTITY_LOAD.register((entity, level) -> {
             if (entity.entityTags().contains(DOOR_TAG) && doors.stream().noneMatch(d -> d.parts.contains(entity))) {
@@ -99,11 +113,8 @@ public final class DoorRole {
                 door.level.sendParticles(ParticleTypes.PORTAL, door.centre.x, door.centre.y + 1.5, door.centre.z, 6, 0.6, 1.0, 0.6, 0.2);
             }
             for (ServerPlayer player : door.level.players()) {
-                if (player.getBoundingBox().intersects(door.inside) && !player.isSpectator()) {
+                if (player.getBoundingBox().intersects(door.inside) && !player.isSpectator() && door.entered.add(player.getUUID())) {
                     enter(player);
-                    close(door, false);
-                    it.remove();
-                    break;
                 }
             }
         }
@@ -120,16 +131,27 @@ public final class DoorRole {
             nextCheckAt.put(id, now + periodTicks);
             Long last = lastDoorAt.get(id);
             boolean cooling = last != null && now - last < config.door.cooldownMinutes * 1200L;
-            if (!cooling && !player.isSpectator() && !player.isCreative() && player.getRandom().nextDouble() < config.door.chance) {
-                if (open(player)) {
+            ArcadeDb.Profile profile = profiles.get(id);
+            if (cooling || profile == null || player.isSpectator() || player.isCreative()) {
+                continue;
+            }
+            if (Die.carries(player)) {
+                // Carrying the die is saying yes to the Gamemaster's games.
+                if (player.getRandom().nextDouble() < config.door.chance && open(player, config.door.lifetimeSeconds)) {
                     lastDoorAt.put(id, now);
                 }
+            } else if (!profile.visited() && profile.offers() < config.door.discoveryMax
+                    && profile.secondsSinceOffer() >= config.door.discoveryCooldownHours * 3600L
+                    && player.getRandom().nextDouble() < config.door.discoveryChance && open(player, config.door.lifetimeSeconds)) {
+                lastDoorAt.put(id, now);
+                profiles.put(id, new ArcadeDb.Profile(false, profile.hasDie(), profile.offers() + 1, 0));
+                db.recordDiscoveryOffer(id);
             }
         }
     }
 
-    /** Opens a door near the player; false when no fitting spot was found. */
-    public boolean open(ServerPlayer player) {
+    /** Opens a door near the player for {@code seconds}; false when no fitting spot was found. */
+    public boolean open(ServerPlayer player, int seconds) {
         if (!(player.level() instanceof ServerLevel level)) {
             return false;
         }
@@ -148,7 +170,7 @@ public final class DoorRole {
             }
             // Facing the player: the door's plane is perpendicular to the line between them.
             float yaw = (float) Math.toDegrees(Math.atan2(-(player.getX() - (x + 0.5)), player.getZ() - (z + 0.5)));
-            spawn(level, new Vec3(x + 0.5, y, z + 0.5), yaw);
+            spawn(level, new Vec3(x + 0.5, y, z + 0.5), yaw, seconds);
             player.sendSystemMessage(Component.literal("Somewhere close, dice are rolling.").withStyle(ChatFormatting.LIGHT_PURPLE, ChatFormatting.ITALIC));
             level.playSound(null, x, y, z, SoundEvents.ENDER_EYE_DEATH, SoundSource.AMBIENT, 1.0F, 0.6F);
             LOGGER.info("Opened an arcade door near {} at {} {} {}", player.getName().getString(), x, y, z);
@@ -174,7 +196,7 @@ public final class DoorRole {
         return true;
     }
 
-    private void spawn(ServerLevel level, Vec3 at, float yaw) {
+    private void spawn(ServerLevel level, Vec3 at, float yaw, int seconds) {
         List<Entity> parts = new ArrayList<>();
         // A dark arch with a crying-obsidian keystone, a deep-purple veil, and a die floating above.
         String[][] blocks = {
@@ -190,7 +212,7 @@ public final class DoorRole {
         double rad = Math.toRadians(yaw);
         Vec3 normal = new Vec3(-Math.sin(rad), 0, Math.cos(rad));
         AABB inside = new AABB(at.x - 0.6, at.y, at.z - 0.6, at.x + 0.6, at.y + 3, at.z + 0.6).inflate(Math.abs(normal.z) * 0.2, 0, Math.abs(normal.x) * 0.2);
-        doors.add(new Door(level, at, inside, parts, server.getTickCount() + config.door.lifetimeSeconds * 20L));
+        doors.add(new Door(level, at, inside, parts, server.getTickCount() + seconds * 20L));
     }
 
     /** One display entity of the door, positioned in the door's own frame (x across, z through) and turned by yaw. */
@@ -237,6 +259,45 @@ public final class DoorRole {
             online.sendSystemMessage(Component.literal("You step through. Something laughs.").withStyle(ChatFormatting.LIGHT_PURPLE, ChatFormatting.ITALIC));
             if (!Transfers.send(online, config.arcadeServer, config.hallPortal, "arcade door")) {
                 LOGGER.error("ALERT: the arcade transfer for {} was not queued", name);
+            }
+        }));
+    }
+
+    /** Rolling the die: a door opens nearby, right away, and stays a minute so friends can come along. */
+    private void roll(ServerPlayer player) {
+        long now = server.getTickCount();
+        Long last = dieRolledAt.get(player.getUUID());
+        if (last != null && now - last < config.door.dieCooldownSeconds * 20L) {
+            player.sendSystemMessage(Component.literal("The die is still warm. Try again in a little while.").withStyle(ChatFormatting.GRAY), true);
+            return;
+        }
+        if (open(player, config.door.dieDoorSeconds)) {
+            dieRolledAt.put(player.getUUID(), now);
+            player.sendSystemMessage(Component.literal("You roll the die. A door answers.").withStyle(ChatFormatting.LIGHT_PURPLE, ChatFormatting.ITALIC));
+        } else {
+            player.sendSystemMessage(Component.literal("The die finds no room for a door here. Try open ground.").withStyle(ChatFormatting.GRAY), true);
+        }
+    }
+
+    /** Learns whether this player has been to the arcade; someone back from their first visit gets the die. */
+    private void loadProfile(ServerPlayer player) {
+        UUID id = player.getUUID();
+        db.profile(id).whenComplete((profile, failure) -> server.execute(() -> {
+            if (failure != null) {
+                LOGGER.error("ALERT: could not read the arcade profile of {}", player.getName().getString(), failure);
+                return;
+            }
+            ServerPlayer online = server.getPlayerList().getPlayer(id);
+            if (online == null) {
+                return;
+            }
+            profiles.put(id, profile);
+            if (profile.visited() && !profile.hasDie()) {
+                online.getInventory().placeItemBackInInventory(Die.create());
+                online.sendSystemMessage(Component.literal("Something rattles in your pocket: the Gamemaster's Die. Roll it whenever you "
+                    + "want to play; carry it and his doors may find you. Put it away and they won't.").withStyle(ChatFormatting.LIGHT_PURPLE));
+                db.markDieGiven(id);
+                profiles.put(id, new ArcadeDb.Profile(true, true, profile.offers(), profile.secondsSinceOffer()));
             }
         }));
     }

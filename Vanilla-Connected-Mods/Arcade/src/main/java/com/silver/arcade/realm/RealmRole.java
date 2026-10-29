@@ -50,6 +50,9 @@ public final class RealmRole implements Run.Host {
     private final Map<UUID, String> origins = new HashMap<>();
     private final Map<UUID, Long> leavingAt = new HashMap<>();
     private long gatherStartedAt = -1;
+    private GamemasterNpc gamemaster;
+    /** Players whose welcome waits until their intro scene has played (tick it is due). */
+    private final Map<UUID, Long> welcomeAt = new HashMap<>();
 
     public RealmRole(MinecraftServer server, ArcadeConfig config, ArcadeDb db) {
         this.server = server;
@@ -60,6 +63,10 @@ public final class RealmRole implements Run.Host {
     public void register() {
         RoomCatalog.registerAll();
         ensureHall();
+        gamemaster = new GamemasterNpc(level());
+        gamemaster.register();
+        level().setChunkForced(0, 0, true);
+        gamemaster.ensure();
         ServerTickEvents.END_SERVER_TICK.register(ticking -> tick());
         ServerPlayConnectionEvents.JOIN.register((handler, sender, joined) -> onJoin(handler.getPlayer()));
         ServerPlayConnectionEvents.DISCONNECT.register((handler, left) -> onLeave(handler.getPlayer().getUUID()));
@@ -67,6 +74,33 @@ public final class RealmRole implements Run.Host {
         ServerMessageEvents.ALLOW_CHAT_MESSAGE.register((message, sender, params) -> {
             Run run = runOf(sender.getUUID());
             return run == null || !run.chat(sender, message.signedContent());
+        });
+        // Nobody is hurt in the hall; in a room the room decides (players hurt each other only in versus rooms).
+        net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) -> {
+            if (!(entity instanceof ServerPlayer victim)) {
+                return true;
+            }
+            Run run = runOf(victim.getUUID());
+            if (run == null) {
+                return false;
+            }
+            if (source.getEntity() instanceof ServerPlayer attacker) {
+                return run.pvpAllowed(attacker.getUUID(), victim.getUUID());
+            }
+            return true;
+        });
+        // A death in a room is never a real death: the room counts it as a loss for that player.
+        net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents.ALLOW_DEATH.register((entity, source, amount) -> {
+            if (!(entity instanceof ServerPlayer player)) {
+                return true;
+            }
+            Run run = runOf(player.getUUID());
+            if (run != null) {
+                run.died(player);
+            } else {
+                player.setHealth(player.getMaxHealth());
+            }
+            return false;
         });
         UseBlockCallback.EVENT.register((player, world, hand, hit) -> {
             if (!(player instanceof ServerPlayer user)) {
@@ -158,7 +192,29 @@ public final class RealmRole implements Run.Host {
             }));
     }
 
+    /** The first visit plays the intro scene (Villager-Interface's cutscenes, called by name), then the welcome. */
+    private int playIntro(ServerPlayer player) {
+        try {
+            Class<?> scenes = Class.forName("com.silver.villagerinterface.cutscene.Cutscenes");
+            return (int) scenes.getMethod("play", ServerPlayer.class, String.class, double.class, double.class, double.class, float.class)
+                .invoke(null, player, "arcade_intro", HALL.getX() + 0.5, HALL.getY() + 1.0, HALL.getZ() + 0.5, 0F);
+        } catch (ReflectiveOperationException notHere) {
+            return 0;
+        }
+    }
+
     private void greet(ServerPlayer player) {
+        if (!player.entityTags().contains("arcade_met")) {
+            int scene = playIntro(player);
+            if (scene > 0) {
+                welcomeAt.put(player.getUUID(), server.getTickCount() + (long) scene + 10);
+                return;
+            }
+        }
+        welcome(player);
+    }
+
+    private void welcome(ServerPlayer player) {
         if (player.addTag("arcade_met")) {
             Gamemaster.title(player, "The Arcade", "Every game is fair. Mostly.");
             Gamemaster.say(player, "A visitor! Welcome to my arcade. Step onto the purple circle to play: rooms get harder as you climb, "
@@ -175,9 +231,26 @@ public final class RealmRole implements Run.Host {
             run.left(id);
         }
         leavingAt.remove(id);
+        welcomeAt.remove(id);
     }
 
     private void tick() {
+        long tickNow = server.getTickCount();
+        if (gamemaster != null) {
+            gamemaster.tick(tickNow);
+        }
+        if (!welcomeAt.isEmpty()) {
+            welcomeAt.entrySet().removeIf(entry -> {
+                if (tickNow < entry.getValue()) {
+                    return false;
+                }
+                ServerPlayer player = server.getPlayerList().getPlayer(entry.getKey());
+                if (player != null) {
+                    welcome(player);
+                }
+                return true;
+            });
+        }
         for (Iterator<Run> it = runs.iterator(); it.hasNext();) {
             Run run = it.next();
             run.tick();
@@ -244,8 +317,11 @@ public final class RealmRole implements Run.Host {
 
     private void toHall(ServerPlayer player) {
         player.getInventory().clearContent();
+        player.setGameMode(GameType.ADVENTURE);
+        player.removeAllEffects();
         player.teleportTo(level(), HALL.getX() + 0.5, HALL.getY() + 1, HALL.getZ() + 0.5, Set.of(), 0F, 0F, false);
         player.setHealth(player.getMaxHealth());
+        player.getFoodData().setFoodLevel(20);
     }
 
     @Override

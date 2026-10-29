@@ -47,6 +47,17 @@ public final class Parkour extends BaseRoom {
         return Blocks.STONE_BRICKS.defaultBlockState();
     }
 
+    /** How high a player stands on this foothold, above the block's own y. */
+    static double heightOf(BlockState block) {
+        if (block.is(Blocks.SMOOTH_STONE_SLAB)) {
+            return 0.5;
+        }
+        if (block.is(Blocks.OAK_FENCE) || block.is(Blocks.COBBLESTONE_WALL)) {
+            return 1.5;
+        }
+        return 1.0;
+    }
+
     @Override
     protected void build() {
         arena.fill(-2, 0, -2, 2, 0, 2, Blocks.STONE_BRICKS.defaultBlockState());
@@ -55,17 +66,28 @@ public final class Parkour extends BaseRoom {
         int x = 0;
         int y = 0;
         int z = 3;
+        double top = 1.0; // the start platform's walking height (block top above y)
         for (int i = 0; i < n; i++) {
             int gap = 1 + random.nextInt(Math.min(3, 1 + tier / 3));
+            boolean check = i > 0 && i % 8 == 0;
+            BlockState block = check ? Blocks.EMERALD_BLOCK.defaultBlockState() : foothold();
+            double height = heightOf(block);
             int rise = random.nextInt(3) - 1;
-            if (gap >= 3 && rise > 0) {
-                rise = 0;
+            // Reachable jumps only: at most one block higher than where you stand, never higher on the longest gaps,
+            // and long gaps get a little shorter when the foothold is a thin post.
+            double maxUp = gap >= 3 ? 0.0 : 1.0;
+            int candidate = Math.max(-4, Math.min(12, y + rise));
+            while (candidate + height - top > maxUp) {
+                candidate--;
             }
+            if (gap >= 3 && height > 1.0) {
+                gap = 2;
+            }
+            y = candidate;
             z += gap + 1;
             x += random.nextInt(3) - 1;
-            y = Math.max(-4, Math.min(12, y + rise));
-            boolean check = i > 0 && i % 8 == 0;
-            arena.set(x, y, z, check ? Blocks.EMERALD_BLOCK.defaultBlockState() : foothold());
+            arena.set(x, y, z, block);
+            top = y + height;
             jumps[i] = new int[] {x, y, z};
         }
         arena.fill(x - 1, y, z + 2, x + 1, y, z + 4, Blocks.GOLD_BLOCK.defaultBlockState());

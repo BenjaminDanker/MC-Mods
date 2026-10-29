@@ -74,7 +74,7 @@ final class ConnectFourBoard {
 
     /** Search depth for a tier: random-ish at 1, then deeper (capped at 9). */
     static int depthFor(int tier) {
-        return Math.min(9, tier);
+        return Math.min(8, tier);
     }
 
     /** The bot's move. Below tier 3 it sometimes plays at random (it still takes a win and blocks a loss). */

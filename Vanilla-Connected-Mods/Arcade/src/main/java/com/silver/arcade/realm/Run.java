@@ -59,15 +59,19 @@ public final class Run {
         final Arena arena;
         final List<UUID> members;
         final long limit;
+        final long startedAt;
         final ServerBossEvent bar;
         boolean over;
+        /** Cancelled because a teammate left: its players moved on to fresh rooms; no outcome here. */
+        boolean voided;
         Set<UUID> cleared = Set.of();
 
-        Party(Room room, Arena arena, List<UUID> members, long limit) {
+        Party(Room room, Arena arena, List<UUID> members, long limit, long startedAt) {
             this.room = room;
             this.arena = arena;
             this.members = members;
             this.limit = limit;
+            this.startedAt = startedAt;
             this.bar = new ServerBossEvent(UUID.randomUUID(), Component.literal(room.title()), BossEvent.BossBarColor.PURPLE, BossEvent.BossBarOverlay.PROGRESS);
         }
     }
@@ -150,7 +154,7 @@ public final class Run {
             for (ServerPlayer player : online) {
                 player.sendSystemMessage(Component.literal("(No room fits; the Gamemaster waves you through.)"));
             }
-            Party party = new Party(new Room.Pass(), Arena.take(level), members, 1);
+            Party party = new Party(new Room.Pass(), Arena.take(level), members, 1, server.getTickCount());
             party.over = true;
             party.cleared = new HashSet<>(members);
             parties.add(party);
@@ -158,7 +162,7 @@ public final class Run {
         }
         Room room = type.factory().get();
         Arena arena = Arena.take(level);
-        Party party = new Party(room, arena, members, room.timeLimitTicks(tier));
+        Party party = new Party(room, arena, members, room.timeLimitTicks(tier), server.getTickCount());
         parties.add(party);
         room.start(arena, online, tier);
         for (ServerPlayer player : online) {
@@ -176,7 +180,7 @@ public final class Run {
                 if (party.over) {
                     continue;
                 }
-                long elapsed = now - phaseStart;
+                long elapsed = now - party.startedAt;
                 party.room.tick(elapsed);
                 party.bar.setProgress(Math.max(0F, 1F - (float) elapsed / Math.max(1, party.limit)));
                 for (UUID id : party.members) {
@@ -204,6 +208,10 @@ public final class Run {
     private void endRound() {
         Set<UUID> survivors = new HashSet<>();
         for (Party party : parties) {
+            if (party.voided) {
+                party.arena.release();
+                continue;
+            }
             for (UUID id : party.members) {
                 if (!players.contains(id)) {
                     continue;
@@ -298,6 +306,29 @@ public final class Run {
         return false;
     }
 
+    /** The player would have died in a room: the room is lost for them and they watch the rest as a spectator. */
+    public void died(ServerPlayer player) {
+        for (Party party : parties) {
+            if (!party.over && party.members.contains(player.getUUID())) {
+                party.room.died(player);
+                player.setHealth(player.getMaxHealth());
+                player.setGameMode(net.minecraft.world.level.GameType.SPECTATOR);
+                return;
+            }
+        }
+        player.setHealth(player.getMaxHealth());
+    }
+
+    /** True when both players are in the same running room and that room allows fighting each other. */
+    public boolean pvpAllowed(UUID attacker, UUID victim) {
+        for (Party party : parties) {
+            if (!party.over && party.members.contains(attacker) && party.members.contains(victim)) {
+                return party.room.pvp();
+            }
+        }
+        return false;
+    }
+
     public boolean use(ServerPlayer player, net.minecraft.core.BlockPos pos) {
         for (Party party : parties) {
             if (!party.over && party.members.contains(player.getUUID())) {
@@ -321,9 +352,28 @@ public final class Run {
         if (!players.remove(id)) {
             return;
         }
+        List<UUID> rehome = new ArrayList<>();
         for (Party party : parties) {
             if (party.members.contains(id) && !party.over) {
                 party.room.left(id);
+                if (party.members.size() > 1) {
+                    // A shared room can't go on short-handed: the others get a fresh room of their own, same tier.
+                    party.over = true;
+                    party.voided = true;
+                    party.bar.removeAllPlayers();
+                    for (UUID other : party.members) {
+                        if (!other.equals(id) && players.contains(other)) {
+                            rehome.add(other);
+                        }
+                    }
+                }
+            }
+        }
+        for (UUID other : rehome) {
+            ServerPlayer player = server.getPlayerList().getPlayer(other);
+            if (player != null) {
+                Gamemaster.say(player, "Your partner has left the game. No matter: a room of your own, same tier.");
+                launch(List.of(other), Rooms.pick(1, tier, lastRoom.get(other), random));
             }
         }
         host.suspended(id, tier, prizeTier);

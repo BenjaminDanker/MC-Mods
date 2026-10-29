@@ -29,6 +29,10 @@ public final class ArcadeDb {
     public record Prize(long id, int tier, String fromRun) {
     }
 
+    /** What the door side needs to know about a player: been to the arcade? has the die? discovery doors offered so far. */
+    public record Profile(boolean visited, boolean hasDie, int offers, long secondsSinceOffer) {
+    }
+
     /** A run left mid-way: what was earned and the tier it was at; it can be resumed for 30 minutes. */
     public record Suspended(int tier, int prizeTier, String origin, long ageSeconds) {
     }
@@ -49,6 +53,9 @@ public final class ArcadeDb {
             s.execute("CREATE TABLE IF NOT EXISTS arcade_prizes (id bigint AUTO_INCREMENT PRIMARY KEY, uuid char(36) NOT NULL,"
                 + " server varchar(64) NOT NULL, tier int NOT NULL, run varchar(64) NOT NULL,"
                 + " created_at timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), INDEX (uuid, server))");
+            s.execute("CREATE TABLE IF NOT EXISTS arcade_dice (uuid char(36) PRIMARY KEY, given_at timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3))");
+            s.execute("CREATE TABLE IF NOT EXISTS arcade_discovery (uuid char(36) PRIMARY KEY, offers int NOT NULL DEFAULT 0,"
+                + " last_offer timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3))");
             s.execute("CREATE TABLE IF NOT EXISTS arcade_suspended (uuid char(36) PRIMARY KEY, tier int NOT NULL, prize_tier int NOT NULL,"
                 + " origin varchar(64) NOT NULL, since timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3))");
         }
@@ -156,6 +163,58 @@ public final class ArcadeDb {
                 d.executeUpdate();
             }
             return found;
+        }), IO);
+    }
+
+    public CompletableFuture<Profile> profile(UUID player) {
+        return CompletableFuture.supplyAsync(() -> call(c -> {
+            String id = player.toString();
+            boolean visited;
+            boolean die;
+            int offers = 0;
+            long since = Long.MAX_VALUE;
+            try (PreparedStatement p = c.prepareStatement("SELECT 1 FROM arcade_entries WHERE uuid = ?")) {
+                p.setString(1, id);
+                try (ResultSet r = p.executeQuery()) {
+                    visited = r.next();
+                }
+            }
+            try (PreparedStatement p = c.prepareStatement("SELECT 1 FROM arcade_dice WHERE uuid = ?")) {
+                p.setString(1, id);
+                try (ResultSet r = p.executeQuery()) {
+                    die = r.next();
+                }
+            }
+            try (PreparedStatement p = c.prepareStatement(
+                    "SELECT offers, TIMESTAMPDIFF(SECOND, last_offer, CURRENT_TIMESTAMP(3)) FROM arcade_discovery WHERE uuid = ?")) {
+                p.setString(1, id);
+                try (ResultSet r = p.executeQuery()) {
+                    if (r.next()) {
+                        offers = r.getInt(1);
+                        since = r.getLong(2);
+                    }
+                }
+            }
+            return new Profile(visited, die, offers, since);
+        }), IO);
+    }
+
+    public CompletableFuture<Void> markDieGiven(UUID player) {
+        return CompletableFuture.runAsync(() -> run(c -> {
+            try (PreparedStatement p = c.prepareStatement("INSERT IGNORE INTO arcade_dice (uuid) VALUES (?)")) {
+                p.setString(1, player.toString());
+                p.executeUpdate();
+            }
+        }), IO);
+    }
+
+    public CompletableFuture<Void> recordDiscoveryOffer(UUID player) {
+        return CompletableFuture.runAsync(() -> run(c -> {
+            try (PreparedStatement p = c.prepareStatement("INSERT INTO arcade_discovery (uuid, offers) VALUES (?, 1)"
+                    + " ON DUPLICATE KEY UPDATE offers = offers + 1, last_offer = CURRENT_TIMESTAMP(3)")) {
+                p.setString(1, player.toString());
+                p.executeUpdate();
+            }
         }), IO);
     }
 

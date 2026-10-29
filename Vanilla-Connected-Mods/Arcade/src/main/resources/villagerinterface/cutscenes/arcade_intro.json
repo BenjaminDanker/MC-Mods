@@ -1,0 +1,66 @@
+{
+  "keyframes": [
+    {
+      "t": 0,
+      "forward": 0,
+      "right": 0,
+      "up": 1.6,
+      "yaw": 0,
+      "pitch": 0
+    },
+    {
+      "t": 50,
+      "forward": -5,
+      "right": 0,
+      "up": 7,
+      "yaw": 0,
+      "pitch": 28
+    },
+    {
+      "t": 120,
+      "forward": 1.5,
+      "right": -1.0,
+      "up": 3.4,
+      "yaw": -75,
+      "pitch": 4
+    },
+    {
+      "t": 200,
+      "forward": 0.5,
+      "right": -2.4,
+      "up": 2.9,
+      "yaw": -90,
+      "pitch": -2
+    },
+    {
+      "t": 260,
+      "forward": 0,
+      "right": 0,
+      "up": 1.6,
+      "yaw": 0,
+      "pitch": 6
+    }
+  ],
+  "lines": [
+    {
+      "t": 10,
+      "title": "The Arcade",
+      "subtitle": ""
+    },
+    {
+      "t": 60,
+      "title": "",
+      "subtitle": "Every game here is fair. Mostly."
+    },
+    {
+      "t": 130,
+      "title": "",
+      "subtitle": "I am the Gamemaster. Play well, and your world will thank you."
+    },
+    {
+      "t": 205,
+      "title": "",
+      "subtitle": "The purple circle starts a game. The crying obsidian takes you home."
+    }
+  ]
+}

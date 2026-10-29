@@ -26,7 +26,7 @@ public final class MathSprint extends BaseRoom {
 
     public int timeLimitTicks(int tier) {
         this.tier = tier;
-        return seconds(problems() * Math.max(4.0, 12.0 - tier * 0.4) + 5);
+        return seconds(problems() * Math.max(6.0, 12.0 - tier * 0.3) + 5);
     }
 
     @Override
@@ -41,7 +41,7 @@ public final class MathSprint extends BaseRoom {
 
     /** A problem for this tier: + and - early, x from tier 3, three terms from tier 6, bigger numbers all along. */
     String[] problem() {
-        int max = 10 + tier * 6;
+        int max = 10 + Math.min(tier, 20) * 6;
         long a = 1 + random.nextInt(max);
         long b = 1 + random.nextInt(max);
         int op = random.nextInt(tier >= 3 ? 3 : 2);
@@ -51,7 +51,7 @@ public final class MathSprint extends BaseRoom {
             case 0 -> { text = a + " + " + b; value = a + b; }
             case 1 -> { text = Math.max(a, b) + " - " + Math.min(a, b); value = Math.abs(a - b); }
             default -> {
-                long x = 2 + random.nextInt(Math.min(25, 3 + tier));
+                long x = 2 + random.nextInt(Math.min(12, 3 + tier));
                 text = a + " x " + x;
                 value = a * x;
             }

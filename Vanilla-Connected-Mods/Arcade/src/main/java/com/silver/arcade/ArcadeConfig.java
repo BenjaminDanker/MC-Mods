@@ -27,13 +27,20 @@ public final class ArcadeConfig {
     public static final class Door {
         /** How often each player is considered for a door. */
         public int checkEveryMinutes = 5;
-        /** Chance per check; with the defaults about one door per three hours of play. */
+        /** Chance per check for players carrying the die; with the defaults about one door per three hours of play. */
         public double chance = 0.03;
         /** No second door for the same player within this many minutes. */
         public int cooldownMinutes = 60;
         public int lifetimeSeconds = 120;
         public int minDistance = 6;
         public int maxDistance = 14;
+        /** Players who have never visited: a rare discovery door, at most this many times, this many hours apart. */
+        public double discoveryChance = 0.02;
+        public int discoveryMax = 2;
+        public int discoveryCooldownHours = 24;
+        /** The Gamemaster's Die: rolling it opens a door on the spot (anyone may walk through while it stands). */
+        public int dieCooldownSeconds = 120;
+        public int dieDoorSeconds = 60;
     }
 
     public static final class RewardBand {

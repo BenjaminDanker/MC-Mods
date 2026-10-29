@@ -12,7 +12,7 @@ import net.minecraft.world.level.block.Blocks;
 
 /**
  * Type the line exactly as shown, fast. Three lines per room; each line must reach the tier's accuracy and speed.
- * Speed asked: 20 words per minute at tier 1, +4 per tier (up to 140); accuracy 85% rising to 99%.
+ * Speed asked: 20 words per minute at tier 1, +4 per tier (up to 110, fast but human); accuracy 85% rising to 97%.
  */
 public final class TypingRace extends BaseRoom {
     private static final int LINES = 3;
@@ -30,8 +30,8 @@ public final class TypingRace extends BaseRoom {
     }
 
     int words() { return Math.min(40, 4 + tier); }
-    double wpm() { return Math.min(140, 20 + 4 * (tier - 1)); }
-    double accuracyNeeded() { return Math.min(0.99, 0.85 + 0.01 * tier); }
+    double wpm() { return Math.min(110, 20 + 4 * (tier - 1)); }
+    double accuracyNeeded() { return Math.min(0.97, 0.85 + 0.01 * tier); }
 
     public int timeLimitTicks(int tier) {
         this.tier = tier;

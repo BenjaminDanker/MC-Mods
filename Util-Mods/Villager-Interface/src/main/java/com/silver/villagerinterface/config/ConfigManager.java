@@ -127,7 +127,8 @@ public final class ConfigManager {
                 ));
             }
         }
-        if (entries.isEmpty()) {
+        if (entries.isEmpty() && loaded.villagers() == null) {
+            // Only a config without a villager list gets the example; an explicit empty list means "no NPCs here".
             entries.add(VillagerInterfaceConfig.createDefaultVillagerEntry());
         }
 

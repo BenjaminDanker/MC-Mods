@@ -59,6 +59,16 @@ public interface Room {
     /** A player left mid-room: they fail it. */
     void left(UUID player);
 
+    /** Whether players in this room may hurt each other (versus rooms). Off by default. */
+    default boolean pvp() {
+        return false;
+    }
+
+    /** The player would have died here (the death is prevented). Default: they fail the room. */
+    default void died(ServerPlayer player) {
+        left(player.getUUID());
+    }
+
     /** A stand-in when no room fits: everyone clears it at once. */
     final class Pass implements Room {
         public String id() { return "pass"; }
