@@ -42,6 +42,7 @@ public final class TypingRace extends BaseRoom {
     protected void build() {
         arena.fill(-4, 0, -4, 4, 0, 4, Blocks.SMOOTH_QUARTZ.defaultBlockState());
         arena.set(0, 1, 4, Blocks.LECTERN.defaultBlockState());
+        com.silver.arcade.realm.deco.LibraryLook.build(arena, tier);
         int i = 0;
         for (ServerPlayer player : players.values()) {
             arena.put(player, -2.5 + (i++ % 4) * 1.5, 1, 0.5, 0F);

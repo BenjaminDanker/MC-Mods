@@ -29,6 +29,12 @@ public final class Arena {
     private final Deque<BlockPos> placed = new ArrayDeque<>();
     private final List<net.minecraft.world.entity.Entity> spawned = new ArrayList<>();
     private boolean ledgerDirty;
+    /** Decoration waiting to be placed over the next ticks (see {@link #setLater}). */
+    private final Deque<Object[]> later = new ArrayDeque<>();
+    private static final List<Arena> PENDING = new ArrayList<>();
+    private static boolean tickerOn;
+    /** Time per server tick spent placing queued decoration, all arenas together. */
+    private static final long BUDGET_NANOS = 12_000_000L;
     private static java.nio.file.Path ledgers;
     /** Set while the server stops: arenas then keep their ledgers instead of clearing. */
     public static volatile boolean stopping;
@@ -64,6 +70,130 @@ public final class Arena {
         level.setBlock(pos, state, 2);
         placed.push(pos.immutable());
         ledgerDirty = true;
+    }
+
+    /**
+     * Queues a decoration block: it is placed within the next ticks (a time budget per tick keeps big room looks from
+     * stalling the server) and goes on the ledger like any other block. Never use it for anything the game needs.
+     */
+    public void setLater(int dx, int dy, int dz, BlockState state) {
+        later.add(new Object[] {at(dx, dy, dz), state});
+        synchronized (Arena.class) {
+            if (!PENDING.contains(this)) {
+                PENDING.add(this);
+            }
+            ensureTicker();
+        }
+    }
+
+    private static void ensureTicker() {
+        if (!tickerOn) {
+            tickerOn = true;
+            net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(server -> drainAll());
+        }
+    }
+
+    /** True while queued decoration is still being placed. */
+    public boolean decorating() {
+        return !later.isEmpty();
+    }
+
+    private long decoNanos;
+    private long decoMax;
+
+    private final java.util.Set<Long> requested = new java.util.HashSet<>();
+    private final java.util.Map<Long, Long> loadedAt = new java.util.HashMap<>();
+
+    /** True when pos's chunk is loaded; otherwise asks for it to load (in the background) and returns false. */
+    private boolean ready(BlockPos pos) {
+        int cx = pos.getX() >> 4, cz = pos.getZ() >> 4;
+        long key = net.minecraft.world.level.ChunkPos.pack(cx, cz);
+        if (level.getChunkSource().getChunkNow(cx, cz) != null) {
+            // A chunk that was only just loaded is still being set up (light); give it a second first.
+            Long seen = loadedAt.get(key);
+            long now = level.getGameTime();
+            if (seen == null) {
+                if (!requested.contains(key)) {
+                    return true; // it was loaded before we asked
+                }
+                loadedAt.put(key, now);
+                return false;
+            }
+            return now - seen >= 20;
+        }
+        if (requested.add(key)) {
+            level.getChunkSource().addTicketWithRadius(net.minecraft.server.level.TicketType.PORTAL, new net.minecraft.world.level.ChunkPos(cx, cz), 1);
+        }
+        return false;
+    }
+
+    private static void drainAll() {
+        List<Arena> arenas;
+        synchronized (Arena.class) {
+            if (PENDING.isEmpty()) {
+                return;
+            }
+            arenas = new ArrayList<>(PENDING);
+        }
+        long started = System.nanoTime();
+        long until = started + BUDGET_NANOS;
+        for (Arena arena : arenas) {
+            if (arena.clearing) {
+                int waiting = 0;
+                while (!arena.placed.isEmpty() && System.nanoTime() < until && waiting < 256) {
+                    BlockPos pos = arena.placed.pop();
+                    if (!arena.ready(pos)) {
+                        arena.placed.addLast(pos);
+                        waiting++;
+                        continue;
+                    }
+                    arena.level.setBlock(pos, Blocks.AIR.defaultBlockState(), 2 | 16);
+                }
+                if (arena.placed.isEmpty()) {
+                    arena.finishClearing();
+                }
+                continue;
+            }
+            long t0 = System.nanoTime();
+            int waiting = 0;
+            while (!arena.later.isEmpty() && System.nanoTime() < until && waiting <= 64) {
+                for (int i = 0; i < 16 && !arena.later.isEmpty(); i++) {
+                    Object[] next = arena.later.poll();
+                    BlockPos pos = (BlockPos) next[0];
+                    if (!arena.ready(pos)) {
+                        arena.later.add(next); // its chunk is loading; try again later
+                        if (++waiting > 64) {
+                            break;
+                        }
+                        continue;
+                    }
+                    if (!arena.level.getBlockState(pos).isAir()) {
+                        continue; // never over a block the room placed
+                    }
+                    long b0 = System.nanoTime();
+                    arena.level.setBlock(pos, (BlockState) next[1], 2);
+                    long b1 = System.nanoTime() - b0;
+                    if (b1 > 20_000_000L) {
+                        LOGGER.info("slow block {} {} {} ms", pos, next[1], b1 / 1_000_000);
+                    }
+                    arena.placed.push(pos);
+                    arena.ledgerDirty = true;
+                }
+            }
+            long spent = System.nanoTime() - t0;
+            arena.decoNanos += spent;
+            arena.decoMax = Math.max(arena.decoMax, spent);
+            if (arena.later.isEmpty()) {
+                LOGGER.info("Decoration placed in slot {}: {} ms of tick time, at most {} ms in one tick", arena.slot,
+                    arena.decoNanos / 1_000_000, arena.decoMax / 1_000_000);
+                arena.decoNanos = 0;
+                arena.decoMax = 0;
+                arena.flushLedger();
+                synchronized (Arena.class) {
+                    PENDING.remove(arena);
+                }
+            }
+        }
     }
 
     private java.nio.file.Path ledger() {
@@ -155,6 +285,10 @@ public final class Arena {
 
     /** Clears everything the room placed and frees the slot. */
     public void release() {
+        later.clear();
+        synchronized (Arena.class) {
+            PENDING.remove(this);
+        }
         spawned.forEach(net.minecraft.world.entity.Entity::discard);
         spawned.clear();
         // Arrows and drops left lying around in the slot go too.
@@ -169,11 +303,33 @@ public final class Arena {
             flushLedger();
             return;
         }
-        List<BlockPos> order = new ArrayList<>(placed);
-        for (BlockPos pos : order) {
-            level.setBlock(pos, Blocks.AIR.defaultBlockState(), 2 | 16);
+        if (placed.size() <= SMALL_CLEAR) {
+            clearAll();
+            return;
         }
-        placed.clear();
+        // Big rooms (decorated ones) are taken down over the next ticks, within the same time budget as decoration;
+        // the slot stays taken (and the ledger on disk) until the last block is gone.
+        clearing = true;
+        synchronized (Arena.class) {
+            if (!PENDING.contains(this)) {
+                PENDING.add(this);
+            }
+            ensureTicker();
+        }
+    }
+
+    private static final int SMALL_CLEAR = 3000;
+    private boolean clearing;
+
+    private void clearAll() {
+        while (!placed.isEmpty()) {
+            level.setBlock(placed.pop(), Blocks.AIR.defaultBlockState(), 2 | 16);
+        }
+        finishClearing();
+    }
+
+    private void finishClearing() {
+        clearing = false;
         try {
             if (ledger() != null) {
                 java.nio.file.Files.deleteIfExists(ledger());
@@ -182,6 +338,7 @@ public final class Arena {
             LOGGER.warn("Could not remove the arena ledger {}", ledger(), failure);
         }
         synchronized (Arena.class) {
+            PENDING.remove(this);
             USED.clear(slot);
         }
     }

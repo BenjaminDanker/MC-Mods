@@ -59,6 +59,7 @@ public final class Mastermind extends BaseRoom {
             arena.set(-2 - 0, 3 + c, 7, wool(c));
         }
         drawGuess();
+        com.silver.arcade.realm.deco.VaultLook.build(arena, tier, pegs(), rows());
         int i = 0;
         for (ServerPlayer player : players.values()) {
             arena.put(player, 1.5 + i++, 1, 1.5, 0F);

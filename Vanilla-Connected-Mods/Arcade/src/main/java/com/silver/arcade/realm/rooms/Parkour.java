@@ -106,7 +106,8 @@ public final class Parkour extends BaseRoom {
             minX = Math.min(minX, jump[0]);
             maxX = Math.max(maxX, jump[0]);
         }
-        box = new int[] {minX - 8, -12, -8, maxX + 8, 24, z + 10};
+        com.silver.arcade.realm.deco.SkyCircusLook.build(arena, tier, jumps, new int[] {x, y, z + 3});
+        box = new int[] {minX - 70, -24, -34, maxX + 70, 60, Math.min(z + 50, 200)};
         for (ServerPlayer player : players.values()) {
             checkpoint.put(player.getUUID(), new int[] {0, 0, 0});
             arena.put(player, 0.5, 1, 0.5, 0F);

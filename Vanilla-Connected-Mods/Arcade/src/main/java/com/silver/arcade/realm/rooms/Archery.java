@@ -27,6 +27,11 @@ public final class Archery extends BaseRoom {
         return "A target lights up on the far wall. Hit it with an arrow and the next one lights. Hit them all before time runs out.";
     }
 
+    @Override
+    public int[] bounds() {
+        return new int[] {-48, -24, -30, 48, 50, 30 + 70};
+    }
+
     int count() { return Math.min(12, 3 + tier); }
 
     public int timeLimitTicks(int tier) {
@@ -45,6 +50,7 @@ public final class Archery extends BaseRoom {
             targets.add(new BlockPos(x, y, distance - 1));
         }
         light();
+        com.silver.arcade.realm.deco.TourneyLook.build(arena, tier, distance);
         for (ServerPlayer player : players.values()) {
             arena.put(player, 0.5, 1, 0.5, 0F);
             give(player, new ItemStack(Items.BOW));

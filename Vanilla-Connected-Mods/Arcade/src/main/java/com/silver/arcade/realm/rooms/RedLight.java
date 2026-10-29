@@ -35,6 +35,11 @@ public final class RedLight extends BaseRoom {
         return seconds(90);
     }
 
+    @Override
+    public int[] bounds() {
+        return new int[] {-40, -12, -14, 40, 40, LENGTH + 30};
+    }
+
     /** Green lasts shorter as tiers climb; a short grace after red lets runners stop. */
     int greenTicks() { return Math.max(20, 70 - tier * 4) + random.nextInt(40); }
     int redTicks() { return 30 + random.nextInt(30); }
@@ -47,6 +52,7 @@ public final class RedLight extends BaseRoom {
         arena.fill(7, 1, -2, 7, 2, LENGTH + 3, Blocks.SANDSTONE_WALL.defaultBlockState());
         arena.fill(-6, 0, LENGTH, 6, 0, LENGTH + 3, Blocks.GOLD_BLOCK.defaultBlockState());
         arena.fill(-2, 1, LENGTH + 5, 2, 5, LENGTH + 5, Blocks.CONCRETE.lime().defaultBlockState());
+        com.silver.arcade.realm.deco.ShrineLook.build(arena, tier, LENGTH);
         List<ServerPlayer> list = List.copyOf(players.values());
         for (int i = 0; i < list.size(); i++) {
             start(list.get(i), i);

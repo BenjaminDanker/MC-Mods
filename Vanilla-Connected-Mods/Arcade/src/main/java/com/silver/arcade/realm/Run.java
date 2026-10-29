@@ -240,6 +240,20 @@ public final class Run {
                 if (party.over) {
                     continue;
                 }
+                if (party.arena.decorating()) {
+                    // The stage is still being set (decoration goes up over a second or two): the clock waits.
+                    party.startedAt++;
+                    allOver = false;
+                    if (now % 20 == 0) {
+                        for (UUID id : party.members) {
+                            ServerPlayer player = server.getPlayerList().getPlayer(id);
+                            if (player != null) {
+                                Gamemaster.bar(player, "The Gamemaster is setting the stage...");
+                            }
+                        }
+                    }
+                    continue;
+                }
                 UUID missing = party.members.stream().filter(away::containsKey).findFirst().orElse(null);
                 if (missing != null) {
                     // Paused: the clock waits with the room for the missing player.

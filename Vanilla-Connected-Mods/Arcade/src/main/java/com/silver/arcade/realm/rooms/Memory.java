@@ -49,6 +49,7 @@ public final class Memory extends BaseRoom {
             arena.set(-2 + i * 2, 1, 4, PADS[i]);
             arena.set(-2 + i * 2, 2, 4, PADS[i]);
         }
+        com.silver.arcade.realm.deco.LonghallLook.build(arena, tier);
         for (int i = 0; i < length(); i++) {
             sequence.add(random.nextInt(4));
         }

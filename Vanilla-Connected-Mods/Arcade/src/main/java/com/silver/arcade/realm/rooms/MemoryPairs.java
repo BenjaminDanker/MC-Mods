@@ -62,6 +62,7 @@ public final class MemoryPairs extends BaseRoom {
         for (int i = 0; i < faces.length; i++) {
             draw(i);
         }
+        com.silver.arcade.realm.deco.TombLook.build(arena, tier, columns, rows);
         int i = 0;
         for (ServerPlayer player : players.values()) {
             arena.put(player, columns / 2.0 + i++, 1, 1.5, 0F);

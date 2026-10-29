@@ -68,6 +68,7 @@ public final class HideAndSeek extends BaseRoom {
                     .setValue(net.minecraft.world.level.block.LeavesBlock.PERSISTENT, true));
             }
         }
+        com.silver.arcade.realm.deco.ManorLook.build(arena, tier, HALF);
         List<ServerPlayer> list = new ArrayList<>(players.values());
         if (list.isEmpty()) {
             return;

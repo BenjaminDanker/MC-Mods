@@ -31,7 +31,8 @@ public final class Maze extends BaseRoom {
     @Override
     public int[] bounds() {
         int size = 2 * cells + 1;
-        return new int[] {-6, -8, -6, size + 6, 16, size + 6};
+        int reach = 18 + 2 * cells / 10;
+        return new int[] {-reach, -8, -reach, size + reach, 44, size + reach};
     }
 
     @Override
@@ -45,7 +46,12 @@ public final class Maze extends BaseRoom {
         for (int x = 0; x < size; x++) {
             for (int z = 0; z < size; z++) {
                 if (wall[x][z]) {
-                    arena.fill(x, 1, z, x, 3, z, stone);
+                    // Clipped-hedge look: stone courses (moss and cracks for variety) under a moss top; same solid walls.
+                    int k = Math.floorMod(x * 31 + z * 17, 7);
+                    BlockState low = tier >= 5 ? (k == 0 ? Blocks.CRACKED_DEEPSLATE_BRICKS.defaultBlockState() : stone)
+                        : (k < 2 ? Blocks.MOSSY_STONE_BRICKS.defaultBlockState() : k == 2 ? Blocks.CRACKED_STONE_BRICKS.defaultBlockState() : stone);
+                    arena.fill(x, 1, z, x, 2, z, low);
+                    arena.set(x, 3, z, tier >= 5 ? Blocks.MOSS_BLOCK.defaultBlockState() : Blocks.MOSS_BLOCK.defaultBlockState());
                 } else if (tier < 5 && (x + z) % 8 == 1) {
                     arena.set(x, 0, z, Blocks.SEA_LANTERN.defaultBlockState());
                 }
@@ -53,6 +59,7 @@ public final class Maze extends BaseRoom {
         }
         // A roof keeps anyone from walking on the walls.
         arena.fill(0, 4, 0, size - 1, 4, size - 1, Blocks.BARRIER.defaultBlockState());
+        com.silver.arcade.realm.deco.GardenLook.build(arena, tier, size);
         exit = arena.at(size - 2, 0, size - 2);
         arena.set(size - 2, 0, size - 2, Blocks.GOLD_BLOCK.defaultBlockState());
         for (ServerPlayer player : players.values()) {

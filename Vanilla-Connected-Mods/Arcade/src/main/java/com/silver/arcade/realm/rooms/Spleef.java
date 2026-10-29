@@ -26,6 +26,11 @@ public final class Spleef extends BaseRoom {
             + "the last one standing wins.";
     }
 
+    @Override
+    public int[] bounds() {
+        return new int[] {-44, -30, -44, 44, 40, 70};
+    }
+
     public int timeLimitTicks(int tier) {
         this.tier = tier;
         return seconds(Math.max(60, 120 - tier * 5));
@@ -46,6 +51,7 @@ public final class Spleef extends BaseRoom {
                 arena.set(x, 0, z, Blocks.SNOW_BLOCK.defaultBlockState());
             }
         }
+        com.silver.arcade.realm.deco.IcePalaceLook.build(arena, tier, radius);
         List<ServerPlayer> list = List.copyOf(players.values());
         for (int i = 0; i < list.size(); i++) {
             double angle = Math.PI * 2 * i / list.size();

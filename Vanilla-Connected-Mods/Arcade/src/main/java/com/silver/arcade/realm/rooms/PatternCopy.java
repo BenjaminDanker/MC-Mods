@@ -54,6 +54,7 @@ public final class PatternCopy extends BaseRoom {
         arena.fill(-4, 1, 6, 4, 2 + 2 * size + 1, 6, Blocks.DARK_OAK_PLANKS.defaultBlockState());
         drawPicture(true);
         drawCanvas();
+        com.silver.arcade.realm.deco.GalleryLook.build(arena, tier, size);
         hideAt = 40 + Math.max(60, 140 - tier * 8) + size * size * 3L;
         int i = 0;
         for (ServerPlayer player : players.values()) {

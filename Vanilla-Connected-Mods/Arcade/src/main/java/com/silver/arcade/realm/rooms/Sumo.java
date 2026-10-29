@@ -27,6 +27,11 @@ public final class Sumo extends BaseRoom {
         return true;
     }
 
+    @Override
+    public int[] bounds() {
+        return new int[] {-48, -20, -48, 48, 40, 64};
+    }
+
     public int timeLimitTicks(int tier) {
         this.tier = tier;
         return seconds(75);
@@ -43,6 +48,7 @@ public final class Sumo extends BaseRoom {
                 }
             }
         }
+        com.silver.arcade.realm.deco.PirateLook.build(arena, tier, radius);
         List<ServerPlayer> list = List.copyOf(players.values());
         for (int i = 0; i < list.size(); i++) {
             ServerPlayer player = list.get(i);

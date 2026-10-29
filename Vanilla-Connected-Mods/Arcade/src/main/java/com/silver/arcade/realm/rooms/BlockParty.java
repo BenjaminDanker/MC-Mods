@@ -29,6 +29,11 @@ public final class BlockParty extends BaseRoom {
         return "I call a colour. When the music stops, every other colour disappears. Be standing on mine. Last all the rounds to win.";
     }
 
+    @Override
+    public int[] bounds() {
+        return new int[] {-40, -20, -40, 40, 40, 40};
+    }
+
     int rounds() { return Math.min(10, 3 + tier / 2); }
     int colours() { return Math.min(16, 4 + tier); }
     int callTicks() { return Math.max(24, 80 - tier * 5); }
@@ -57,6 +62,7 @@ public final class BlockParty extends BaseRoom {
     protected void build() {
         paint();
         List<ServerPlayer> list = List.copyOf(players.values());
+        com.silver.arcade.realm.deco.DiscoLook.build(arena, tier, HALF);
         for (int i = 0; i < list.size(); i++) {
             double[] at = spot(i, HALF - 1);
             arena.put(list.get(i), at[0], 1, at[1] + 2, 0F);

@@ -53,6 +53,7 @@ public final class SplitSimon extends BaseRoom {
         for (int i = 0; i < length(); i++) {
             sequence.add(random.nextInt(4));
         }
+        com.silver.arcade.realm.deco.AbyssLook.build(arena, tier);
         List<ServerPlayer> list = new ArrayList<>(players.values());
         if (list.isEmpty()) {
             return; // a preview: the booths only

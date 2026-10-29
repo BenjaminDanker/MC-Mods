@@ -32,6 +32,11 @@ public final class KingOfTheHill extends BaseRoom {
         return true;
     }
 
+    @Override
+    public int[] bounds() {
+        return new int[] {-40, -20, -40, 40, 50, 40};
+    }
+
     int target() { return Math.min(40, 15 + tier * 2); }
 
     public int timeLimitTicks(int tier) {
@@ -48,6 +53,7 @@ public final class KingOfTheHill extends BaseRoom {
         }
         arena.fill(-BASE - 4, 0, -BASE - 4, BASE + 4, 0, BASE + 4, Blocks.SMOOTH_SANDSTONE.defaultBlockState());
         List<ServerPlayer> list = List.copyOf(players.values());
+        com.silver.arcade.realm.deco.TempleLook.build(arena, tier, BASE);
         for (int i = 0; i < list.size(); i++) {
             double a = Math.PI * 2 * i / Math.max(1, list.size());
             ServerPlayer player = list.get(i);

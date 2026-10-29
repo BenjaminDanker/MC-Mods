@@ -27,7 +27,7 @@ public final class Dropper extends BaseRoom {
 
     @Override
     public int[] bounds() {
-        return new int[] {-HALF - 4, -4, -HALF - 4, HALF + 4, HEIGHT + 10, HALF + 4};
+        return new int[] {-HALF - 30, -40, -HALF - 30, HALF + 30, HEIGHT + 30, HALF + 30};
     }
 
     @Override
@@ -35,11 +35,11 @@ public final class Dropper extends BaseRoom {
         // Walls of the shaft.
         for (int y = 0; y <= HEIGHT; y++) {
             for (int i = -HALF - 1; i <= HALF + 1; i++) {
-                var wall = y % 8 == 0 ? Blocks.CHISELED_QUARTZ_BLOCK.defaultBlockState() : Blocks.QUARTZ_BRICKS.defaultBlockState();
-                arena.set(i, y, -HALF - 1, wall);
-                arena.set(i, y, HALF + 1, wall);
-                arena.set(-HALF - 1, y, i, wall);
-                arena.set(HALF + 1, y, i, wall);
+                // Inside the lighthouse: quartz with a gold-and-sky-blue helix winding down and a lit band every 8 blocks.
+                arena.set(i, y, -HALF - 1, wall(y, i + HALF + 1));
+                arena.set(HALF + 1, y, i, wall(y, i + HALF + 1 + (2 * HALF + 2)));
+                arena.set(-i, y, HALF + 1, wall(y, i + HALF + 1 + 2 * (2 * HALF + 2)));
+                arena.set(-HALF - 1, y, -i, wall(y, i + HALF + 1 + 3 * (2 * HALF + 2)));
             }
         }
         arena.fill(-HALF, -1, -HALF, HALF, -1, HALF, Blocks.SMOOTH_QUARTZ.defaultBlockState()); // under the pool
@@ -60,7 +60,23 @@ public final class Dropper extends BaseRoom {
         }
         // The top: a ring to stand on around the opening.
         arena.fill(-HALF - 3, HEIGHT + 1, -HALF - 3, HALF + 3, HEIGHT + 1, -HALF - 2, Blocks.QUARTZ_BRICKS.defaultBlockState());
+        com.silver.arcade.realm.deco.LighthouseLook.build(arena, tier, HALF, HEIGHT);
         players.values().forEach(this::top);
+    }
+
+    /** The shaft wall at height y and position t around it (0 .. perimeter): solid either way. */
+    private static net.minecraft.world.level.block.state.BlockState wall(int y, int t) {
+        if (y % 8 == 0) {
+            return Blocks.SEA_LANTERN.defaultBlockState();
+        }
+        int k = Math.floorMod(t + y * 2, 20);
+        if (k < 2) {
+            return Blocks.GOLD_BLOCK.defaultBlockState();
+        }
+        if (k < 4) {
+            return Blocks.CONCRETE.lightBlue().defaultBlockState();
+        }
+        return y % 8 == 1 || y % 8 == 7 ? Blocks.CHISELED_QUARTZ_BLOCK.defaultBlockState() : Blocks.QUARTZ_BRICKS.defaultBlockState();
     }
 
     private void top(ServerPlayer player) {
