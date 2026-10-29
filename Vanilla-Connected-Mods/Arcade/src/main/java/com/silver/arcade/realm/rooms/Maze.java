@@ -59,7 +59,7 @@ public final class Maze extends BaseRoom {
         }
         // A roof keeps anyone from walking on the walls.
         arena.fill(0, 4, 0, size - 1, 4, size - 1, Blocks.BARRIER.defaultBlockState());
-        com.silver.arcade.realm.deco.GardenLook.build(arena, tier, size);
+        com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.GardenLook.build(arena, tier, size));
         exit = arena.at(size - 2, 0, size - 2);
         arena.set(size - 2, 0, size - 2, Blocks.GOLD_BLOCK.defaultBlockState());
         for (ServerPlayer player : players.values()) {

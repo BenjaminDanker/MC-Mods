@@ -31,6 +31,11 @@ public final class Arena {
     private boolean ledgerDirty;
     /** Decoration waiting to be placed over the next ticks (see {@link #setLater}). */
     private final Deque<Object[]> later = new ArrayDeque<>();
+    /** Decoration handed over from the look generator thread; moved into {@link #later} on the server thread. */
+    private final java.util.concurrent.ConcurrentLinkedQueue<Object[]> incoming = new java.util.concurrent.ConcurrentLinkedQueue<>();
+    /** Looks still being generated off the server thread (see Deco.async). */
+    private final java.util.concurrent.atomic.AtomicInteger looks = new java.util.concurrent.atomic.AtomicInteger();
+    private volatile boolean released;
     private static final List<Arena> PENDING = new ArrayList<>();
     private static boolean tickerOn;
     /** Time per server tick spent placing queued decoration, all arenas together. */
@@ -47,8 +52,17 @@ public final class Arena {
     }
 
     public static synchronized Arena take(ServerLevel level) {
-        int slot = USED.nextClearBit(0);
+        return take(level, 0);
+    }
+
+    /** The first free slot from {@code from} on (previews use high slots to measure builds into fresh chunks). */
+    static synchronized Arena take(ServerLevel level, int from) {
+        int slot = USED.nextClearBit(from);
         USED.set(slot);
+        // the next room's slot is warmed from the next tick on (never in the tick a room is built)
+        warmLevel = level;
+        warmNext = USED.nextClearBit(0);
+        ensureTicker();
         return new Arena(level, slot);
     }
 
@@ -77,7 +91,15 @@ public final class Arena {
      * stalling the server) and goes on the ledger like any other block. Never use it for anything the game needs.
      */
     public void setLater(int dx, int dy, int dz, BlockState state) {
-        later.add(new Object[] {at(dx, dy, dz), state});
+        if (released) {
+            return;
+        }
+        Object[] entry = {at(dx, dy, dz), state};
+        if (level.getServer().isSameThread()) {
+            later.add(entry);
+        } else {
+            incoming.add(entry); // from the look generator thread
+        }
         synchronized (Arena.class) {
             if (!PENDING.contains(this)) {
                 PENDING.add(this);
@@ -93,9 +115,18 @@ public final class Arena {
         }
     }
 
-    /** True while queued decoration is still being placed. */
+    /** True while decoration is still being generated or placed. */
     public boolean decorating() {
-        return !later.isEmpty();
+        return !later.isEmpty() || !incoming.isEmpty() || looks.get() > 0;
+    }
+
+    /** Called by Deco.async round a look generated off the server thread. */
+    public void lookStarted() {
+        looks.incrementAndGet();
+    }
+
+    public void lookDone() {
+        looks.decrementAndGet();
     }
 
     private long decoNanos;
@@ -104,9 +135,34 @@ public final class Arena {
     private final java.util.Set<Long> requested = new java.util.HashSet<>();
     private final java.util.Map<Long, Long> loadedAt = new java.util.HashMap<>();
 
-    /** True when pos's chunk is loaded; otherwise asks for it to load (in the background) and returns false. */
+    /**
+     * True when pos's chunk, and the neighbouring chunk(s) a block on its edge updates, are loaded and settled;
+     * otherwise asks for them to load (in the background) and returns false. Placing a block on a chunk edge updates the
+     * shape of its neighbour across the edge: if that chunk were not loaded yet, the server would load (or generate) it
+     * on the spot, which cost 20-200 ms per block in fresh chunks.
+     */
     private boolean ready(BlockPos pos) {
         int cx = pos.getX() >> 4, cz = pos.getZ() >> 4;
+        if (!readyChunk(cx, cz)) {
+            return false;
+        }
+        int lx = pos.getX() & 15, lz = pos.getZ() & 15;
+        int nx = lx == 0 ? -1 : (lx == 15 ? 1 : 0);
+        int nz = lz == 0 ? -1 : (lz == 15 ? 1 : 0);
+        boolean ok = true;
+        if (nx != 0) {
+            ok &= readyChunk(cx + nx, cz);
+        }
+        if (nz != 0) {
+            ok &= readyChunk(cx, cz + nz);
+        }
+        if (nx != 0 && nz != 0) {
+            ok &= readyChunk(cx + nx, cz + nz);
+        }
+        return ok;
+    }
+
+    private boolean readyChunk(int cx, int cz) {
         long key = net.minecraft.world.level.ChunkPos.pack(cx, cz);
         if (level.getChunkSource().getChunkNow(cx, cz) != null) {
             // A chunk that was only just loaded is still being set up (light); give it a second first.
@@ -127,7 +183,40 @@ public final class Arena {
         return false;
     }
 
+    /** Chunk radius kept loaded round the next free slot's origin (a room's own blocks stay well inside it). */
+    private static final int WARM_RADIUS = 7;
+    private static ServerLevel warmLevel;
+    private static int warmSlot = -1;
+    private static volatile int warmNext = -1;
+
+    /**
+     * Keeps the chunks of the slot the next room will take loaded (and generated), so its build never has to load or
+     * generate chunks on the spot; building into fresh chunks cost 60-220 ms in one tick. Refreshed every 10 s.
+     */
+    static synchronized void warm(ServerLevel level, int slot) {
+        warmLevel = level;
+        warmSlot = slot;
+        refreshWarm();
+        ensureTicker();
+    }
+
+    private static void refreshWarm() {
+        if (warmLevel == null || warmSlot < 0) {
+            return;
+        }
+        int cx = (SPACING * (warmSlot + 1)) >> 4;
+        warmLevel.getChunkSource().addTicketWithRadius(net.minecraft.server.level.TicketType.PORTAL,
+            new net.minecraft.world.level.ChunkPos(cx, 0), WARM_RADIUS);
+    }
+
     private static void drainAll() {
+        if (warmNext >= 0) {
+            warmSlot = warmNext;
+            warmNext = -1;
+            refreshWarm();
+        } else if (warmLevel != null && warmLevel.getGameTime() % 200 == 0) {
+            refreshWarm();
+        }
         List<Arena> arenas;
         synchronized (Arena.class) {
             if (PENDING.isEmpty()) {
@@ -153,6 +242,9 @@ public final class Arena {
                     arena.finishClearing();
                 }
                 continue;
+            }
+            for (Object[] in; (in = arena.incoming.poll()) != null;) {
+                arena.later.add(in);
             }
             long t0 = System.nanoTime();
             int waiting = 0;
@@ -183,7 +275,7 @@ public final class Arena {
             long spent = System.nanoTime() - t0;
             arena.decoNanos += spent;
             arena.decoMax = Math.max(arena.decoMax, spent);
-            if (arena.later.isEmpty()) {
+            if (arena.later.isEmpty() && arena.incoming.isEmpty() && arena.looks.get() == 0) {
                 LOGGER.info("Decoration placed in slot {}: {} ms of tick time, at most {} ms in one tick", arena.slot,
                     arena.decoNanos / 1_000_000, arena.decoMax / 1_000_000);
                 arena.decoNanos = 0;
@@ -222,6 +314,7 @@ public final class Arena {
     /** At start: clears every block a room left behind last time (from the ledgers), then forgets the ledgers. */
     public static void clearLeftovers(ServerLevel level, java.nio.file.Path dir) {
         ledgers = dir;
+        warm(level, 0);
         if (!java.nio.file.Files.isDirectory(dir)) {
             return;
         }
@@ -285,7 +378,9 @@ public final class Arena {
 
     /** Clears everything the room placed and frees the slot. */
     public void release() {
+        released = true;
         later.clear();
+        incoming.clear();
         synchronized (Arena.class) {
             PENDING.remove(this);
         }

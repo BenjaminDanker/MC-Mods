@@ -55,7 +55,7 @@ public final class Waves extends BaseRoom {
         for (int[] c : new int[][] {{-4, -4}, {4, -4}, {-4, 4}, {4, 4}}) {
             arena.set(c[0], 5, c[1], Blocks.LANTERN.defaultBlockState().setValue(net.minecraft.world.level.block.LanternBlock.HANGING, true));
         }
-        com.silver.arcade.realm.deco.ColosseumLook.build(arena, tier, HALF);
+        com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.ColosseumLook.build(arena, tier, HALF));
         int i = 0;
         for (ServerPlayer player : players.values()) {
             double[] at = spot(i++, 4);

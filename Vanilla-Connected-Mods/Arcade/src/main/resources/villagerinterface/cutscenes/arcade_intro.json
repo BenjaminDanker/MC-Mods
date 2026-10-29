@@ -2,75 +2,83 @@
  "keyframes": [
   {
    "t": 0,
-   "forward": -6,
-   "right": 2,
-   "up": 3,
-   "yaw": -45.0,
-   "pitch": 1.4
+   "forward": 0.0,
+   "right": 0.0,
+   "up": 1.6,
+   "yaw": 0.0,
+   "pitch": -9.0
   },
   {
-   "t": 90,
-   "forward": -4,
-   "right": 3,
+   "t": 50,
+   "forward": -3.5,
+   "right": 0.0,
+   "up": 2.0,
+   "yaw": 0.0,
+   "pitch": -11.7
+  },
+  {
+   "t": 80,
+   "forward": -2.5,
+   "right": 4.0,
    "up": 2.5,
-   "yaw": -26.6,
-   "pitch": 7.6
+   "yaw": -72.6,
+   "pitch": -2.0
   },
   {
-   "t": 150,
-   "forward": -3,
-   "right": 3.5,
+   "t": 130,
+   "forward": -1.5,
+   "right": 4.0,
+   "up": 2.0,
+   "yaw": -53.1,
+   "pitch": 3.1
+  },
+  {
+   "t": 170,
+   "forward": 13.5,
+   "right": -5.5,
    "up": 2.4,
-   "yaw": -35.0,
-   "pitch": 7.5
-  },
-  {
-   "t": 200,
-   "forward": 1,
-   "right": 4,
-   "up": 2.2,
-   "yaw": -38.7,
-   "pitch": 5.4
+   "yaw": -68.0,
+   "pitch": -4.0
   },
   {
    "t": 260,
-   "forward": 1,
-   "right": 4,
-   "up": 2.2,
-   "yaw": -45.0,
-   "pitch": 6.1
+   "forward": 16.5,
+   "right": -7.5,
+   "up": 2.4,
+   "yaw": -73.9,
+   "pitch": -4.6
   },
   {
-   "t": 360,
-   "forward": -2,
-   "right": 4,
-   "up": 2.2,
-   "yaw": -135.0,
-   "pitch": 6.1
+   "t": 300,
+   "forward": 7.5,
+   "right": -2.5,
+   "up": 2.0,
+   "yaw": 172.9,
+   "pitch": -5.7
   },
   {
-   "t": 430,
-   "forward": -2,
-   "right": 4,
-   "up": 2.2,
-   "yaw": -135.0,
-   "pitch": 6.1
+   "t": 400,
+   "forward": 5.5,
+   "right": -2.5,
+   "up": 2.0,
+   "yaw": 172.1,
+   "pitch": -6.3
   },
   {
-   "t": 480,
-   "forward": -5,
-   "right": 1,
-   "up": 2.6,
-   "yaw": -45.0,
-   "pitch": -1.6
+   "t": 440,
+   "forward": -1.5,
+   "right": 5.0,
+   "up": 2.4,
+   "yaw": -80.5,
+   "pitch": -2.5
   },
   {
-   "t": 540,
-   "forward": -5,
-   "right": 1,
-   "up": 2.6,
-   "yaw": -45.0,
-   "pitch": -1.6
+   "t": 520,
+   "forward": -1.5,
+   "right": 5.0,
+   "up": 2.4,
+   "yaw": -80.5,
+   "pitch": -2.5
   }
  ],
  "lines": [
@@ -87,127 +95,127 @@
    "keys": [
     {
      "t": 0,
-     "forward": 0,
-     "right": -4,
+     "forward": 0.0,
+     "right": -4.0,
      "up": 1.2,
      "pose": "standing",
      "lookAtCamera": true
     },
     {
-     "t": 60,
-     "forward": 0,
-     "right": -4,
+     "t": 70,
+     "forward": 0.0,
+     "right": -4.0,
      "up": 1.2,
      "lookAtCamera": true
     },
     {
-     "t": 90,
-     "forward": 2,
-     "right": 0,
+     "t": 105,
+     "forward": 3.0,
+     "right": -2.0,
      "up": 0,
      "lookAtCamera": true
     },
     {
-     "t": 100,
-     "forward": 2,
-     "right": 0,
+     "t": 115,
+     "forward": 3.0,
+     "right": -2.0,
      "up": 0,
      "pose": "crouching",
      "lookAtCamera": true
     },
     {
-     "t": 112,
-     "forward": 2,
-     "right": 0,
+     "t": 127,
+     "forward": 3.0,
+     "right": -2.0,
      "up": 0,
      "pose": "standing",
      "lookAtCamera": true
     },
     {
      "t": 150,
-     "forward": 2,
-     "right": 0,
+     "forward": 3.0,
+     "right": -2.0,
      "up": 0,
-     "yaw": 0
+     "yaw": -41.8
     },
     {
-     "t": 200,
-     "forward": 6,
-     "right": 0,
+     "t": 250,
+     "forward": 22.0,
+     "right": -19.0,
      "up": 0,
-     "yaw": 0
+     "yaw": -41.8
     },
     {
-     "t": 205,
-     "forward": 6,
-     "right": 0,
+     "t": 255,
+     "forward": 22.0,
+     "right": -19.0,
      "up": 0,
      "lookAtCamera": true,
      "swing": true
     },
     {
-     "t": 260,
-     "forward": 6,
-     "right": 0,
+     "t": 290,
+     "forward": 22.0,
+     "right": -19.0,
      "up": 0,
-     "yaw": 180
+     "yaw": 144.4
     },
     {
-     "t": 360,
-     "forward": -6,
-     "right": 0,
+     "t": 390,
+     "forward": -4.5,
+     "right": 0.0,
      "up": 0,
-     "yaw": 180
+     "yaw": 144.4
     },
     {
-     "t": 365,
-     "forward": -6,
-     "right": 0,
+     "t": 395,
+     "forward": -4.5,
+     "right": 0.0,
      "up": 0,
      "lookAtCamera": true,
      "swing": true
     },
     {
      "t": 440,
-     "forward": -6,
-     "right": 0,
+     "forward": -4.5,
+     "right": 0.0,
      "up": 0,
      "lookAtCamera": true
     },
     {
      "t": 480,
-     "forward": 0,
-     "right": -4,
+     "forward": 0.0,
+     "right": -4.0,
      "up": 1.2,
      "lookAtCamera": true
     },
     {
      "t": 540,
-     "forward": 0,
-     "right": -4,
+     "forward": 0.0,
+     "right": -4.0,
      "up": 1.2,
      "lookAtCamera": true
     }
    ],
    "says": [
     {
-     "t": 15,
+     "t": 20,
      "text": "Ah. A visitor."
     },
     {
-     "t": 115,
-     "text": "Welcome to my arcade. I am the Gamemaster."
+     "t": 125,
+     "text": "Welcome to my palace. I am the Gamemaster."
     },
     {
-     "t": 205,
-     "text": "The purple circle starts a game. Bring friends, or don't."
+     "t": 200,
+     "text": "Every door here is a game. Walk through any of them. Friends may follow."
     },
     {
-     "t": 290,
-     "text": "The crying obsidian takes you home."
+     "t": 300,
+     "text": "The gate behind you takes you home."
     },
     {
-     "t": 368,
+     "t": 400,
      "text": "After every room: gold takes your prize home, emerald climbs higher."
     },
     {

@@ -36,7 +36,7 @@ public final class ConnectFour extends BaseRoom {
                 arena.set(c, 2 + r, 6, Blocks.STAINED_GLASS.white().defaultBlockState());
             }
         }
-        com.silver.arcade.realm.deco.CasinoLook.build(arena, tier);
+        com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.CasinoLook.build(arena, tier));
         if (player != null) {
             arena.put(player, 3.5, 1, 2.5, 0F);
         }

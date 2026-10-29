@@ -62,7 +62,7 @@ public final class BlockParty extends BaseRoom {
     protected void build() {
         paint();
         List<ServerPlayer> list = List.copyOf(players.values());
-        com.silver.arcade.realm.deco.DiscoLook.build(arena, tier, HALF);
+        com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.DiscoLook.build(arena, tier, HALF));
         for (int i = 0; i < list.size(); i++) {
             double[] at = spot(i, HALF - 1);
             arena.put(list.get(i), at[0], 1, at[1] + 2, 0F);

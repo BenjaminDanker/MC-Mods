@@ -48,7 +48,7 @@ public final class Sumo extends BaseRoom {
                 }
             }
         }
-        com.silver.arcade.realm.deco.PirateLook.build(arena, tier, radius);
+        com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.PirateLook.build(arena, tier, radius));
         List<ServerPlayer> list = List.copyOf(players.values());
         for (int i = 0; i < list.size(); i++) {
             ServerPlayer player = list.get(i);

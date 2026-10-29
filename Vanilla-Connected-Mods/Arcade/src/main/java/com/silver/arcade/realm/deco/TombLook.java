@@ -20,7 +20,7 @@ public final class TombLook {
         for (int x = x0; x <= x1; x++) {
             for (int z = z0; z <= z1; z++) {
                 d.set(x, 0, z, Math.floorMod(x + z, 2) == 0 ? "smooth_sandstone" : "cut_sandstone");
-                d.set(x, h, z, Math.floorMod(x * 7 + z * 11, 13) == 0 ? "glowstone" : "blue_terracotta");
+                d.set(x, h, z, Math.floorMod((x * 31 + 7) * (z * 17 + 3) + x * 5, 7) == 0 ? "glowstone" : "blue_terracotta");
             }
         }
         String[] glyph = {"chiseled_sandstone", "orange_terracotta", "blue_terracotta", "chiseled_red_sandstone", "black_terracotta"};
@@ -94,6 +94,22 @@ public final class TombLook {
         for (int x = -1; x <= columns; x += 4) {
             arena.setLater(x, 3, 3, Deco.st("light[level=15]"));
             arena.setLater(x, rows + 2, 3, Deco.st("light[level=15]"));
+        }
+        // torchlight along the tomb walls and an even glow through the chamber
+        for (int x = x0 + 3; x <= x1 - 3; x += 5) {
+            arena.setLater(x, 4, z0 + 1, Deco.st("wall_torch[facing=south]"));
+            arena.setLater(x, 4, z1 - 1, Deco.st("wall_torch[facing=north]"));
+        }
+        for (int z = z0 + 3; z <= z1 - 3; z += 5) {
+            arena.setLater(x0 + 1, 4, z, Deco.st("wall_torch[facing=east]"));
+            arena.setLater(x1 - 1, 4, z, Deco.st("wall_torch[facing=west]"));
+        }
+        for (int x = x0 + 2; x <= x1 - 2; x += 3) {
+            for (int z = z0 + 2; z <= z1 - 2; z += 3) {
+                arena.setLater(x, 2, z, Deco.st("light[level=15]"));
+                arena.setLater(x + 1, 6, z + 1, Deco.st("light[level=15]"));
+                arena.setLater(x, h - 3, z, Deco.st("light[level=15]"));
+            }
         }
     }
 

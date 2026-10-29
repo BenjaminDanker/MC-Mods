@@ -45,7 +45,7 @@ public final class MusicalChairs extends BaseRoom {
     protected void build() {
         arena.fill(-RADIUS - 2, 0, -RADIUS - 2, RADIUS + 2, 0, RADIUS + 2, Blocks.POLISHED_BLACKSTONE.defaultBlockState());
         List<ServerPlayer> list = List.copyOf(players.values());
-        com.silver.arcade.realm.deco.TeaPartyLook.build(arena, tier, RADIUS);
+        com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.TeaPartyLook.build(arena, tier, RADIUS));
         for (int i = 0; i < list.size(); i++) {
             double a = Math.PI * 2 * i / list.size();
             arena.put(list.get(i), Math.cos(a) * RADIUS + 0.5, 1, Math.sin(a) * RADIUS + 0.5, 0F);

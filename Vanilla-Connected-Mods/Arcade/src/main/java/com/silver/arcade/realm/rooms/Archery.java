@@ -50,7 +50,7 @@ public final class Archery extends BaseRoom {
             targets.add(new BlockPos(x, y, distance - 1));
         }
         light();
-        com.silver.arcade.realm.deco.TourneyLook.build(arena, tier, distance);
+        com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.TourneyLook.build(arena, tier, distance));
         for (ServerPlayer player : players.values()) {
             arena.put(player, 0.5, 1, 0.5, 0F);
             give(player, new ItemStack(Items.BOW));

@@ -39,6 +39,7 @@ public final class HoleInWall extends BaseRoom {
     protected void build() {
         arena.fill(-HALF, 0, -1, HALF, 0, 2, Blocks.SMOOTH_QUARTZ.defaultBlockState());
         arena.fill(-HALF - 1, 0, 3, HALF + 1, 0, START_Z + 1, Blocks.QUARTZ_BRICKS.defaultBlockState()); // the wall's runway
+        com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.StudioLook.build(arena, tier));
         List<ServerPlayer> list = List.copyOf(players.values());
         for (int i = 0; i < list.size(); i++) {
             arena.put(list.get(i), -HALF + 0.5 + (i * 2) % (2 * HALF + 1), 1, 0.5, 0F); // facing the oncoming walls
@@ -59,6 +60,11 @@ public final class HoleInWall extends BaseRoom {
 
     @Override
     public void tick(long tickInRoom) {
+        for (ServerPlayer player : undecided()) {
+            if (heightOf(player) < -0.5) {
+                out(player, "You fell off the stage."); // nothing underneath: off the stage is out at once
+            }
+        }
         if (tickInRoom < nextStep || undecided().isEmpty()) {
             return;
         }

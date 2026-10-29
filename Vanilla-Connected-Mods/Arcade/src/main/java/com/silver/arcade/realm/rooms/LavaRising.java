@@ -75,6 +75,7 @@ public final class LavaRising extends BaseRoom {
                 arena.set(HALF + 1, y, i, wall);
             }
         }
+        com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.FoundryLook.build(arena, tier, steps()));
         int n = 0;
         for (ServerPlayer player : players.values()) {
             arena.put(player, -HALF + 1.5 + n++ * 0.5, 1, -HALF + 1.5, 0F);

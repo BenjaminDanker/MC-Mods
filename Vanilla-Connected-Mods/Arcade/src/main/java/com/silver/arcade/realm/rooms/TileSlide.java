@@ -53,7 +53,7 @@ public final class TileSlide extends BaseRoom {
             }
         }
         draw();
-        com.silver.arcade.realm.deco.CandyLook.build(arena, tier, n);
+        com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.CandyLook.build(arena, tier, n));
         int i = 0;
         for (ServerPlayer player : players.values()) {
             arena.put(player, 1.5 + i++, 1, 1.5, 0F);

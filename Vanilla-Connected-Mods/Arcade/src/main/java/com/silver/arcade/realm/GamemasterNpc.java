@@ -38,7 +38,7 @@ public final class GamemasterNpc {
 
     private static final List<String> LINES = List.of(
         "Every game here is fair. I checked. Mostly.",
-        "Step onto the purple circle. Bring friends if you have any. If you don't, I'll be your friend. Briefly.",
+        "Walk through any of my doors. Bring friends if you have any. If you don't, I'll be your friend. Briefly.",
         "After every room you choose: the gold takes your winnings home, the emerald takes you higher. I love the emerald.",
         "Forgot a rule mid-room? Type !explain. I never tire of explaining. Well. Rarely.",
         "Roll my die whenever you want to play. Lost it? My altar near your spawn keeps spares.",

@@ -50,7 +50,52 @@ final class HallDoors {
         return grandCallEnds > now;
     }
 
+    private static final String SIGN_TAG = "arcade_hall_sign";
+    private final List<net.minecraft.world.entity.Entity> signs = new ArrayList<>();
+
+    /** Gold "PLAY" signs over every door and "HOME" over the exit gate (rebuilt each start; stale copies are discarded). */
+    void register() {
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents.ENTITY_LOAD.register((entity, world) -> {
+            if (entity.entityTags().contains(SIGN_TAG) && !signs.contains(entity)) {
+                entity.discard();
+            }
+        });
+    }
+
+    private void ensureSigns(long now) {
+        if (!signs.isEmpty() || now % 100 != 0 || config.hall.doors.isEmpty()
+                || !level().isPositionEntityTicking(net.minecraft.core.BlockPos.containing(config.hall.doors.get(0).x, 101, config.hall.doors.get(0).z))) {
+            return;
+        }
+        for (ArcadeConfig.HallDoor door : config.hall.doors) {
+            boolean alongX = "x".equals(door.axis);
+            double cx = door.x + (alongX ? door.width / 2.0 : 0.5);
+            double cz = door.z + (alongX ? 0.5 : door.width / 2.0);
+            sign(cx, door.y + door.height + 0.4, cz, "\u2684 PLAY \u2684");
+        }
+        sign(0.5, 110.0, -7.5, "HOME");
+    }
+
+    private void sign(double x, double y, double z, String text) {
+        try {
+            var tag = net.minecraft.nbt.TagParser.parseCompoundFully("{billboard:\"center\",shadow:1b,background:0,"
+                + "transformation:{translation:[0f,0f,0f],left_rotation:[0f,0f,0f,1f],scale:[2.5f,2.5f,2.5f],right_rotation:[0f,0f,0f,1f]},"
+                + "brightness:{sky:15,block:15},text:{text:\"" + text + "\",color:\"gold\",bold:1b}}");
+            var entity = net.minecraft.world.entity.EntityType.loadEntityRecursive(net.minecraft.world.entity.EntityTypes.TEXT_DISPLAY, tag, level(),
+                net.minecraft.world.entity.EntitySpawnReason.COMMAND, e -> e);
+            if (entity != null) {
+                entity.addTag(SIGN_TAG);
+                entity.snapTo(x, y, z, 0F, 0F);
+                signs.add(entity);
+                level().addFreshEntity(entity);
+            }
+        } catch (Exception failure) {
+            org.slf4j.LoggerFactory.getLogger("arcade").error("ALERT: a hall sign could not be put up", failure);
+        }
+    }
+
     void tick(long now, List<ServerPlayer> free) {
+        ensureSigns(now);
         List<ArcadeConfig.HallDoor> doors = config.hall.doors;
         // Who walks through a door now?
         for (ServerPlayer player : free) {

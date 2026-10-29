@@ -38,6 +38,7 @@ public final class WhackAMole extends BaseRoom {
         for (int i = 0; i < size * size; i++) {
             arena.set(x(i), 0, z(i), Blocks.COARSE_DIRT.defaultBlockState());
         }
+        com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.HarvestLook.build(arena, tier, size));
         int n = 0;
         for (ServerPlayer player : players.values()) {
             arena.put(player, size + n++ * 0.6, 1, -1.5, 0F);

@@ -60,7 +60,7 @@ public final class Dropper extends BaseRoom {
         }
         // The top: a ring to stand on around the opening.
         arena.fill(-HALF - 3, HEIGHT + 1, -HALF - 3, HALF + 3, HEIGHT + 1, -HALF - 2, Blocks.QUARTZ_BRICKS.defaultBlockState());
-        com.silver.arcade.realm.deco.LighthouseLook.build(arena, tier, HALF, HEIGHT);
+        com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.LighthouseLook.build(arena, tier, HALF, HEIGHT));
         players.values().forEach(this::top);
     }
 

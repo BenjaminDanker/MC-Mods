@@ -33,7 +33,7 @@ public final class LightsOut extends BaseRoom {
         arena.fill(-4, 0, -3, 4, 0, 5, Blocks.POLISHED_DEEPSLATE.defaultBlockState());
         arena.fill(-4, 1, 6, 4, 7, 6, Blocks.DEEPSLATE_TILES.defaultBlockState());
         draw();
-        com.silver.arcade.realm.deco.GeodeLook.build(arena, tier);
+        com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.GeodeLook.build(arena, tier));
         int i = 0;
         for (ServerPlayer player : players.values()) {
             arena.put(player, 0.5 + i++, 1, 0.5, 0F);

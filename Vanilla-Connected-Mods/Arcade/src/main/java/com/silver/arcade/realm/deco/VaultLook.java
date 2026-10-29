@@ -22,11 +22,22 @@ public final class VaultLook {
         for (int x = x0; x <= x1; x++) {
             for (int z = z0; z <= z1; z++) {
                 d.set(x, 0, z, (Math.floorMod(x, 4) == 0 || Math.floorMod(z, 4) == 0) ? "gold_block" : "polished_deepslate");
-                d.set(x, h, z, Math.floorMod(x, 6) == 3 && Math.floorMod(z, 6) == 3 ? "sea_lantern" : "iron_block");
+                d.set(x, h, z, Math.floorMod(x, 4) == 2 && Math.floorMod(z, 4) == 2 ? "sea_lantern" : "iron_block");
             }
         }
         for (int y = 1; y < h; y++) {
             d.walls(x0, y, z0, x1, y, z1, y % 5 == 0 ? "gold_block" : (Math.floorMod(y, 5) == 2 ? "iron_block" : "deepslate_bricks|polished_deepslate"));
+        }
+        // vault lamps set into the walls (a band of sea lanterns every four blocks, twice up the wall)
+        for (int y : new int[] {3, 8}) {
+            for (int x = x0 + 2; x <= x1 - 2; x += 4) {
+                d.set(x, y, z0, "sea_lantern");
+                d.set(x, y, z1, "sea_lantern");
+            }
+            for (int z = z0 + 2; z <= z1 - 2; z += 4) {
+                d.set(x0, y, z, "sea_lantern");
+                d.set(x1, y, z, "sea_lantern");
+            }
         }
         // the board's surround: steel frame, rivets of gold, a big dial above
         for (int y = 0; y <= top + 2; y++) {
@@ -107,9 +118,11 @@ public final class VaultLook {
             arena.setLater(x, 4, 3, Deco.st("light[level=15]"));
             arena.setLater(x, top, 3, Deco.st("light[level=15]"));
         }
-        for (int x = x0 + 4; x <= x1 - 4; x += 8) {
-            for (int z = z0 + 4; z <= z1 - 4; z += 8) {
-                arena.setLater(x, 6, z, Deco.st("light[level=15]"));
+        for (int x = x0 + 2; x <= x1 - 2; x += 3) {
+            for (int z = z0 + 2; z <= z1 - 2; z += 3) {
+                arena.setLater(x, 2, z, Deco.st("light[level=15]"));
+                arena.setLater(x + 1, 6, z + 1, Deco.st("light[level=15]"));
+                arena.setLater(x, h - 3, z, Deco.st("light[level=15]"));
             }
         }
     }

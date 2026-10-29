@@ -48,7 +48,7 @@ public final class FallingFloor extends BaseRoom {
                 }
             }
         }
-        com.silver.arcade.realm.deco.VolcanoLook.build(arena, tier, HALF);
+        com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.VolcanoLook.build(arena, tier, HALF));
         List<ServerPlayer> list = List.copyOf(players.values());
         for (int i = 0; i < list.size(); i++) {
             double[] at = spot(i, HALF - 1);

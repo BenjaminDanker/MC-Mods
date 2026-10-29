@@ -32,7 +32,7 @@ public final class MathSprint extends BaseRoom {
     @Override
     protected void build() {
         arena.fill(-4, 0, -4, 4, 0, 4, Blocks.CALCITE.defaultBlockState());
-        com.silver.arcade.realm.deco.ObservatoryLook.build(arena, tier);
+        com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.ObservatoryLook.build(arena, tier));
         int i = 0;
         for (ServerPlayer player : players.values()) {
             arena.put(player, -2.5 + (i++ % 4) * 1.5, 1, 0.5, 0F);

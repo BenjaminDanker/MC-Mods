@@ -50,8 +50,10 @@ public final class TreasureHunt extends BaseRoom {
             }
         }
         arena.fill(-HALF - 2, -2, -HALF - 2, HALF + 2, -2, HALF + 2, Blocks.SANDSTONE.defaultBlockState());
+        arena.fill(-HALF - 2, -1, -HALF - 2, HALF + 2, 0, HALF + 2, Blocks.SMOOTH_SANDSTONE.defaultBlockState()); // no trench round the field
         arena.fill(-HALF, -1, -HALF, HALF, 0, HALF, Blocks.SAND.defaultBlockState());
         arena.fill(-HALF - 2, 0, -HALF - 2, HALF + 2, 0, -HALF - 1, Blocks.SMOOTH_SANDSTONE.defaultBlockState());
+        com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.OasisLook.build(arena, tier));
         int n = 0;
         for (ServerPlayer player : players.values()) {
             arena.put(player, 0.5 + n++, 1, -HALF - 1.5, 0F);

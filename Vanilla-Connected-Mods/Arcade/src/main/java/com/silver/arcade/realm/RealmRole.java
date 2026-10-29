@@ -68,6 +68,7 @@ public final class RealmRole implements Run.Host {
         ensureHall();
         previews = new Previews(level());
         doors = new HallDoors(server, config, this::startRun);
+        doors.register();
         gamemaster = new GamemasterNpc(level());
         gamemaster.register();
         level().setChunkForced(0, 0, true);
@@ -243,11 +244,11 @@ public final class RealmRole implements Run.Host {
     private void welcome(ServerPlayer player) {
         if (player.addTag("arcade_met")) {
             Gamemaster.title(player, "The Arcade", "Every game is fair. Mostly.");
-            Gamemaster.say(player, "A visitor! Welcome to my arcade. Step onto the purple circle to play: rooms get harder as you climb, "
+            Gamemaster.say(player, "A visitor! Welcome to my arcade. Walk through any of my doors to play: rooms get harder as you climb, "
                 + "and after each one you may leave with a prize for your own world, or climb on and risk it. Bring friends if you like; "
                 + "they share the climb, though not always the room. The crying obsidian takes you home.");
         } else {
-            Gamemaster.say(player, "Back again? The circle is waiting.");
+            Gamemaster.say(player, "Back again? The doors are waiting.");
         }
     }
 
@@ -383,7 +384,7 @@ public final class RealmRole implements Run.Host {
     @Override
     public void lost(ServerPlayer player, int tier) {
         toHall(player);
-        Gamemaster.say(player, "The house wins this time. You reached tier " + tier + ". The circle is right there.");
+        Gamemaster.say(player, "The house wins this time. You reached tier " + tier + ". The doors are right there.");
     }
 
     @Override

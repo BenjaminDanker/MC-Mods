@@ -53,7 +53,7 @@ public final class KingOfTheHill extends BaseRoom {
         }
         arena.fill(-BASE - 4, 0, -BASE - 4, BASE + 4, 0, BASE + 4, Blocks.SMOOTH_SANDSTONE.defaultBlockState());
         List<ServerPlayer> list = List.copyOf(players.values());
-        com.silver.arcade.realm.deco.TempleLook.build(arena, tier, BASE);
+        com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.TempleLook.build(arena, tier, BASE));
         for (int i = 0; i < list.size(); i++) {
             double a = Math.PI * 2 * i / Math.max(1, list.size());
             ServerPlayer player = list.get(i);

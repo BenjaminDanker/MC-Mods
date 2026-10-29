@@ -38,6 +38,31 @@ public final class Deco {
         return arena;
     }
 
+    private static final java.util.concurrent.ExecutorService GENERATOR = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(r, "arcade-deco");
+        thread.setDaemon(true);
+        thread.setPriority(Thread.MIN_PRIORITY);
+        return thread;
+    });
+
+    /**
+     * Runs a room's look off the server thread: drawing a big look (up to ~150k blocks) took 50-100 ms, all in the tick
+     * the room was built. The look only draws into its Deco and queues blocks (commit / setLater are safe from that
+     * thread); the arena counts as decorating until it is done, so the room clock still waits for the stage.
+     */
+    public static void async(Arena arena, Runnable look) {
+        arena.lookStarted();
+        GENERATOR.execute(() -> {
+            try {
+                look.run();
+            } catch (Throwable failure) {
+                LOGGER.error("Decoration failed in a look; the room plays without it", failure);
+            } finally {
+                arena.lookDone();
+            }
+        });
+    }
+
     /** A block state from its command form ("minecraft:" may be left out). */
     public static BlockState st(String text) {
         synchronized (STATES) {

@@ -51,7 +51,7 @@ public final class Spleef extends BaseRoom {
                 arena.set(x, 0, z, Blocks.SNOW_BLOCK.defaultBlockState());
             }
         }
-        com.silver.arcade.realm.deco.IcePalaceLook.build(arena, tier, radius);
+        com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.IcePalaceLook.build(arena, tier, radius));
         List<ServerPlayer> list = List.copyOf(players.values());
         for (int i = 0; i < list.size(); i++) {
             double angle = Math.PI * 2 * i / list.size();

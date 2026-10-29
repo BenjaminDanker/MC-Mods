@@ -51,7 +51,7 @@ public final class HotPotato extends BaseRoom {
     protected void build() {
         arena.fill(-HALF, 0, -HALF, HALF, 0, HALF, Blocks.SMOOTH_SANDSTONE.defaultBlockState());
         List<ServerPlayer> list = List.copyOf(players.values());
-        com.silver.arcade.realm.deco.FrontierLook.build(arena, tier, HALF);
+        com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.FrontierLook.build(arena, tier, HALF));
         for (int i = 0; i < list.size(); i++) {
             double a = Math.PI * 2 * i / Math.max(1, list.size());
             arena.put(list.get(i), Math.cos(a) * (HALF - 2) + 0.5, 1, Math.sin(a) * (HALF - 2) + 0.5, 0F);

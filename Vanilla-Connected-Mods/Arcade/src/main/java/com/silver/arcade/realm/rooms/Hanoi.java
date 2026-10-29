@@ -35,7 +35,8 @@ public final class Hanoi extends BaseRoom {
         return seconds(40 + ((1 << rings) - 1) * 3);
     }
 
-    private int postX(int p) { return (p - 1) * (2 * rings + 4); }
+    /** Facing the posts (+z), +x is the player's left: post 0 (the start) on the left, post 2 (the goal) on the right. */
+    private int postX(int p) { return (1 - p) * (2 * rings + 4); }
 
     @Override
     protected void build() {
@@ -48,6 +49,7 @@ public final class Hanoi extends BaseRoom {
         for (int r = rings; r >= 1; r--) {
             posts[0].push(r);
         }
+        com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.ToyshopLook.build(arena, tier, rings));
         draw();
         int n = 0;
         for (ServerPlayer player : players.values()) {

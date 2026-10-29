@@ -40,8 +40,9 @@ public final class SpotDifference extends BaseRoom {
         return seconds(30 + count() * 12);
     }
 
-    private int leftX(int x) { return -size - 1 + x; }
-    private int rightX(int x) { return 2 + x; }
+    /** Facing the wall (+z), +x is on the player's left: the reference picture is there, the one to hit on the right. */
+    private int leftX(int x) { return 2 + x; }
+    private int rightX(int x) { return -size - 1 + x; }
 
     @Override
     protected void build() {
@@ -72,6 +73,7 @@ public final class SpotDifference extends BaseRoom {
                 arena.set(rightX(x), 2 + y, 6, PALETTE[right[x][y]].defaultBlockState());
             }
         }
+        com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.DetectiveLook.build(arena, tier, size));
         int n = 0;
         for (ServerPlayer player : players.values()) {
             arena.put(player, 0.5 + n++, 1, -1.5, 0F);
@@ -93,7 +95,7 @@ public final class SpotDifference extends BaseRoom {
     }
 
     private boolean press(ServerPlayer player, BlockPos pos) {
-        int x = pos.getX() - arena.origin().getX() - 2;
+        int x = pos.getX() - arena.origin().getX() + size + 1;
         int y = pos.getY() - arena.origin().getY() - 2;
         if (pos.getZ() - arena.origin().getZ() != 6 || x < 0 || x >= size || y < 0 || y >= size) {
             return false;
