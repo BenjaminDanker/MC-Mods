@@ -52,7 +52,7 @@ public final class BeaconRedirector {
         }
 
         BlockPos beaconPos = findActivatedBeacon(world, player);
-        if (beaconPos == null) {
+        if (beaconPos == null || nearSpawn(world, beaconPos)) {
             return;
         }
 
@@ -68,6 +68,22 @@ public final class BeaconRedirector {
 
         lastRedirects.put(player.getUUID(), now);
         removeBeacon(world, beaconPos, player);
+    }
+
+    /**
+     * The spawn (Babylon, its tower and islands) is never a way into the desert: a beacon there may be decoration or a
+     * test, and walking over it must not throw anyone into another world.
+     */
+    private static final int NO_REDIRECT_RADIUS = 160;
+
+    private static boolean nearSpawn(ServerLevel world, BlockPos beacon) {
+        var spawn = world.getServer().getRespawnData();
+        if (!spawn.dimension().equals(world.dimension())) {
+            return false;
+        }
+        long dx = beacon.getX() - spawn.pos().getX();
+        long dz = beacon.getZ() - spawn.pos().getZ();
+        return dx * dx + dz * dz <= (long) NO_REDIRECT_RADIUS * NO_REDIRECT_RADIUS;
     }
 
     private static BlockPos findActivatedBeacon(ServerLevel world, ServerPlayer player) {
