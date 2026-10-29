@@ -76,6 +76,14 @@ public interface Room {
         return false;
     }
 
+    /**
+     * In a pvp room, one player hit another (tagging, passing the potato). Return false to cancel the damage itself
+     * (the hit still happened); default lets it through.
+     */
+    default boolean playerHit(ServerPlayer attacker, ServerPlayer victim) {
+        return true;
+    }
+
     /** Whether players in this room may hurt each other (versus rooms). Off by default. */
     default boolean pvp() {
         return false;

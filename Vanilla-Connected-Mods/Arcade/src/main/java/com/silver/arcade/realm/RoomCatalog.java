@@ -1,6 +1,14 @@
 package com.silver.arcade.realm;
 
 import com.silver.arcade.realm.rooms.Archery;
+import com.silver.arcade.realm.rooms.BlockParty;
+import com.silver.arcade.realm.rooms.HideAndSeek;
+import com.silver.arcade.realm.rooms.HotPotato;
+import com.silver.arcade.realm.rooms.KingOfTheHill;
+import com.silver.arcade.realm.rooms.Mastermind;
+import com.silver.arcade.realm.rooms.MemoryPairs;
+import com.silver.arcade.realm.rooms.MusicalChairs;
+import com.silver.arcade.realm.rooms.TileSlide;
 import com.silver.arcade.realm.rooms.ConnectFour;
 import com.silver.arcade.realm.rooms.Dropper;
 import com.silver.arcade.realm.rooms.FallingFloor;
@@ -46,5 +54,14 @@ public final class RoomCatalog {
         Rooms.add(new RoomType("spleef", Room.Kind.GROUP, 2, 16, 1, Spleef::new));
         Rooms.add(new RoomType("sumo", Room.Kind.DUO, 2, 2, 1, Sumo::new));
         Rooms.add(new RoomType("split_simon", Room.Kind.DUO, 2, 2, 1, SplitSimon::new));
+        // Batch 3 (phase 3).
+        Rooms.add(new RoomType("block_party", Room.Kind.GROUP, 1, 16, 1, BlockParty::new));
+        Rooms.add(new RoomType("mastermind", Room.Kind.DUO, 1, 2, 1, Mastermind::new));
+        Rooms.add(new RoomType("slide", Room.Kind.DUO, 1, 2, 1, TileSlide::new));
+        Rooms.add(new RoomType("pairs", Room.Kind.DUO, 1, 2, 1, MemoryPairs::new));
+        Rooms.add(new RoomType("chairs", Room.Kind.GROUP, 2, 16, 1, MusicalChairs::new));
+        Rooms.add(new RoomType("hot_potato", Room.Kind.GROUP, 3, 16, 1, HotPotato::new));
+        Rooms.add(new RoomType("king_hill", Room.Kind.GROUP, 2, 16, 1, KingOfTheHill::new));
+        Rooms.add(new RoomType("hide_seek", Room.Kind.GROUP, 3, 16, 1, HideAndSeek::new));
     }
 }

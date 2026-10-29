@@ -399,7 +399,12 @@ public final class Run {
     public boolean pvpAllowed(UUID attacker, UUID victim) {
         for (Party party : parties) {
             if (!party.over && party.members.contains(attacker) && party.members.contains(victim)) {
-                return party.room.pvp();
+                if (!party.room.pvp()) {
+                    return false;
+                }
+                ServerPlayer a = server.getPlayerList().getPlayer(attacker);
+                ServerPlayer v = server.getPlayerList().getPlayer(victim);
+                return a == null || v == null || party.room.playerHit(a, v);
             }
         }
         return false;
