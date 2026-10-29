@@ -1,0 +1,109 @@
+{
+ "start": "start",
+ "openings": [
+  {
+   "label": "",
+   "go": "back",
+   "ifCarries": [
+    "special_sea_lantern"
+   ]
+  }
+ ],
+ "nodes": {
+  "start": {
+   "text": [
+    "The tide remembers you. Ask, if you must."
+   ],
+   "choices": [
+    {
+     "label": "What is this island?",
+     "go": "island"
+    },
+    {
+     "label": "Tell me about the world beyond.",
+     "go": "world"
+    },
+    {
+     "label": "How does the way open?",
+     "go": "way"
+    },
+    {
+     "label": "Any advice?",
+     "go": "advice"
+    },
+    {
+     "label": "Goodbye.",
+     "end": true
+    }
+   ]
+  },
+  "back": {
+   "text": [
+    "You've been out there. I can hear the sea on you. Did the city move while you watched it?"
+   ],
+   "choices": [
+    {
+     "label": "Tell me about the world beyond.",
+     "go": "world"
+    },
+    {
+     "label": "Any advice?",
+     "go": "advice"
+    },
+    {
+     "label": "Goodbye.",
+     "end": true
+    }
+   ]
+  },
+  "island": {
+   "text": [
+    "This island is drowned stone that floats. Don't ask me how; the sea keeps its own secrets.",
+    "I fish, I watch the water, and I talk to it. Sometimes it answers."
+   ],
+   "choices": [
+    {
+     "label": "Back",
+     "go": "start"
+    }
+   ]
+  },
+  "world": {
+   "text": [
+    "A world of endless water. One last city lies drowned out there, and it doesn't stay in one place for long.",
+    "The deep keeps its own monsters. Patience and lungs matter more than speed."
+   ],
+   "choices": [
+    {
+     "label": "Back",
+     "go": "start"
+    }
+   ]
+  },
+  "way": {
+   "text": [
+    "Nobody knows for certain. There is only the old saying:",
+    "“The sea lets no one pass while the old guardian keeps watch in his drowned halls.”",
+    "Make of it what you will. I've said too much already."
+   ],
+   "choices": [
+    {
+     "label": "Back",
+     "go": "start"
+    }
+   ]
+  },
+  "advice": {
+   "text": [
+    "The city's treasures are many small pieces that add up to something whole. Hoard what you find; don't waste it.",
+    "Bring more air than you think you need. Then bring more."
+   ],
+   "choices": [
+    {
+     "label": "Back",
+     "go": "start"
+    }
+   ]
+  }
+ }
+}

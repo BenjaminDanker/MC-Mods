@@ -1,0 +1,109 @@
+{
+ "start": "start",
+ "openings": [
+  {
+   "label": "",
+   "go": "back",
+   "ifCarries": [
+    "special_arrow"
+   ]
+  }
+ ],
+ "nodes": {
+  "start": {
+   "text": [
+    "Mind the edge. The wind is honest; I try to be."
+   ],
+   "choices": [
+    {
+     "label": "What is this island?",
+     "go": "island"
+    },
+    {
+     "label": "Tell me about the world beyond.",
+     "go": "world"
+    },
+    {
+     "label": "How does the way open?",
+     "go": "way"
+    },
+    {
+     "label": "Any advice?",
+     "go": "advice"
+    },
+    {
+     "label": "Goodbye.",
+     "end": true
+    }
+   ]
+  },
+  "back": {
+   "text": [
+    "Back from the high places! You don't look like you fell. Much."
+   ],
+   "choices": [
+    {
+     "label": "Tell me about the world beyond.",
+     "go": "world"
+    },
+    {
+     "label": "Any advice?",
+     "go": "advice"
+    },
+    {
+     "label": "Goodbye.",
+     "end": true
+    }
+   ]
+  },
+  "island": {
+   "text": [
+    "The highest island, naturally. I chart the clouds from here. Somebody has to.",
+    "Lovely view. Terrible railings."
+   ],
+   "choices": [
+    {
+     "label": "Back",
+     "go": "start"
+    }
+   ]
+  },
+  "world": {
+   "text": [
+    "A world of endless sky and drifting isles. Dragons roam the open air, and giants walk the larger isles.",
+    "The sky has no floor. Falling is the commonest death there, and the least dignified."
+   ],
+   "choices": [
+    {
+     "label": "Back",
+     "go": "start"
+    }
+   ]
+  },
+  "way": {
+   "text": [
+    "Nobody knows for certain. There is only the old saying:",
+    "“Those who came back from the world's end found the way home was the way in.”",
+    "Make of it what you will. I've said too much already."
+   ],
+   "choices": [
+    {
+     "label": "Back",
+     "go": "start"
+    }
+   ]
+  },
+  "advice": {
+   "text": [
+    "They say a dragon's breath helps dragons find one another. A clever traveller might use that.",
+    "Feathers of fallen dragons are worth keeping. And don't look down. Well, look down a little."
+   ],
+   "choices": [
+    {
+     "label": "Back",
+     "go": "start"
+    }
+   ]
+  }
+ }
+}

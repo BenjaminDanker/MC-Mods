@@ -1,0 +1,109 @@
+{
+ "start": "start",
+ "openings": [
+  {
+   "label": "",
+   "go": "back",
+   "ifCarries": [
+    "special_dead_bush"
+   ]
+  }
+ ],
+ "nodes": {
+  "start": {
+   "text": [
+    "Sit in the shade a moment. Water first, questions after."
+   ],
+   "choices": [
+    {
+     "label": "What is this island?",
+     "go": "island"
+    },
+    {
+     "label": "Tell me about the world beyond.",
+     "go": "world"
+    },
+    {
+     "label": "How does the way open?",
+     "go": "way"
+    },
+    {
+     "label": "Any advice?",
+     "go": "advice"
+    },
+    {
+     "label": "Goodbye.",
+     "end": true
+    }
+   ]
+  },
+  "back": {
+   "text": [
+    "You walked the sands and came back. Drink. Then tell me everything."
+   ],
+   "choices": [
+    {
+     "label": "Tell me about the world beyond.",
+     "go": "world"
+    },
+    {
+     "label": "Any advice?",
+     "go": "advice"
+    },
+    {
+     "label": "Goodbye.",
+     "end": true
+    }
+   ]
+  },
+  "island": {
+   "text": [
+    "This sun-baked island and its three black stones are in my keeping.",
+    "The stones are old. Older than the tower, some say. I only dust them."
+   ],
+   "choices": [
+    {
+     "label": "Back",
+     "go": "start"
+    }
+   ]
+  },
+  "world": {
+   "text": [
+    "The three-headed undead destroys all who trespass into his eroded world, guarding the remains of his long-lost friends.",
+    "The sands beyond are endless and thirsty."
+   ],
+   "choices": [
+    {
+     "label": "Back",
+     "go": "start"
+    }
+   ]
+  },
+  "way": {
+   "text": [
+    "Nobody knows for certain. There is only the old saying:",
+    "“He hates the open sky, and anything that shines in it.”",
+    "Make of it what you will. I've said too much already."
+   ],
+   "choices": [
+    {
+     "label": "Back",
+     "go": "start"
+    }
+   ]
+  },
+  "advice": {
+   "text": [
+    "Water is life there, and wasted water is death.",
+    "Old camps, crypts and a temple of a buried king hide in the dunes. Maps are found, not given."
+   ],
+   "choices": [
+    {
+     "label": "Back",
+     "go": "start"
+    }
+   ]
+  }
+ }
+}

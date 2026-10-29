@@ -1,0 +1,108 @@
+{
+ "start": "start",
+ "openings": [
+  {
+   "label": "",
+   "go": "back",
+   "ifCarries": [
+    "special_coal_ore"
+   ]
+  }
+ ],
+ "nodes": {
+  "start": {
+   "text": [
+    "Quietly. Something down there is always listening."
+   ],
+   "choices": [
+    {
+     "label": "What is this island?",
+     "go": "island"
+    },
+    {
+     "label": "Tell me about the world beyond.",
+     "go": "world"
+    },
+    {
+     "label": "How does the way open?",
+     "go": "way"
+    },
+    {
+     "label": "Any advice?",
+     "go": "advice"
+    },
+    {
+     "label": "Goodbye.",
+     "end": true
+    }
+   ]
+  },
+  "back": {
+   "text": [
+    "You came back up. Good. Not everyone does. Sit, and keep your voice low."
+   ],
+   "choices": [
+    {
+     "label": "Tell me about the world beyond.",
+     "go": "world"
+    },
+    {
+     "label": "Any advice?",
+     "go": "advice"
+    },
+    {
+     "label": "Goodbye.",
+     "end": true
+    }
+   ]
+  },
+  "island": {
+   "text": [
+    "I carved this island myself, one candle at a time. I keep them lit. The dark is respectful if you are."
+   ],
+   "choices": [
+    {
+     "label": "Back",
+     "go": "start"
+    }
+   ]
+  },
+  "world": {
+   "text": [
+    "The blind fool guards a world of endless caves. Anger clouds his judgement; he knows no friend from foe.",
+    "The caves below grow more dangerous the longer you hunt them, and they test anyone who stays."
+   ],
+   "choices": [
+    {
+     "label": "Back",
+     "go": "start"
+    }
+   ]
+  },
+  "way": {
+   "text": [
+    "Nobody knows for certain. There is only the old saying:",
+    "“The door remembers who was there at the end.”",
+    "Make of it what you will. I've said too much already."
+   ],
+   "choices": [
+    {
+     "label": "Back",
+     "go": "start"
+    }
+   ]
+  },
+  "advice": {
+   "text": [
+    "Their mightiest creatures carry what is worth taking.",
+    "Light and patience keep a miner alive. Mostly light."
+   ],
+   "choices": [
+    {
+     "label": "Back",
+     "go": "start"
+    }
+   ]
+  }
+ }
+}
