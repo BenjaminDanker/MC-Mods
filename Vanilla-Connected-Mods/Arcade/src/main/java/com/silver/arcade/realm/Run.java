@@ -134,6 +134,9 @@ public final class Run {
     /** Splits the players into parties for this round and starts a room for each. */
     private void startRound() {
         phase = Phase.ROOMS;
+        if (Rooms.forcedTier() > 0) {
+            tier = Rooms.forcedTier();
+        }
         phaseStart = server.getTickCount();
         List<UUID> order = new ArrayList<>(players);
         Collections.shuffle(order, random);
