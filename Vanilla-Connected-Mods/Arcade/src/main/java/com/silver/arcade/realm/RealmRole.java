@@ -54,6 +54,7 @@ public final class RealmRole implements Run.Host {
     private final Map<UUID, Long> leavingAt = new HashMap<>();
     private long gatherStartedAt = -1;
     private GamemasterNpc gamemaster;
+    private Previews previews;
     /** Players whose welcome waits until their intro scene has played (tick it is due). */
     private final Map<UUID, Long> welcomeAt = new HashMap<>();
 
@@ -67,6 +68,7 @@ public final class RealmRole implements Run.Host {
         RoomCatalog.registerAll();
         Arena.clearLeftovers(level(), server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("arcade-arenas"));
         ensureHall();
+        previews = new Previews(level());
         gamemaster = new GamemasterNpc(level());
         gamemaster.register();
         level().setChunkForced(0, 0, true);
@@ -291,6 +293,7 @@ public final class RealmRole implements Run.Host {
         if (gamemaster != null) {
             gamemaster.tick(tickNow);
         }
+        previews.tick(tickNow);
         if (!welcomeAt.isEmpty()) {
             welcomeAt.entrySet().removeIf(entry -> {
                 if (tickNow < entry.getValue()) {
@@ -396,6 +399,7 @@ public final class RealmRole implements Run.Host {
     }
 
     private void toHall(ServerPlayer player) {
+        NameTags.set(player, false);
         player.getInventory().clearContent();
         player.setGameMode(GameType.ADVENTURE);
         player.removeAllEffects();

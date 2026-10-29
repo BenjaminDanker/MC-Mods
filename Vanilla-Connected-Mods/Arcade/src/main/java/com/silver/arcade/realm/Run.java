@@ -202,6 +202,7 @@ public final class Run {
         arena.flushLedger();
         for (ServerPlayer player : online) {
             lastRoom.put(player.getUUID(), type.id());
+            NameTags.set(player, room.hideNameTags());
             party.bar.addPlayer(player);
             Gamemaster.introduce(player, room, tier);
         }

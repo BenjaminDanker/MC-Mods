@@ -26,7 +26,7 @@ public final class ConnectFour extends BaseRoom {
 
     @Override
     protected void build() {
-        player = players.values().iterator().next();
+        player = players.isEmpty() ? null : players.values().iterator().next(); // none in a preview
         // The board stands on z=6, x 0..6, rows y 2..7; the stone pickers sit on y 1.
         arena.fill(-1, 0, 0, 7, 0, 7, Blocks.POLISHED_DEEPSLATE.defaultBlockState());
         arena.fill(-1, 1, 7, 7, 8, 7, Blocks.CONCRETE.blue().defaultBlockState());
@@ -36,7 +36,9 @@ public final class ConnectFour extends BaseRoom {
                 arena.set(c, 2 + r, 6, Blocks.STAINED_GLASS.white().defaultBlockState());
             }
         }
-        arena.put(player, 3.5, 1, 2.5, 0F);
+        if (player != null) {
+            arena.put(player, 3.5, 1, 2.5, 0F);
+        }
     }
 
     @Override

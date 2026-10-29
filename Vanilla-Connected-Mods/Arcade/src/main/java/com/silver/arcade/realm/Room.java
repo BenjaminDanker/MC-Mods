@@ -71,6 +71,11 @@ public interface Room {
     /** A player left mid-room: they fail it. */
     void left(UUID player);
 
+    /** Hide everyone's name tag in this room (name tags show through walls; hide-and-seek style rooms need this off). */
+    default boolean hideNameTags() {
+        return false;
+    }
+
     /** Whether players in this room may hurt each other (versus rooms). Off by default. */
     default boolean pvp() {
         return false;

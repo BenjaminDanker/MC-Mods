@@ -54,6 +54,9 @@ public final class SplitSimon extends BaseRoom {
             sequence.add(random.nextInt(4));
         }
         List<ServerPlayer> list = new ArrayList<>(players.values());
+        if (list.isEmpty()) {
+            return; // a preview: the booths only
+        }
         watcher = list.get(0);
         presser = list.get(list.size() > 1 ? 1 : 0);
         arena.put(watcher, -5.5, 1, 0.5, 0F);
