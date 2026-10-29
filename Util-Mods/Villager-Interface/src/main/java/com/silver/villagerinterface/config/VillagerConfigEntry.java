@@ -24,6 +24,8 @@ public final class VillagerConfigEntry {
     private final String profession;
     /** Villagers: their biome look, e.g. "minecraft:desert" (empty keeps plains). */
     private final String biome;
+    /** A scripted dialogue (config/villagerinterface/dialogues/<id>.json) used instead of the AI chat; empty for AI chat. */
+    private final String dialogue;
 
     public VillagerConfigEntry(
         String id,
@@ -57,6 +59,30 @@ public final class VillagerConfigEntry {
         String profession,
         String biome
     ) {
+        this(id, villagerType, displayName, dimension, position, yaw, pitch, maxDistance, systemPrompt, entity, skin, slim, greeting,
+            sealTurnIn, profession, biome, null);
+    }
+
+    public VillagerConfigEntry(
+        String id,
+        String villagerType,
+        String displayName,
+        String dimension,
+        VillagerPosition position,
+        float yaw,
+        float pitch,
+        double maxDistance,
+        String systemPrompt,
+        String entity,
+        String skin,
+        boolean slim,
+        String greeting,
+        boolean sealTurnIn,
+        String profession,
+        String biome,
+        String dialogue
+    ) {
+        this.dialogue = dialogue;
         this.id = id;
         this.villagerType = villagerType;
         this.displayName = displayName;
@@ -73,6 +99,10 @@ public final class VillagerConfigEntry {
         this.sealTurnIn = sealTurnIn;
         this.profession = profession;
         this.biome = biome;
+    }
+
+    public String dialogue() {
+        return dialogue;
     }
 
     public String id() {

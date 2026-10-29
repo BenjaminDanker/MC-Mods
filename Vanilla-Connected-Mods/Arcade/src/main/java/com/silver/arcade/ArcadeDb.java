@@ -33,7 +33,7 @@ public final class ArcadeDb {
     public record Profile(boolean visited, boolean hasDie, int offers, long secondsSinceOffer) {
     }
 
-    /** A run left mid-way: what was earned and the tier it was at; it can be resumed for 30 minutes. */
+    /** A run left mid-way: what was earned and the tier it was at; it can be resumed for 15 minutes. */
     public record Suspended(int tier, int prizeTier, String origin, long ageSeconds) {
     }
 

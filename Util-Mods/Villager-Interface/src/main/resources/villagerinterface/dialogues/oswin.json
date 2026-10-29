@@ -1,0 +1,271 @@
+{
+ "start": "start",
+ "openings": [
+  {
+   "label": "",
+   "go": "first",
+   "unlessTag": "vi_oswin_met"
+  },
+  {
+   "label": "",
+   "go": "all_four",
+   "minFragments": 4
+  },
+  {
+   "label": "",
+   "go": "some",
+   "minFragments": 1
+  }
+ ],
+ "nodes": {
+  "first": {
+   "text": [
+    "Hmph. Another one, fresh off the road and staring up at the tower like it owes you something.",
+    "I'm Oswin. I keep the old stories here, and I don't hand them out to just anyone who wanders by. Ask carefully."
+   ],
+   "choices": [
+    {
+     "label": "I'll be careful.",
+     "go": "start",
+     "setTag": "vi_oswin_met"
+    }
+   ]
+  },
+  "start": {
+   "text": [
+    "Well? What is it?"
+   ],
+   "choices": [
+    {
+     "label": "What is this place?",
+     "go": "tower"
+    },
+    {
+     "label": "Tell me about the four kings.",
+     "go": "kings"
+    },
+    {
+     "label": "How do I keep my things between worlds?",
+     "go": "soulbound"
+    },
+    {
+     "label": "Tell me an old story.",
+     "go": "history"
+    },
+    {
+     "label": "Goodbye.",
+     "end": true
+    }
+   ]
+  },
+  "some": {
+   "text": [
+    "You've been somewhere. I can smell another world's air on you.",
+    "One down doesn't make you clever. But it doesn't make you a fool either. Keep going."
+   ],
+   "choices": [
+    {
+     "label": "What is this place?",
+     "go": "tower"
+    },
+    {
+     "label": "Tell me about the four kings.",
+     "go": "kings"
+    },
+    {
+     "label": "How do I keep my things between worlds?",
+     "go": "soulbound"
+    },
+    {
+     "label": "Tell me an old story.",
+     "go": "history"
+    },
+    {
+     "label": "Goodbye.",
+     "end": true
+    }
+   ]
+  },
+  "all_four": {
+   "text": [
+    "Four worlds. You actually did it.",
+    "The tower remembers what was lost. Take what you carry up to where the sky is closest, and see what it asks of you. Choose with care: a traveller walks only one road."
+   ],
+   "choices": [
+    {
+     "label": "What roads?",
+     "go": "roads"
+    },
+    {
+     "label": "Tell me an old story.",
+     "go": "history"
+    },
+    {
+     "label": "Goodbye.",
+     "end": true
+    }
+   ]
+  },
+  "tower": {
+   "text": [
+    "The tower in the sky. Built by people who knew far more than we do, and who are long gone.",
+    "Its four halls look out over four islands. Each island has a keeper who knows one world better than I ever will. Climb up, find them, listen to them."
+   ],
+   "choices": [
+    {
+     "label": "And the kings?",
+     "go": "kings"
+    },
+    {
+     "label": "Back",
+     "go": "start"
+    }
+   ]
+  },
+  "kings": {
+   "text": [
+    "Four kings, each guarding the way into a world of their own. They don't take kindly to intruders.",
+    "Which one do you want to hear about? And mind you, hearing about a king and beating one are not the same thing."
+   ],
+   "choices": [
+    {
+     "label": "The guardian of the sea.",
+     "go": "king_sea"
+    },
+    {
+     "label": "The dragon of the sky.",
+     "go": "king_sky"
+    },
+    {
+     "label": "The three-headed undead.",
+     "go": "king_sands"
+    },
+    {
+     "label": "The blind fool.",
+     "go": "king_deep"
+    },
+    {
+     "label": "Back",
+     "go": "start"
+    }
+   ]
+  },
+  "king_sea": {
+   "text": [
+    "The guardian of the ocean is old, and he keeps his court in drowned halls beneath the waves, with his own kind around him.",
+    "Beyond him lies a world of endless water, where one last city still stands. The sea has never let anyone through while he keeps watch.",
+    "The Herald of the Sea knows more. Their island floats with drowned stone; you'll know it."
+   ],
+   "choices": [
+    {
+     "label": "Another king.",
+     "go": "kings"
+    },
+    {
+     "label": "Back",
+     "go": "start"
+    }
+   ]
+  },
+  "king_sky": {
+   "text": [
+    "The dragon at the world's end keeps a world of endless sky and drifting isles.",
+    "Plenty have reached her. Fewer came back. The ones who did found that the way home was the way in.",
+    "The Herald of the Sky charts the clouds from the highest island. Ask them."
+   ],
+   "choices": [
+    {
+     "label": "Another king.",
+     "go": "kings"
+    },
+    {
+     "label": "Back",
+     "go": "start"
+    }
+   ]
+  },
+  "king_sands": {
+   "text": [
+    "The three-headed undead destroys all who trespass in his eroded world, guarding the remains of his long-lost friends.",
+    "He hates the open sky, and anything that shines in it. Make of that what you will.",
+    "The Herald of the Sands keeps three black stones on a sun-baked island. They're kinder than I am."
+   ],
+   "choices": [
+    {
+     "label": "Another king.",
+     "go": "kings"
+    },
+    {
+     "label": "Back",
+     "go": "start"
+    }
+   ]
+  },
+  "king_deep": {
+   "text": [
+    "The blind fool hunts in the deepest dark. Anger clouds his judgement; he knows no friend from foe.",
+    "His world is caves without end. The door, they say, remembers who was there at the end.",
+    "The Herald of the Deep keeps candles lit on the cave island. Speak quietly to them."
+   ],
+   "choices": [
+    {
+     "label": "Another king.",
+     "go": "kings"
+    },
+    {
+     "label": "Back",
+     "go": "start"
+    }
+   ]
+  },
+  "soulbound": {
+   "text": [
+    "Most things you carry won't survive the crossing between worlds. Bound things will.",
+    "Rowan, our blacksmith, can bind an item to your soul. It stays with you when you travel and when you die. Your soul only holds so many, mind.",
+    "Each king that falls leaves something of its world with the one who felled it, and the soul can carry one more bound thing afterwards."
+   ],
+   "choices": [
+    {
+     "label": "Back",
+     "go": "start"
+    },
+    {
+     "label": "Goodbye.",
+     "end": true
+    }
+   ]
+  },
+  "history": {
+   "text": [
+    "Long ago, mages and engineers worked side by side in one city. The mages held sky, sea, stone and flame by birth; the engineers learned to master them by craft.",
+    "Something broke that city. The Spire fell silent and the Foundry went cold. What waits at the end of either road, I don't know. Only that the old city may still stand."
+   ],
+   "choices": [
+    {
+     "label": "Back",
+     "go": "start"
+    },
+    {
+     "label": "Goodbye.",
+     "end": true
+    }
+   ]
+  },
+  "roads": {
+   "text": [
+    "The path of the mages leads to the Silent Spire. The path of the engineers leads to the Cold Foundry.",
+    "You walk only one. Don't ask me which. I'd only tell you the one I'd have picked, and I've been wrong before."
+   ],
+   "choices": [
+    {
+     "label": "Back",
+     "go": "all_four"
+    },
+    {
+     "label": "Goodbye.",
+     "end": true
+    }
+   ]
+  }
+ }
+}

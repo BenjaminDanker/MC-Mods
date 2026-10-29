@@ -22,6 +22,23 @@ public final class BlacksmithInteraction {
     private BlacksmithInteraction() {
     }
 
+    /** Where the blacksmith's answers go: the AI chat, or a scripted dialogue screen. */
+    @FunctionalInterface
+    public interface Reply {
+        void say(String text);
+    }
+
+    /** Scripted dialogue: quote making the held item Soulbound (sets a pending quote on the session when possible). */
+    public static void quote(ServerPlayer player, ConversationSession session, Reply reply) {
+        // The dialogue screen offers its own confirm button, so the chat instruction is left out.
+        handleModify(player, session, "!modify Soulbound", text -> reply.say(text.replace("\n" + CONFIRM_PROMPT, "")));
+    }
+
+    /** Scripted dialogue: carry out the pending quote. */
+    public static void confirm(ServerPlayer player, ConversationSession session, Reply reply) {
+        handleConfirm(player, session, reply);
+    }
+
     public static boolean isBlacksmith(VillagerConfigEntry entry) {
         if (entry == null || entry.villagerType() == null) {
             return false;
@@ -50,62 +67,63 @@ public final class BlacksmithInteraction {
         }
 
         String lower = trimmed.toLowerCase(Locale.ROOT);
+        Reply reply = text -> manager.sendDeterministicReply(player, session, text);
         if (lower.startsWith("!modify")) {
-            return handleModify(manager, player, session, trimmed);
+            return handleModify(player, session, trimmed, reply);
         }
 
         if (lower.equals("!confirm")) {
-            return handleConfirm(manager, player, session);
+            return handleConfirm(player, session, reply);
         }
 
         return false;
     }
 
-    private static boolean handleModify(ConversationManager manager, ServerPlayer player, ConversationSession session, String message) {
+    private static boolean handleModify(ServerPlayer player, ConversationSession session, String message, Reply reply) {
         // Any new modify attempt invalidates any previously-quoted modification.
         session.setPendingModification(null);
 
         String[] parts = message.split("\\s+", 3);
         if (parts.length < 2 || !MOD_SOULBOUND.equalsIgnoreCase(parts[1])) {
-            manager.sendDeterministicReply(player, session, "Only !modify Soulbound is supported.");
+            reply.say("Only !modify Soulbound is supported.");
             return true;
         }
 
         ItemStack main = player.getInventory().getSelectedItem();
         if (main == null || main.isEmpty()) {
-            manager.sendDeterministicReply(player, session, "Hold exactly one item in your main hand, then use !modify Soulbound.");
+            reply.say("Hold exactly one item in your main hand, then ask again.");
             return true;
         }
 
         if (main.getCount() != 1) {
-            manager.sendDeterministicReply(player, session, "Hold exactly one item, not a stack, then use !modify Soulbound.");
+            reply.say("Hold exactly one item, not a stack, then ask again.");
             return true;
         }
 
         if (isSoulboundTagged(main) || fragmentId(main) != null) {
-            manager.sendDeterministicReply(player, session, "That is already Soulbound.");
+            reply.say("That is already Soulbound.");
             return true;
         }
 
         Payment quoted = findPayment(player, main.getItem());
         if (quoted == null) {
             String itemName = safeItemName(main);
-            manager.sendDeterministicReply(player, session, "Bring one additional " + itemName + " as payment, or a spare fragment from one of the four worlds, then try again.");
+            reply.say("Bring one additional " + itemName + " as payment, or a spare fragment from one of the four worlds, then try again.");
             return true;
         }
 
         withSoulboundMax(player, soulboundMax -> {
             int soulboundCount = countSoulboundItems(player);
             if (soulboundCount >= soulboundMax) {
-                manager.sendDeterministicReply(player, session, "Your Soul isn't large enough or you have too many Soulbound items.\nYour Soulbound capacity is " + soulboundCount + " out of a maximum of " + soulboundMax + " items.");
+                reply.say("Your Soul isn't large enough or you have too many Soulbound items.\nYour Soulbound capacity is " + soulboundCount + " out of a maximum of " + soulboundMax + " items.");
                 return;
             }
 
             PendingModification pending = new PendingModification(main.getItem(), MOD_SOULBOUND);
             session.setPendingModification(pending);
 
-            manager.sendDeterministicReply(player, session, "The cost is " + quoted.label() + ". Soulbound items travel across dimensions and are not dropped on death, but can still be manually dropped and used by others. This cannot be undone by normal means.\nYour Soulbound capacity is " + soulboundCount + " out of a maximum of " + soulboundMax + " items.\n" + CONFIRM_PROMPT);
-        }, () -> manager.sendDeterministicReply(player, session, "The Soulbound capacity system is unavailable. Try again later."));
+            reply.say("The cost is " + quoted.label() + ". Soulbound items travel across dimensions and are not dropped on death, but can still be manually dropped and used by others. This cannot be undone by normal means.\nYour Soulbound capacity is " + soulboundCount + " out of a maximum of " + soulboundMax + " items.\n" + CONFIRM_PROMPT);
+        }, () -> reply.say("The Soulbound capacity system is unavailable. Try again later."));
         return true;
     }
 
@@ -145,20 +163,20 @@ public final class BlacksmithInteraction {
         });
     }
 
-    private static boolean handleConfirm(ConversationManager manager, ServerPlayer player, ConversationSession session) {
+    private static boolean handleConfirm(ServerPlayer player, ConversationSession session, Reply reply) {
         if (session.getPendingModification() == null) {
             // Ignore stray confirmations unless a prior !modify created a pending quote.
             return true;
         }
         // Everything is checked again after the cap arrives: the player may have changed hands in the meantime.
-        withSoulboundMax(player, soulboundMax -> confirmWithCap(manager, player, session, soulboundMax), () -> {
+        withSoulboundMax(player, soulboundMax -> confirmWithCap(player, session, soulboundMax, reply), () -> {
             session.setPendingModification(null);
-            manager.sendDeterministicReply(player, session, "The Soulbound capacity system is unavailable. Try !modify Soulbound again later.");
+            reply.say("The Soulbound capacity system is unavailable. Try again later.");
         });
         return true;
     }
 
-    private static void confirmWithCap(ConversationManager manager, ServerPlayer player, ConversationSession session, int soulboundMax) {
+    private static void confirmWithCap(ServerPlayer player, ConversationSession session, int soulboundMax, Reply reply) {
         PendingModification pending = session.getPendingModification();
         if (pending == null) {
             return;
@@ -167,13 +185,13 @@ public final class BlacksmithInteraction {
         ItemStack main = player.getInventory().getSelectedItem();
         if (main == null || main.isEmpty() || main.getItem() != pending.item()) {
             session.setPendingModification(null);
-            manager.sendDeterministicReply(player, session, "The pending quote was cancelled because you are not holding the expected item. Retry with !modify Soulbound.");
+            reply.say("The pending quote was cancelled because you are not holding the expected item. Ask again when you have it.");
             return;
         }
 
         if (main.getCount() != 1) {
             session.setPendingModification(null);
-            manager.sendDeterministicReply(player, session, "Hold exactly one item, not a stack, then retry with !modify Soulbound.");
+            reply.say("Hold exactly one item, not a stack, then retry with !modify Soulbound.");
             return;
         }
 
@@ -181,14 +199,14 @@ public final class BlacksmithInteraction {
         if (payment == null) {
             session.setPendingModification(null);
             String itemName = safeItemName(main);
-            manager.sendDeterministicReply(player, session, "You no longer have the payment (an additional " + itemName + " or a spare fragment). Retry with !modify Soulbound.");
+            reply.say("You no longer have the payment (an additional " + itemName + " or a spare fragment). Ask again when you have it.");
             return;
         }
 
         int soulboundCount = countSoulboundItems(player);
         if (soulboundCount >= soulboundMax) {
             session.setPendingModification(null);
-            manager.sendDeterministicReply(player, session, "Your Soul isn't large enough or you have too many Soulbound items.\nYour Soulbound capacity is " + soulboundCount + " out of a maximum of " + soulboundMax + " items.");
+            reply.say("Your Soul isn't large enough or you have too many Soulbound items.\nYour Soulbound capacity is " + soulboundCount + " out of a maximum of " + soulboundMax + " items.");
             return;
         }
 
@@ -214,7 +232,7 @@ public final class BlacksmithInteraction {
 
         session.setPendingModification(null);
         String itemName = safeItemName(modified);
-        manager.sendDeterministicReply(player, session, itemName + " is now Soulbound. It travels across dimensions and is not dropped on death, but can still be manually dropped and used by others. This cannot be undone by normal means.");
+        reply.say(itemName + " is now Soulbound. It travels across dimensions and is not dropped on death, but can still be manually dropped and used by others. This cannot be undone by normal means.");
         return;
     }
 

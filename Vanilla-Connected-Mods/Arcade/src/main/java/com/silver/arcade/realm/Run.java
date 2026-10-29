@@ -52,7 +52,9 @@ public final class Run {
     /** Disconnected players inside their grace period (tick they left). Their room is paused meanwhile. */
     private final Map<UUID, Long> away = new HashMap<>();
     /** Players who were dropped after the grace period; they may rejoin the climb while it lasts. */
-    private final Set<UUID> dropped = new HashSet<>();
+    private final Map<UUID, Long> dropped = new HashMap<>();
+    /** How long a dropped player may rejoin the climb (the same window as resuming a suspended run). */
+    static final long REJOIN_TICKS = 15 * 60 * 20L;
     private int tier;
     private int prizeTier;
     private Phase phase = Phase.ROOMS;
@@ -108,7 +110,8 @@ public final class Run {
 
     /** True when this player was dropped from this climb after their grace period and the climb still goes on. */
     public boolean canRejoin(UUID player) {
-        return dropped.contains(player) && phase != Phase.DONE && !players.isEmpty();
+        Long at = dropped.get(player);
+        return at != null && server.getTickCount() - at <= REJOIN_TICKS && phase != Phase.DONE && !players.isEmpty();
     }
 
     public boolean done() {
@@ -400,7 +403,7 @@ public final class Run {
     /**
      * A player disconnected. Inside a room, the room pauses for up to {@link #GRACE_TICKS} so they can come back to it.
      * Elsewhere (or once the grace runs out) they are dropped from the climb: partners get rooms of their own, and the
-     * climb is kept for the leaver (they rejoin it while it lasts, or resume alone within 30 minutes).
+     * climb is kept for the leaver (they rejoin it while it lasts, or resume alone within 15 minutes).
      */
     public void left(UUID id) {
         if (!players.contains(id)) {
@@ -448,7 +451,7 @@ public final class Run {
      */
     public void rejoinLate(ServerPlayer player) {
         UUID id = player.getUUID();
-        if (!dropped.remove(id)) {
+        if (dropped.remove(id) == null) {
             return;
         }
         players.add(id);
@@ -495,7 +498,7 @@ public final class Run {
         if (!players.remove(id)) {
             return;
         }
-        dropped.add(id);
+        dropped.put(id, (long) server.getTickCount());
         LOGGER.info("Arcade: {} dropped from the climb (tier {})", id, tier);
         List<UUID> rehome = new ArrayList<>();
         for (Party party : parties) {

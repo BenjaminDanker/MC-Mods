@@ -51,6 +51,7 @@ public final class DoorRole {
     private final Map<UUID, Long> nextCheckAt = new HashMap<>();
     private final Map<UUID, ArcadeDb.Profile> profiles = new java.util.concurrent.ConcurrentHashMap<>();
     private final Map<UUID, Long> dieRolledAt = new HashMap<>();
+    private Altar altar;
 
     private static final class Door {
         final ServerLevel level;
@@ -77,6 +78,8 @@ public final class DoorRole {
     }
 
     public void register() {
+        int[] a = config.door.altar;
+        altar = new Altar(server, a != null && a.length == 3 ? new net.minecraft.core.BlockPos(a[0], a[1], a[2]) : null);
         ServerTickEvents.END_SERVER_TICK.register(ticking -> tick());
         ServerPlayConnectionEvents.JOIN.register((handler, sender, joined) -> {
             deliverPrizes(handler.getPlayer());
@@ -96,12 +99,12 @@ public final class DoorRole {
                 entity.discard();
             }
         });
-        LOGGER.info("Arcade door role: about one door per {} minutes of play per player, {} s each",
-            (int) (config.door.checkEveryMinutes / Math.max(0.0001, config.door.chance)), config.door.lifetimeSeconds);
+        LOGGER.info("Arcade door role: up to {} discovery doors for newcomers; the die opens doors on demand", config.door.discoveryMax);
     }
 
     private void tick() {
         long now = server.getTickCount();
+        altar.tick(now);
         for (Iterator<Door> it = doors.iterator(); it.hasNext();) {
             Door door = it.next();
             if (now >= door.closesAt) {
@@ -135,12 +138,8 @@ public final class DoorRole {
             if (cooling || profile == null || player.isSpectator() || player.isCreative()) {
                 continue;
             }
-            if (Die.carries(player)) {
-                // Carrying the die is saying yes to the Gamemaster's games.
-                if (player.getRandom().nextDouble() < config.door.chance && open(player, config.door.lifetimeSeconds)) {
-                    lastDoorAt.put(id, now);
-                }
-            } else if (!profile.visited() && profile.offers() < config.door.discoveryMax
+            // Only newcomers ever meet a door by chance (a couple of times at most); after that, the die opens them.
+            if (!profile.visited() && profile.offers() < config.door.discoveryMax
                     && profile.secondsSinceOffer() >= config.door.discoveryCooldownHours * 3600L
                     && player.getRandom().nextDouble() < config.door.discoveryChance && open(player, config.door.lifetimeSeconds)) {
                 lastDoorAt.put(id, now);
@@ -295,7 +294,7 @@ public final class DoorRole {
             if (profile.visited() && !profile.hasDie()) {
                 online.getInventory().placeItemBackInInventory(Die.create());
                 online.sendSystemMessage(Component.literal("Something rattles in your pocket: the Gamemaster's Die. Roll it whenever you "
-                    + "want to play; carry it and his doors may find you. Put it away and they won't.").withStyle(ChatFormatting.LIGHT_PURPLE));
+                    + "want to play, and his door opens; friends nearby can follow you through.").withStyle(ChatFormatting.LIGHT_PURPLE));
                 db.markDieGiven(id);
                 profiles.put(id, new ArcadeDb.Profile(true, true, profile.offers(), profile.secondsSinceOffer()));
             }

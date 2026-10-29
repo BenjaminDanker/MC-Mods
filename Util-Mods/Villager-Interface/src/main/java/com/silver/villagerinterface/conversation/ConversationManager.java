@@ -89,6 +89,15 @@ public final class ConversationManager {
 
         applyInteractionCooldown(player);
 
+        if (com.silver.villagerinterface.dialogue.Dialogues.has(entry)) {
+            // Scripted NPC: its own dialog screen, no AI chat.
+            if (existing != null) {
+                endConversation(player, "Conversation ended.");
+            }
+            com.silver.villagerinterface.dialogue.Dialogues.open(player, entry);
+            return true;
+        }
+
         if (existing != null) {
             endConversation(player, "Conversation ended.");
         }
@@ -151,6 +160,7 @@ public final class ConversationManager {
 
     public void onPlayerDisconnect(ServerGamePacketListenerImpl handler, MinecraftServer server) {
         UUID playerId = handler.getPlayer().getUUID();
+        com.silver.villagerinterface.dialogue.Dialogues.clear(playerId);
         ConversationSession session = sessions.remove(playerId);
         if (session != null) {
             session.cancelActiveRequest();

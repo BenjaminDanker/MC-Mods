@@ -36,7 +36,7 @@ import org.slf4j.LoggerFactory;
 public final class RealmRole implements Run.Host {
     private static final Logger LOGGER = LoggerFactory.getLogger("arcade");
     /** Seconds a run, left mid-way, can be resumed. */
-    private static final long RESUME_SECONDS = 30 * 60;
+    private static final long RESUME_SECONDS = 15 * 60;
     private static final int GATHER_TICKS = 5 * 20;
     private static final int MAX_GROUP = 4;
     private static final BlockPos HALL = new BlockPos(0, 100, 0);
@@ -320,7 +320,7 @@ public final class RealmRole implements Run.Host {
         if (since != null && now - since > 40) {
             leavingAt.remove(player.getUUID());
             String home = origins.getOrDefault(player.getUUID(), "vanilla");
-            Gamemaster.say(player, "Leaving so soon? Come back any time you find my door.");
+            Gamemaster.say(player, "Leaving so soon? Roll my die whenever you want to come back.");
             if (!Transfers.send(player, home, "", "arcade exit")) {
                 LOGGER.error("ALERT: the arcade exit transfer for {} was not queued", player.getName().getString());
             }

@@ -3,6 +3,7 @@
   "package": "com.silver.villagerinterface.mixin",
   "compatibilityLevel": "JAVA_25",
   "mixins": [
+    "CustomClickMixin",
     "EntityMixin",
     "PlayerListMixin",
     "ServerGamePacketListenerImplMixin",

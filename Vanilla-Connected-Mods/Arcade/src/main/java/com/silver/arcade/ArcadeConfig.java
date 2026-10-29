@@ -27,8 +27,6 @@ public final class ArcadeConfig {
     public static final class Door {
         /** How often each player is considered for a door. */
         public int checkEveryMinutes = 5;
-        /** Chance per check for players carrying the die; with the defaults about one door per three hours of play. */
-        public double chance = 0.03;
         /** No second door for the same player within this many minutes. */
         public int cooldownMinutes = 60;
         public int lifetimeSeconds = 120;
@@ -41,6 +39,8 @@ public final class ArcadeConfig {
         /** The Gamemaster's Die: rolling it opens a door on the spot (anyone may walk through while it stands). */
         public int dieCooldownSeconds = 120;
         public int dieDoorSeconds = 60;
+        /** Where the die altar stands {x, y, z}; empty: open ground near the world spawn. */
+        public int[] altar = new int[0];
     }
 
     public static final class RewardBand {

@@ -41,7 +41,7 @@ public final class GamemasterNpc {
         "Step onto the purple circle. Bring friends if you have any. If you don't, I'll be your friend. Briefly.",
         "After every room you choose: the gold takes your winnings home, the emerald takes you higher. I love the emerald.",
         "Forgot a rule mid-room? Type !explain. I never tire of explaining. Well. Rarely.",
-        "You may come back whenever my door finds you. Or whenever you roll my die.",
+        "Roll my die whenever you want to play. Lost it? My altar near your spawn keeps spares.",
         "The crying obsidian sends you home. It cries because you're leaving.",
         "No, I won't tell you what the next room is. Where's the fun in that?",
         "Lose a partner and I'll find you a room of your own. I'm generous like that.",

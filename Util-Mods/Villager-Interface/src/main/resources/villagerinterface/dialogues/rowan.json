@@ -1,0 +1,52 @@
+{
+ "start": "start",
+ "nodes": {
+  "start": {
+   "text": [
+    "Rowan. Blacksmith. What do you need?"
+   ],
+   "choices": [
+    {
+     "label": "Bind the item in my hand to my soul.",
+     "action": "soulbound_quote"
+    },
+    {
+     "label": "What does Soulbound do?",
+     "go": "what"
+    },
+    {
+     "label": "What does it cost?",
+     "go": "cost"
+    },
+    {
+     "label": "Goodbye.",
+     "end": true
+    }
+   ]
+  },
+  "what": {
+   "text": [
+    "A bound item crosses between worlds with you, and you keep it when you die.",
+    "It doesn't lock it to you. You can still drop it, and anyone who picks it up can use it. And it can't be undone."
+   ],
+   "choices": [
+    {
+     "label": "Back",
+     "go": "start"
+    }
+   ]
+  },
+  "cost": {
+   "text": [
+    "One more of the same thing, so I've something to work into it. Or a spare fragment from one of the four worlds; you keep the other.",
+    "No coins. I've no use for them."
+   ],
+   "choices": [
+    {
+     "label": "Back",
+     "go": "start"
+    }
+   ]
+  }
+ }
+}

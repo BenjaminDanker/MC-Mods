@@ -12,8 +12,8 @@ import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.component.ItemLore;
 
 /**
- * The Gamemaster's Die: given after a first visit. Soulbound (it travels between servers). Right-click to open a door;
- * while it is anywhere in your inventory, his doors may also find you on their own.
+ * The Gamemaster's Die: given after a first visit (and by his altar near each spawn). Soulbound (it travels between
+ * servers, and does not take a soulbound slot). Right-click to open a door.
  */
 public final class Die {
     static final String ID = "gamemaster_die";
@@ -31,8 +31,7 @@ public final class Die {
         die.set(DataComponents.ENCHANTMENT_GLINT_OVERRIDE, true);
         die.set(DataComponents.LORE, new ItemLore(List.of(
             Component.literal("Roll it (right-click) to open his door.").withStyle(ChatFormatting.GRAY),
-            Component.literal("Carry it and his doors may find you.").withStyle(ChatFormatting.DARK_GRAY),
-            Component.literal("Put it away and they won't.").withStyle(ChatFormatting.DARK_GRAY))));
+            Component.literal("Friends nearby may follow you through.").withStyle(ChatFormatting.DARK_GRAY))));
         return die;
     }
 
