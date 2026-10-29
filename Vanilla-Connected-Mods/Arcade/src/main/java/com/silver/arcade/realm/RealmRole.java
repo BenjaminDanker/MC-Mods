@@ -65,6 +65,7 @@ public final class RealmRole implements Run.Host {
 
     public void register() {
         RoomCatalog.registerAll();
+        Arena.clearLeftovers(level(), server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("arcade-arenas"));
         ensureHall();
         gamemaster = new GamemasterNpc(level());
         gamemaster.register();
@@ -73,7 +74,16 @@ public final class RealmRole implements Run.Host {
         ServerTickEvents.END_SERVER_TICK.register(ticking -> tick());
         ServerPlayConnectionEvents.JOIN.register((handler, sender, joined) -> onJoin(handler.getPlayer()));
         ServerPlayConnectionEvents.DISCONNECT.register((handler, left) -> onLeave(handler.getPlayer().getUUID()));
-        ServerLifecycleEvents.SERVER_STOPPING.register(stopping -> runs.forEach(Run::abandon));
+        ServerLifecycleEvents.SERVER_STOPPING.register(stopping -> {
+            Arena.stopping = true;
+            runs.forEach(Run::abandon);
+        });
+        // Monsters a room spawned never outlive it: any found when a chunk loads are leftovers.
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents.ENTITY_LOAD.register((entity, world) -> {
+            if (entity.entityTags().contains("arcade_room") && runs.isEmpty()) {
+                entity.discard();
+            }
+        });
         ServerMessageEvents.ALLOW_CHAT_MESSAGE.register((message, sender, params) -> {
             Run run = runOf(sender.getUUID());
             return run == null || !run.chat(sender, message.signedContent());

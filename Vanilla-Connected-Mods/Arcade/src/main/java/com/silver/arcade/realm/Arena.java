@@ -15,6 +15,8 @@ import net.minecraft.world.level.block.state.BlockState;
 /**
  * A slot in the void world where one room is built: slots sit 512 blocks apart along +x at y=100, far enough that
  * one room never shows in another's view. Every block a room places is remembered and cleared when the slot is freed.
+ * The list is also kept on disk (world/arcade-arenas/slot-N.bin) until the slot is cleared, so whatever a crash or a
+ * stop left behind is cleared on the next start.
  */
 public final class Arena {
     public static final int SPACING = 512;
@@ -26,6 +28,11 @@ public final class Arena {
     private final BlockPos origin;
     private final Deque<BlockPos> placed = new ArrayDeque<>();
     private final List<net.minecraft.world.entity.Entity> spawned = new ArrayList<>();
+    private boolean ledgerDirty;
+    private static java.nio.file.Path ledgers;
+    /** Set while the server stops: arenas then keep their ledgers instead of clearing. */
+    public static volatile boolean stopping;
+    private static final org.slf4j.Logger LOGGER = org.slf4j.LoggerFactory.getLogger("arcade");
 
     private Arena(ServerLevel level, int slot) {
         this.level = level;
@@ -56,6 +63,59 @@ public final class Arena {
         BlockPos pos = at(dx, dy, dz);
         level.setBlock(pos, state, 2);
         placed.push(pos.immutable());
+        ledgerDirty = true;
+    }
+
+    private java.nio.file.Path ledger() {
+        return ledgers == null ? null : ledgers.resolve("slot-" + slot + ".bin");
+    }
+
+    /** Writes the list of placed blocks to disk if it changed (called every few seconds by the run). */
+    public void flushLedger() {
+        java.nio.file.Path file = ledger();
+        if (!ledgerDirty || file == null) {
+            return;
+        }
+        ledgerDirty = false;
+        java.nio.ByteBuffer buffer = java.nio.ByteBuffer.allocate(placed.size() * Long.BYTES);
+        placed.forEach(pos -> buffer.putLong(pos.asLong()));
+        try {
+            java.nio.file.Files.createDirectories(ledgers);
+            java.nio.file.Path temporary = file.resolveSibling(file.getFileName() + ".tmp");
+            java.nio.file.Files.write(temporary, buffer.array());
+            java.nio.file.Files.move(temporary, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+        } catch (java.io.IOException failure) {
+            LOGGER.error("ALERT: could not write the arena ledger {}", file, failure);
+        }
+    }
+
+    /** At start: clears every block a room left behind last time (from the ledgers), then forgets the ledgers. */
+    public static void clearLeftovers(ServerLevel level, java.nio.file.Path dir) {
+        ledgers = dir;
+        if (!java.nio.file.Files.isDirectory(dir)) {
+            return;
+        }
+        try (var files = java.nio.file.Files.list(dir)) {
+            for (java.nio.file.Path file : files.toList()) {
+                if (!file.getFileName().toString().endsWith(".bin")) {
+                    java.nio.file.Files.deleteIfExists(file);
+                    continue;
+                }
+                java.nio.ByteBuffer buffer = java.nio.ByteBuffer.wrap(java.nio.file.Files.readAllBytes(file));
+                int cleared = 0;
+                while (buffer.remaining() >= Long.BYTES) {
+                    BlockPos pos = BlockPos.of(buffer.getLong());
+                    if (!level.getBlockState(pos).isAir()) {
+                        level.setBlock(pos, Blocks.AIR.defaultBlockState(), 2 | 16);
+                        cleared++;
+                    }
+                }
+                java.nio.file.Files.delete(file);
+                LOGGER.info("Cleared {} blocks a room left behind ({})", cleared, file.getFileName());
+            }
+        } catch (java.io.IOException failure) {
+            LOGGER.error("ALERT: could not clear the arenas' leftovers", failure);
+        }
     }
 
     public void fill(int x1, int y1, int z1, int x2, int y2, int z2, BlockState state) {
@@ -103,11 +163,24 @@ public final class Arena {
             e -> e instanceof net.minecraft.world.entity.projectile.Projectile || e instanceof net.minecraft.world.entity.item.ItemEntity
                 || e.entityTags().contains("arcade_room"))
             .forEach(net.minecraft.world.entity.Entity::discard);
+        if (stopping) {
+            // The ledger stays on disk; the next start clears this arena.
+            ledgerDirty = true;
+            flushLedger();
+            return;
+        }
         List<BlockPos> order = new ArrayList<>(placed);
         for (BlockPos pos : order) {
             level.setBlock(pos, Blocks.AIR.defaultBlockState(), 2 | 16);
         }
         placed.clear();
+        try {
+            if (ledger() != null) {
+                java.nio.file.Files.deleteIfExists(ledger());
+            }
+        } catch (java.io.IOException failure) {
+            LOGGER.warn("Could not remove the arena ledger {}", ledger(), failure);
+        }
         synchronized (Arena.class) {
             USED.clear(slot);
         }

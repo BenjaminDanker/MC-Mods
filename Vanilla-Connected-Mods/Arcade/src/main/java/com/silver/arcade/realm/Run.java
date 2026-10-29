@@ -199,6 +199,7 @@ public final class Run {
         Party party = new Party(room, arena, members, room.timeLimitTicks(tier), server.getTickCount());
         parties.add(party);
         room.start(arena, online, tier);
+        arena.flushLedger();
         for (ServerPlayer player : online) {
             lastRoom.put(player.getUUID(), type.id());
             party.bar.addPlayer(player);
@@ -208,6 +209,12 @@ public final class Run {
 
     public void tick() {
         long now = server.getTickCount();
+        if (now % 100 == 0) {
+            parties.forEach(party -> party.arena.flushLedger());
+            if (choiceArena != null) {
+                choiceArena.flushLedger();
+            }
+        }
         // Safety net: anyone who vanished without a disconnect event is treated as disconnected.
         for (UUID id : new ArrayList<>(players)) {
             if (!away.containsKey(id) && server.getPlayerList().getPlayer(id) == null) {
