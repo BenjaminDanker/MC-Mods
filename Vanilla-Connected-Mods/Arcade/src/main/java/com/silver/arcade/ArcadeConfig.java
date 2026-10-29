@@ -21,6 +21,15 @@ public final class ArcadeConfig {
     public String serverName = "";
 
     public Door door = new Door();
+    /** The arcade's Grand Game pad: one climb for a big crowd, all in the same rooms. */
+    public Event event = new Event();
+
+    public static final class Event {
+        /** Players needed on the pad (counting only players free in the hall). */
+        public int minPlayers = 6;
+        public int maxPlayers = 16;
+        public int countdownSeconds = 15;
+    }
     /** Prize bands of this world, by the highest tier a run cashed out at. */
     public List<RewardBand> rewards = new ArrayList<>();
 

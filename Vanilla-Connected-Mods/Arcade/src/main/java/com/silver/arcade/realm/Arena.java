@@ -25,6 +25,7 @@ public final class Arena {
     private final int slot;
     private final BlockPos origin;
     private final Deque<BlockPos> placed = new ArrayDeque<>();
+    private final List<net.minecraft.world.entity.Entity> spawned = new ArrayList<>();
 
     private Arena(ServerLevel level, int slot) {
         this.level = level;
@@ -67,6 +68,20 @@ public final class Arena {
         }
     }
 
+    /** Adds an entity the room made (a mob, a target); it is removed with the arena. */
+    public <T extends net.minecraft.world.entity.Entity> T spawn(T entity, double dx, double dy, double dz) {
+        entity.snapTo(origin.getX() + dx, origin.getY() + dy, origin.getZ() + dz, 0F, 0F);
+        entity.addTag("arcade_room");
+        level.addFreshEntity(entity);
+        spawned.add(entity);
+        return entity;
+    }
+
+    /** Removes one block a room placed (it stays remembered; clearing it again later is harmless). */
+    public void clearBlock(int dx, int dy, int dz) {
+        level.setBlock(at(dx, dy, dz), Blocks.AIR.defaultBlockState(), 2);
+    }
+
     /** True when pos lies in this arena's slot. */
     public boolean contains(BlockPos pos) {
         return pos.getX() >= origin.getX() - SPACING / 2 && pos.getX() < origin.getX() + SPACING / 2;
@@ -80,6 +95,14 @@ public final class Arena {
 
     /** Clears everything the room placed and frees the slot. */
     public void release() {
+        spawned.forEach(net.minecraft.world.entity.Entity::discard);
+        spawned.clear();
+        // Arrows and drops left lying around in the slot go too.
+        level.getEntities((net.minecraft.world.entity.Entity) null, new net.minecraft.world.phys.AABB(origin.getX() - SPACING / 2.0, BASE_Y - 64,
+                -SPACING / 2.0, origin.getX() + SPACING / 2.0, BASE_Y + 64, SPACING / 2.0),
+            e -> e instanceof net.minecraft.world.entity.projectile.Projectile || e instanceof net.minecraft.world.entity.item.ItemEntity
+                || e.entityTags().contains("arcade_room"))
+            .forEach(net.minecraft.world.entity.Entity::discard);
         List<BlockPos> order = new ArrayList<>(placed);
         for (BlockPos pos : order) {
             level.setBlock(pos, Blocks.AIR.defaultBlockState(), 2 | 16);

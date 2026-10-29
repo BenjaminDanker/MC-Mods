@@ -70,6 +70,50 @@ abstract class BaseRoom implements Room {
         }
     }
 
+    /** Knocked out of the room: failed, and watching the rest from above (spectators stay inside the room's box). */
+    protected void out(ServerPlayer player, String why) {
+        fail(player);
+        com.silver.arcade.realm.Gamemaster.bar(player, why);
+        player.resetFallDistance();
+        player.setGameMode(net.minecraft.world.level.GameType.SPECTATOR);
+        arena.put(player, 0.5, 10, 0.5, 0F);
+    }
+
+    /** Start spot i of n on a grid two blocks apart, centred, rows going back (-z); x stays within +-half. */
+    protected static double[] spot(int i, int half) {
+        int perRow = Math.max(1, half + 1);
+        return new double[] {-half + 2 * (i % perRow) + 0.5, -2.0 * (i / perRow) + 0.5};
+    }
+
+    /** Players still playing (not cleared or failed). */
+    protected java.util.List<ServerPlayer> undecided() {
+        java.util.List<ServerPlayer> out = new java.util.ArrayList<>();
+        for (ServerPlayer player : players.values()) {
+            if (!decided(player.getUUID()) && !player.isRemoved()) {
+                out.add(player);
+            }
+        }
+        return out;
+    }
+
+    /** Height above the arena floor (y 0 is the floor block's level). */
+    protected double heightOf(ServerPlayer player) {
+        return player.getY() - arena.origin().getY();
+    }
+
+    protected void give(ServerPlayer player, net.minecraft.world.item.ItemStack stack) {
+        player.getInventory().placeItemBackInInventory(stack);
+    }
+
+    protected void effect(ServerPlayer player, net.minecraft.core.Holder<net.minecraft.world.effect.MobEffect> effect, int ticks, int amplifier) {
+        player.addEffect(new net.minecraft.world.effect.MobEffectInstance(effect, ticks, amplifier, false, false));
+    }
+
+    protected net.minecraft.core.Holder<net.minecraft.world.item.enchantment.Enchantment> enchantment(
+            net.minecraft.resources.ResourceKey<net.minecraft.world.item.enchantment.Enchantment> key) {
+        return arena.level().registryAccess().lookupOrThrow(net.minecraft.core.registries.Registries.ENCHANTMENT).getOrThrow(key);
+    }
+
     /** Seconds -> ticks. */
     protected static int seconds(double s) {
         return (int) Math.round(s * 20);

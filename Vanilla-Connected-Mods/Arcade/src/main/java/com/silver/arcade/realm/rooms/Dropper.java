@@ -1,0 +1,92 @@
+package com.silver.arcade.realm.rooms;
+
+import com.silver.arcade.realm.Gamemaster;
+import java.util.Random;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.block.Blocks;
+
+/**
+ * The dropper: jump down a tall shaft past the ledges and land in the small pool at the bottom. Landing anywhere else
+ * sends you back up to try again (no fall damage here); land in the water before the time runs out to clear.
+ */
+public final class Dropper extends BaseRoom {
+    private static final int HEIGHT = 56;
+    private static final int HALF = 4;
+    private final Random random = new Random();
+
+    public String id() { return "dropper"; }
+    public String title() { return "The Drop"; }
+    public String explain() {
+        return "Jump into the shaft and steer past the ledges into the little pool at the bottom. Miss it and you start over at the top.";
+    }
+
+    public int timeLimitTicks(int tier) {
+        this.tier = tier;
+        return seconds(75);
+    }
+
+    @Override
+    public int[] bounds() {
+        return new int[] {-HALF - 4, -4, -HALF - 4, HALF + 4, HEIGHT + 10, HALF + 4};
+    }
+
+    @Override
+    protected void build() {
+        // Walls of the shaft.
+        for (int y = 0; y <= HEIGHT; y++) {
+            for (int i = -HALF - 1; i <= HALF + 1; i++) {
+                var wall = y % 8 == 0 ? Blocks.CHISELED_QUARTZ_BLOCK.defaultBlockState() : Blocks.QUARTZ_BRICKS.defaultBlockState();
+                arena.set(i, y, -HALF - 1, wall);
+                arena.set(i, y, HALF + 1, wall);
+                arena.set(-HALF - 1, y, i, wall);
+                arena.set(HALF + 1, y, i, wall);
+            }
+        }
+        arena.fill(-HALF, -1, -HALF, HALF, -1, HALF, Blocks.SMOOTH_QUARTZ.defaultBlockState()); // under the pool
+        arena.fill(-HALF, 0, -HALF, HALF, 0, HALF, Blocks.SMOOTH_QUARTZ.defaultBlockState());
+        // The pool: 3x3 at first, 2x2 from tier 4, 1x1 from tier 8; anywhere on the floor.
+        int pool = tier >= 8 ? 1 : tier >= 4 ? 2 : 3;
+        int px = random.nextInt(2 * HALF - pool + 2) - HALF;
+        int pz = random.nextInt(2 * HALF - pool + 2) - HALF;
+        arena.fill(px, 0, pz, px + pool - 1, 0, pz + pool - 1, Blocks.WATER.defaultBlockState());
+        // Ledges: more and wider as tiers climb, never closing the shaft.
+        int ledges = Math.min(14, 3 + tier);
+        for (int i = 0; i < ledges; i++) {
+            int y = 6 + random.nextInt(HEIGHT - 12);
+            int w = 1 + random.nextInt(Math.min(5, 2 + tier / 2));
+            int x = random.nextInt(2 * HALF + 1 - w) - HALF;
+            int z = random.nextInt(2 * HALF + 1 - w) - HALF;
+            arena.fill(x, y, z, x + w - 1, y, z + w - 1, Blocks.CONCRETE.purple().defaultBlockState());
+        }
+        // The top: a ring to stand on around the opening.
+        arena.fill(-HALF - 3, HEIGHT + 1, -HALF - 3, HALF + 3, HEIGHT + 1, -HALF - 2, Blocks.QUARTZ_BRICKS.defaultBlockState());
+        players.values().forEach(this::top);
+    }
+
+    private void top(ServerPlayer player) {
+        player.resetFallDistance();
+        arena.put(player, 0.5, HEIGHT + 2, -HALF - 2.5, 0F);
+    }
+
+    @Override
+    public void tick(long tickInRoom) {
+        for (ServerPlayer player : undecided()) {
+            player.resetFallDistance(); // no fall damage in the drop
+            if (player.isInWater()) {
+                clear(player);
+                Gamemaster.bar(player, "Splash! Cleared.");
+                top(player);
+                continue;
+            }
+            if (player.onGround() && heightOf(player) < HEIGHT - 2) {
+                Gamemaster.bar(player, "Missed. Again!");
+                top(player);
+            }
+        }
+    }
+
+    @Override
+    public void fell(ServerPlayer player) {
+        top(player);
+    }
+}

@@ -1,0 +1,91 @@
+package com.silver.arcade.realm.rooms;
+
+import com.silver.arcade.realm.Gamemaster;
+import java.util.List;
+import java.util.Random;
+import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Blocks;
+
+/**
+ * Spleef, a versus room: everyone stands on a snow floor over a pit; hit the snow to break it under the others. Who
+ * falls is out; the last one standing clears. If time runs out, everyone still standing clears.
+ */
+public final class Spleef extends BaseRoom {
+    private final Random random = new Random();
+    private int radius;
+
+    public String id() { return "spleef"; }
+    public String title() { return "Spleef"; }
+    public String explain() {
+        return "Hit the snow to break it. Break it under the others, keep it under yourself. Fall and you're out; "
+            + "the last one standing wins.";
+    }
+
+    public int timeLimitTicks(int tier) {
+        this.tier = tier;
+        return seconds(Math.max(60, 120 - tier * 5));
+    }
+
+    @Override
+    protected void build() {
+        radius = Math.max(5, 9 - tier / 3);
+        for (int x = -radius; x <= radius; x++) {
+            for (int z = -radius; z <= radius; z++) {
+                if (x * x + z * z > radius * radius) {
+                    continue;
+                }
+                // Higher tiers start with a few holes already.
+                if (tier >= 4 && random.nextInt(100) < Math.min(15, tier) && x * x + z * z > 9) {
+                    continue;
+                }
+                arena.set(x, 0, z, Blocks.SNOW_BLOCK.defaultBlockState());
+            }
+        }
+        List<ServerPlayer> list = List.copyOf(players.values());
+        for (int i = 0; i < list.size(); i++) {
+            double angle = Math.PI * 2 * i / list.size();
+            ServerPlayer player = list.get(i);
+            arena.put(player, Math.cos(angle) * (radius - 2) + 0.5, 1, Math.sin(angle) * (radius - 2) + 0.5, 0F);
+            give(player, new ItemStack(Items.DIAMOND_SHOVEL));
+        }
+    }
+
+    @Override
+    public void tick(long tickInRoom) {
+        List<ServerPlayer> standing = undecided();
+        for (ServerPlayer player : standing) {
+            if (heightOf(player) < -3) {
+                out(player, "Out!");
+            }
+        }
+        standing = undecided();
+        if (players.size() > 1 && standing.size() == 1) {
+            clear(standing.get(0));
+            Gamemaster.bar(standing.get(0), "Last one standing!");
+        }
+    }
+
+    @Override
+    public java.util.Set<java.util.UUID> cleared() {
+        // Time is up: everyone still standing clears.
+        undecided().forEach(this::clear);
+        return super.cleared();
+    }
+
+    @Override
+    public boolean hit(ServerPlayer player, BlockPos pos) {
+        if (pos.getY() != arena.origin().getY() || !arena.level().getBlockState(pos).is(Blocks.SNOW_BLOCK)) {
+            return false;
+        }
+        if (!decided(player.getUUID()) && player.distanceToSqr(net.minecraft.world.phys.Vec3.atCenterOf(pos)) < 30) {
+            arena.level().setBlock(pos, Blocks.AIR.defaultBlockState(), 2);
+            arena.level().playSound(null, pos, SoundEvents.POWDER_SNOW_BREAK, SoundSource.BLOCKS, 1F, 1F);
+        }
+        return true;
+    }
+}

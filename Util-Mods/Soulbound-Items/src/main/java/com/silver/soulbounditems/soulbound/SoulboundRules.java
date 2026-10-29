@@ -91,7 +91,13 @@ public final class SoulboundRules {
         return new EnforcementResult(currentCounts, overflow > 0);
     }
 
+    /** Servers without MPDS (the arcade) have no soulbound cap; asking would only fail every time. */
+    private static final boolean MPDS_PRESENT = net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("mpds");
+
     public static int getSoulboundMaxOrUnlimited(ServerPlayer player) {
+        if (!MPDS_PRESENT) {
+            return Integer.MAX_VALUE;
+        }
         try {
             return Math.max(0, MpdsSoulboundApi.getSoulboundMax(player.getName().getString(), player.getStringUUID()));
         } catch (MpdsSoulboundApi.RecentFailureException e) {

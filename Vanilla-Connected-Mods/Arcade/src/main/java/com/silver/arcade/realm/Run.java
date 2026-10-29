@@ -85,8 +85,17 @@ public final class Run {
         }
     }
 
+    /** A Grand Game: everyone always plays the same room. */
+    private final boolean together;
+
     /** {@code choiceFirst}: a resumed run starts on the choice platform (cash out what was earned, or climb on). */
     public Run(MinecraftServer server, ServerLevel level, Host host, List<ServerPlayer> group, int startTier, int prizeTier, boolean choiceFirst) {
+        this(server, level, host, group, startTier, prizeTier, choiceFirst, false);
+    }
+
+    public Run(MinecraftServer server, ServerLevel level, Host host, List<ServerPlayer> group, int startTier, int prizeTier, boolean choiceFirst,
+            boolean together) {
+        this.together = together;
         this.server = server;
         this.level = level;
         this.host = host;
@@ -146,7 +155,9 @@ public final class Run {
         List<List<UUID>> out = new ArrayList<>();
         int n = order.size();
         double roll = random.nextDouble();
-        if (n == 1 || roll < 0.4) {
+        if (together) {
+            out.add(List.copyOf(order));
+        } else if (n == 1 || roll < 0.4) {
             order.forEach(id -> out.add(List.of(id)));
         } else if (roll < 0.75 || n == 2 && roll < 0.85) {
             for (int i = 0; i < n; i += 2) {
@@ -181,6 +192,7 @@ public final class Run {
         }
         Room room = type.factory().get();
         Arena arena = Arena.take(level);
+        LOGGER.info("Arcade room {} (tier {}) for {}", type.id(), tier, online.stream().map(p -> p.getName().getString()).toList());
         Party party = new Party(room, arena, members, room.timeLimitTicks(tier), server.getTickCount());
         parties.add(party);
         room.start(arena, online, tier);
@@ -409,7 +421,7 @@ public final class Run {
         if (!players.contains(id)) {
             return;
         }
-        if (phase == Phase.ROOMS && partyOf(id) != null) {
+        if (phase == Phase.ROOMS && partyOf(id) != null && !together) {
             away.put(id, (long) server.getTickCount());
             LOGGER.info("Arcade: {} disconnected mid-room; their room waits", id);
             for (UUID other : partyOf(id).members) {
@@ -504,7 +516,8 @@ public final class Run {
         for (Party party : parties) {
             if (party.members.contains(id) && !party.over) {
                 party.room.left(id);
-                if (party.members.size() > 1) {
+                // A Grand Game goes on without them; a small shared room can't go on short-handed.
+                if (party.members.size() > 1 && !together) {
                     // A shared room can't go on short-handed: the others get a fresh room of their own, same tier.
                     party.over = true;
                     party.voided = true;
