@@ -30,8 +30,21 @@ public final class LightsOut extends BaseRoom {
     @Override
     protected void build() {
         board = LightsOutBoard.scrambled(size(), presses(), random);
-        arena.fill(-4, 0, -3, 4, 0, 5, Blocks.POLISHED_DEEPSLATE.defaultBlockState());
-        arena.fill(-4, 1, 6, 4, 7, 6, Blocks.DEEPSLATE_TILES.defaultBlockState());
+        // A geode floor (smooth basalt and calcite rings with amethyst inlay) and an amethyst board backing in a
+        // calcite frame; the lamps themselves stay shroomlight (lit) and black concrete (dark).
+        for (int x = -4; x <= 4; x++) {
+            for (int z = -3; z <= 5; z++) {
+                double r = Math.hypot(x, (z - 1) * 1.0);
+                arena.set(x, 0, z, st(r < 1.5 ? "amethyst_block" : r < 2.5 ? "calcite" : r < 3.5 ? "smooth_basalt"
+                    : (Math.floorMod(x + z, 3) == 0 ? "amethyst_block" : "tuff")));
+            }
+        }
+        for (int x = -4; x <= 4; x++) {
+            for (int y = 1; y <= 7; y++) {
+                boolean frame = Math.abs(x) == 4 || y == 1 || y == 7;
+                arena.set(x, y, 6, st(frame ? "calcite" : "amethyst_block"));
+            }
+        }
         draw();
         com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.GeodeLook.build(arena, tier));
         int i = 0;

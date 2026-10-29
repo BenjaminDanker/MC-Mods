@@ -50,8 +50,21 @@ public final class PatternCopy extends BaseRoom {
         if (!any) {
             pattern[0][0] = 1;
         }
-        arena.fill(-4, 0, -3, 4, 0, 5, Blocks.SMOOTH_STONE.defaultBlockState());
-        arena.fill(-4, 1, 6, 4, 2 + 2 * size + 1, 6, Blocks.DARK_OAK_PLANKS.defaultBlockState());
+        // Gallery marble (quartz and diorite checks, a gold-edged black runner to the easel wall) and a red velvet
+        // hanging wall with a gold frame behind the picture and the canvas.
+        for (int x = -4; x <= 4; x++) {
+            for (int z = -3; z <= 5; z++) {
+                arena.set(x, 0, z, st(Math.abs(x) <= 1 ? (Math.abs(x) == 1 ? "gold_block" : "polished_blackstone")
+                    : (Math.floorMod(x + z, 2) == 0 ? "smooth_quartz" : "polished_diorite")));
+            }
+        }
+        int wallTop = 2 + 2 * size + 1;
+        for (int x = -4; x <= 4; x++) {
+            for (int y = 1; y <= wallTop; y++) {
+                boolean frame = Math.abs(x) == 4 || y == 1 || y == wallTop;
+                arena.set(x, y, 6, st(frame ? "gold_block" : "red_wool"));
+            }
+        }
         drawPicture(true);
         drawCanvas();
         com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.GalleryLook.build(arena, tier, size));

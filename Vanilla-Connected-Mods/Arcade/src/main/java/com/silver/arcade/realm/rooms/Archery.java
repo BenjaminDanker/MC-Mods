@@ -42,8 +42,21 @@ public final class Archery extends BaseRoom {
     @Override
     protected void build() {
         distance = Math.min(30, 12 + tier * 2);
-        arena.fill(-4, 0, -2, 4, 0, 2, Blocks.SPRUCE_PLANKS.defaultBlockState());
-        arena.fill(-10, 0, distance, 10, 12, distance, Blocks.HAY_BLOCK.defaultBlockState());
+        // The shooting stand: spruce boards, a dark oak edge with gold corners and a red-and-white shooting line;
+        // the butts: a dark green baize wall in a gold frame on a hay footing, so each lit target stands out.
+        for (int x = -4; x <= 4; x++) {
+            for (int z = -2; z <= 2; z++) {
+                boolean edge = Math.abs(x) == 4 || Math.abs(z) == 2;
+                arena.set(x, 0, z, st(edge ? (Math.abs(x) == 4 && Math.abs(z) == 2 ? "gold_block" : "dark_oak_planks")
+                    : z == 1 ? (Math.floorMod(x, 2) == 0 ? "red_wool" : "white_wool") : "spruce_planks"));
+            }
+        }
+        for (int x = -10; x <= 10; x++) {
+            for (int y = 0; y <= 12; y++) {
+                boolean frame = Math.abs(x) == 10 || y == 12;
+                arena.set(x, y, distance, frame ? Blocks.GOLD_BLOCK.defaultBlockState() : y <= 1 ? Blocks.HAY_BLOCK.defaultBlockState() : st("green_wool"));
+            }
+        }
         for (int i = 0; i < count(); i++) {
             int x = random.nextInt(17) - 8;
             int y = 2 + random.nextInt(9);

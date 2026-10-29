@@ -47,10 +47,33 @@ public final class RedLight extends BaseRoom {
 
     @Override
     protected void build() {
-        arena.fill(-6, 0, -2, 6, 0, LENGTH + 3, Blocks.SMOOTH_SANDSTONE.defaultBlockState());
-        arena.fill(-7, 1, -2, -7, 2, LENGTH + 3, Blocks.SANDSTONE_WALL.defaultBlockState());
-        arena.fill(7, 1, -2, 7, 2, LENGTH + 3, Blocks.SANDSTONE_WALL.defaultBlockState());
+        // The shrine road: dressed stone paving with a raked-gravel look (andesite and tuff), cherry-petal pink kerbs,
+        // a vermilion stripe every five blocks to judge the distance, mossy stone balustrades (same walls) and the
+        // gold finish ahead.
+        for (int x = -6; x <= 6; x++) {
+            for (int z = -2; z < LENGTH; z++) {
+                String b;
+                if (Math.abs(x) == 6) {
+                    b = "pink_terracotta";
+                } else if (Math.floorMod(z, 5) == 0 && z > 0) {
+                    b = "red_terracotta";
+                } else if (z < 1) {
+                    b = "chiseled_stone_bricks";
+                } else {
+                    b = Math.floorMod(x, 2) == 0 ? "polished_andesite" : (Math.floorMod(z, 3) == 0 ? "polished_tuff" : "stone_bricks");
+                }
+                arena.set(x, 0, z, st(b));
+            }
+        }
+        arena.fill(-7, 1, -2, -7, 2, LENGTH + 3, Blocks.MOSSY_STONE_BRICK_WALL.defaultBlockState());
+        arena.fill(7, 1, -2, 7, 2, LENGTH + 3, Blocks.MOSSY_STONE_BRICK_WALL.defaultBlockState());
         arena.fill(-6, 0, LENGTH, 6, 0, LENGTH + 3, Blocks.GOLD_BLOCK.defaultBlockState());
+        // the signal hangs in a black lacquered frame so green and red read from the far end of the road
+        for (int x = -4; x <= 4; x++) {
+            for (int y = 0; y <= 7; y++) {
+                arena.set(x, y, LENGTH + 6, st(Math.abs(x) == 4 || y == 0 || y == 7 ? "red_terracotta" : "black_concrete"));
+            }
+        }
         arena.fill(-2, 1, LENGTH + 5, 2, 5, LENGTH + 5, Blocks.CONCRETE.lime().defaultBlockState());
         com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.ShrineLook.build(arena, tier, LENGTH));
         List<ServerPlayer> list = List.copyOf(players.values());

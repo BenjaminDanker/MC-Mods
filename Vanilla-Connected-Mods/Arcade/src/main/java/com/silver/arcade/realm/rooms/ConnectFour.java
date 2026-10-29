@@ -28,10 +28,23 @@ public final class ConnectFour extends BaseRoom {
     protected void build() {
         player = players.isEmpty() ? null : players.values().iterator().next(); // none in a preview
         // The board stands on z=6, x 0..6, rows y 2..7; the stone pickers sit on y 1.
-        arena.fill(-1, 0, 0, 7, 0, 7, Blocks.POLISHED_DEEPSLATE.defaultBlockState());
-        arena.fill(-1, 1, 7, 7, 8, 7, Blocks.CONCRETE.blue().defaultBlockState());
+        // Casino carpet (red with black diamonds and a gold border) in front of a gilded board: royal blue face, gold
+        // frame, gold column pickers to click.
+        for (int x = -1; x <= 7; x++) {
+            for (int z = 0; z <= 7; z++) {
+                boolean border = x == -1 || x == 7 || z == 0;
+                int dd = Math.abs(Math.floorMod(x, 4) - 2) + Math.abs(Math.floorMod(z, 4) - 2);
+                arena.set(x, 0, z, st(border ? "gold_block" : dd == 0 ? "gold_block" : dd == 1 ? "black_wool" : "red_wool"));
+            }
+        }
+        for (int x = -1; x <= 7; x++) {
+            for (int y = 1; y <= 8; y++) {
+                boolean frame = x == -1 || x == 7 || y == 1 || y == 8;
+                arena.set(x, y, 7, frame ? Blocks.GOLD_BLOCK.defaultBlockState() : Blocks.CONCRETE.blue().defaultBlockState());
+            }
+        }
         for (int c = 0; c < ConnectFourBoard.COLS; c++) {
-            arena.set(c, 1, 6, Blocks.STONE.defaultBlockState());
+            arena.set(c, 1, 6, Blocks.GOLD_BLOCK.defaultBlockState());
             for (int r = 0; r < ConnectFourBoard.ROWS; r++) {
                 arena.set(c, 2 + r, 6, Blocks.STAINED_GLASS.white().defaultBlockState());
             }

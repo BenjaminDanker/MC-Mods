@@ -51,6 +51,21 @@ public final class Spleef extends BaseRoom {
                 arena.set(x, 0, z, Blocks.SNOW_BLOCK.defaultBlockState());
             }
         }
+        // The disc's frame hangs below the "out" line (y -5), so it never catches anyone: a ring of blue ice and sea
+        // lanterns that outlines the arena from every view, and a frosted crystal hub under the centre.
+        for (int x = -radius - 3; x <= radius + 3; x++) {
+            for (int z = -radius - 3; z <= radius + 3; z++) {
+                double d = Math.sqrt(x * x + z * z);
+                if (d > radius + 0.5 && d <= radius + 2.5) {
+                    boolean lamp = Math.floorMod((int) Math.round(Math.toDegrees(Math.atan2(z, x))), 30) < 6;
+                    arena.set(x, -5, z, lamp ? Blocks.SEA_LANTERN.defaultBlockState()
+                        : (d > radius + 1.5 ? Blocks.PACKED_ICE.defaultBlockState() : Blocks.BLUE_ICE.defaultBlockState()));
+                }
+                if (d <= 2.5) {
+                    arena.set(x, -6, z, d <= 1.2 ? Blocks.SEA_LANTERN.defaultBlockState() : Blocks.BLUE_ICE.defaultBlockState());
+                }
+            }
+        }
         com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.IcePalaceLook.build(arena, tier, radius));
         List<ServerPlayer> list = List.copyOf(players.values());
         for (int i = 0; i < list.size(); i++) {

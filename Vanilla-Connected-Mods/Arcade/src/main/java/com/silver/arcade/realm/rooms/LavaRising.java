@@ -40,7 +40,13 @@ public final class LavaRising extends BaseRoom {
 
     @Override
     protected void build() {
-        arena.fill(-HALF, 0, -HALF, HALF, 0, HALF, Blocks.BLACKSTONE.defaultBlockState());
+        // The furnace floor: polished blackstone bricks with a copper-grate cross (full blocks, no magma: the magma
+        // only comes with the rising floor).
+        for (int fx = -HALF; fx <= HALF; fx++) {
+            for (int fz = -HALF; fz <= HALF; fz++) {
+                arena.set(fx, 0, fz, st(fx == 0 || fz == 0 ? "waxed_copper_grate" : "polished_blackstone_bricks"));
+            }
+        }
         // Ledges walk round the walls clockwise, one block up and two along each time.
         int x = -HALF + 1;
         int z = -HALF + 1;
@@ -59,15 +65,15 @@ public final class LavaRising extends BaseRoom {
             x = nx;
             z = nz;
             ledges.add(new int[] {x, i, z});
-            arena.set(x, i, z, random.nextInt(4) == 0 ? Blocks.POLISHED_BASALT.defaultBlockState() : Blocks.BLACKSTONE_SLAB.defaultBlockState()
-                .setValue(net.minecraft.world.level.block.SlabBlock.TYPE, net.minecraft.world.level.block.state.properties.SlabType.TOP));
+            // copper ledges (same shapes: a full block or an upper slab), a waxed copper block now and then
+            arena.set(x, i, z, random.nextInt(4) == 0 ? st("waxed_copper_block") : st("waxed_cut_copper_slab[type=top,waterlogged=false]"));
         }
         top = steps() + 1;
         int[] last = ledges.get(ledges.size() - 1);
         arena.fill(last[0] - 1, top, last[2] - 1, last[0] + 1, top, last[2] + 1, Blocks.GOLD_BLOCK.defaultBlockState());
         // The shaft: glass walls so the climb is seen, with blackstone bands.
         for (int y = 1; y <= top + 3; y++) {
-            var wall = y % 6 == 0 ? Blocks.POLISHED_BLACKSTONE_BRICKS.defaultBlockState() : Blocks.TINTED_GLASS.defaultBlockState();
+            var wall = y % 6 == 0 ? st("waxed_cut_copper") : st("orange_stained_glass");
             for (int i = -HALF - 1; i <= HALF + 1; i++) {
                 arena.set(i, y, -HALF - 1, wall);
                 arena.set(i, y, HALF + 1, wall);

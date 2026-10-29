@@ -57,8 +57,20 @@ public final class MemoryPairs extends BaseRoom {
         Collections.shuffle(deck, random);
         faces = deck.stream().mapToInt(Integer::intValue).toArray();
         up = new boolean[faces.length];
-        arena.fill(-3, 0, -3, columns + 2, 0, 4, Blocks.POLISHED_ANDESITE.defaultBlockState());
-        arena.fill(-1, 1, 6, columns, rows + 2, 6, Blocks.DEEPSLATE_BRICKS.defaultBlockState());
+        // Tomb floor: sandstone flags with a lapis-and-gold border; the card wall is deep blue with a gold frame and the
+        // cards' backs are black glazed tiles, so face-down and face-up cards both read at a glance.
+        for (int x = -3; x <= columns + 2; x++) {
+            for (int z = -3; z <= 4; z++) {
+                boolean edge = x == -3 || x == columns + 2 || z == -3 || z == 4;
+                arena.set(x, 0, z, st(edge ? (Math.floorMod(x + z, 2) == 0 ? "gold_block" : "lapis_block")
+                    : Math.floorMod(x + z, 2) == 0 ? "smooth_sandstone" : "cut_sandstone"));
+            }
+        }
+        for (int x = -1; x <= columns; x++) {
+            for (int y = 1; y <= rows + 2; y++) {
+                arena.set(x, y, 6, st(x == -1 || x == columns || y == 1 || y == rows + 2 ? "gold_block" : "blue_terracotta"));
+            }
+        }
         for (int i = 0; i < faces.length; i++) {
             draw(i);
         }
@@ -74,7 +86,7 @@ public final class MemoryPairs extends BaseRoom {
 
     private void draw(int i) {
         arena.set(xOf(i), yOf(i), 5, up[i] || i == first || i == second ? FACES[faces[i]].defaultBlockState()
-            : Blocks.CONCRETE.gray().defaultBlockState());
+            : st("black_glazed_terracotta"));
     }
 
     @Override

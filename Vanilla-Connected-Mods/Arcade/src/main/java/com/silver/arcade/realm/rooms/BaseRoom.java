@@ -118,4 +118,9 @@ abstract class BaseRoom implements Room {
     protected static int seconds(double s) {
         return (int) Math.round(s * 20);
     }
+
+    /** A block state from its command form ("red_terracotta", "lantern[hanging=true]"), cached. */
+    protected static net.minecraft.world.level.block.state.BlockState st(String state) {
+        return com.silver.arcade.realm.deco.Deco.st(state);
+    }
 }

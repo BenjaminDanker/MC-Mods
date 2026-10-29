@@ -44,7 +44,9 @@ public final class Parkour extends BaseRoom {
         if (tier >= 3 && roll < 6) {
             return Blocks.SMOOTH_STONE_SLAB.defaultBlockState();
         }
-        return Blocks.STONE_BRICKS.defaultBlockState();
+        // Full footholds are circus drums in bright colours (same full-block height as before).
+        String[] drums = {"red_concrete", "yellow_concrete", "light_blue_concrete", "white_concrete", "magenta_concrete", "lime_concrete"};
+        return st(drums[random.nextInt(drums.length)]);
     }
 
     /** How high a player stands on this foothold, above the block's own y. */
@@ -68,7 +70,14 @@ public final class Parkour extends BaseRoom {
 
     @Override
     protected void build() {
-        arena.fill(-2, 0, -2, 2, 0, 2, Blocks.STONE_BRICKS.defaultBlockState());
+        // The start is a circus ring: red and white wedges, a gold rim and a gold star in the middle.
+        for (int sx = -2; sx <= 2; sx++) {
+            for (int sz = -2; sz <= 2; sz++) {
+                boolean rim = Math.max(Math.abs(sx), Math.abs(sz)) == 2;
+                arena.set(sx, 0, sz, st(sx == 0 && sz == 0 ? "gold_block" : rim ? (Math.floorMod(sx + sz, 2) == 0 ? "gold_block" : "red_concrete")
+                    : (Math.floorMod(sx + sz, 2) == 0 ? "white_concrete" : "red_concrete")));
+            }
+        }
         int n = count();
         jumps = new int[n][3];
         int x = 0;

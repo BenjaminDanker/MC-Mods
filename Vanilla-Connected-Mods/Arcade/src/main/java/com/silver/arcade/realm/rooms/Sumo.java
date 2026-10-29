@@ -42,9 +42,35 @@ public final class Sumo extends BaseRoom {
         radius = Math.max(3, 6 - tier / 3);
         for (int x = -radius; x <= radius; x++) {
             for (int z = -radius; z <= radius; z++) {
-                if (x * x + z * z <= radius * radius) {
-                    arena.set(x, 0, z, (x * x + z * z) >= (radius - 1) * (radius - 1) ? Blocks.CONCRETE.red().defaultBlockState()
-                        : Blocks.CONCRETE.white().defaultBlockState());
+                int d2 = x * x + z * z;
+                if (d2 <= radius * radius) {
+                    // A ship's deck: plank strakes with dark seams, a gold compass rose in the middle, and the red
+                    // danger ring at the edge (gold rivets) exactly where it was.
+                    net.minecraft.world.level.block.state.BlockState deck;
+                    if (d2 >= (radius - 1) * (radius - 1)) {
+                        deck = radius >= 5 && (x == 0 || z == 0) ? Blocks.GOLD_BLOCK.defaultBlockState()
+                            : Blocks.CONCRETE.red().defaultBlockState();
+                    } else if (d2 <= 2) {
+                        deck = d2 == 0 ? Blocks.GOLD_BLOCK.defaultBlockState() : Blocks.CHISELED_QUARTZ_BLOCK.defaultBlockState();
+                    } else if ((x == 0 || z == 0) && d2 <= (radius - 2) * (radius - 2)) {
+                        deck = Blocks.POLISHED_BLACKSTONE.defaultBlockState();
+                    } else {
+                        deck = Math.floorMod(x, 3) == 0 ? Blocks.DARK_OAK_PLANKS.defaultBlockState()
+                            : (Math.floorMod(x + z / 4, 2) == 0 ? Blocks.SPRUCE_PLANKS.defaultBlockState() : Blocks.OAK_PLANKS.defaultBlockState());
+                    }
+                    arena.set(x, 0, z, deck);
+                }
+            }
+        }
+        // Underneath, a ship's hull tapering away (one block narrower than the deck at once, so no ledge catches a
+        // fall): dark oak strakes with a gold band.
+        for (int y = -1; y >= -4; y--) {
+            int r = radius + y; // radius-1 at y -1, then narrower
+            for (int x = -r; x <= r; x++) {
+                for (int z = -r; z <= r; z++) {
+                    if (r > 0 && x * x + z * z <= r * r) {
+                        arena.set(x, y, z, y == -1 ? Blocks.GOLD_BLOCK.defaultBlockState() : Blocks.DARK_OAK_PLANKS.defaultBlockState());
+                    }
                 }
             }
         }

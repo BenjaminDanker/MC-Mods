@@ -41,17 +41,29 @@ public final class Waves extends BaseRoom {
 
     @Override
     protected void build() {
-        arena.fill(-HALF, 0, -HALF, HALF, 0, HALF, Blocks.MOSSY_COBBLESTONE.defaultBlockState());
+        // The colosseum pit: raked sand-coloured stone in rings, a red terracotta emblem in the middle.
+        for (int x = -HALF; x <= HALF; x++) {
+            for (int z = -HALF; z <= HALF; z++) {
+                double r = Math.hypot(x, z);
+                arena.set(x, 0, z, st(r < 1.5 ? "red_terracotta" : r < 2.5 ? "gold_block" : ((int) r) % 3 == 0 ? "cut_sandstone"
+                    : Math.floorMod(x * 3 + z, 5) == 0 ? "sandstone" : "smooth_sandstone"));
+            }
+        }
         for (int i = -HALF; i <= HALF; i++) {
             for (int y = 1; y <= 2; y++) {
-                arena.set(i, y, -HALF, Blocks.COBBLESTONE_WALL.defaultBlockState());
-                arena.set(i, y, HALF, Blocks.COBBLESTONE_WALL.defaultBlockState());
-                arena.set(-HALF, y, i, Blocks.COBBLESTONE_WALL.defaultBlockState());
-                arena.set(HALF, y, i, Blocks.COBBLESTONE_WALL.defaultBlockState());
+                arena.set(i, y, -HALF, Blocks.SANDSTONE_WALL.defaultBlockState());
+                arena.set(i, y, HALF, Blocks.SANDSTONE_WALL.defaultBlockState());
+                arena.set(-HALF, y, i, Blocks.SANDSTONE_WALL.defaultBlockState());
+                arena.set(HALF, y, i, Blocks.SANDSTONE_WALL.defaultBlockState());
             }
         }
         // A roof keeps the sun off the monsters (and the fight in shade); lanterns light it.
-        arena.fill(-HALF, 6, -HALF, HALF, 6, HALF, Blocks.DARK_OAK_PLANKS.defaultBlockState());
+        // the awning: a striped purple-and-gold velarium (solid, same height)
+        for (int x = -HALF; x <= HALF; x++) {
+            for (int z = -HALF; z <= HALF; z++) {
+                arena.set(x, 6, z, st(Math.abs(x) == HALF || Math.abs(z) == HALF ? "gold_block" : Math.floorMod(x, 4) < 2 ? "purple_wool" : "white_wool"));
+            }
+        }
         for (int[] c : new int[][] {{-4, -4}, {4, -4}, {-4, 4}, {4, 4}}) {
             arena.set(c[0], 5, c[1], Blocks.LANTERN.defaultBlockState().setValue(net.minecraft.world.level.block.LanternBlock.HANGING, true));
         }

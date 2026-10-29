@@ -51,9 +51,24 @@ public final class Mastermind extends BaseRoom {
             secret[i] = random.nextInt(colours());
         }
         guess = new int[pegs()];
-        arena.fill(-3, 0, -2, pegs() + pegs() + 3, 0, 5, Blocks.POLISHED_DIORITE.defaultBlockState());
-        arena.fill(-2, 1, 7, pegs() + pegs() + 2, 2 + rows() + 1, 7, Blocks.DARK_OAK_PLANKS.defaultBlockState());
+        // Vault floor: steel plates (iron and polished deepslate) with riveted seams; the code board is a black steel
+        // panel in an iron frame (guesses in wool, answer pegs gold and iron, all bright against it). The gold check
+        // button sits on a dark pedestal with a lamp over it.
+        int bx1 = pegs() + pegs() + 2, top = 2 + rows() + 1;
+        for (int x = -3; x <= bx1 + 1; x++) {
+            for (int z = -2; z <= 5; z++) {
+                arena.set(x, 0, z, st(Math.floorMod(x, 3) == 0 || Math.floorMod(z, 3) == 0 ? "polished_deepslate"
+                    : Math.floorMod(x + z, 2) == 0 ? "iron_block" : "smooth_stone"));
+            }
+        }
+        for (int x = -2; x <= bx1; x++) {
+            for (int y = 1; y <= top; y++) {
+                arena.set(x, y, 7, st(x == -2 || x == bx1 || y == 1 || y == top ? "iron_block" : "polished_blackstone"));
+            }
+        }
         arena.set(-2, 2, 6, Blocks.GOLD_BLOCK.defaultBlockState()); // the check button
+        arena.set(-2, 1, 6, st("chiseled_polished_blackstone"));
+        arena.set(-3, 2, 6, st("redstone_lamp[lit=true]"));
         // A palette strip so players see which colours are in play.
         for (int c = 0; c < colours(); c++) {
             arena.set(-2 - 0, 3 + c, 7, wool(c));

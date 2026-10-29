@@ -34,7 +34,14 @@ public final class WhackAMole extends BaseRoom {
     @Override
     protected void build() {
         downAt = new long[size * size];
-        arena.fill(-2, 0, -3, size * 2 + 1, 0, size * 2 + 3, Blocks.GRASS_BLOCK.defaultBlockState());
+        // A freshly mown fair lawn: light and dark stripes (grass and moss), a packed-earth path where the players
+        // stand, and the mole holes stay coarse dirt.
+        for (int x = -2; x <= size * 2 + 1; x++) {
+            for (int z = -3; z <= size * 2 + 3; z++) {
+                arena.set(x, 0, z, st(z <= -1 ? (Math.floorMod(x, 3) == 0 ? "mud_bricks" : "packed_mud")
+                    : Math.floorMod(x, 4) < 2 ? "grass_block" : "moss_block"));
+            }
+        }
         for (int i = 0; i < size * size; i++) {
             arena.set(x(i), 0, z(i), Blocks.COARSE_DIRT.defaultBlockState());
         }

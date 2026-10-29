@@ -41,7 +41,10 @@ public final class FallingFloor extends BaseRoom {
     protected void build() {
         for (int x = -HALF; x <= HALF; x++) {
             for (int z = -HALF; z <= HALF; z++) {
-                arena.set(x, 0, z, ((x + z) & 1) == 0 ? Blocks.CONCRETE.white().defaultBlockState() : Blocks.CONCRETE.lightBlue().defaultBlockState());
+                // Cooled-lava tiles: black and grey concrete with light grey veins every fourth row (still full
+                // concrete, so the red warning paint shows brighter than ever).
+                arena.set(x, 0, z, st(Math.floorMod(x, 4) == 0 || Math.floorMod(z, 4) == 0 ? "light_gray_concrete"
+                    : ((x + z) & 1) == 0 ? "black_concrete" : "gray_concrete"));
                 // From tier 5 a second floor below catches one fall.
                 if (tier >= 5) {
                     arena.set(x, -6, z, Blocks.CONCRETE.gray().defaultBlockState());

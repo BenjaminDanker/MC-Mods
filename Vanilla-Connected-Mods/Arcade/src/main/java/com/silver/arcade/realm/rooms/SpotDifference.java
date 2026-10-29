@@ -65,8 +65,14 @@ public final class SpotDifference extends BaseRoom {
                 right[x][y] = (left[x][y] + 1 + random.nextInt(colours - 1)) % colours;
             }
         }
-        arena.fill(-size - 3, 0, -4, size + 4, 0, 4, Blocks.POLISHED_ANDESITE.defaultBlockState());
-        arena.fill(-size - 2, 1, 7, size + 3, size + 3, 7, Blocks.SPRUCE_PLANKS.defaultBlockState());
+        // Office floor: oak and dark oak parquet with a dark border; behind the pictures a dark oak panel wall.
+        for (int x = -size - 3; x <= size + 4; x++) {
+            for (int z = -4; z <= 4; z++) {
+                boolean edge = x == -size - 3 || x == size + 4 || z == -4 || z == 4;
+                arena.set(x, 0, z, st(edge ? "dark_oak_planks" : Math.floorMod(x / 2 + z, 2) == 0 ? "oak_planks" : "spruce_planks"));
+            }
+        }
+        arena.fill(-size - 2, 1, 7, size + 3, size + 3, 7, Blocks.DARK_OAK_PLANKS.defaultBlockState());
         for (int x = 0; x < size; x++) {
             for (int y = 0; y < size; y++) {
                 arena.set(leftX(x), 2 + y, 6, PALETTE[left[x][y]].defaultBlockState());

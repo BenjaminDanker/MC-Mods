@@ -40,7 +40,22 @@ public final class TypingRace extends BaseRoom {
 
     @Override
     protected void build() {
-        arena.fill(-4, 0, -4, 4, 0, 4, Blocks.SMOOTH_QUARTZ.defaultBlockState());
+        // The reading dais: a dark oak border with gold corners, oak and birch parquet, and a red-and-gold reading
+        // rug (full blocks) leading to the lectern.
+        for (int x = -4; x <= 4; x++) {
+            for (int z = -4; z <= 4; z++) {
+                int m = Math.max(Math.abs(x), Math.abs(z));
+                String b;
+                if (m == 4) {
+                    b = Math.abs(x) == 4 && Math.abs(z) == 4 ? "gold_block" : "stripped_dark_oak_wood[axis=y]";
+                } else if (Math.abs(x) <= 1 && z >= -3) {
+                    b = Math.abs(x) == 1 ? "gold_block" : "red_wool";
+                } else {
+                    b = Math.floorMod(x + z, 2) == 0 ? "oak_planks" : "birch_planks";
+                }
+                arena.set(x, 0, z, st(b));
+            }
+        }
         arena.set(0, 1, 4, Blocks.LECTERN.defaultBlockState());
         com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.LibraryLook.build(arena, tier));
         int i = 0;

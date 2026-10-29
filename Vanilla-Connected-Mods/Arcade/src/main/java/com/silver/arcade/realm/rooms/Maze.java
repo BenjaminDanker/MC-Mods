@@ -42,7 +42,14 @@ public final class Maze extends BaseRoom {
         int size = wall.length;
         BlockState floor = Blocks.MOSSY_STONE_BRICKS.defaultBlockState();
         BlockState stone = tier >= 5 ? Blocks.DEEPSLATE_BRICKS.defaultBlockState() : Blocks.STONE_BRICKS.defaultBlockState();
-        arena.fill(0, 0, 0, size - 1, 0, size - 1, floor);
+        // Garden walks: moss and mossy brick paving, a chiseled stone at every crossing of the maze grid.
+        for (int x = 0; x < size; x++) {
+            for (int z = 0; z < size; z++) {
+                int k = Math.floorMod(x * 13 + z * 7, 9);
+                arena.set(x, 0, z, (x % 2 == 1 && z % 2 == 1) ? Blocks.CHISELED_STONE_BRICKS.defaultBlockState()
+                    : (k < 2 ? Blocks.MOSS_BLOCK.defaultBlockState() : k < 4 ? Blocks.STONE_BRICKS.defaultBlockState() : floor));
+            }
+        }
         for (int x = 0; x < size; x++) {
             for (int z = 0; z < size; z++) {
                 if (wall[x][z]) {
@@ -62,6 +69,15 @@ public final class Maze extends BaseRoom {
         com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.GardenLook.build(arena, tier, size));
         exit = arena.at(size - 2, 0, size - 2);
         arena.set(size - 2, 0, size - 2, Blocks.GOLD_BLOCK.defaultBlockState());
+        // The goal glows: the open cells round the gold block are lit pearlescent tiles.
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                int gx = size - 2 + dx, gz = size - 2 + dz;
+                if ((dx != 0 || dz != 0) && !wall[gx][gz]) {
+                    arena.set(gx, 0, gz, Blocks.PEARLESCENT_FROGLIGHT.defaultBlockState());
+                }
+            }
+        }
         for (ServerPlayer player : players.values()) {
             arena.put(player, 1.5, 1, 1.5, -45F);
             if (tier >= 5) {

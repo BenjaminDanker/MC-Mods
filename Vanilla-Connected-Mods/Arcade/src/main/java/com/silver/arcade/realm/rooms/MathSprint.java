@@ -31,7 +31,24 @@ public final class MathSprint extends BaseRoom {
 
     @Override
     protected void build() {
-        arena.fill(-4, 0, -4, 4, 0, 4, Blocks.CALCITE.defaultBlockState());
+        // The observatory floor: a star chart in night-blue deepslate, a copper rim with gold quarter marks, a gold
+        // meridian cross and a lapis star at the centre.
+        for (int x = -4; x <= 4; x++) {
+            for (int z = -4; z <= 4; z++) {
+                int m = Math.max(Math.abs(x), Math.abs(z));
+                String b;
+                if (m == 4) {
+                    b = (x == 0 || z == 0) ? "gold_block" : "waxed_cut_copper";
+                } else if (x == 0 && z == 0) {
+                    b = "lapis_block";
+                } else if (x == 0 || z == 0) {
+                    b = "gold_block";
+                } else {
+                    b = Math.floorMod(x * 5 + z * 3, 7) == 0 ? "calcite" : "polished_deepslate";
+                }
+                arena.set(x, 0, z, st(b));
+            }
+        }
         com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.ObservatoryLook.build(arena, tier));
         int i = 0;
         for (ServerPlayer player : players.values()) {

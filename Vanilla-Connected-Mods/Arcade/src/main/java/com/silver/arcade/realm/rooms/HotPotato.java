@@ -49,7 +49,29 @@ public final class HotPotato extends BaseRoom {
 
     @Override
     protected void build() {
-        arena.fill(-HALF, 0, -HALF, HALF, 0, HALF, Blocks.SMOOTH_SANDSTONE.defaultBlockState());
+        // Main street of the frontier town: packed earth with wheel ruts, a plank boardwalk round the edge and the
+        // sheriff's gold star in the middle of the square.
+        for (int x = -HALF; x <= HALF; x++) {
+            for (int z = -HALF; z <= HALF; z++) {
+                int m = Math.max(Math.abs(x), Math.abs(z));
+                double r = Math.hypot(x, z);
+                double a = Math.atan2(z, x);
+                net.minecraft.world.level.block.state.BlockState b;
+                if (m == HALF) {
+                    b = (Math.abs(x) == HALF && Math.abs(z) == HALF) ? Blocks.STRIPPED_SPRUCE_LOG.defaultBlockState()
+                        : (Math.floorMod(x + z, 4) == 0 ? Blocks.STRIPPED_OAK_LOG.defaultBlockState() : Blocks.SPRUCE_PLANKS.defaultBlockState());
+                } else if (r <= 1.2 + 1.8 * Math.pow(Math.abs(Math.cos(2.5 * a)), 3)) {
+                    b = Blocks.GOLD_BLOCK.defaultBlockState();
+                } else if (r <= 3.6) {
+                    b = Blocks.SMOOTH_SANDSTONE.defaultBlockState();
+                } else if (Math.abs(z) == 3 || Math.abs(z) == 4) {
+                    b = Blocks.COARSE_DIRT.defaultBlockState();
+                } else {
+                    b = Math.floorMod(x * 7 + z * 3, 9) == 0 ? Blocks.MUD_BRICKS.defaultBlockState() : Blocks.PACKED_MUD.defaultBlockState();
+                }
+                arena.set(x, 0, z, b);
+            }
+        }
         List<ServerPlayer> list = List.copyOf(players.values());
         com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.FrontierLook.build(arena, tier, HALF));
         for (int i = 0; i < list.size(); i++) {

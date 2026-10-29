@@ -44,7 +44,20 @@ public final class Memory extends BaseRoom {
 
     @Override
     protected void build() {
-        arena.fill(-3, 0, -2, 4, 0, 4, Blocks.POLISHED_ANDESITE.defaultBlockState());
+        // Longhall floor: spruce boards with a dark oak border, and a woven runner leading to the pads; carved log
+        // posts between the four pads (odd x only, never a pad position) with lanterns on top.
+        for (int x = -3; x <= 5; x++) {
+            for (int z = -2; z <= 4; z++) {
+                boolean border = x == -3 || x == 5 || z == -2 || z == 4;
+                arena.set(x, 0, z, st(border ? "dark_oak_planks" : (x >= 0 && x <= 1) ? (z % 2 == 0 ? "red_wool" : "yellow_wool")
+                    : Math.floorMod(x, 2) == 0 ? "spruce_planks" : "stripped_spruce_wood[axis=y]"));
+            }
+        }
+        for (int px = -3; px <= 5; px += 2) {
+            arena.set(px, 1, 4, st("stripped_spruce_log[axis=y]"));
+            arena.set(px, 2, 4, st("stripped_spruce_log[axis=y]"));
+            arena.set(px, 3, 4, st("lantern[hanging=false]"));
+        }
         for (int i = 0; i < 4; i++) {
             arena.set(-2 + i * 2, 1, 4, PADS[i]);
             arena.set(-2 + i * 2, 2, 4, PADS[i]);

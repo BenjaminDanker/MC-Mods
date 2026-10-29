@@ -48,6 +48,14 @@ public final class Dropper extends BaseRoom {
         int pool = tier >= 8 ? 1 : tier >= 4 ? 2 : 3;
         int px = random.nextInt(2 * HALF - pool + 2) - HALF;
         int pz = random.nextInt(2 * HALF - pool + 2) - HALF;
+        // The floor: a quartz-and-sky-blue compass mosaic, with a gold ring round the pool so it shows from the top.
+        for (int fx = -HALF; fx <= HALF; fx++) {
+            for (int fz = -HALF; fz <= HALF; fz++) {
+                int ring = Math.max(Math.max(px - fx, fx - (px + pool - 1)), Math.max(pz - fz, fz - (pz + pool - 1)));
+                arena.set(fx, 0, fz, st(ring == 1 ? "gold_block" : (fx == 0 || fz == 0) ? "light_blue_concrete"
+                    : Math.floorMod(fx + fz, 2) == 0 ? "smooth_quartz" : "chiseled_quartz_block"));
+            }
+        }
         arena.fill(px, 0, pz, px + pool - 1, 0, pz + pool - 1, Blocks.WATER.defaultBlockState());
         // Ledges: more and wider as tiers climb, never closing the shaft.
         int ledges = Math.min(14, 3 + tier);
@@ -56,10 +64,19 @@ public final class Dropper extends BaseRoom {
             int w = 1 + random.nextInt(Math.min(5, 2 + tier / 2));
             int x = random.nextInt(2 * HALF + 1 - w) - HALF;
             int z = random.nextInt(2 * HALF + 1 - w) - HALF;
-            arena.fill(x, y, z, x + w - 1, y, z + w - 1, Blocks.CONCRETE.purple().defaultBlockState());
+            // red-and-white striped like a buoy (same full blocks)
+            for (int lx = x; lx < x + w; lx++) {
+                for (int lz = z; lz < z + w; lz++) {
+                    arena.set(lx, y, lz, st(Math.floorMod(lx + lz, 2) == 0 ? "red_concrete" : "white_concrete"));
+                }
+            }
         }
         // The top: a ring to stand on around the opening.
-        arena.fill(-HALF - 3, HEIGHT + 1, -HALF - 3, HALF + 3, HEIGHT + 1, -HALF - 2, Blocks.QUARTZ_BRICKS.defaultBlockState());
+        for (int tx = -HALF - 3; tx <= HALF + 3; tx++) {
+            for (int tz = -HALF - 3; tz <= -HALF - 2; tz++) {
+                arena.set(tx, HEIGHT + 1, tz, st(Math.abs(tx) == HALF + 3 || Math.floorMod(tx, 3) == 0 ? "gold_block" : "quartz_bricks"));
+            }
+        }
         com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.LighthouseLook.build(arena, tier, HALF, HEIGHT));
         players.values().forEach(this::top);
     }

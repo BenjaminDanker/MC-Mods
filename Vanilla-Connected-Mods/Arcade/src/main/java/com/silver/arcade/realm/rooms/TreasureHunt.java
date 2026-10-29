@@ -53,6 +53,28 @@ public final class TreasureHunt extends BaseRoom {
         arena.fill(-HALF - 2, -1, -HALF - 2, HALF + 2, 0, HALF + 2, Blocks.SMOOTH_SANDSTONE.defaultBlockState()); // no trench round the field
         arena.fill(-HALF, -1, -HALF, HALF, 0, HALF, Blocks.SAND.defaultBlockState());
         arena.fill(-HALF - 2, 0, -HALF - 2, HALF + 2, 0, -HALF - 1, Blocks.SMOOTH_SANDSTONE.defaultBlockState());
+        // The field's rim is carved sandstone with gold corners and lapis studs; the players' strip is a red, orange
+        // and yellow carpet of tiles. The diggable field itself stays plain sand.
+        for (int x = -HALF - 2; x <= HALF + 2; x++) {
+            for (int z = -HALF - 2; z <= HALF + 2; z++) {
+                int m = Math.max(Math.abs(x), Math.abs(z));
+                if (m <= HALF) {
+                    continue;
+                }
+                String b;
+                if (z <= -HALF - 1 && Math.abs(x) <= HALF + 1) {
+                    b = Math.abs(x) == HALF + 1 || z == -HALF - 2 ? "red_terracotta"
+                        : (Math.floorMod(x, 2) == 0 ? "orange_terracotta" : "yellow_terracotta");
+                } else if (Math.abs(x) == HALF + 2 && Math.abs(z) == HALF + 2) {
+                    b = "gold_block";
+                } else if (m == HALF + 2) {
+                    b = Math.floorMod(x + z, 4) == 0 ? "lapis_block" : "chiseled_sandstone";
+                } else {
+                    b = "cut_sandstone";
+                }
+                arena.set(x, 0, z, st(b));
+            }
+        }
         com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.OasisLook.build(arena, tier));
         int n = 0;
         for (ServerPlayer player : players.values()) {

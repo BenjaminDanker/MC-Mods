@@ -45,13 +45,25 @@ public final class HideAndSeek extends BaseRoom {
 
     @Override
     protected void build() {
-        arena.fill(-HALF, 0, -HALF, HALF, 0, HALF, Blocks.GRASS_BLOCK.defaultBlockState());
+        // The graveyard lawn: grass, moss and podzol with a mossy cobbled cross path; the yard wall is old mossy and
+        // cracked stone with dark buttresses and a chiseled cap (same 4-high solid wall).
+        for (int x = -HALF; x <= HALF; x++) {
+            for (int z = -HALF; z <= HALF; z++) {
+                int k = Math.floorMod(x * 7 + z * 13, 11);
+                arena.set(x, 0, z, (Math.abs(x) <= 1 || Math.abs(z) <= 1)
+                    ? (k < 4 ? Blocks.MOSSY_COBBLESTONE.defaultBlockState() : Blocks.COBBLESTONE.defaultBlockState())
+                    : (k == 0 ? Blocks.PODZOL.defaultBlockState() : (k == 5 ? Blocks.MOSS_BLOCK.defaultBlockState() : Blocks.GRASS_BLOCK.defaultBlockState())));
+            }
+        }
         for (int i = -HALF - 1; i <= HALF + 1; i++) {
             for (int y = 1; y <= 4; y++) {
-                arena.set(i, y, -HALF - 1, Blocks.STONE_BRICKS.defaultBlockState());
-                arena.set(i, y, HALF + 1, Blocks.STONE_BRICKS.defaultBlockState());
-                arena.set(-HALF - 1, y, i, Blocks.STONE_BRICKS.defaultBlockState());
-                arena.set(HALF + 1, y, i, Blocks.STONE_BRICKS.defaultBlockState());
+                for (int[] w : new int[][] {{i, -HALF - 1}, {i, HALF + 1}, {-HALF - 1, i}, {HALF + 1, i}}) {
+                    boolean buttress = Math.floorMod(i, 4) == 0;
+                    int k = Math.floorMod(w[0] * 5 + w[1] * 3 + y * 7, 6);
+                    arena.set(w[0], y, w[1], y == 4 ? Blocks.CHISELED_STONE_BRICKS.defaultBlockState()
+                        : buttress ? Blocks.POLISHED_BLACKSTONE_BRICKS.defaultBlockState()
+                        : k < 2 ? Blocks.MOSSY_STONE_BRICKS.defaultBlockState() : (k == 2 ? Blocks.CRACKED_STONE_BRICKS.defaultBlockState() : Blocks.STONE_BRICKS.defaultBlockState()));
+                }
             }
         }
         // Clutter to hide behind: little huts (open on one side), crate stacks and hedge rows; the middle stays clear.
@@ -64,7 +76,7 @@ public final class HideAndSeek extends BaseRoom {
             switch (random.nextInt(3)) {
                 case 0 -> hut(x, z);
                 case 1 -> arena.fill(x, 1, z, x + 1, 1 + random.nextInt(3), z + 1, Blocks.BARREL.defaultBlockState());
-                default -> arena.fill(x, 1, z, x + 4, 2, z, Blocks.OAK_LEAVES.defaultBlockState()
+                default -> arena.fill(x, 1, z, x + 4, 2, z, Blocks.DARK_OAK_LEAVES.defaultBlockState()
                     .setValue(net.minecraft.world.level.block.LeavesBlock.PERSISTENT, true));
             }
         }
@@ -90,10 +102,18 @@ public final class HideAndSeek extends BaseRoom {
         hideEnds = hideTicks();
     }
 
+    /** A little crypt (same footprint and openings as the old hut): deepslate walls, tiled roof, a lantern inside. */
     private void hut(int x, int z) {
-        arena.fill(x, 1, z, x + 3, 3, z + 3, Blocks.SPRUCE_PLANKS.defaultBlockState());
+        arena.fill(x, 1, z, x + 3, 2, z + 3, Blocks.DEEPSLATE_BRICKS.defaultBlockState());
+        arena.fill(x, 3, z, x + 3, 3, z + 3, Blocks.DEEPSLATE_TILES.defaultBlockState());
+        for (int[] c : new int[][] {{x, z}, {x + 3, z}, {x, z + 3}, {x + 3, z + 3}}) {
+            arena.set(c[0], 1, c[1], Blocks.CHISELED_DEEPSLATE.defaultBlockState());
+            arena.set(c[0], 2, c[1], Blocks.CRACKED_DEEPSLATE_BRICKS.defaultBlockState());
+        }
         arena.fill(x + 1, 1, z + 1, x + 2, 2, z + 2, Blocks.AIR.defaultBlockState());
         arena.fill(x + 1, 1, z, x + 2, 2, z, Blocks.AIR.defaultBlockState()); // doorway
+        arena.set(x + 1, 3, z, Blocks.CHISELED_DEEPSLATE.defaultBlockState());
+        arena.set(x + 2, 3, z, Blocks.CHISELED_DEEPSLATE.defaultBlockState());
     }
 
     @Override

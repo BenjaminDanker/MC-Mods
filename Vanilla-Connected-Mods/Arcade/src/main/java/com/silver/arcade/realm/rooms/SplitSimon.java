@@ -67,12 +67,27 @@ public final class SplitSimon extends BaseRoom {
     }
 
     private void booth(int cx) {
-        arena.fill(cx - 3, 0, -2, cx + 3, 0, 4, Blocks.POLISHED_ANDESITE.defaultBlockState());
-        arena.fill(cx - 3, 1, -2, cx - 3, 4, 4, Blocks.STONE_BRICKS.defaultBlockState());
-        arena.fill(cx + 3, 1, -2, cx + 3, 4, 4, Blocks.STONE_BRICKS.defaultBlockState());
-        arena.fill(cx - 3, 1, -3, cx + 3, 4, -3, Blocks.STONE_BRICKS.defaultBlockState());
-        arena.fill(cx - 3, 1, 5, cx + 3, 4, 5, Blocks.STONE_BRICKS.defaultBlockState());
-        arena.fill(cx - 3, 5, -3, cx + 3, 5, 5, Blocks.STONE_BRICKS.defaultBlockState());
+        // Inside a diving bell: riveted copper walls (cut copper bands), a copper-and-deepslate deck, a dark panel
+        // behind the lamps or pads so the colours pop. Same sealed box: solid opaque walls, floor and roof.
+        for (int x = cx - 3; x <= cx + 3; x++) {
+            for (int z = -2; z <= 4; z++) {
+                arena.set(x, 0, z, st(Math.floorMod(x + z, 2) == 0 ? "waxed_cut_copper" : "polished_deepslate"));
+            }
+        }
+        for (int y = 1; y <= 4; y++) {
+            String band = y == 1 ? "waxed_exposed_cut_copper" : y == 4 ? "waxed_cut_copper" : "waxed_copper_block";
+            arena.fill(cx - 3, y, -2, cx - 3, y, 4, st(band));
+            arena.fill(cx + 3, y, -2, cx + 3, y, 4, st(band));
+            arena.fill(cx - 3, y, -3, cx + 3, y, -3, st(band));
+            arena.fill(cx - 3, y, 5, cx + 3, y, 5, st(band));
+        }
+        arena.fill(cx - 3, 5, -3, cx + 3, 5, 5, st("waxed_weathered_copper"));
+        // the panel behind the lamps / pads (z 4, never a lamp or pad cell)
+        for (int x = cx - 2; x <= cx + 2; x++) {
+            for (int y = 1; y <= 3; y++) {
+                arena.set(x, y, 4, st(y == 3 || Math.abs(x - cx) == 2 ? "gold_block" : "polished_blackstone"));
+            }
+        }
         arena.set(cx, 4, 1, Blocks.LANTERN.defaultBlockState().setValue(net.minecraft.world.level.block.LanternBlock.HANGING, true));
     }
 

@@ -61,6 +61,24 @@ public final class BlockParty extends BaseRoom {
     @Override
     protected void build() {
         paint();
+        // A neon frame hangs below the "out" line (y -5, never catches anyone) round the dance floor, with a glowing
+        // grid under it that shows through every hole when the music stops.
+        String[] neon = {"magenta", "light_blue", "lime", "yellow"};
+        for (int x = -HALF - 3; x <= HALF + 3; x++) {
+            for (int z = -HALF - 3; z <= HALF + 3; z++) {
+                int m = Math.max(Math.abs(x), Math.abs(z));
+                if (m >= HALF + 1) {
+                    boolean lamp = Math.floorMod(x + z, 4) == 0;
+                    arena.set(x, -5, z, lamp ? Blocks.PEARLESCENT_FROGLIGHT.defaultBlockState()
+                        : (m == HALF + 3 ? Blocks.GOLD_BLOCK.defaultBlockState()
+                        : concrete(DyeColor.byName(neon[Math.floorMod((x + HALF) / 3 + (z + HALF) / 3, neon.length)], DyeColor.WHITE)).defaultBlockState()));
+                } else if (Math.floorMod(x, 4) == 0 && Math.floorMod(z, 4) == 0) {
+                    arena.set(x, -8, z, Blocks.SEA_LANTERN.defaultBlockState());
+                } else {
+                    arena.set(x, -8, z, st("black_stained_glass"));
+                }
+            }
+        }
         List<ServerPlayer> list = List.copyOf(players.values());
         com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.DiscoLook.build(arena, tier, HALF));
         for (int i = 0; i < list.size(); i++) {

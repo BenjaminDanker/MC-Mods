@@ -41,10 +41,23 @@ public final class Hanoi extends BaseRoom {
     @Override
     protected void build() {
         int half = 2 * rings + 4 + rings + 2;
-        arena.fill(-half, 0, -4, half, 0, 3, Blocks.POLISHED_GRANITE.defaultBlockState());
+        // The toy-shop floor: dark spruce boards with a border of red, yellow and blue building blocks, so the gold
+        // bases (the buttons) shine.
+        for (int x = -half; x <= half; x++) {
+            for (int z = -4; z <= 3; z++) {
+                boolean edge = Math.abs(x) == half || z == -4;
+                arena.set(x, 0, z, st(edge ? new String[] {"red_concrete", "yellow_concrete", "blue_concrete"}[Math.floorMod(x + z, 3)]
+                    : Math.floorMod(x, 2) == 0 ? "spruce_planks" : "dark_oak_planks"));
+            }
+        }
         for (int p = 0; p < 3; p++) {
             arena.set(postX(p), 0, 2, Blocks.GOLD_BLOCK.defaultBlockState());
-            arena.fill(postX(p), 1, 3, postX(p), rings + 2, 3, Blocks.DARK_OAK_FENCE.defaultBlockState());
+            // a lit ring round each gold base (floor level, not clickable) and a pale birch post that shows up
+            // against the dark ring wall
+            arena.set(postX(p) - 1, 0, 2, Blocks.PEARLESCENT_FROGLIGHT.defaultBlockState());
+            arena.set(postX(p) + 1, 0, 2, Blocks.PEARLESCENT_FROGLIGHT.defaultBlockState());
+            arena.set(postX(p), 0, 1, Blocks.PEARLESCENT_FROGLIGHT.defaultBlockState());
+            arena.fill(postX(p), 1, 3, postX(p), rings + 2, 3, Blocks.BIRCH_FENCE.defaultBlockState());
         }
         for (int r = rings; r >= 1; r--) {
             posts[0].push(r);

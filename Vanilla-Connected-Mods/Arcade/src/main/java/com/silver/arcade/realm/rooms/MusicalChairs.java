@@ -43,7 +43,11 @@ public final class MusicalChairs extends BaseRoom {
 
     @Override
     protected void build() {
-        arena.fill(-RADIUS - 2, 0, -RADIUS - 2, RADIUS + 2, 0, RADIUS + 2, Blocks.POLISHED_BLACKSTONE.defaultBlockState());
+        for (int x = -RADIUS - 2; x <= RADIUS + 2; x++) {
+            for (int z = -RADIUS - 2; z <= RADIUS + 2; z++) {
+                arena.set(x, 0, z, floorAt(x, z));
+            }
+        }
         List<ServerPlayer> list = List.copyOf(players.values());
         com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.TeaPartyLook.build(arena, tier, RADIUS));
         for (int i = 0; i < list.size(); i++) {
@@ -52,10 +56,30 @@ public final class MusicalChairs extends BaseRoom {
         }
     }
 
+    /**
+     * The tea party's tablecloth: muted red and white gingham in 2-block checks, a lace edge of pink and white round
+     * it (the last two rings), so the gold seats are the only bright, shiny blocks on the floor.
+     */
+    private static net.minecraft.world.level.block.state.BlockState floorAt(int x, int z) {
+        int m = Math.max(Math.abs(x), Math.abs(z));
+        if (m >= RADIUS + 1) {
+            return (m == RADIUS + 2 ? Math.floorMod(x + z, 2) == 0 : Math.floorMod(x + z, 2) != 0)
+                ? st("white_terracotta") : st("pink_terracotta");
+        }
+        boolean a = Math.floorMod(Math.floorDiv(x, 2), 2) == 0, b = Math.floorMod(Math.floorDiv(z, 2), 2) == 0;
+        if (a && b) {
+            return st("red_terracotta");
+        }
+        if (a || b) {
+            return Blocks.TERRACOTTA.defaultBlockState();
+        }
+        return st("white_terracotta");
+    }
+
     /** Seats scattered on the floor, at least 3 apart. */
     private void layout(int count) {
         for (int[] seat : seats) {
-            arena.set(seat[0], 0, seat[1], Blocks.POLISHED_BLACKSTONE.defaultBlockState());
+            arena.set(seat[0], 0, seat[1], floorAt(seat[0], seat[1]));
         }
         seats.clear();
         int guard = 0;

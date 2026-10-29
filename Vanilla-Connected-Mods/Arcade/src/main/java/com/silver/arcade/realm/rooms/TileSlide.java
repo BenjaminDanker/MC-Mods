@@ -43,8 +43,20 @@ public final class TileSlide extends BaseRoom {
     protected void build() {
         board = SlideBoard.scrambled(size(), moves(), random);
         int n = size();
-        arena.fill(-4, 0, -2, n + 8, 0, 4, Blocks.SMOOTH_STONE.defaultBlockState());
-        arena.fill(-1, 1, 6, n + 7, n + 3, 6, Blocks.DARK_PRISMARINE.defaultBlockState()); // backboard
+        // Candy floor (peppermint stripes of white and pink with a red edge) and a chocolate backboard with a white
+        // icing frame, so the coloured tiles read clearly.
+        for (int x = -4; x <= n + 8; x++) {
+            for (int z = -2; z <= 4; z++) {
+                arena.set(x, 0, z, st(z == -2 || z == 4 || x == -4 || x == n + 8 ? "red_concrete"
+                    : Math.floorMod(x + z, 4) < 2 ? "white_concrete" : "pink_concrete"));
+            }
+        }
+        for (int x = -1; x <= n + 7; x++) {
+            for (int y = 1; y <= n + 3; y++) {
+                arena.set(x, y, 6, st(x == -1 || x == n + 7 || y == 1 || y == n + 3 ? "quartz_bricks"
+                    : (x == n + 1 ? "pink_terracotta" : "dark_oak_planks"))); // backboard, a pink seam between board and picture
+            }
+        }
         // The finished picture, to the right (x n+2 .. 2n+1), smaller frame of the same layout.
         for (int y = 0; y < n; y++) {
             for (int x = 0; x < n; x++) {

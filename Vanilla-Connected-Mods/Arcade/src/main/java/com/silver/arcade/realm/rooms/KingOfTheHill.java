@@ -11,6 +11,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 
 /**
  * King of the hill, a versus room: a stepped pyramid with a gold crown on top. Every second you stand on the crown
@@ -46,12 +47,43 @@ public final class KingOfTheHill extends BaseRoom {
 
     @Override
     protected void build() {
-        for (int level = 0; level <= BASE; level++) {
+        // The temple pyramid: the same stepped hill (full blocks, one step a level, a single crown block on top),
+        // carved: mossy and plain stone-brick tiers, a gold corner on every step, a stair strip up the middle of each
+        // face, gilded glyph bands on the odd tiers and a black frame round the gold crown so it stands out.
+        for (int level = 1; level <= BASE; level++) {
             int r = BASE - level;
-            arena.fill(-r, level, -r, r, level, r, level == BASE ? Blocks.GOLD_BLOCK.defaultBlockState()
-                : (level % 2 == 0 ? Blocks.SANDSTONE.defaultBlockState() : Blocks.CUT_SANDSTONE.defaultBlockState()));
+            for (int x = -r; x <= r; x++) {
+                for (int z = -r; z <= r; z++) {
+                    arena.set(x, level, z, templeBlock(level, r, x, z));
+                }
+            }
         }
-        arena.fill(-BASE - 4, 0, -BASE - 4, BASE + 4, 0, BASE + 4, Blocks.SMOOTH_SANDSTONE.defaultBlockState());
+        // the courtyard: mossy paving with a gold-edged processional cross and a gold rim
+        for (int x = -BASE - 4; x <= BASE + 4; x++) {
+            for (int z = -BASE - 4; z <= BASE + 4; z++) {
+                int m = Math.max(Math.abs(x), Math.abs(z));
+                BlockState floor;
+                if (m == BASE + 4) {
+                    floor = Blocks.GOLD_BLOCK.defaultBlockState();
+                } else if (m == BASE + 3) {
+                    floor = Blocks.CHISELED_STONE_BRICKS.defaultBlockState();
+                } else if (Math.abs(x) <= 1 || Math.abs(z) <= 1) {
+                    floor = Math.floorMod(m, 3) == 0 ? Blocks.CHISELED_STONE_BRICKS.defaultBlockState() : Blocks.POLISHED_ANDESITE.defaultBlockState();
+                } else {
+                    floor = Math.floorMod(x * 7 + z * 3, 5) == 0 ? Blocks.MOSSY_COBBLESTONE.defaultBlockState()
+                        : (Math.floorMod(x + z, 2) == 0 ? Blocks.MOSSY_STONE_BRICKS.defaultBlockState() : Blocks.STONE_BRICKS.defaultBlockState());
+                }
+                arena.set(x, 0, z, floor);
+            }
+        }
+        // braziers at the courtyard corners
+        for (int cx : new int[] {-BASE - 3, BASE + 3}) {
+            for (int cz : new int[] {-BASE - 3, BASE + 3}) {
+                arena.set(cx, 1, cz, Blocks.CHISELED_STONE_BRICKS.defaultBlockState());
+                arena.set(cx, 2, cz, Blocks.GOLD_BLOCK.defaultBlockState());
+                arena.set(cx, 3, cz, Blocks.SHROOMLIGHT.defaultBlockState());
+            }
+        }
         List<ServerPlayer> list = List.copyOf(players.values());
         com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.TempleLook.build(arena, tier, BASE));
         for (int i = 0; i < list.size(); i++) {
@@ -65,6 +97,30 @@ public final class KingOfTheHill extends BaseRoom {
             effect(player, MobEffects.SATURATION, 20 * 200, 0);
             score.put(player.getUUID(), 0);
         }
+    }
+
+    private static BlockState templeBlock(int level, int r, int x, int z) {
+        if (level == BASE) {
+            return Blocks.GOLD_BLOCK.defaultBlockState(); // the crown
+        }
+        if (level == BASE - 1) {
+            return Blocks.POLISHED_BLACKSTONE_BRICKS.defaultBlockState(); // dark frame round the crown
+        }
+        boolean edge = Math.max(Math.abs(x), Math.abs(z)) == r;
+        if (!edge) {
+            return Blocks.STONE_BRICKS.defaultBlockState(); // hidden under the next tier
+        }
+        if (Math.abs(x) == r && Math.abs(z) == r) {
+            return Blocks.GOLD_BLOCK.defaultBlockState();
+        }
+        int along = Math.abs(x) == r ? z : x;
+        if (Math.abs(along) <= 1) {
+            return Blocks.CHISELED_STONE_BRICKS.defaultBlockState(); // the stair strip up each face
+        }
+        if (level % 2 == 1) {
+            return Math.floorMod(along, 3) == 0 ? Blocks.GILDED_BLACKSTONE.defaultBlockState() : Blocks.MOSSY_STONE_BRICKS.defaultBlockState();
+        }
+        return Math.floorMod(along * 5 + level, 7) == 0 ? Blocks.CRACKED_STONE_BRICKS.defaultBlockState() : Blocks.STONE_BRICKS.defaultBlockState();
     }
 
     @Override

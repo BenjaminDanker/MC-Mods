@@ -37,8 +37,19 @@ public final class HoleInWall extends BaseRoom {
 
     @Override
     protected void build() {
-        arena.fill(-HALF, 0, -1, HALF, 0, 2, Blocks.SMOOTH_QUARTZ.defaultBlockState());
-        arena.fill(-HALF - 1, 0, 3, HALF + 1, 0, START_Z + 1, Blocks.QUARTZ_BRICKS.defaultBlockState()); // the wall's runway
+        // The contestants' stage: a glossy black-and-white checker with a gold front edge; the runway is black with
+        // light strips down both sides (full blocks), so the purple walls stand out all the way.
+        for (int x = -HALF; x <= HALF; x++) {
+            for (int z = -1; z <= 2; z++) {
+                arena.set(x, 0, z, st(z == -1 ? "gold_block" : Math.floorMod(x + z, 2) == 0 ? "white_concrete" : "black_concrete"));
+            }
+        }
+        for (int x = -HALF - 1; x <= HALF + 1; x++) {
+            for (int z = 3; z <= START_Z + 1; z++) {
+                arena.set(x, 0, z, st(Math.abs(x) == HALF + 1 ? (z % 2 == 0 ? "pearlescent_froglight" : "gold_block")
+                    : z % 4 == 0 ? "gray_concrete" : "black_concrete")); // the wall's runway
+            }
+        }
         com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.StudioLook.build(arena, tier));
         List<ServerPlayer> list = List.copyOf(players.values());
         for (int i = 0; i < list.size(); i++) {
