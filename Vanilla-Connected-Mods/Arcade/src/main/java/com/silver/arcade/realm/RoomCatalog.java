@@ -2,6 +2,10 @@ package com.silver.arcade.realm;
 
 import com.silver.arcade.realm.rooms.Archery;
 import com.silver.arcade.realm.rooms.Hanoi;
+import com.silver.arcade.realm.rooms.HoleInWall;
+import com.silver.arcade.realm.rooms.LavaRising;
+import com.silver.arcade.realm.rooms.SpotDifference;
+import com.silver.arcade.realm.rooms.TreasureHunt;
 import com.silver.arcade.realm.rooms.WhackAMole;
 import com.silver.arcade.realm.rooms.BlockParty;
 import com.silver.arcade.realm.rooms.HideAndSeek;
@@ -68,5 +72,9 @@ public final class RoomCatalog {
         // Batch 4 (solo first).
         Rooms.add(new RoomType("whack", Room.Kind.DUO, 1, 2, 1, WhackAMole::new));
         Rooms.add(new RoomType("hanoi", Room.Kind.DUO, 1, 2, 1, Hanoi::new));
+        Rooms.add(new RoomType("spot", Room.Kind.DUO, 1, 2, 1, SpotDifference::new));
+        Rooms.add(new RoomType("treasure", Room.Kind.DUO, 1, 2, 1, TreasureHunt::new));
+        Rooms.add(new RoomType("lava_rising", Room.Kind.GROUP, 1, 8, 1, LavaRising::new));
+        Rooms.add(new RoomType("hole_wall", Room.Kind.GROUP, 1, 5, 1, HoleInWall::new));
     }
 }
