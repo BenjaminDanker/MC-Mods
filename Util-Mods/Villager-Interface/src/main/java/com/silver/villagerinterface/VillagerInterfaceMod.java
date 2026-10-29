@@ -60,6 +60,14 @@ public final class VillagerInterfaceMod implements ModInitializer {
             }
         }
         com.silver.villagerinterface.cutscene.Cutscenes.register();
+        // An NPC whose entry was removed from the config is a leftover: it goes as soon as it loads.
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents.ENTITY_LOAD.register((entity, world) -> {
+            String id = villagerManager.getCustomId(entity);
+            if (id != null && villagerManager.getEntryForVillager(entity) == null) {
+                LOGGER.warn("Removed NPC '{}': it is no longer in the config", id);
+                entity.discard();
+            }
+        });
 
         LOGGER.info("Villager Interface initialized");
     }
