@@ -26,7 +26,7 @@ public final class SpotDifference extends BaseRoom {
     private final Set<Integer> found = new HashSet<>();
     private int mistakes;
 
-    public String id() { return "spot"; }
+    public String id() { return "spot_the_difference"; }
     public String title() { return "Spot the Difference"; }
     public String explain() {
         return "The two pictures match, except for a few blocks. Right-click every difference on the right-hand picture. Three wrong picks and you lose.";

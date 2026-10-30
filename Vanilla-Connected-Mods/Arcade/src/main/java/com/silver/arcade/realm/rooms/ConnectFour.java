@@ -20,7 +20,7 @@ public final class ConnectFour extends BaseRoom {
         return thread;
     });
 
-    public String id() { return "connect4"; }
+    public String id() { return "connect_four"; }
     public String title() { return "Connect Four"; }
     public String explain() {
         return "Four in a row, against me. Right-click the stone in a column's bottom row to drop your yellow piece. "

@@ -24,7 +24,7 @@ public final class RedLight extends BaseRoom {
     private long switchAt = 0; // green right on "Go!"
     private long redSince;
 
-    public String id() { return "red_light"; }
+    public String id() { return "red_light_green_light"; }
     public String title() { return "Red Light, Green Light"; }
     public String explain() {
         return "Run for the gold line while the light is green. When it turns red, freeze. Anyone I catch moving goes back to the start.";

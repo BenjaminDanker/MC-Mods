@@ -23,7 +23,7 @@ public final class MusicalChairs extends BaseRoom {
     private boolean music;
     private long phaseEnds = 40;
 
-    public String id() { return "chairs"; }
+    public String id() { return "musical_chairs"; }
     public String title() { return "Musical Chairs"; }
     public String explain() {
         return "Walk while the music plays. When it stops, gold seats appear: get onto one. One seat fewer than players, one player per seat. No seat, no game.";

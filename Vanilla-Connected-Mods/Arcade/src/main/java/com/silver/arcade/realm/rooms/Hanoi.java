@@ -22,7 +22,7 @@ public final class Hanoi extends BaseRoom {
     private int held = -1;
     private int moves;
 
-    public String id() { return "hanoi"; }
+    public String id() { return "tower"; }
     public String title() { return "The Tower"; }
     public String explain() {
         return "Move the whole stack from the left post to the right post. Right-click a post's gold base to lift its top ring, then "

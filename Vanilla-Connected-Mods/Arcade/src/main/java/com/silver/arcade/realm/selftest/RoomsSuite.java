@@ -45,55 +45,55 @@ final class RoomsSuite {
     private static final String SOUND = "ClientboundSoundPacket|ClientboundSoundEntityPacket";
 
     static {
-        Object[][] max = {{"typing", 25}, {"math", 25}, {"maze", 25}, {"connect4", 15}, {"memory", 25}, {"parkour", 25}, {"lights_out", 25},
-            {"pattern", 25}, {"archery", 25}, {"dropper", 25}, {"falling_floor", 25}, {"red_light", 25}, {"waves", 26}, {"spleef", 15},
-            {"sumo", 15}, {"split_simon", 18}, {"block_party", 25}, {"mastermind", 27}, {"slide", 25}, {"pairs", 25}, {"chairs", 15},
-            {"hot_potato", 15}, {"king_hill", 15}, {"hide_seek", 15}, {"whack", 25}, {"hanoi", 26}, {"spot", 26}, {"treasure", 26},
-            {"lava_rising", 26}, {"hole_wall", 26}};
+        Object[][] max = {{"typing_race", 25}, {"mental_math", 25}, {"maze", 25}, {"connect_four", 15}, {"simon_says", 25}, {"parkour", 25}, {"lights_out", 25},
+            {"copy_the_picture", 25}, {"archery", 25}, {"drop", 25}, {"floor_is_falling", 25}, {"red_light_green_light", 25}, {"hold_the_ring", 26}, {"spleef", 15},
+            {"sumo", 15}, {"two_booths", 18}, {"block_party", 25}, {"crack_the_code", 27}, {"sliding_picture", 25}, {"pairs", 25}, {"musical_chairs", 15},
+            {"hot_potato", 15}, {"king_of_the_hill", 15}, {"hide_and_seek", 15}, {"whack_a_mole", 25}, {"tower", 26}, {"spot_the_difference", 26}, {"buried_treasure", 26},
+            {"rising_floor", 26}, {"hole_in_the_wall", 26}};
         for (Object[] m : max) {
             MAX_TIER.put((String) m[0], (Integer) m[1]);
         }
         BOTS.put("spleef", 3);
         BOTS.put("sumo", 2);
-        BOTS.put("split_simon", 2);
-        BOTS.put("chairs", 3);
+        BOTS.put("two_booths", 2);
+        BOTS.put("musical_chairs", 3);
         BOTS.put("hot_potato", 3);
-        BOTS.put("king_hill", 2);
-        BOTS.put("hide_seek", 3);
-        EXTRA.put("typing", 3);
-        EXTRA.put("falling_floor", 3);
+        BOTS.put("king_of_the_hill", 2);
+        BOTS.put("hide_and_seek", 3);
+        EXTRA.put("typing_race", 3);
+        EXTRA.put("floor_is_falling", 3);
         EXTRA.put("block_party", 3);
         EXTRA.put("lights_out", 2);
-        EXTRA.put("memory", 2);
+        EXTRA.put("simon_says", 2);
         EXTRA.put("maze", 2);
-        EXTRA.put("pattern", 2);
+        EXTRA.put("copy_the_picture", 2);
         EXTRA.put("pairs", 2);
-        EXTRA.put("slide", 2);
-        EXTRA.put("king_hill", 4);
+        EXTRA.put("sliding_picture", 2);
+        EXTRA.put("king_of_the_hill", 4);
         EXTRA.put("sumo", 2);
-        ANIM.put("typing", List.of());
-        ANIM.put("memory", List.of(BLOCKS, SOUND));
+        ANIM.put("typing_race", List.of());
+        ANIM.put("simon_says", List.of(BLOCKS, SOUND));
         ANIM.put("lights_out", List.of(BLOCKS, SOUND));
-        ANIM.put("pattern", List.of(BLOCKS));
-        ANIM.put("mastermind", List.of(BLOCKS, SOUND));
-        ANIM.put("slide", List.of(BLOCKS, SOUND));
+        ANIM.put("copy_the_picture", List.of(BLOCKS));
+        ANIM.put("crack_the_code", List.of(BLOCKS, SOUND));
+        ANIM.put("sliding_picture", List.of(BLOCKS, SOUND));
         ANIM.put("pairs", List.of(BLOCKS, SOUND));
-        ANIM.put("whack", List.of(BLOCKS, SOUND));
-        ANIM.put("hanoi", List.of(BLOCKS, SOUND));
-        ANIM.put("spot", List.of(BLOCKS, SOUND));
-        ANIM.put("treasure", List.of(BLOCKS));
-        ANIM.put("connect4", List.of(BLOCKS));
-        ANIM.put("split_simon", List.of(BLOCKS, SOUND));
-        ANIM.put("waves", List.of("ClientboundAddEntityPacket"));
+        ANIM.put("whack_a_mole", List.of(BLOCKS, SOUND));
+        ANIM.put("tower", List.of(BLOCKS, SOUND));
+        ANIM.put("spot_the_difference", List.of(BLOCKS, SOUND));
+        ANIM.put("buried_treasure", List.of(BLOCKS));
+        ANIM.put("connect_four", List.of(BLOCKS));
+        ANIM.put("two_booths", List.of(BLOCKS, SOUND));
+        ANIM.put("hold_the_ring", List.of("ClientboundAddEntityPacket"));
         ANIM.put("hot_potato", List.of("ClientboundLevelParticlesPacket", SOUND));
-        ANIM.put("falling_floor", List.of(BLOCKS));
+        ANIM.put("floor_is_falling", List.of(BLOCKS));
         ANIM.put("block_party", List.of(BLOCKS));
-        ANIM.put("lava_rising", List.of(BLOCKS));
+        ANIM.put("rising_floor", List.of(BLOCKS));
         ANIM.put("spleef", List.of(BLOCKS));
         ANIM.put("archery", List.of(BLOCKS));
-        ANIM.put("hole_wall", List.of(BLOCKS));
-        ANIM.put("chairs", List.of(SOUND));
-        ANIM.put("red_light", List.of("ClientboundSetTitleTextPacket~Green"));
+        ANIM.put("hole_in_the_wall", List.of(BLOCKS));
+        ANIM.put("musical_chairs", List.of(SOUND));
+        ANIM.put("red_light_green_light", List.of("ClientboundSetTitleTextPacket~Green"));
         ANIM.put("parkour", List.of());
     }
 
@@ -133,8 +133,8 @@ final class RoomsSuite {
         }
         // One throw-away room first: the first room after a server start pays for class loading and JIT, which is not what is being measured.
         int before = t.report.checks.size();
-        Drivers.Driver warm = Drivers.ALL.get("typing");
-        RoomType typing = Rooms.all().stream().filter(x -> x.id().equals("typing")).findFirst().orElse(null);
+        Drivers.Driver warm = Drivers.ALL.get("typing_race");
+        RoomType typing = Rooms.all().stream().filter(x -> x.id().equals("typing_race")).findFirst().orElse(null);
         if (typing != null && t.options.rooms.isEmpty()) {
             runCase(t, typing, warm, 1, 1, true);
             synchronized (t.report) {
@@ -275,9 +275,9 @@ final class RoomsSuite {
         Set<UUID> cleared = t.on(live::cleared);
         boolean versus = nBots > 1 && !ANIM_COOP.contains(type.id());
         if (win) {
-            if (versus && !type.id().equals("hide_seek")) {
+            if (versus && !type.id().equals("hide_and_seek")) {
                 t.check(label + ": bot 0 alone wins", cleared.equals(Set.of(ids.get(0))), "cleared " + cleared.size() + " of " + nBots + ", bot0 in: " + cleared.contains(ids.get(0)));
-            } else if (type.id().equals("hide_seek")) {
+            } else if (type.id().equals("hide_and_seek")) {
                 t.check(label + ": bot 0 wins", cleared.contains(ids.get(0)), "cleared " + cleared.size() + " of " + nBots);
             } else {
                 t.check(label + ": every bot clears the room", cleared.containsAll(ids), "cleared " + cleared.size() + " of " + nBots + "; bot 0 at "
@@ -344,9 +344,9 @@ final class RoomsSuite {
     }
 
     /** Rooms where every bot wins or loses together. */
-    private static final Set<String> ANIM_COOP = Set.of("typing", "math", "maze", "connect4", "memory", "parkour", "lights_out", "pattern", "archery",
-        "dropper", "falling_floor", "red_light", "waves", "mastermind", "slide", "pairs", "whack", "hanoi", "spot", "treasure", "lava_rising",
-        "hole_wall", "block_party", "split_simon");
+    private static final Set<String> ANIM_COOP = Set.of("typing_race", "mental_math", "maze", "connect_four", "simon_says", "parkour", "lights_out", "copy_the_picture", "archery",
+        "drop", "floor_is_falling", "red_light_green_light", "hold_the_ring", "crack_the_code", "sliding_picture", "pairs", "whack_a_mole", "tower", "spot_the_difference", "buried_treasure", "rising_floor",
+        "hole_in_the_wall", "block_party", "two_booths");
 
     private static void afterWin(T t, Live live, String[] bots, List<UUID> ids, Set<UUID> cleared, int tier, String label,
             Map<String, Long> marks) {

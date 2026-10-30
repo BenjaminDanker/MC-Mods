@@ -18,7 +18,7 @@ public final class FallingFloor extends BaseRoom {
     private final Map<Long, Long> dropping = new HashMap<>();
     private int survive;
 
-    public String id() { return "falling_floor"; }
+    public String id() { return "floor_is_falling"; }
     public String title() { return "The Floor Is Falling"; }
     public String explain() {
         return "Every block you step on turns red and falls a moment later. Keep moving, don't fall, and last until the time runs out.";

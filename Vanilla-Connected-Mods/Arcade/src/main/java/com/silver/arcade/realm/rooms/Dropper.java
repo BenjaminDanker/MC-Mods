@@ -14,7 +14,7 @@ public final class Dropper extends BaseRoom {
     private static final int HALF = 4;
     private final Random random = new Random();
 
-    public String id() { return "dropper"; }
+    public String id() { return "drop"; }
     public String title() { return "The Drop"; }
     public String explain() {
         return "Jump into the shaft and steer past the ledges into the little pool at the bottom. Miss it and you start over at the top.";

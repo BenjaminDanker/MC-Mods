@@ -73,7 +73,7 @@ public final class Solvers {
 
     boolean won(int since) {
         return Hud.seen(since, "cleared") || Hud.seen(since, "perfect") || Hud.seen(since, "well done") || Hud.seen(since, "cracked")
-            || Hud.seen(since, "picture perfect") || Hud.seen(since, "found") && Hud.seen(since, "treasure");
+            || Hud.seen(since, "picture perfect") || Hud.seen(since, "found") && Hud.seen(since, "buried_treasure");
     }
 
     // ---------------------------------------------------------------- Lights Out
@@ -192,7 +192,7 @@ public final class Solvers {
             }
         }
         int colours = palette.size();
-        Rec.event("board", "kind", "mastermind", "pegs", np, "colours", colours, "button", button == null ? "none" : button.toShortString(), "palette", String.join(",", palette));
+        Rec.event("board", "kind", "crack_the_code", "pegs", np, "colours", colours, "button", button == null ? "none" : button.toShortString(), "palette", String.join(",", palette));
         if (button == null || colours == 0) {
             problem("mastermind: could not find the check button or the colour strip on screen");
             return;
@@ -299,7 +299,7 @@ public final class Solvers {
         int x0 = wool.stream().mapToInt(BlockPos::getX).min().getAsInt(), x1 = wool.stream().mapToInt(BlockPos::getX).max().getAsInt();
         int y0 = wool.stream().mapToInt(BlockPos::getY).min().getAsInt(), y1 = wool.stream().mapToInt(BlockPos::getY).max().getAsInt();
         int size = x1 - x0 + 1;
-        Rec.event("board", "kind", "pattern", "size", size, "x0", x0, "y0", y0, "y1", y1, "z", pz);
+        Rec.event("board", "kind", "copy_the_picture", "size", size, "x0", x0, "y0", y0, "y1", y1, "z", pz);
         // Read the picture while it shows.
         String[][] pic = new String[size][size];
         for (int x = 0; x < size; x++) {
@@ -447,7 +447,7 @@ public final class Solvers {
             }
         }
         int fx0 = G.getX() - (2 * n + 2), fy0 = G.getY(), z = G.getZ();
-        Rec.event("board", "kind", "slide", "n", n, "frameX0", fx0, "y0", fy0);
+        Rec.event("board", "kind", "sliding_picture", "n", n, "frameX0", fx0, "y0", fy0);
         String[][] want = new String[n][n];
         for (int y = 0; y < n; y++) {
             for (int x = 0; x < n; x++) {
@@ -569,7 +569,7 @@ public final class Solvers {
         int lx0 = leftPic.stream().mapToInt(BlockPos::getX).min().getAsInt();
         int rx0 = rightPic.stream().mapToInt(BlockPos::getX).min().getAsInt();
         int yMin = leftPic.stream().mapToInt(BlockPos::getY).min().getAsInt();
-        Rec.event("board", "kind", "spot", "size", size, "leftX0", lx0, "rightX0", rx0, "z", pz);
+        Rec.event("board", "kind", "spot_the_difference", "size", size, "leftX0", lx0, "rightX0", rx0, "z", pz);
         List<BlockPos> diffs = new ArrayList<>();
         for (int x = 0; x < size; x++) {
             for (int y = 0; y < size; y++) {
@@ -612,7 +612,7 @@ public final class Solvers {
                 break;
             }
         }
-        Rec.event("board", "kind", "hanoi", "rings", rings, "bases", bases.toString());
+        Rec.event("board", "kind", "tower", "rings", rings, "bases", bases.toString());
         List<int[]> moves = new ArrayList<>();
         hanoiMoves(rings, 0, 2, 1, moves);
         for (int[] m : moves) {
@@ -636,7 +636,7 @@ public final class Solvers {
 
     void whack() {
         List<BlockPos> dirt = W.scanExact(b, 14, 4, 14, "coarse_dirt");
-        Rec.event("board", "kind", "whack", "holes", dirt.size());
+        Rec.event("board", "kind", "whack_a_mole", "holes", dirt.size());
         long end = Rec.tick + 20 * 70;
         int hits = 0;
         while (Rec.tick < end && !Hud.seen(0, "cleared") && !won(Hud.log.size() - 1)) {
@@ -677,7 +677,7 @@ public final class Solvers {
         sand = sand.stream().filter(p -> p.getY() == fy).toList();
         int x0 = sand.stream().mapToInt(BlockPos::getX).min().getAsInt(), x1 = sand.stream().mapToInt(BlockPos::getX).max().getAsInt();
         int z0 = sand.stream().mapToInt(BlockPos::getZ).min().getAsInt(), z1 = sand.stream().mapToInt(BlockPos::getZ).max().getAsInt();
-        Rec.event("board", "kind", "treasure", "field", x0 + ".." + x1 + " x " + z0 + ".." + z1, "cells", sand.size());
+        Rec.event("board", "kind", "buried_treasure", "field", x0 + ".." + x1 + " x " + z0 + ".." + z1, "cells", sand.size());
         List<int[]> cand = new ArrayList<>();
         for (int x = x0; x <= x1; x++) {
             for (int z = z0; z <= z1; z++) {

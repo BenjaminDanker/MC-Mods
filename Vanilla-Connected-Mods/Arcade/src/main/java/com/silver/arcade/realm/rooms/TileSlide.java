@@ -21,7 +21,7 @@ public final class TileSlide extends BaseRoom {
     private final Random random = new Random();
     private SlideBoard board;
 
-    public String id() { return "slide"; }
+    public String id() { return "sliding_picture"; }
     public String title() { return "The Sliding Picture"; }
     public String explain() {
         return "Right-click a tile next to the gap to slide it in. Make the frame match the finished picture beside it.";

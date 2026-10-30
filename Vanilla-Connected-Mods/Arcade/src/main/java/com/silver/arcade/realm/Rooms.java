@@ -8,6 +8,18 @@ import java.util.Random;
 public final class Rooms {
     private static final List<RoomType> TYPES = new ArrayList<>();
 
+    /** Rooms renamed to their titles on 2026-10-30: old name -> new name (for saved data that still has the old one). */
+    public static final java.util.Map<String, String> RENAMED = java.util.Map.ofEntries(
+        java.util.Map.entry("connect4", "connect_four"), java.util.Map.entry("dropper", "drop"), java.util.Map.entry("falling_floor", "floor_is_falling"),
+        java.util.Map.entry("hanoi", "tower"), java.util.Map.entry("hide_seek", "hide_and_seek"), java.util.Map.entry("hole_wall", "hole_in_the_wall"),
+        java.util.Map.entry("king_hill", "king_of_the_hill"), java.util.Map.entry("lava_rising", "rising_floor"),
+        java.util.Map.entry("mastermind", "crack_the_code"), java.util.Map.entry("math", "mental_math"), java.util.Map.entry("memory", "simon_says"),
+        java.util.Map.entry("chairs", "musical_chairs"), java.util.Map.entry("pattern", "copy_the_picture"),
+        java.util.Map.entry("red_light", "red_light_green_light"), java.util.Map.entry("split_simon", "two_booths"),
+        java.util.Map.entry("spot", "spot_the_difference"), java.util.Map.entry("slide", "sliding_picture"),
+        java.util.Map.entry("treasure", "buried_treasure"), java.util.Map.entry("typing", "typing_race"),
+        java.util.Map.entry("waves", "hold_the_ring"), java.util.Map.entry("whack", "whack_a_mole"));
+
     private Rooms() {
     }
 

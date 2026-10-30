@@ -58,6 +58,10 @@ public final class ArcadeDb {
             s.execute("CREATE TABLE IF NOT EXISTS arcade_room_log (id bigint AUTO_INCREMENT PRIMARY KEY, room varchar(32) NOT NULL,"
                 + " level int NOT NULL, players int NOT NULL, cleared int NOT NULL, used_s int NOT NULL, limit_s int NOT NULL,"
                 + " test boolean NOT NULL, at timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), INDEX (room, level), INDEX (at))");
+            // rooms were renamed to their titles (2026-10-30); older log rows follow
+            for (var r : com.silver.arcade.realm.Rooms.RENAMED.entrySet()) {
+                s.execute("UPDATE arcade_room_log SET room = '" + r.getValue() + "' WHERE room = '" + r.getKey() + "'");
+            }
             s.execute("CREATE TABLE IF NOT EXISTS arcade_dice (uuid char(36) PRIMARY KEY, given_at timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3))");
             s.execute("CREATE TABLE IF NOT EXISTS arcade_discovery (uuid char(36) PRIMARY KEY, offers int NOT NULL DEFAULT 0,"
                 + " last_offer timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3))");

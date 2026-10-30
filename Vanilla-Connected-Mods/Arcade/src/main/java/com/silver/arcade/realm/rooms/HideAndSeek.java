@@ -19,7 +19,7 @@ public final class HideAndSeek extends BaseRoom {
     private ServerPlayer seeker;
     private long hideEnds;
 
-    public String id() { return "hide_seek"; }
+    public String id() { return "hide_and_seek"; }
     public String title() { return "Hide and Seek"; }
     public String explain() {
         return "One of you seeks, the rest hide. The seeker waits with eyes shut, then has to tag every hider before the bell. "

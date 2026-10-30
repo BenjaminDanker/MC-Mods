@@ -21,7 +21,7 @@ public final class HoleInWall extends BaseRoom {
     private int walls;
     private long nextStep = 80;
 
-    public String id() { return "hole_wall"; }
+    public String id() { return "hole_in_the_wall"; }
     public String title() { return "Hole in the Wall"; }
     public String explain() {
         return "Walls slide towards you, each with a gap. Stand where the gap will pass you. The wall sweeps away anyone in its path.";

@@ -16,7 +16,7 @@ public final class MathSprint extends BaseRoom {
     private final Map<UUID, Integer> done = new HashMap<>();
     private final Map<UUID, Long> answer = new HashMap<>();
 
-    public String id() { return "math"; }
+    public String id() { return "mental_math"; }
     public String title() { return "Mental Math"; }
     public String explain() {
         return "Sums appear in your chat. Type the answer and press enter. One wrong answer and you're out. Think fast.";

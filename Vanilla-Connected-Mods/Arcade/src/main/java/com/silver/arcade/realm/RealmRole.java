@@ -387,30 +387,22 @@ public final class RealmRole implements Run.Host {
         return pos.getY() == centre.getY() && dx * dx + dz * dz <= 5;
     }
 
-    /** A room's title as one word ("Crack the Code" -> crack_the_code), accepted alongside its id. */
-    private static String titleWord(RoomType type) {
-        return type.factory().get().title().toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9]+", "_").replaceAll("^_|_$", "");
-    }
-
-    /** Suggests each room by id and by its title as one word; hovering shows the title. */
+    /** Suggests each room by its name; hovering shows the title players see. */
     private static java.util.concurrent.CompletableFuture<com.mojang.brigadier.suggestion.Suggestions> roomSuggestions(
             com.mojang.brigadier.suggestion.SuggestionsBuilder builder) {
         String typed = builder.getRemaining().toLowerCase(java.util.Locale.ROOT);
         for (RoomType type : Rooms.all()) {
-            Component title = Component.literal(type.factory().get().title());
-            for (String name : new String[] {type.id(), titleWord(type)}) {
-                if (name.startsWith(typed)) {
-                    builder.suggest(name, net.minecraft.network.chat.ComponentUtils.fromMessage(title));
-                }
+            if (type.id().startsWith(typed)) {
+                builder.suggest(type.id(), net.minecraft.network.chat.ComponentUtils.fromMessage(Component.literal(type.factory().get().title())));
             }
         }
         return builder.buildFuture();
     }
 
-    /** The room named by id or by its title as one word, or null. */
+    /** The room with this name, or null. */
     private static RoomType roomNamed(String name) {
         for (RoomType type : Rooms.all()) {
-            if (type.id().equals(name) || titleWord(type).equals(name)) {
+            if (type.id().equals(name)) {
                 return type;
             }
         }

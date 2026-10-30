@@ -35,36 +35,36 @@ final class Drivers {
     static final Map<String, Driver> ALL = new LinkedHashMap<>();
 
     static {
-        ALL.put("typing", Drivers::typing);
-        ALL.put("math", Drivers::math);
+        ALL.put("typing_race", Drivers::typing);
+        ALL.put("mental_math", Drivers::math);
         ALL.put("maze", Drivers::maze);
-        ALL.put("connect4", Drivers::connect4);
-        ALL.put("memory", Drivers::memory);
+        ALL.put("connect_four", Drivers::connect4);
+        ALL.put("simon_says", Drivers::memory);
         ALL.put("parkour", Drivers::parkour);
         ALL.put("lights_out", Drivers::lightsOut);
-        ALL.put("pattern", Drivers::pattern);
+        ALL.put("copy_the_picture", Drivers::pattern);
         ALL.put("archery", Drivers::archery);
-        ALL.put("dropper", Drivers::dropper);
-        ALL.put("falling_floor", Drivers::fallingFloor);
-        ALL.put("red_light", Drivers::redLight);
-        ALL.put("waves", Drivers::waves);
+        ALL.put("drop", Drivers::dropper);
+        ALL.put("floor_is_falling", Drivers::fallingFloor);
+        ALL.put("red_light_green_light", Drivers::redLight);
+        ALL.put("hold_the_ring", Drivers::waves);
         ALL.put("spleef", Drivers::spleef);
         ALL.put("sumo", Drivers::sumo);
-        ALL.put("split_simon", Drivers::splitSimon);
+        ALL.put("two_booths", Drivers::splitSimon);
         ALL.put("block_party", Drivers::blockParty);
-        ALL.put("mastermind", Drivers::mastermind);
-        ALL.put("slide", Drivers::slide);
+        ALL.put("crack_the_code", Drivers::mastermind);
+        ALL.put("sliding_picture", Drivers::slide);
         ALL.put("pairs", Drivers::pairs);
-        ALL.put("chairs", Drivers::chairs);
+        ALL.put("musical_chairs", Drivers::chairs);
         ALL.put("hot_potato", Drivers::hotPotato);
-        ALL.put("king_hill", Drivers::kingHill);
-        ALL.put("hide_seek", Drivers::hideSeek);
-        ALL.put("whack", Drivers::whack);
-        ALL.put("hanoi", Drivers::hanoi);
-        ALL.put("spot", Drivers::spot);
-        ALL.put("treasure", Drivers::treasure);
-        ALL.put("lava_rising", Drivers::lavaRising);
-        ALL.put("hole_wall", Drivers::holeWall);
+        ALL.put("king_of_the_hill", Drivers::kingHill);
+        ALL.put("hide_and_seek", Drivers::hideSeek);
+        ALL.put("whack_a_mole", Drivers::whack);
+        ALL.put("tower", Drivers::hanoi);
+        ALL.put("spot_the_difference", Drivers::spot);
+        ALL.put("buried_treasure", Drivers::treasure);
+        ALL.put("rising_floor", Drivers::lavaRising);
+        ALL.put("hole_in_the_wall", Drivers::holeWall);
     }
 
     private Drivers() {

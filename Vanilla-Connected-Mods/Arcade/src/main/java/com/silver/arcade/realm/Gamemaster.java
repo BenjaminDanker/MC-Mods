@@ -41,6 +41,12 @@ public final class Gamemaster {
     /** Returns true when the rules were explained (the first time this player meets the room). */
     public static boolean introduce(ServerPlayer player, Room room, int tier) {
         // No title: the boss bar already names the room and the tier.
+        // A room seen under its old name (before the rename to titles) counts as seen.
+        Rooms.RENAMED.forEach((old, now) -> {
+            if (now.equals(room.id()) && player.removeTag(SEEN_PREFIX + old)) {
+                player.addTag(SEEN_PREFIX + now);
+            }
+        });
         if (player.addTag(SEEN_PREFIX + room.id())) {
             player.sendSystemMessage(Component.literal("/explain repeats the rules  \u00b7  /giveup ends the room").withStyle(ChatFormatting.DARK_GRAY));
             say(player, room.explain());

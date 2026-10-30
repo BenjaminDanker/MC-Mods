@@ -22,7 +22,7 @@ public final class TypingRace extends BaseRoom {
     private final Map<UUID, Long> shownAt = new HashMap<>();
     private long now;
 
-    public String id() { return "typing"; }
+    public String id() { return "typing_race"; }
     public String title() { return "Typing Race"; }
     public String explain() {
         return "Words appear in your chat. Type them back exactly, quick as you can, and press enter. Three lines; miss the speed "

@@ -27,7 +27,7 @@ public final class SplitSimon extends BaseRoom {
     private long nextFlashAt = 60;
     private int input;
 
-    public String id() { return "split_simon"; }
+    public String id() { return "two_booths"; }
     public String title() { return "Two Booths"; }
     public String explain() {
         return "Two booths, two of you. One sees the colours light up; the other has the pads. Talk to each other in chat: "

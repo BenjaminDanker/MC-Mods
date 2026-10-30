@@ -16,7 +16,7 @@ public final class WhackAMole extends BaseRoom {
     private int score;
     private long nextPop = 40;
 
-    public String id() { return "whack"; }
+    public String id() { return "whack_a_mole"; }
     public String title() { return "Whack-a-Mole"; }
     public String explain() {
         return "Lanterns pop up out of the holes. Right-click them before they duck back down. Reach the score before time runs out.";

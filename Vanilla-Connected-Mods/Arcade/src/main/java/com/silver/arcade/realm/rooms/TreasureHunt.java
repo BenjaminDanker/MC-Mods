@@ -25,7 +25,7 @@ public final class TreasureHunt extends BaseRoom {
     private int found;
     private int digs;
 
-    public String id() { return "treasure"; }
+    public String id() { return "buried_treasure"; }
     public String title() { return "Buried Treasure"; }
     public String explain() {
         return "Treasure is buried under the sand. Dig the sand with your shovel. The colour at the bottom of each hole says how close the nearest "

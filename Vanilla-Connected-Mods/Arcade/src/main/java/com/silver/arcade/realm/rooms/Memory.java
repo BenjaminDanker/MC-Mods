@@ -27,7 +27,7 @@ public final class Memory extends BaseRoom {
     private int input;
     private boolean showing = true;
 
-    public String id() { return "memory"; }
+    public String id() { return "simon_says"; }
     public String title() { return "Simon Says"; }
     public String explain() {
         return "Watch the four pads light up, then right-click them in the same order. With a partner, you take turns: one does the "

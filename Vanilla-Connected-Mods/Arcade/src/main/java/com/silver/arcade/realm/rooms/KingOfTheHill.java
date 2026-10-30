@@ -21,7 +21,7 @@ public final class KingOfTheHill extends BaseRoom {
     private static final int BASE = 7;
     private final Map<UUID, Integer> score = new HashMap<>();
 
-    public String id() { return "king_hill"; }
+    public String id() { return "king_of_the_hill"; }
     public String title() { return "King of the Hill"; }
     public String explain() {
         return "Stand alone on the gold crown at the top to score a point a second. Knock the others off with your stick. "

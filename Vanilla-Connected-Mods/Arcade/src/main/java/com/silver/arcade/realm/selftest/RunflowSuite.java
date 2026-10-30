@@ -94,7 +94,7 @@ final class RunflowSuite {
         Live live = t.on(() -> Live.find(id));
         t.until(() -> !live.arena.decorating(), 20 * 60);
         Ctx ctx = new Ctx(t, live, new String[] {name}, 1, "undecided");
-        t.guard("undecided climb: driver ran", () -> Drivers.ALL.get("typing").play(ctx, -1));
+        t.guard("undecided climb: driver ran", () -> Drivers.ALL.get("typing_race").play(ctx, -1));
         boolean choice = t.until(() -> Reflect.get(live.run, "choiceArena") != null, 200);
         long at = t.tick();
         boolean cashed = t.until(() -> Live.runOf(id) == null, 20 * 30);

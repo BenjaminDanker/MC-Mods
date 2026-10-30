@@ -25,7 +25,7 @@ public final class Mastermind extends BaseRoom {
     /** Checked guesses, newest first, with their {gold, iron} scores. */
     private final java.util.List<int[][]> history = new java.util.ArrayList<>();
 
-    public String id() { return "mastermind"; }
+    public String id() { return "crack_the_code"; }
     public String title() { return "Crack the Code"; }
     public String explain() {
         return "I've hidden a colour code. Right-click the pegs on the bottom row to set your guess, then right-click the glowing copper button to check it. "

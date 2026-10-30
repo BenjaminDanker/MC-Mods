@@ -19,7 +19,7 @@ public final class LavaRising extends BaseRoom {
     private int lava = -1;
     private long nextRise = 120;
 
-    public String id() { return "lava_rising"; }
+    public String id() { return "rising_floor"; }
     public String title() { return "The Rising Floor"; }
     public String explain() {
         return "Magma is rising up the shaft. Climb the ledges round the walls to the gold landing at the top before it reaches you.";

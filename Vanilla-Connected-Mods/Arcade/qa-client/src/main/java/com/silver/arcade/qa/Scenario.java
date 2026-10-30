@@ -18,11 +18,11 @@ public final class Scenario {
     private final int chunkRadius = Integer.getInteger("arcadeqa.chunkRadius", 6);
     private final int settle = Integer.getInteger("arcadeqa.settle", 60);
     private final String choice = System.getProperty("arcadeqa.choice", "gold");
-    private static final String[] ALL = {"lights_out", "mastermind", "pattern", "pairs", "slide", "spot", "hanoi", "whack", "treasure",
-        "typing", "math", "maze", "connect4", "memory", "parkour", "archery", "dropper", "falling_floor", "red_light", "waves",
-        "block_party", "lava_rising", "hole_wall"};
+    private static final String[] ALL = {"lights_out", "crack_the_code", "copy_the_picture", "pairs", "sliding_picture", "spot_the_difference", "tower", "whack_a_mole", "buried_treasure",
+        "typing_race", "mental_math", "maze", "connect_four", "simon_says", "parkour", "archery", "drop", "floor_is_falling", "red_light_green_light", "hold_the_ring",
+        "block_party", "rising_floor", "hole_in_the_wall"};
     // Rooms that need other players (min party of 2 or 3): see companions().
-    private static final String[] GROUP = {"spleef", "sumo", "split_simon", "chairs", "hot_potato", "king_hill", "hide_seek"};
+    private static final String[] GROUP = {"spleef", "sumo", "two_booths", "musical_chairs", "hot_potato", "king_of_the_hill", "hide_and_seek"};
 
     public Scenario(Bot b) {
         this.b = b;
@@ -104,6 +104,15 @@ public final class Scenario {
         Chunks.report(b, "hall-arrival", chunkRadius);
         b.ticks(settle);
         Chunks.report(b, "hall-settled", chunkRadius);
+        if (Boolean.getBoolean("arcadeqa.spin")) {
+            for (int i = 0; i < 4; i++) {
+                final float yaw = i * 90f;
+                b.run(() -> { b.mc.player.setYRot(yaw); b.mc.player.setXRot(0f); });
+                b.ticks(40);
+                b.shot("hall-spin-" + i);
+            }
+            Chunks.report(b, "hall-spun", chunkRadius);
+        }
         b.shot("hall-arrival");
         Rec.event("hud_hall", "title", Hud.curTitle, "sub", Hud.curSub, "action", Hud.curAction, "bars", Hud.curBars);
     }
@@ -176,16 +185,16 @@ public final class Scenario {
         try {
             switch (room) {
                 case "lights_out" -> solve.lightsOut();
-                case "mastermind" -> solve.mastermind();
-                case "pattern" -> solve.pattern();
+                case "crack_the_code" -> solve.mastermind();
+                case "copy_the_picture" -> solve.pattern();
                 case "pairs" -> solve.pairs();
-                case "slide" -> solve.slide();
-                case "spot" -> solve.spot();
-                case "hanoi" -> solve.hanoi();
-                case "whack" -> solve.whack();
-                case "treasure" -> solve.treasure();
-                case "typing" -> solve.typing();
-                case "math" -> solve.math();
+                case "sliding_picture" -> solve.slide();
+                case "spot_the_difference" -> solve.spot();
+                case "tower" -> solve.hanoi();
+                case "whack_a_mole" -> solve.whack();
+                case "buried_treasure" -> solve.treasure();
+                case "typing_race" -> solve.typing();
+                case "mental_math" -> solve.math();
                 default -> observe(room);
             }
         } catch (Throwable t) {

@@ -25,7 +25,7 @@ public final class Waves extends BaseRoom {
     private int wave;
     private long nextWaveAt = 80;
 
-    public String id() { return "waves"; }
+    public String id() { return "hold_the_ring"; }
     public String title() { return "Hold the Ring"; }
     public String explain() {
         return "Monsters come in waves. Beat every wave and still be standing at the end. Fall, and you watch the rest.";

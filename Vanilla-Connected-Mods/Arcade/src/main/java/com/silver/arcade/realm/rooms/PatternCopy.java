@@ -22,7 +22,7 @@ public final class PatternCopy extends BaseRoom {
     private long hideAt;
     private boolean hidden;
 
-    public String id() { return "pattern"; }
+    public String id() { return "copy_the_picture"; }
     public String title() { return "Copy the Picture"; }
     public String explain() {
         return "A picture appears on the wall for a few seconds. When it hides, paint it on the canvas below: each right-click turns a "
