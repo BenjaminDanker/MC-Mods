@@ -25,6 +25,43 @@ public final class Chunks {
         Rec.event("chunks", "label", label, "data", new Rec.Raw(json));
     }
 
+    /** Cheap health probe: {chunks missing, sections with blocks, of those without a drawn mesh} within the radius. */
+    public static int[] health(Bot b, int radius) {
+        return b.call(() -> {
+            var mc = b.mc;
+            var level = mc.level;
+            BlockPos pp = mc.player.blockPosition();
+            int missing = 0, blocks = 0, noMesh = 0;
+            var dispatcher = mc.levelRenderer.viewArea();
+            for (int cx = (pp.getX() >> 4) - radius; cx <= (pp.getX() >> 4) + radius; cx++) {
+                for (int cz = (pp.getZ() >> 4) - radius; cz <= (pp.getZ() >> 4) + radius; cz++) {
+                    LevelChunk ch = level.getChunkSource().getChunk(cx, cz, ChunkStatus.FULL, false);
+                    if (ch == null) {
+                        missing++;
+                        continue;
+                    }
+                    LevelChunkSection[] sections = ch.getSections();
+                    for (int i = 0; i < sections.length; i++) {
+                        if (sections[i] == null || sections[i].hasOnlyAir()) {
+                            continue;
+                        }
+                        blocks++;
+                        try {
+                            var rs = dispatcher.getRenderSectionAt(new BlockPos(cx << 4, (level.getMinSectionY() + i) << 4, cz << 4));
+                            SectionMesh m = rs == null ? null : rs.getSectionMesh();
+                            if (m == null || m == net.minecraft.client.renderer.chunk.CompiledSectionMesh.UNCOMPILED) {
+                                noMesh++;
+                            }
+                        } catch (Throwable t) {
+                            noMesh++;
+                        }
+                    }
+                }
+            }
+            return new int[] {missing, blocks, noMesh};
+        });
+    }
+
     private static String build(Minecraft mc, String label, int radius) {
         var level = mc.level;
         BlockPos pp = mc.player.blockPosition();

@@ -117,6 +117,32 @@ public final class Scenario {
         Rec.event("hud_hall", "title", Hud.curTitle, "sub", Hud.curSub, "action", Hud.curAction, "bars", Hud.curBars);
     }
 
+    /** After arriving somewhere new: how long until the chunks around the player are all there (r2 and the view distance) and meshed. */
+    private void arrival(String label) {
+        int rd = Integer.getInteger("arcadeqa.rd", Integer.getInteger("arcadeqa.chunkRadius", 6));
+        StringBuilder line = new StringBuilder();
+        long t0 = Rec.tick;
+        long fullAt = -1, near = -1;
+        for (int i = 0; i < 60; i++) {
+            int[] n = Chunks.health(b, 2), f = Chunks.health(b, rd);
+            if (near < 0 && n[0] == 0) {
+                near = Rec.tick - t0;
+            }
+            if (fullAt < 0 && f[0] == 0) {
+                fullAt = Rec.tick - t0;
+            }
+            if (i % 3 == 0 || f[0] == 0 && f[2] == 0) {
+                line.append(Rec.tick - t0).append(":m").append(n[0]).append('/').append(f[0]).append(" u").append(n[2]).append('/').append(f[2]).append(' ');
+            }
+            if (f[0] == 0 && f[2] == 0) {
+                break;
+            }
+            b.ticks(4);
+        }
+        Rec.event("arrival", "label", label, "ticksUntilNear", near, "ticksUntilAllChunks", fullAt, "timeline", line.toString().trim(), "pos", b.pos().toString());
+        b.shot("arrival-" + label);
+    }
+
     private boolean inHall() {
         Vec3 p = b.pos();
         return Math.abs(p.x) < 120 && Math.abs(p.z) < 160;
@@ -164,6 +190,7 @@ public final class Scenario {
             b.shot("room-not-reached");
             return;
         }
+        arrival(room + "-room");
         long roomStart = Rec.tick;
         int hudStart = Hud.log.size();
         b.ticks(60);
@@ -248,6 +275,7 @@ public final class Scenario {
 
     private void waitHall() {
         boolean ok = b.until(this::inHall, 1200);
+        arrival("hall-return");
         b.ticks(30);
         Rec.event("back_in_hall", "ok", ok, "pos", b.pos().toString());
         b.shot("back-in-hall");
@@ -256,6 +284,7 @@ public final class Scenario {
     /** The choice platform: gold block on one side, emerald on the other. */
     private void choose(int hudStart) {
         step("choice");
+        arrival("choice");
         b.ticks(60);
         b.shot("choice-platform");
         Chunks.report(b, "choice", 5);
