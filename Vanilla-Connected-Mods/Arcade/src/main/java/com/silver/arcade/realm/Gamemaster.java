@@ -42,8 +42,8 @@ public final class Gamemaster {
     public static boolean introduce(ServerPlayer player, Room room, int tier) {
         // No title: the boss bar already names the room and the tier.
         if (player.addTag(SEEN_PREFIX + room.id())) {
-            say(player, room.explain());
             player.sendSystemMessage(Component.literal("/explain repeats the rules  \u00b7  /giveup ends the room").withStyle(ChatFormatting.DARK_GRAY));
+            say(player, room.explain());
             return true;
         } else {
             player.sendSystemMessage(Component.literal("/explain repeats the rules  \u00b7  /giveup ends the room").withStyle(ChatFormatting.DARK_GRAY));
