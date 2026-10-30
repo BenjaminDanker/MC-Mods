@@ -95,7 +95,10 @@ public final class RealmRole implements Run.Host {
         });
         ServerMessageEvents.ALLOW_CHAT_MESSAGE.register((message, sender, params) -> {
             Run run = runOf(sender.getUUID());
-            return run == null || !run.chat(sender, message.signedContent());
+            if (run == null || !run.chat(sender, message.signedContent())) { // a room may take it as an answer
+                ScopedChat.send(server, sender, message, params, this::runOf); // climb chat stays in the climb, hall chat in the hall
+            }
+            return false;
         });
         // Nobody is hurt in the hall; in a room the room decides (players hurt each other only in versus rooms).
         net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) -> {
