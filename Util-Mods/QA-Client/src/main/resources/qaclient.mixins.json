@@ -1,0 +1,7 @@
+{
+  "required": true,
+  "package": "com.silver.qaclient.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": ["TransferMixin"],
+  "injectors": {"defaultRequire": 1}
+}

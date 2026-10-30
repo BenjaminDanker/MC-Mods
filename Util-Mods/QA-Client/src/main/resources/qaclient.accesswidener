@@ -1,0 +1,11 @@
+accessWidener v2 official
+accessible method net/minecraft/client/Minecraft startAttack ()Z
+accessible method net/minecraft/client/Minecraft startUseItem ()V
+accessible method net/minecraft/client/Minecraft continueAttack (Z)V
+accessible method net/minecraft/client/Minecraft pick (F)V
+accessible field net/minecraft/client/gui/Hud title Lnet/minecraft/network/chat/Component;
+accessible field net/minecraft/client/gui/Hud subtitle Lnet/minecraft/network/chat/Component;
+accessible field net/minecraft/client/gui/Hud titleTime I
+accessible field net/minecraft/client/gui/Hud overlayMessageString Lnet/minecraft/network/chat/Component;
+accessible field net/minecraft/client/gui/Hud overlayMessageTime I
+accessible field net/minecraft/client/gui/components/BossHealthOverlay events Ljava/util/Map;

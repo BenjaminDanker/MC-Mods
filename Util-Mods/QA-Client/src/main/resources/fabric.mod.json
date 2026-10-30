@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "qaclient",
+  "version": "${version}",
+  "name": "QA Client",
+  "description": "Client-side test driver: a real client that plays a test server like a person (scenarios come from other mods' qaclient entrypoint) and records what it sees: HUD, chunk health, screenshots.",
+  "authors": ["BenjaminDanker"],
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["com.silver.qaclient.QaClient"]
+  },
+  "mixins": ["qaclient.mixins.json"],
+  "accessWidener": "qaclient.accesswidener",
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "26.2",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}
