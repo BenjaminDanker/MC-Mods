@@ -73,12 +73,29 @@ final class ConnectFourBoard {
     }
 
     /** Search depth for a tier: random-ish at 1, then deeper (capped at 9). */
-    static int depthFor(int tier) {
-        return Math.min(8, tier);
+    /**
+     * The bot's strength by level: 1 plays at random (it takes its own wins); 2 blocks a winning move half the time;
+     * 3 always blocks, otherwise mostly random; 4 looks 2 moves ahead with some random play; 5-7 look 3-5 moves ahead
+     * with a little random play left. Capped at 7 (5 moves ahead) so a careful human can always win.
+     */
+    static int depthFor(int level) {
+        return Math.max(2, Math.min(5, level - 2));
     }
 
-    /** The bot's move. Below tier 3 it sometimes plays at random (it still takes a win and blocks a loss). */
-    int botMove(int tier, Random random) {
+    /** How often (percent) the bot plays a random move instead of thinking, by level. */
+    static int randomPercent(int level) {
+        return switch (Math.min(level, 7)) {
+            case 1, 2 -> 100;
+            case 3 -> 65;
+            case 4 -> 35;
+            case 5 -> 20;
+            case 6 -> 12;
+            default -> 8;
+        };
+    }
+
+    /** The bot's move at this level (see {@link #depthFor}). */
+    int botMove(int level, Random random) {
         for (int c = 0; c < COLS; c++) {
             if (canDrop(c)) {
                 drop(c, 2);
@@ -89,23 +106,25 @@ final class ConnectFourBoard {
                 }
             }
         }
+        boolean blocks = level >= 3 || level == 2 && random.nextBoolean();
         for (int c = 0; c < COLS; c++) {
             if (canDrop(c)) {
                 drop(c, 1);
                 boolean loss = wins(1);
                 undo(c);
-                if (loss && tier >= 2) {
+                if (loss && blocks) {
                     return c;
                 }
             }
         }
-        if (tier <= 2 && random.nextInt(3) > 0 || tier == 1) {
+        if (random.nextInt(100) < randomPercent(level)) {
             int c;
             do {
                 c = random.nextInt(COLS);
             } while (!canDrop(c));
             return c;
         }
+        int tier = level;
         int best = -1;
         int bestScore = Integer.MIN_VALUE;
         int[] order = {3, 2, 4, 1, 5, 0, 6};

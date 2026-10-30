@@ -202,12 +202,15 @@ public final class Run {
             return;
         }
         Room room = type.factory().get();
+        // The room plays at its own level for this climb tier (config/arcade-difficulty.json); forced test rooms
+        // without a curve entry play at the climb tier.
+        int roomLevel = Math.max(1, Difficulty.level(type.id(), tier));
         Arena arena = Arena.take(level);
-        LOGGER.info("Arcade room {} (tier {}) for {}", type.id(), tier, online.stream().map(p -> p.getName().getString()).toList());
-        Party party = new Party(room, arena, members, room.timeLimitTicks(tier), server.getTickCount(), tier);
+        LOGGER.info("Arcade room {} (tier {}, level {}) for {}", type.id(), tier, roomLevel, online.stream().map(p -> p.getName().getString()).toList());
+        Party party = new Party(room, arena, members, room.timeLimitTicks(roomLevel), server.getTickCount(), tier);
         parties.add(party);
         arena.label(type.id() + " t" + tier);
-        room.start(arena, online, tier);
+        room.start(arena, online, roomLevel);
         arena.commit();
         for (ServerPlayer player : online) {
             lastRoom.put(player.getUUID(), type.id());

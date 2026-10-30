@@ -27,7 +27,8 @@ public final class Rooms {
         }
         List<RoomType> fits = new ArrayList<>();
         for (RoomType type : TYPES) {
-            if (type.fits(players, tier)) {
+            boolean curve = Difficulty.hasCurve(type.id());
+            if (type.fits(players, curve ? Integer.MAX_VALUE : tier) && Difficulty.level(type.id(), tier) > 0) {
                 fits.add(type);
             }
         }
