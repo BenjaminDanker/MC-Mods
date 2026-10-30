@@ -34,9 +34,10 @@ public final class BlockParty extends BaseRoom {
         return new int[] {-40, -20, -40, 40, 40, 40};
     }
 
-    int rounds() { return Math.min(10, 3 + tier / 2); }
-    int colours() { return Math.min(16, 4 + tier); }
-    int callTicks() { return Math.max(24, 80 - tier * 5); }
+    // 25 levels: more rounds, more colours on the floor, less time to reach the called one.
+    int rounds() { return Math.min(14, 3 + tier / 2); }
+    int colours() { return Math.min(16, 4 + (3 * tier) / 5); }
+    int callTicks() { return Math.max(24, 84 - tier * 3); }
 
     public int timeLimitTicks(int tier) {
         this.tier = tier;

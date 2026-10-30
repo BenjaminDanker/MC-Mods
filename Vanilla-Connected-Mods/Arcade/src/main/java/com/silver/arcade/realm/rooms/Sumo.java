@@ -39,7 +39,7 @@ public final class Sumo extends BaseRoom {
 
     @Override
     protected void build() {
-        radius = Math.max(3, 6 - tier / 3);
+        radius = Math.max(3, 7 - (tier + 1) / 3); // 15 levels
         for (int x = -radius; x <= radius; x++) {
             for (int z = -radius; z <= radius; z++) {
                 int d2 = x * x + z * z;
@@ -80,7 +80,7 @@ public final class Sumo extends BaseRoom {
             ServerPlayer player = list.get(i);
             arena.put(player, 0.5, 1, i == 0 ? -radius + 1.5 : radius - 0.5, i == 0 ? 0F : 180F);
             ItemStack stick = new ItemStack(Items.STICK);
-            stick.enchant(enchantment(Enchantments.KNOCKBACK), Math.min(2, 1 + tier / 4));
+            stick.enchant(enchantment(Enchantments.KNOCKBACK), tier >= 6 ? 2 : 1);
             give(player, stick);
             effect(player, MobEffects.RESISTANCE, 20 * 120, 4);
             effect(player, MobEffects.SATURATION, 20 * 120, 0);

@@ -31,8 +31,9 @@ public final class Hanoi extends BaseRoom {
 
     public int timeLimitTicks(int tier) {
         this.tier = tier;
-        rings = Math.min(6, 3 + tier / 3);
-        return seconds(40 + ((1 << rings) - 1) * 3);
+        // 25 levels: 3 rings to level 3, 4 to 7, 5 to 12, then 6 with less and less time per move
+        rings = tier < 4 ? 3 : tier < 8 ? 4 : tier < 13 ? 5 : 6;
+        return seconds(40 + ((1 << rings) - 1) * Math.max(2.0, 3.2 - 0.05 * tier));
     }
 
     /** Facing the posts (+z), +x is the player's left: post 0 (the start) on the left, post 2 (the goal) on the right. */

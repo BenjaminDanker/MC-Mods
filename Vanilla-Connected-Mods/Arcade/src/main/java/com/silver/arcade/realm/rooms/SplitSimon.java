@@ -34,7 +34,7 @@ public final class SplitSimon extends BaseRoom {
             + "the watcher calls the colours, the presser right-clicks them in order. One wrong pad and you both lose.";
     }
 
-    int length() { return Math.min(16, 4 + tier); }
+    int length() { return Math.min(18, 4 + (7 * tier) / 10); } // 18 levels
 
     public int timeLimitTicks(int tier) {
         this.tier = tier;
@@ -110,7 +110,7 @@ public final class SplitSimon extends BaseRoom {
         int lamp = sequence.get(shown);
         arena.set(lampX(lamp), 2, 3, PADS[lamp]);
         // Slow enough to call out; it doesn't wait for the presser.
-        nextFlashAt = tickInRoom + Math.max(30, 50 - tier * 2);
+        nextFlashAt = tickInRoom + Math.max(30, 52 - (6 * tier) / 5);
         if (shown + 1 < sequence.size()) {
             Gamemaster.bar(watcher, "Colour " + (shown + 1) + " of " + sequence.size());
         }

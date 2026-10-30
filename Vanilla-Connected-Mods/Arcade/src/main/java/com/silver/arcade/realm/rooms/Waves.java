@@ -31,12 +31,13 @@ public final class Waves extends BaseRoom {
         return "Monsters come in waves. Beat every wave and still be standing at the end. Fall, and you watch the rest.";
     }
 
-    int waves() { return Math.min(6, 2 + tier / 2); }
-    int perWave() { return Math.max(1, players.size()) * Math.min(6, 2 + tier / 2); }
+    // 25 levels: more and bigger waves, more skeletons; at most 24 mobs at once so groups aren't swamped.
+    int waves() { return Math.min(8, 2 + tier / 4); }
+    int perWave() { return Math.min(24, Math.max(1, players.size()) * Math.min(9, 2 + tier / 3)); }
 
     public int timeLimitTicks(int tier) {
         this.tier = tier;
-        return seconds(60 + waves() * 40);
+        return seconds(60 + waves() * 45);
     }
 
     @Override
@@ -104,7 +105,7 @@ public final class Waves extends BaseRoom {
 
     private void spawnWave() {
         for (int i = 0; i < perWave(); i++) {
-            EntityType<? extends Mob> type = switch (random.nextInt(tier >= 3 ? 3 : 2)) {
+            EntityType<? extends Mob> type = switch (random.nextInt(tier >= 12 ? 4 : tier >= 3 ? 3 : 2)) { // from level 12 skeletons come twice as often
                 case 0 -> EntityTypes.HUSK;
                 case 1 -> EntityTypes.SPIDER;
                 default -> EntityTypes.SKELETON;

@@ -41,9 +41,9 @@ public final class RedLight extends BaseRoom {
     }
 
     /** Green lasts shorter as tiers climb; a short grace after red lets runners stop. */
-    int greenTicks() { return Math.max(20, 70 - tier * 4) + random.nextInt(40); }
+    int greenTicks() { return Math.max(20, 80 - tier * 3) + random.nextInt(40); } // 25 levels
     int redTicks() { return 30 + random.nextInt(30); }
-    int graceTicks() { return Math.max(4, 10 - tier / 2); }
+    int graceTicks() { return Math.max(3, 10 - tier / 3); }
 
     @Override
     protected void build() {

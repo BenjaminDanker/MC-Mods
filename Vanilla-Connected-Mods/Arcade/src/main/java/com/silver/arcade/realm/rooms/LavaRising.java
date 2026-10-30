@@ -25,8 +25,9 @@ public final class LavaRising extends BaseRoom {
         return "Magma is rising up the shaft. Climb the ledges round the walls to the gold landing at the top before it reaches you.";
     }
 
-    int steps() { return Math.min(40, 14 + tier * 2); }
-    int riseTicks() { return Math.max(14, 40 - tier * 2); }
+    // 25 levels: a taller spiral and faster lava (2.1 s per block down to 0.6 s)
+    int steps() { return Math.min(40, 12 + (3 * tier) / 2); }
+    int riseTicks() { return Math.max(12, 44 - (3 * tier) / 2); }
 
     public int timeLimitTicks(int tier) {
         this.tier = tier;

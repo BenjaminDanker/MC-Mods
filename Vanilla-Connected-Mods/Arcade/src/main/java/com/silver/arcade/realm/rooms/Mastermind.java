@@ -33,9 +33,11 @@ public final class Mastermind extends BaseRoom {
             + "They are only counts, in no order: they don't say which peg.";
     }
 
-    int pegs() { return tier >= 6 ? 5 : 4; }
-    int colours() { return Math.min(COLOURS.length, 5 + tier / 3); }
-    int rows() { return Math.max(7, 10 - tier / 4); }
+    // 25 levels in two stages: 4 pegs with 4 to 8 colours (levels 1-12), then 5 pegs with 5 to 8 colours; never fewer
+    // than 8 rows (5 pegs, 8 colours and 7 rows was not reliably solvable).
+    int pegs() { return tier <= 12 ? 4 : 5; }
+    int colours() { return Math.min(COLOURS.length, tier <= 12 ? 4 + tier / 3 : 5 + (tier - 13) / 3); }
+    int rows() { return Math.max(8, tier <= 12 ? 10 - tier / 6 : 10 - (tier - 13) / 4); }
 
     public int timeLimitTicks(int tier) {
         this.tier = tier;

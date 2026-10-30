@@ -22,13 +22,18 @@ public final class WhackAMole extends BaseRoom {
         return "Lanterns pop up out of the holes. Right-click them before they duck back down. Reach the score before time runs out.";
     }
 
-    int target() { return Math.min(40, 12 + tier * 2); }
-    int upTicks() { return Math.max(12, 34 - tier * 2); }
+    // 25 levels: more hits, shorter pops, and a clock that leaves fewer spare pops: about 1 in 3 must be hit at
+    // level 1, 3 in 4 by the top (it used to be about 1 in 4 at every level, so it never got hard).
+    int target() { return Math.min(45, 10 + (3 * tier) / 2); }
+    int upTicks() { return Math.max(10, 36 - (6 * tier) / 5); }
+    int popGap() { return Math.max(6, 24 - tier); }
 
     public int timeLimitTicks(int tier) {
         this.tier = tier;
         size = tier >= 6 ? 4 : 3;
-        return seconds(45 + target());
+        double popSeconds = (popGap() + 4.5) / 20.0; // average time between pops
+        double share = Math.min(0.75, 0.35 + 0.016 * tier); // share of the pops that must be hit
+        return seconds(5 + target() * popSeconds / share);
     }
 
     @Override
@@ -69,7 +74,7 @@ public final class WhackAMole extends BaseRoom {
                 downAt[i] = tickInRoom + upTicks();
                 arena.set(x(i), 1, z(i), Blocks.JACK_O_LANTERN.defaultBlockState());
             }
-            nextPop = tickInRoom + Math.max(6, 22 - tier) + random.nextInt(10);
+            nextPop = tickInRoom + popGap() + random.nextInt(10);
         }
     }
 

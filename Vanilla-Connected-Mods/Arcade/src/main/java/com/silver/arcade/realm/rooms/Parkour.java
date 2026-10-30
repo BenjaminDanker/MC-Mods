@@ -26,22 +26,29 @@ public final class Parkour extends BaseRoom {
             + "Mind the time.";
     }
 
-    int count() { return Math.min(60, 10 + tier * 2); }
+    // 25 levels: longer courses, less time per jump, wider gaps, and a growing share of awkward footholds.
+    int count() { return Math.min(60, 8 + tier * 2); }
 
     public int timeLimitTicks(int tier) {
         this.tier = tier;
-        return seconds(20 + count() * 3.0);
+        return seconds(20 + count() * Math.max(2.4, 4.0 - 0.06 * tier));
     }
 
+    /** Emerald checkpoints come every 8 jumps at first, then every 10, then 12. */
+    int checkpointEvery() { return Math.min(12, 8 + 2 * Math.max(0, (tier - 5) / 6)); }
+
     private BlockState foothold() {
-        int roll = random.nextInt(10);
-        if (tier >= 8 && roll < 3) {
+        int roll = random.nextInt(100);
+        int fence = Math.clamp(2 * (tier - 6), 0, 28);
+        int wall = Math.clamp(2 * (tier - 3), 0, 25);
+        int slab = Math.min(25, 2 * tier);
+        if (roll < fence) {
             return Blocks.OAK_FENCE.defaultBlockState();
         }
-        if (tier >= 5 && roll < 5) {
+        if (roll < fence + wall) {
             return Blocks.COBBLESTONE_WALL.defaultBlockState();
         }
-        if (tier >= 3 && roll < 6) {
+        if (roll < fence + wall + slab) {
             return Blocks.SMOOTH_STONE_SLAB.defaultBlockState();
         }
         // Full footholds are circus drums in bright colours (same full-block height as before).
@@ -85,8 +92,8 @@ public final class Parkour extends BaseRoom {
         int z = 3;
         double top = 1.0; // the start platform's walking height (block top above y)
         for (int i = 0; i < n; i++) {
-            int gap = 1 + random.nextInt(Math.min(3, 1 + tier / 3));
-            boolean check = i > 0 && i % 8 == 0;
+            int gap = 1 + random.nextInt(Math.min(3, 1 + tier / 5));
+            boolean check = i > 0 && i % checkpointEvery() == 0;
             BlockState block = check ? Blocks.EMERALD_BLOCK.defaultBlockState() : foothold();
             double height = heightOf(block);
             int rise = random.nextInt(3) - 1;

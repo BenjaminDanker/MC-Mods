@@ -31,9 +31,10 @@ public final class PatternCopy extends BaseRoom {
 
     public int timeLimitTicks(int tier) {
         this.tier = tier;
-        size = Math.min(5, 3 + tier / 3);
-        colours = Math.min(PALETTE.length, 2 + tier / 2);
-        return seconds(30 + size * size * 2);
+        // 25 levels: 3x3, 4x4 from level 4, 5x5 from 10; more colours and a shorter look as levels climb
+        size = tier < 4 ? 3 : tier < 10 ? 4 : 5;
+        colours = Math.min(PALETTE.length, 2 + tier / 4);
+        return seconds(30 + size * size * (1.2 + 0.4 * colours));
     }
 
     @Override
@@ -68,7 +69,7 @@ public final class PatternCopy extends BaseRoom {
         drawPicture(true);
         drawCanvas();
         com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.GalleryLook.build(arena, tier, size));
-        hideAt = 40 + Math.max(60, 140 - tier * 8) + size * size * 3L;
+        hideAt = 40 + Math.max(40, 150 - tier * 5) + size * size * 3L;
         int i = 0;
         for (ServerPlayer player : players.values()) {
             arena.put(player, 0.5 + i++, 1, 0.5, 0F);

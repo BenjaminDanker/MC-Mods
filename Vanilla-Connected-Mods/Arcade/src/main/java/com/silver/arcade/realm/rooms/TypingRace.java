@@ -29,9 +29,10 @@ public final class TypingRace extends BaseRoom {
             + "or make too many mistakes and you're out.";
     }
 
-    int words() { return Math.min(40, 4 + tier); }
-    double wpm() { return Math.min(110, 20 + 4 * (tier - 1)); }
-    double accuracyNeeded() { return Math.min(0.97, 0.85 + 0.01 * tier); }
+    // 25 levels: 20 wpm at level 1 to 164 wpm at level 25 (fast typists average 120-130), so the top stays a test.
+    int words() { return Math.min(30, 4 + tier); }
+    double wpm() { return Math.min(170, 20 + 6 * (tier - 1)); }
+    double accuracyNeeded() { return Math.min(0.97, 0.85 + 0.005 * tier); }
 
     public int timeLimitTicks(int tier) {
         this.tier = tier;

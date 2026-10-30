@@ -55,6 +55,9 @@ public final class ArcadeDb {
                 + " created_at timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), INDEX (uuid, server))");
             s.execute("CREATE TABLE IF NOT EXISTS arcade_prize_log (id bigint AUTO_INCREMENT PRIMARY KEY, uuid char(36) NOT NULL,"
                 + " tier int NOT NULL, at timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), INDEX (uuid, at))");
+            s.execute("CREATE TABLE IF NOT EXISTS arcade_room_log (id bigint AUTO_INCREMENT PRIMARY KEY, room varchar(32) NOT NULL,"
+                + " level int NOT NULL, players int NOT NULL, cleared int NOT NULL, used_s int NOT NULL, limit_s int NOT NULL,"
+                + " test boolean NOT NULL, at timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), INDEX (room, level), INDEX (at))");
             s.execute("CREATE TABLE IF NOT EXISTS arcade_dice (uuid char(36) PRIMARY KEY, given_at timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3))");
             s.execute("CREATE TABLE IF NOT EXISTS arcade_discovery (uuid char(36) PRIMARY KEY, offers int NOT NULL DEFAULT 0,"
                 + " last_offer timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3))");
@@ -128,6 +131,46 @@ public final class ArcadeDb {
                 p.setInt(2, tier);
                 p.executeUpdate();
             }
+        }), IO);
+    }
+
+    /** One room's outcome, for tuning difficulty. */
+    public CompletableFuture<Void> logRoom(String room, int level, int players, int cleared, int usedSeconds, int limitSeconds, boolean test) {
+        return CompletableFuture.runAsync(() -> run(c -> {
+            try (PreparedStatement p = c.prepareStatement(
+                    "INSERT INTO arcade_room_log (room, level, players, cleared, used_s, limit_s, test) VALUES (?, ?, ?, ?, ?, ?, ?)")) {
+                p.setString(1, room);
+                p.setInt(2, level);
+                p.setInt(3, players);
+                p.setInt(4, cleared);
+                p.setInt(5, usedSeconds);
+                p.setInt(6, limitSeconds);
+                p.setBoolean(7, test);
+                p.executeUpdate();
+            }
+        }), IO);
+    }
+
+    /** Per room and level over the last {@code days}: plays, players, clears, and the average share of the clock used by clears. */
+    public record RoomStat(String room, int level, int plays, int players, int cleared, double clockUsed) {
+    }
+
+    public CompletableFuture<List<RoomStat>> roomStats(String room, int days) {
+        return CompletableFuture.supplyAsync(() -> call(c -> {
+            List<RoomStat> out = new ArrayList<>();
+            try (PreparedStatement p = c.prepareStatement("SELECT room, level, COUNT(*), SUM(players), SUM(cleared),"
+                    + " AVG(CASE WHEN cleared > 0 THEN used_s / limit_s END) FROM arcade_room_log"
+                    + " WHERE NOT test AND at > NOW() - INTERVAL ? DAY AND (? IS NULL OR room = ?) GROUP BY room, level ORDER BY room, level")) {
+                p.setInt(1, days);
+                p.setString(2, room);
+                p.setString(3, room);
+                try (var r = p.executeQuery()) {
+                    while (r.next()) {
+                        out.add(new RoomStat(r.getString(1), r.getInt(2), r.getInt(3), r.getInt(4), r.getInt(5), r.getDouble(6)));
+                    }
+                }
+            }
+            return out;
         }), IO);
     }
 

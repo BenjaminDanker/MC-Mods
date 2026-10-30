@@ -27,8 +27,9 @@ public final class HoleInWall extends BaseRoom {
         return "Walls slide towards you, each with a gap. Stand where the gap will pass you. The wall sweeps away anyone in its path.";
     }
 
-    int wallCount() { return Math.min(12, 3 + tier); }
-    int stepTicks() { return Math.max(3, 9 - tier / 2); }
+    // 25 levels: more walls, faster, and the hole narrows from 3 wide to 2 (level 4) to 1 (level 12)
+    int wallCount() { return Math.min(14, 4 + (2 * tier) / 5); }
+    int stepTicks() { return Math.max(3, 10 - (7 * tier) / 20); }
 
     public int timeLimitTicks(int tier) {
         this.tier = tier;
@@ -91,7 +92,7 @@ public final class HoleInWall extends BaseRoom {
             }
             walls++;
             holes = new HashSet<>();
-            int width = tier >= 6 ? 1 : 2;
+            int width = tier >= 12 ? 1 : tier >= 4 ? 2 : 3;
             int at = random.nextInt(2 * HALF + 2 - width) - HALF;
             for (int i = 0; i < width; i++) {
                 holes.add(at + i);

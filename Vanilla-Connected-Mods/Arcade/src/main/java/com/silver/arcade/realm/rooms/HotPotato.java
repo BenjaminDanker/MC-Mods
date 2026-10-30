@@ -45,7 +45,7 @@ public final class HotPotato extends BaseRoom {
         return new int[] {-40, -20, -40, 40, 40, 40};
     }
 
-    int fuse() { return seconds(Math.max(8, 20 - tier)) + random.nextInt(seconds(6)); }
+    int fuse() { return seconds(Math.max(7, 21 - tier)) + random.nextInt(seconds(6)); }
 
     @Override
     protected void build() {

@@ -32,8 +32,10 @@ public final class TreasureHunt extends BaseRoom {
             + "treasure is: blue is cold, red is burning. Find it all before your digs run out.";
     }
 
-    int chests() { return Math.min(4, 1 + tier / 3); }
-    int maxDigs() { return Math.max(10, 18 + chests() * 6 - tier); }
+    // 25 levels: up to 4 chests; the dig budget per chest shrinks from 15 to 9 (it used to fall below what a good
+    // player needs once there were 4 chests).
+    int chests() { return Math.min(4, 1 + tier / 5); }
+    int maxDigs() { return chests() * Math.max(9, 15 - tier / 4) + 4; }
 
     public int timeLimitTicks(int tier) {
         this.tier = tier;

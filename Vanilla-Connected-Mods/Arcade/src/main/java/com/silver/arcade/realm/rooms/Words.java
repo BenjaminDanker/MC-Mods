@@ -23,7 +23,7 @@ final class Words {
     static String line(Random random, int count, int tier) {
         StringBuilder out = new StringBuilder();
         for (int i = 0; i < count; i++) {
-            boolean hard = tier >= 6 && random.nextInt(10) < Math.min(6, tier - 5);
+            boolean hard = tier >= 5 && random.nextInt(10) < Math.min(6, tier - 4);
             String word = hard ? HARD[random.nextInt(HARD.length)] : EASY[random.nextInt(EASY.length)];
             if (tier >= 10 && random.nextInt(4) == 0) {
                 word = Character.toUpperCase(word.charAt(0)) + word.substring(1);

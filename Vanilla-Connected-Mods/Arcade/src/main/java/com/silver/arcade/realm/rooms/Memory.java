@@ -34,8 +34,9 @@ public final class Memory extends BaseRoom {
             + "first step, the other the second, and so on. One wrong pad and the room is lost for both.";
     }
 
-    int length() { return Math.min(20, 3 + tier); }
-    int flashTicks() { return Math.max(8, 16 - tier); }
+    // 25 levels: the sequence grows to 23 and the flashes quicken from 0.8 s to 0.3 s, both spread over all levels.
+    int length() { return Math.min(23, 3 + (4 * tier) / 5); }
+    int flashTicks() { return Math.max(6, 16 - (2 * tier) / 5); }
 
     public int timeLimitTicks(int tier) {
         this.tier = tier;

@@ -38,12 +38,12 @@ public final class SpotDifference extends BaseRoom {
         return 16;
     }
 
-    int count() { return Math.min(9, 3 + tier / 2); }
+    int count() { return Math.min(14, 3 + tier / 2); } // 25 levels
 
     public int timeLimitTicks(int tier) {
         this.tier = tier;
-        size = Math.min(11, 7 + tier / 3);
-        return seconds(30 + count() * 12);
+        size = Math.min(11, 7 + tier / 4);
+        return seconds(30 + count() * Math.max(8.0, 12.0 - tier / 6.0));
     }
 
     /** Facing the wall (+z), +x is on the player's left: the reference picture is there, the one to hit on the right. */

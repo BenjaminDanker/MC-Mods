@@ -161,6 +161,13 @@ public final class RealmRole implements Run.Host {
             }));
         // Admins: /arcade play <room> [tier] starts a test climb straight into that room (no prizes).
         dispatcher.register(net.minecraft.commands.Commands.literal("arcade")
+            // Admins: /arcade stats [room] shows how rooms go in real play (last 30 days), to tune the curves.
+            .then(net.minecraft.commands.Commands.literal("stats")
+                .executes(context -> stats(context.getSource(), null))
+                .then(net.minecraft.commands.Commands.argument("room", com.mojang.brigadier.arguments.StringArgumentType.word())
+                    .suggests((context, builder) -> net.minecraft.commands.SharedSuggestionProvider.suggest(
+                        Rooms.all().stream().map(RoomType::id), builder))
+                    .executes(context -> stats(context.getSource(), com.mojang.brigadier.arguments.StringArgumentType.getString(context, "room")))))
             .then(net.minecraft.commands.Commands.literal("play")
                 .then(net.minecraft.commands.Commands.argument("room", com.mojang.brigadier.arguments.StringArgumentType.word())
                     .suggests((context, builder) -> net.minecraft.commands.SharedSuggestionProvider.suggest(
@@ -258,9 +265,16 @@ public final class RealmRole implements Run.Host {
                 }
                 if (suspended.isPresent() && suspended.get().ageSeconds() <= RESUME_SECONDS) {
                     ArcadeDb.Suspended s = suspended.get();
-                    Gamemaster.say(online, "You came back. Your climb is where you left it: tier " + s.prizeTier() + " is yours to keep, tier "
-                        + s.tier() + " is next.");
-                    runs.add(new Run(server, level(), this, List.of(online), s.tier(), s.prizeTier(), true));
+                    if (s.prizeTier() <= 0) {
+                        // nothing cleared yet: no prize to choose, the interrupted room simply starts over
+                        Gamemaster.say(online, "You came back. That room was interrupted, so it doesn't count: your climb carries on at tier "
+                            + s.tier() + ".");
+                        runs.add(new Run(server, level(), this, List.of(online), s.tier(), 0, false));
+                    } else {
+                        Gamemaster.say(online, "You came back. Your climb is where you left it: tier " + s.prizeTier()
+                            + " is yours to keep, or climb on to tier " + s.tier() + ".");
+                        runs.add(new Run(server, level(), this, List.of(online), s.tier(), s.prizeTier(), true));
+                    }
                     return;
                 }
                 if (suspended.isPresent()) {
@@ -365,6 +379,40 @@ public final class RealmRole implements Run.Host {
         int dx = pos.getX() - centre.getX();
         int dz = pos.getZ() - centre.getZ();
         return pos.getY() == centre.getY() && dx * dx + dz * dz <= 5;
+    }
+
+    private int stats(net.minecraft.commands.CommandSourceStack source, String room) {
+        db.roomStats(room, 30).whenComplete((rows, failure) -> server.execute(() -> {
+            if (failure != null) {
+                source.sendFailure(Component.literal("Could not read the room log."));
+                return;
+            }
+            if (rows.isEmpty()) {
+                source.sendSuccess(() -> Component.literal("No rooms played in the last 30 days" + (room == null ? "." : " for " + room + ".")), false);
+                return;
+            }
+            source.sendSuccess(() -> Component.literal("Room results, last 30 days (test climbs left out): level · plays · cleared · clock used by clears")
+                .withStyle(ChatFormatting.GOLD), false);
+            if (room == null) {
+                // one line per room: totals over all its levels
+                Map<String, int[]> sums = new java.util.LinkedHashMap<>();
+                for (ArcadeDb.RoomStat r : rows) {
+                    int[] t = sums.computeIfAbsent(r.room(), k -> new int[4]);
+                    t[0] += r.plays();
+                    t[1] += r.players();
+                    t[2] += r.cleared();
+                    t[3] = Math.max(t[3], r.level());
+                }
+                sums.forEach((id, t) -> source.sendSuccess(() -> Component.literal(String.format("%s: %d plays, %d%% cleared, up to level %d",
+                    id, t[0], t[1] == 0 ? 0 : 100 * t[2] / t[1], t[3])), false));
+                return;
+            }
+            for (ArcadeDb.RoomStat r : rows) {
+                source.sendSuccess(() -> Component.literal(String.format("L%d · %d · %d%% · %d%%", r.level(), r.plays(),
+                    r.players() == 0 ? 0 : 100 * r.cleared() / r.players(), Math.round(100 * r.clockUsed()))), false);
+            }
+        }));
+        return 1;
     }
 
     private int testClimb(net.minecraft.commands.CommandSourceStack source, String roomId, int tier)
@@ -475,6 +523,11 @@ public final class RealmRole implements Run.Host {
                 LOGGER.info("{} cashed out at tier {} (prize tier {}, for {})", player.getName().getString(), prizeTier, tier, home);
             }));
         }));
+    }
+
+    @Override
+    public void roomResult(String room, int level, int players, int cleared, int secondsUsed, int secondsLimit, boolean test) {
+        db.logRoom(room, level, players, cleared, secondsUsed, secondsLimit, test);
     }
 
     @Override

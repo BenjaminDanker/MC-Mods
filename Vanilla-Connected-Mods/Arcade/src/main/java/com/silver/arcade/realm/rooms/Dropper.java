@@ -22,7 +22,7 @@ public final class Dropper extends BaseRoom {
 
     public int timeLimitTicks(int tier) {
         this.tier = tier;
-        return seconds(75);
+        return seconds(Math.max(50, 80 - tier)); // 25 levels: a bit less time as levels climb
     }
 
     @Override
@@ -44,8 +44,8 @@ public final class Dropper extends BaseRoom {
         }
         arena.fill(-HALF, -1, -HALF, HALF, -1, HALF, Blocks.SMOOTH_QUARTZ.defaultBlockState()); // under the pool
         arena.fill(-HALF, 0, -HALF, HALF, 0, HALF, Blocks.SMOOTH_QUARTZ.defaultBlockState());
-        // The pool: 3x3 at first, 2x2 from tier 4, 1x1 from tier 8; anywhere on the floor.
-        int pool = tier >= 8 ? 1 : tier >= 4 ? 2 : 3;
+        // The pool: 3x3 at first, 2x2 from level 4, 1x1 from level 9; anywhere on the floor.
+        int pool = tier >= 9 ? 1 : tier >= 4 ? 2 : 3;
         int px = random.nextInt(2 * HALF - pool + 2) - HALF;
         int pz = random.nextInt(2 * HALF - pool + 2) - HALF;
         // The floor: a quartz-and-sky-blue compass mosaic, with a gold ring round the pool so it shows from the top.
@@ -58,10 +58,10 @@ public final class Dropper extends BaseRoom {
         }
         arena.fill(px, 0, pz, px + pool - 1, 0, pz + pool - 1, Blocks.WATER.defaultBlockState());
         // Ledges: more and wider as tiers climb, never closing the shaft.
-        int ledges = Math.min(14, 3 + tier);
+        int ledges = Math.min(20, 3 + (2 * tier) / 3);
         for (int i = 0; i < ledges; i++) {
             int y = 6 + random.nextInt(HEIGHT - 12);
-            int w = 1 + random.nextInt(Math.min(5, 2 + tier / 2));
+            int w = 1 + random.nextInt(Math.min(5, 2 + tier / 4));
             int x = random.nextInt(2 * HALF + 1 - w) - HALF;
             int z = random.nextInt(2 * HALF + 1 - w) - HALF;
             // red-and-white striped like a buoy (same full blocks)

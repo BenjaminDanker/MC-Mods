@@ -29,11 +29,12 @@ public final class FallingFloor extends BaseRoom {
         return new int[] {-56, -40, -56, 56, 40, 56};
     }
 
-    int delayTicks() { return Math.max(6, 20 - tier); }
+    // 25 levels: survive longer (22 s to 70 s) on tiles that drop sooner; a second floor from level 8.
+    int delayTicks() { return Math.max(5, 20 - (3 * tier) / 5); }
 
     public int timeLimitTicks(int tier) {
         this.tier = tier;
-        survive = seconds(Math.min(60, 20 + 4 * tier));
+        survive = seconds(Math.min(70, 20 + 2 * tier));
         return survive + 10;
     }
 
@@ -45,8 +46,8 @@ public final class FallingFloor extends BaseRoom {
                 // concrete, so the red warning paint shows brighter than ever).
                 arena.set(x, 0, z, st(Math.floorMod(x, 4) == 0 || Math.floorMod(z, 4) == 0 ? "light_gray_concrete"
                     : ((x + z) & 1) == 0 ? "black_concrete" : "gray_concrete"));
-                // From tier 5 a second floor below catches one fall.
-                if (tier >= 5) {
+                // From level 8 a second floor below catches one fall.
+                if (tier >= 8) {
                     arena.set(x, -6, z, Blocks.CONCRETE.gray().defaultBlockState());
                 }
             }
@@ -64,7 +65,7 @@ public final class FallingFloor extends BaseRoom {
         if (tickInRoom < 40) {
             return; // a moment to look around
         }
-        int bottom = tier >= 5 ? -6 : 0;
+        int bottom = tier >= 8 ? -6 : 0;
         for (ServerPlayer player : undecided()) {
             if (heightOf(player) < bottom - 2) {
                 out(player, "You fell.");

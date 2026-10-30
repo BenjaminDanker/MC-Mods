@@ -32,16 +32,17 @@ public final class Archery extends BaseRoom {
         return new int[] {-48, -24, -30, 48, 50, 30 + 70};
     }
 
-    int count() { return Math.min(12, 3 + tier); }
+    // 25 levels: more targets, further away, less time per target (7 s down to 4 s).
+    int count() { return Math.min(15, 3 + tier / 2); }
 
     public int timeLimitTicks(int tier) {
         this.tier = tier;
-        return seconds(20 + count() * 7);
+        return seconds(20 + count() * Math.max(4.0, 7.0 - 0.12 * tier));
     }
 
     @Override
     protected void build() {
-        distance = Math.min(30, 12 + tier * 2);
+        distance = Math.min(30, 10 + tier);
         // The shooting stand: spruce boards, a dark oak edge with gold corners and a red-and-white shooting line;
         // the butts: a dark green baize wall in a gold frame on a hay footing, so each lit target stands out.
         for (int x = -4; x <= 4; x++) {

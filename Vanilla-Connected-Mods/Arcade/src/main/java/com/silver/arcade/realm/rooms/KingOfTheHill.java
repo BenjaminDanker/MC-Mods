@@ -38,7 +38,7 @@ public final class KingOfTheHill extends BaseRoom {
         return new int[] {-40, -20, -40, 40, 50, 40};
     }
 
-    int target() { return Math.min(40, 15 + tier * 2); }
+    int target() { return Math.min(42, 12 + tier * 2); }
 
     public int timeLimitTicks(int tier) {
         this.tier = tier;

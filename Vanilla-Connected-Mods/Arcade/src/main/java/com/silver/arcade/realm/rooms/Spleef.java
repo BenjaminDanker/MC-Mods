@@ -33,7 +33,7 @@ public final class Spleef extends BaseRoom {
 
     public int timeLimitTicks(int tier) {
         this.tier = tier;
-        return seconds(Math.max(60, 120 - tier * 5));
+        return seconds(Math.max(90, 120 - tier * 2)); // 15 levels; a short clock only helps survivors
     }
 
     @Override
@@ -47,7 +47,7 @@ public final class Spleef extends BaseRoom {
                 // Higher tiers start with a few holes already.
                 // Holes never in the middle, nor on the ring where players start (radius - 2, +-1).
                 double d = Math.sqrt(x * x + z * z);
-                if (tier >= 4 && random.nextInt(100) < Math.min(15, tier) && d > 3 && Math.abs(d - (radius - 2)) > 1.5) {
+                if (tier >= 3 && random.nextInt(100) < Math.min(20, 2 * tier) && d > 3 && Math.abs(d - (radius - 2)) > 1.5) {
                     continue;
                 }
                 arena.set(x, 0, z, Blocks.SNOW_BLOCK.defaultBlockState());

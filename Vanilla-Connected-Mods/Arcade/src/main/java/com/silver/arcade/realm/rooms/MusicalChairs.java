@@ -39,7 +39,7 @@ public final class MusicalChairs extends BaseRoom {
         return new int[] {-40, -20, -40, 40, 40, 40};
     }
 
-    int grabTicks() { return Math.max(30, 70 - tier * 4); }
+    int grabTicks() { return Math.max(30, 72 - tier * 3); }
 
     @Override
     protected void build() {

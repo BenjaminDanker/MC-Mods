@@ -22,11 +22,12 @@ public final class MathSprint extends BaseRoom {
         return "Sums appear in your chat. Type the answer and press enter. One wrong answer and you're out. Think fast.";
     }
 
+    // 25 levels: more problems, less time each (13 s down to 5 s), x from level 4, a third term from 8, a fourth from 16.
     int problems() { return Math.min(15, 4 + tier / 2); }
 
     public int timeLimitTicks(int tier) {
         this.tier = tier;
-        return seconds(problems() * Math.max(6.0, 12.0 - tier * 0.3) + 5);
+        return seconds(problems() * Math.max(5.0, 13.0 - tier * 0.32) + 5);
     }
 
     @Override
@@ -57,24 +58,25 @@ public final class MathSprint extends BaseRoom {
         }
     }
 
-    /** A problem for this tier: + and - early, x from tier 3, three terms from tier 6, bigger numbers all along. */
+    /** A problem for this level: + and - early, x from level 4, three terms from 8, four from 16, bigger numbers all along. */
     String[] problem() {
-        int max = 10 + Math.min(tier, 20) * 6;
+        int max = 10 + Math.min(tier, 25) * 5;
         long a = 1 + random.nextInt(max);
         long b = 1 + random.nextInt(max);
-        int op = random.nextInt(tier >= 3 ? 3 : 2);
+        int op = random.nextInt(tier >= 4 ? 3 : 2);
         String text;
         long value;
         switch (op) {
             case 0 -> { text = a + " + " + b; value = a + b; }
             case 1 -> { text = Math.max(a, b) + " - " + Math.min(a, b); value = Math.abs(a - b); }
             default -> {
-                long x = 2 + random.nextInt(Math.min(12, 3 + tier));
+                a = 2 + random.nextInt(Math.min(99, 8 + 3 * tier)); // the multiplied number stays mental-maths sized
+                long x = 2 + random.nextInt(Math.min(11, 2 + tier / 2));
                 text = a + " x " + x;
                 value = a * x;
             }
         }
-        if (tier >= 6) {
+        for (int term = 0; term < (tier >= 16 ? 2 : tier >= 8 ? 1 : 0); term++) {
             long c = 1 + random.nextInt(max);
             if (random.nextBoolean()) { text = "(" + text + ") + " + c; value += c; } else { text = "(" + text + ") - " + c; value -= c; }
         }

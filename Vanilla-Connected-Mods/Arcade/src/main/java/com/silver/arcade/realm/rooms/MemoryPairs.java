@@ -37,11 +37,11 @@ public final class MemoryPairs extends BaseRoom {
         return "Right-click a tile to turn it over, then another. A matching pair stays face up; a miss turns back. Find every pair.";
     }
 
-    int pairs() { return Math.min(FACES.length, 6 + tier); }
+    int pairs() { return Math.min(FACES.length, 5 + tier / 2); } // 25 levels
 
     public int timeLimitTicks(int tier) {
         this.tier = tier;
-        return seconds(40 + pairs() * 9);
+        return seconds(30 + pairs() * Math.max(6.0, 9.0 - 0.12 * tier));
     }
 
     @Override

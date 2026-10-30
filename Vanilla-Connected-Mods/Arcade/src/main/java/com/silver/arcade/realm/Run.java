@@ -37,6 +37,9 @@ public final class Run {
 
         /** The player disconnected; keep their run for a while. */
         void suspended(UUID player, int tier, int prizeTier);
+
+        /** A room ended: record how it went, for tuning the difficulty curves (/arcade stats). */
+        void roomResult(String room, int level, int players, int cleared, int secondsUsed, int secondsLimit, boolean test);
     }
 
     private static final int CHOICE_TICKS = 20 * 20;
@@ -78,6 +81,8 @@ public final class Run {
         /** Cancelled because a teammate left: its players moved on to fresh rooms; no outcome here. */
         boolean voided;
         Set<UUID> cleared = Set.of();
+        /** The room's own level (0 for the pass-through, which is never recorded). */
+        int level;
 
         Party(Room room, Arena arena, List<UUID> members, long limit, long startedAt, int tier) {
             this.room = room;
@@ -219,6 +224,7 @@ public final class Run {
         Arena arena = Arena.take(level);
         LOGGER.info("Arcade room {} (tier {}, level {}) for {}", type.id(), tier, roomLevel, online.stream().map(p -> p.getName().getString()).toList());
         Party party = new Party(room, arena, members, room.timeLimitTicks(roomLevel), server.getTickCount(), tier);
+        party.level = roomLevel;
         parties.add(party);
         arena.label(type.id() + " t" + tier);
         room.start(arena, online, roomLevel);
@@ -329,6 +335,10 @@ public final class Run {
                     party.over = true;
                     party.cleared = party.room.cleared();
                     party.bar.removeAllPlayers();
+                    if (party.level > 0 && !party.voided) {
+                        host.roomResult(party.room.id(), party.level, party.members.size(), party.cleared.size(),
+                            (int) (Math.min(elapsed, party.limit) / 20), (int) (party.limit / 20), test);
+                    }
                 } else {
                     allOver = false;
                 }

@@ -19,8 +19,9 @@ public final class LightsOut extends BaseRoom {
         return "Right-click a lamp on the wall and it flips, along with the lamps above, below and beside it. Put every lamp out.";
     }
 
-    int size() { return Math.min(5, 3 + tier / 3); }
-    int presses() { return Math.min(size() * size(), 2 + tier); }
+    // 25 levels: 3x3 to level 4, 4x4 to 10, then 5x5 with more and more scramble presses (always solvable: made by pressing).
+    int size() { return tier < 5 ? 3 : tier < 11 ? 4 : 5; }
+    int presses() { return Math.min(size() * size(), size() == 3 ? 1 + tier : size() == 4 ? tier : tier - 3); }
 
     public int timeLimitTicks(int tier) {
         this.tier = tier;

@@ -27,8 +27,9 @@ public final class TileSlide extends BaseRoom {
         return "Right-click a tile next to the gap to slide it in. Make the frame match the finished picture beside it.";
     }
 
-    int size() { return tier >= 7 ? 4 : 3; }
-    int moves() { return Math.min(size() == 3 ? 40 : 70, 8 + tier * 4); }
+    // 25 levels: 3x3 to level 8 (scramble 9-30 moves), then 4x4 (scramble 23 up to 71).
+    int size() { return tier >= 9 ? 4 : 3; }
+    int moves() { return size() == 3 ? 6 + tier * 3 : Math.min(90, 3 * tier - 4); }
 
     public int timeLimitTicks(int tier) {
         this.tier = tier;
