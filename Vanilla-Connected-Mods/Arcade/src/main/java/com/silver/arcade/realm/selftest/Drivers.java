@@ -857,7 +857,13 @@ final class Drivers {
             c.check("the magma rose while the bot waited", lava >= 1, "lava level " + lava);
             return;
         }
-        int[] k = {0};
+        // The stage is now built before the players arrive (no more decoration going up round them), so the magma is the only
+        // thing that animates here: stand on a ledge up the shaft until it has risen once, then climb.
+        int safeIndex = Math.min(6, ledges.size() - 1);
+        int[] safe = ledges.get(safeIndex);
+        c.t.run(() -> c.putAbs(0, c.o().getX() + safe[0] + 0.5, c.o().getY() + safe[1] + 1, c.o().getZ() + safe[2] + 0.5));
+        c.t.until(() -> c.t.on(() -> ((Number) c.<Object>f("lava")).intValue() >= 1), 20 * 90);
+        int[] k = {safeIndex};
         double[] seen = new double[5];
         String[] below = {"?"};
         boolean[] landed = {false};

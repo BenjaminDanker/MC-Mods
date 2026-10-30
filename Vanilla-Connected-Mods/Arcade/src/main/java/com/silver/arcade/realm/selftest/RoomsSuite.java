@@ -249,7 +249,7 @@ final class RoomsSuite {
         t.check(label + ": decoration finishes within 10 s", decorated && decoMs <= 10_000, "build call " + buildMs + " ms, decoration done after " + decoMs + " ms");
         long worstBuild = TickMonitor.max();
         t.check(label + ": worst tick while building and decorating < 60 ms", worstBuild < 60, worstBuild + " ms (ticks over 60 ms: " + TickMonitor.over60() + ")");
-        List<BlockPos> ledger = t.on(() -> new ArrayList<>(Reflect.<java.util.Deque<BlockPos>>get(live.arena, "placed")));
+        List<BlockPos> ledger = t.on(() -> new ArrayList<>(live.arena.positions()));
         int slot = Reflect.get(live.arena, "slot");
         int arenaX = live.arena.origin().getX();
         // --- play
@@ -352,6 +352,9 @@ final class RoomsSuite {
         // survivors stand on the choice platform; the others are back in the hall
         boolean choice = t.until(() -> "CHOICE".equals(live.phase()) || "DONE".equals(live.phase()), 100);
         Object choiceArena = t.on(() -> Reflect.get(live.run, "choiceArena"));
+        if (choiceArena instanceof Arena made) {
+            t.until(() -> !made.decorating(), 20 * 60); // the platform is made off the live world; the winners stand in the old room until it is ready
+        }
         t.check(label + ": the run reaches the choice platform", choice && choiceArena != null, "phase " + t.on(live::phase));
         List<PacketLog.Rec> got = PacketLog.since(bots[0], marks.get(bots[0]));
         t.check(label + ": 'Tier " + tier + " cleared' title sent", PacketLog.hasText(got, "ClientboundSetTitleTextPacket", "cleared"), "");

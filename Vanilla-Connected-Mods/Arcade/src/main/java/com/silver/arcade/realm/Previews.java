@@ -25,7 +25,17 @@ final class Previews {
         this.level = level;
     }
 
+    /** Rooms built to be thrown away: {arena, due tick} (line "discard id tier ticks" measures what a thrown-away room costs). */
+    private final List<Object[]> discards = new ArrayList<>();
+
     void tick(long now) {
+        discards.removeIf(entry -> {
+            if (now >= (Long) entry[1]) {
+                ((Arena) entry[0]).release();
+                return true;
+            }
+            return false;
+        });
         if (now % 40 != 0) {
             return;
         }
@@ -52,23 +62,36 @@ final class Previews {
             }
             if (words[0].equals("slot") && words.length > 1) {
                 from = Integer.parseInt(words[1]); // "slot N": the following previews go to slots N, N+1, ...
-                Arena.warm(level, from); // as the arena does for the next free slot (write "slot N" alone first to measure warm builds)
                 continue;
             }
+            boolean discard = words[0].equals("discard") && words.length > 3;
+            if (discard) {
+                words = java.util.Arrays.copyOfRange(words, 1, words.length);
+            }
             int tier = words.length > 1 ? Integer.parseInt(words[1]) : 1;
-            RoomType type = Rooms.all().stream().filter(t -> t.id().equals(words[0])).findFirst().orElse(null);
+            final String[] w = words;
+            RoomType type = Rooms.all().stream().filter(t -> t.id().equals(w[0])).findFirst().orElse(null);
             if (type == null) {
                 LOGGER.warn("Preview: no room {}", words[0]);
                 continue;
             }
             Arena arena = Arena.take(level, from);
-            standing.add(arena);
+            if (discard) {
+                discards.add(new Object[] {arena, now + Long.parseLong(words[2])});
+            } else {
+                standing.add(arena);
+            }
             try {
                 Room room = type.factory().get();
                 room.timeLimitTicks(tier);
                 long t0 = System.nanoTime();
+                arena.label(type.id() + " t" + tier);
                 room.start(arena, List.of(), tier);
+                arena.commit();
                 LOGGER.info("Preview: {} tier {} built in {} ms (before decoration)", type.id(), tier, (System.nanoTime() - t0) / 1_000_000);
+                if (discard) {
+                    continue;
+                }
                 arena.flushLedger();
                 var o = arena.origin();
                 slots.append(type.id()).append(' ').append(tier).append(' ').append(o.getX()).append(' ').append(o.getY()).append(' ')

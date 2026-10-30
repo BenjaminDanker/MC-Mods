@@ -238,7 +238,7 @@ final class DisconnectsSuite {
         int slot = Reflect.get(live.arena, "slot");
         List<BlockPos> placed = t.on(() -> {
             live.arena.flushLedger();
-            return new ArrayList<>(Reflect.<java.util.Deque<BlockPos>>get(live.arena, "placed"));
+            return new ArrayList<>(live.arena.positions());
         });
         Path dir = t.server.getWorldPath(LevelResource.ROOT).resolve("arcade-arenas");
         Path file = dir.resolve("slot-" + slot + ".bin");

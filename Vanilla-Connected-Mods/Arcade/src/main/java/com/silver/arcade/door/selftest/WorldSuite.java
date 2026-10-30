@@ -114,7 +114,10 @@ final class WorldSuite {
         join(t, name, altar);
         boolean announced = t.until(() -> PacketLog.hasText(PacketLog.since(name, mark), "ClientboundSystemChatPacket", "rattles in your pocket"), 20 * 90);
         t.check("a visitor is told by the Gamemaster that the Die is in their pocket on join", announced, "");
-        T.sleep(500);
+        // the Die is given 10 s after joining and recorded once it is confirmed present 5 s later
+        for (long until = System.currentTimeMillis() + 20_000; DoorSuites.rows("arcade_dice", id) != 1 && System.currentTimeMillis() < until;) {
+            T.sleep(500);
+        }
         t.check("...and it is recorded (arcade_dice)", DoorSuites.rows("arcade_dice", id) == 1, DoorSuites.rows("arcade_dice", id) + " rows");
         boolean dieSent = PacketLog.since(name, mark).stream().anyMatch(r -> r.info().contains("echo_shard"));
         T.sleep(3000); // the player-data sync (MPDS) applies its saved state about a second after the join

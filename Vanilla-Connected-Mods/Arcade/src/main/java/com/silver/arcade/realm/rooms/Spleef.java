@@ -45,7 +45,9 @@ public final class Spleef extends BaseRoom {
                     continue;
                 }
                 // Higher tiers start with a few holes already.
-                if (tier >= 4 && random.nextInt(100) < Math.min(15, tier) && x * x + z * z > 9) {
+                // Holes never in the middle, nor on the ring where players start (radius - 2, +-1).
+                double d = Math.sqrt(x * x + z * z);
+                if (tier >= 4 && random.nextInt(100) < Math.min(15, tier) && d > 3 && Math.abs(d - (radius - 2)) > 1.5) {
                     continue;
                 }
                 arena.set(x, 0, z, Blocks.SNOW_BLOCK.defaultBlockState());

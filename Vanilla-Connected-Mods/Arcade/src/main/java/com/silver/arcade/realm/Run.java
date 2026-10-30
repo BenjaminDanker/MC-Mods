@@ -187,7 +187,10 @@ public final class Run {
             for (ServerPlayer player : online) {
                 player.sendSystemMessage(Component.literal("(No room fits; the Gamemaster waves you through.)"));
             }
-            Party party = new Party(new Room.Pass(), Arena.take(level), members, 1, server.getTickCount());
+            Arena passArena = Arena.take(level);
+            passArena.label("pass");
+            passArena.commit();
+            Party party = new Party(new Room.Pass(), passArena, members, 1, server.getTickCount());
             party.over = true;
             party.cleared = new HashSet<>(members);
             parties.add(party);
@@ -198,8 +201,9 @@ public final class Run {
         LOGGER.info("Arcade room {} (tier {}) for {}", type.id(), tier, online.stream().map(p -> p.getName().getString()).toList());
         Party party = new Party(room, arena, members, room.timeLimitTicks(tier), server.getTickCount());
         parties.add(party);
+        arena.label(type.id() + " t" + tier);
         room.start(arena, online, tier);
-        arena.flushLedger();
+        arena.commit();
         for (ServerPlayer player : online) {
             lastRoom.put(player.getUUID(), type.id());
             NameTags.set(player, room.hideNameTags());
@@ -331,6 +335,7 @@ public final class Run {
         phaseStart = server.getTickCount();
         choiceArena = Arena.take(level);
         Arena a = choiceArena;
+        a.label("choice");
         a.fill(-6, 0, -3, 6, 0, 3, Blocks.POLISHED_BLACKSTONE_BRICKS.defaultBlockState());
         a.fill(-6, 0, -3, -3, 0, 3, Blocks.GOLD_BLOCK.defaultBlockState());
         a.fill(3, 0, -3, 6, 0, 3, Blocks.EMERALD_BLOCK.defaultBlockState());
@@ -344,13 +349,25 @@ public final class Run {
                 continue;
             }
             a.put(player, 0.5, 1, 0.5, 180F);
-            Gamemaster.title(player, "Tier " + prizeTier + " cleared", "Gold: take your prize  |  Emerald: tier " + tier);
-            Gamemaster.say(player, "Well played. Stand on the gold to leave with your prize, or on the emerald to climb to tier "
-                + tier + " and risk it all.");
+            int cleared = prizeTier;
+            int next = tier;
+            a.whenReady(() -> {
+                ServerPlayer there = server.getPlayerList().getPlayer(id);
+                if (there != null) {
+                    Gamemaster.title(there, "Tier " + cleared + " cleared", "Gold: take your prize  |  Emerald: tier " + next);
+                    Gamemaster.say(there, "Well played. Stand on the gold to leave with your prize, or on the emerald to climb to tier "
+                        + next + " and risk it all.");
+                }
+            });
         }
+        a.commit();
     }
 
     private void choiceTick(long now) {
+        if (!choiceArena.ready()) {
+            phaseStart = now; // the platform is still being made; the choice (and its clock) starts when the players stand on it
+            return;
+        }
         long elapsed = now - phaseStart;
         List<UUID> onward = new ArrayList<>();
         for (UUID id : new ArrayList<>(players)) {
@@ -451,7 +468,7 @@ public final class Run {
         if (!players.contains(id)) {
             return;
         }
-        if (phase == Phase.ROOMS && partyOf(id) != null && !together) {
+        if (phase == Phase.ROOMS && partyOf(id) != null && !together && partyOf(id).arena.ready()) {
             away.put(id, (long) server.getTickCount());
             LOGGER.info("Arcade: {} disconnected mid-room; their room waits", id);
             for (UUID other : partyOf(id).members) {
@@ -504,7 +521,9 @@ public final class Run {
             launch(List.of(id), Rooms.pick(1, tier, lastRoom.get(id), random));
         } else if (phase == Phase.CHOICE && choiceArena != null) {
             choiceArena.put(player, 0.5, 1, 0.5, 180F);
-            Gamemaster.title(player, "Tier " + prizeTier + " cleared", "Gold: take your prize  |  Emerald: tier " + tier);
+            int cleared = prizeTier;
+            int next = tier;
+            choiceArena.whenReady(() -> Gamemaster.title(player, "Tier " + cleared + " cleared", "Gold: take your prize  |  Emerald: tier " + next));
         }
     }
 
@@ -565,6 +584,17 @@ public final class Run {
             if (player != null) {
                 Gamemaster.say(player, "Your partner hasn't come back. No matter: a room of your own, same tier.");
                 launch(List.of(other), Rooms.pick(1, tier, lastRoom.get(other), random));
+            }
+        }
+        // A room still being prepared for people who are gone is thrown away at once.
+        for (Party party : parties) {
+            if (!party.over && !party.arena.ready() && party.members.stream().noneMatch(players::contains)) {
+                party.over = true;
+                party.voided = true;
+                party.bar.removeAllPlayers();
+            }
+            if (party.voided && !party.arena.ready()) {
+                party.arena.release();
             }
         }
         host.suspended(id, tier, prizeTier);
