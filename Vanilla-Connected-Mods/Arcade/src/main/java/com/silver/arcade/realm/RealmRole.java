@@ -251,6 +251,8 @@ public final class RealmRole implements Run.Host {
     }
 
     private void greet(ServerPlayer player) {
+        // No climb to go back to: start at the arrival, not wherever they left off (a waiting room, an old arena).
+        player.teleportTo(level(), HALL.getX() + 0.5, HALL.getY() + 1, HALL.getZ() + 0.5, Set.of(), 0F, 0F, false);
         if (!player.entityTags().contains("arcade_met")) {
             int scene = playIntro(player);
             if (scene > 0) {
