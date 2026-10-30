@@ -71,6 +71,10 @@ public final class Run {
         long startedAt;
         final ServerBossEvent bar;
         boolean over;
+        /** Someone meets this room for the first time: a longer countdown, to read the rules. */
+        boolean firstTime;
+        /** Ticks of countdown left once the room is ready (-1: not started yet). */
+        int countdown = -1;
         /** Cancelled because a teammate left: its players moved on to fresh rooms; no outcome here. */
         boolean voided;
         Set<UUID> cleared = Set.of();
@@ -211,7 +215,9 @@ public final class Run {
             PlayerKit.enterRoom(player, room);
             ViewDistance.set(player, room.viewDistance());
             party.bar.addPlayer(player);
-            Gamemaster.introduce(player, room, tier);
+            if (Gamemaster.introduce(player, room, tier)) {
+                party.firstTime = true;
+            }
         }
     }
 
@@ -245,6 +251,25 @@ public final class Run {
                     keepSpectatorsIn(party);
                 }
                 if (party.over) {
+                    continue;
+                }
+                if (!party.arena.decorating() && party.countdown != 0) {
+                    // A moment before the room starts: long enough to read the rules the first time.
+                    if (party.countdown < 0) {
+                        party.countdown = party.firstTime ? 8 * 20 : 3 * 20;
+                    }
+                    party.countdown--;
+                    party.startedAt++;
+                    allOver = false;
+                    if (party.countdown % 20 == 0 || party.countdown == (party.firstTime ? 8 * 20 : 3 * 20) - 1) {
+                        int seconds = (party.countdown + 19) / 20;
+                        for (UUID id : party.members) {
+                            ServerPlayer player = server.getPlayerList().getPlayer(id);
+                            if (player != null) {
+                                Gamemaster.bar(player, seconds > 0 ? "Starting in " + seconds + "..." : "Go!");
+                            }
+                        }
+                    }
                     continue;
                 }
                 if (party.arena.decorating()) {

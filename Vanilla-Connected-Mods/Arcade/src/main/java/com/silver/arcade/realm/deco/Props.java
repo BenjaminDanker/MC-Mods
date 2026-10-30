@@ -190,7 +190,7 @@ public final class Props {
             int ex = x + (int) Math.round(r * Math.cos(ang)), ez = z + (int) Math.round(r * Math.sin(ang));
             d.line(x + 0.5, y + 0.5, z + 0.5, ex + 0.5, y + 0.5, ez + 0.5, "gold_block");
             d.set(x, y, z, "gold_block");
-            d.set(ex, y + 1, ez, "candle[candles=4,lit=true]");
+            d.set(ex, y + 1, ez, "end_rod[facing=up]");
             d.set(ex, y - 1, ez, "lantern[hanging=true]");
         }
     }

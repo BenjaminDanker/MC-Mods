@@ -38,13 +38,16 @@ public final class Gamemaster {
     }
 
     /** Explains a room the first time this player meets it; afterwards only names it. */
-    public static void introduce(ServerPlayer player, Room room, int tier) {
+    /** Returns true when the rules were explained (the first time this player meets the room). */
+    public static boolean introduce(ServerPlayer player, Room room, int tier) {
         // No title: the boss bar already names the room and the tier.
         if (player.addTag(SEEN_PREFIX + room.id())) {
             say(player, room.explain());
+            return true;
         } else {
             bar(player, "!explain repeats the rules, /giveup ends the room");
         }
+        return false;
     }
 
     public static void explainAgain(ServerPlayer player, Room room) {

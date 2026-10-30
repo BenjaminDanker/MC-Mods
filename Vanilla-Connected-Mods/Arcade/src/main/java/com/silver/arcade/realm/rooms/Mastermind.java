@@ -21,7 +21,9 @@ public final class Mastermind extends BaseRoom {
     private final Random random = new Random();
     private int[] secret;
     private int[] guess;
-    private int row;
+    private int row; // how many guesses have been checked
+    /** Checked guesses, newest first, with their {gold, iron} scores. */
+    private final java.util.List<int[][]> history = new java.util.ArrayList<>();
 
     public String id() { return "mastermind"; }
     public String title() { return "Crack the Code"; }
@@ -51,6 +53,7 @@ public final class Mastermind extends BaseRoom {
             secret[i] = random.nextInt(colours());
         }
         guess = new int[pegs()];
+        java.util.Arrays.fill(guess, -1); // empty pegs until the player picks colours
         // Vault floor: steel plates (iron and polished deepslate) with riveted seams; the code board is a black steel
         // panel in an iron frame (guesses in wool, answer pegs gold and iron, all bright against it). The gold check
         // button sits on a dark pedestal with a lamp over it.
@@ -81,9 +84,29 @@ public final class Mastermind extends BaseRoom {
         }
     }
 
+    /** The current guess is always the bottom row (y 2); checked guesses sit above it, newest lowest. */
     private void drawGuess() {
+        drawRow(2, guess, null);
+    }
+
+    private void drawBoard() {
+        drawGuess();
+        for (int i = 0; i < history.size(); i++) {
+            drawRow(3 + i, history.get(i)[0], history.get(i)[1]);
+        }
+    }
+
+    private void drawRow(int y, int[] pegsRow, int[] score) {
         for (int i = 0; i < pegs(); i++) {
-            arena.set(i, 2 + row, 6, wool(guess[i]));
+            arena.set(i, y, 6, pegsRow[i] < 0 ? Blocks.CONCRETE.lightGray().defaultBlockState() : wool(pegsRow[i]));
+        }
+        // Feedback: gold per right colour in the right place, iron per right colour in the wrong place, dark otherwise.
+        int x = pegs() + 1;
+        int gold = score == null ? 0 : score[0];
+        int iron = score == null ? 0 : score[1];
+        for (int i = 0; i < pegs(); i++) {
+            arena.set(x + i, y, 6, i < gold ? Blocks.GOLD_BLOCK.defaultBlockState()
+                : i < gold + iron ? Blocks.IRON_BLOCK.defaultBlockState() : st("polished_blackstone"));
         }
     }
 
@@ -115,7 +138,7 @@ public final class Mastermind extends BaseRoom {
             check();
             return true;
         }
-        if (y == 2 + row && x >= 0 && x < pegs()) {
+        if (y == 2 && x >= 0 && x < pegs()) {
             guess[x] = (guess[x] + 1) % colours();
             drawGuess();
             arena.level().playSound(null, pos, SoundEvents.WOOL_PLACE, SoundSource.BLOCKS, 1F, 1F);
@@ -125,26 +148,30 @@ public final class Mastermind extends BaseRoom {
     }
 
     private void check() {
+        for (int g : guess) {
+            if (g < 0) {
+                players.values().forEach(p -> Gamemaster.bar(p, "Give every peg a colour first."));
+                return;
+            }
+        }
         int[] s = MastermindCode.score(secret, guess, colours());
-        int x = pegs() + 1;
-        for (int i = 0; i < s[0]; i++) {
-            arena.set(x++, 2 + row, 6, Blocks.GOLD_BLOCK.defaultBlockState());
-        }
-        for (int i = 0; i < s[1]; i++) {
-            arena.set(x++, 2 + row, 6, Blocks.IRON_BLOCK.defaultBlockState());
-        }
+        history.add(0, new int[][] {guess.clone(), s});
+        row++;
         if (s[0] == pegs()) {
+            drawBoard();
             players.values().forEach(this::clear);
-            players.values().forEach(p -> Gamemaster.bar(p, "Cracked in " + (row + 1) + "!"));
+            players.values().forEach(p -> Gamemaster.bar(p, "Cracked in " + row + "!"));
             return;
         }
-        row++;
         if (row >= rows()) {
+            drawBoard();
             players.values().forEach(this::fail);
             players.values().forEach(p -> Gamemaster.say(p, "Out of rows. The code was " + describe() + "."));
             return;
         }
-        drawGuess();
+        java.util.Arrays.fill(guess, -1);
+        drawBoard();
+        players.values().forEach(p -> Gamemaster.bar(p, (rows() - row) + " guesses left"));
     }
 
     private String describe() {
