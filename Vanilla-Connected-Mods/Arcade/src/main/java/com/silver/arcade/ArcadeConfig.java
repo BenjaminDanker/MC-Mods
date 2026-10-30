@@ -23,6 +23,14 @@ public final class ArcadeConfig {
     public Door door = new Door();
     /** The arcade's Grand Game pad: one climb for a big crowd, all in the same rooms. */
     public Event event = new Event();
+    /** Prizes shrink when someone cashes out again and again: the n-th prize within the window is worth shares[n] percent. */
+    public Prizes prizes = new Prizes();
+
+    public static final class Prizes {
+        public int windowHours = 24;
+        /** First, second, third... prize in the window; past the end of the list, no prize (play for glory). */
+        public int[] shares = {100, 50, 25};
+    }
 
     public static final class Event {
         /** Players needed for a Grand Game (free in the hall or waiting behind a door). */

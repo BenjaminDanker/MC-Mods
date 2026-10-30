@@ -393,14 +393,29 @@ public final class RealmRole implements Run.Host {
         if (prizeTier <= 0) {
             return;
         }
-        db.addPrize(player.getUUID(), home, prizeTier, "run").whenComplete((ok, failure) -> server.execute(() -> {
-            if (failure != null) {
-                LOGGER.error("ALERT: could not record {}'s tier {} prize", player.getName().getString(), prizeTier, failure);
-                player.sendSystemMessage(Component.literal("Something went wrong recording your prize. Tell an admin.").withStyle(ChatFormatting.RED));
+        // Cashing out again and again pays less each time within the window (config prizes.shares), then nothing.
+        db.recentPrizes(player.getUUID(), config.prizes.windowHours).whenComplete((recent, countFailure) -> server.execute(() -> {
+            int n = countFailure != null ? 0 : recent;
+            int[] shares = config.prizes.shares;
+            if (n >= shares.length) {
+                Gamemaster.say(player, "Tier " + prizeTier + "! Glorious. But I've been generous enough to you today: this one is for glory only. "
+                    + "Come back tomorrow for prizes.");
+                LOGGER.info("{} cashed out at tier {} with no prize ({} prizes in {} h)", player.getName().getString(), prizeTier, n,
+                    config.prizes.windowHours);
                 return;
             }
-            Gamemaster.say(player, "Tier " + prizeTier + "! Your prize waits for you at home, in " + home + ".");
-            LOGGER.info("{} cashed out at tier {} (prize for {})", player.getName().getString(), prizeTier, home);
+            int tier = Math.max(1, Math.round(prizeTier * shares[n] / 100F));
+            db.logPrize(player.getUUID(), tier);
+            db.addPrize(player.getUUID(), home, tier, "run").whenComplete((ok, failure) -> server.execute(() -> {
+                if (failure != null) {
+                    LOGGER.error("ALERT: could not record {}'s tier {} prize", player.getName().getString(), tier, failure);
+                    player.sendSystemMessage(Component.literal("Something went wrong recording your prize. Tell an admin.").withStyle(ChatFormatting.RED));
+                    return;
+                }
+                Gamemaster.say(player, "Tier " + prizeTier + "! Your prize waits for you at home, in " + home + "."
+                    + (tier < prizeTier ? " (A smaller one: you've won from me a lot today.)" : ""));
+                LOGGER.info("{} cashed out at tier {} (prize tier {}, for {})", player.getName().getString(), prizeTier, tier, home);
+            }));
         }));
     }
 

@@ -53,6 +53,8 @@ public final class ArcadeDb {
             s.execute("CREATE TABLE IF NOT EXISTS arcade_prizes (id bigint AUTO_INCREMENT PRIMARY KEY, uuid char(36) NOT NULL,"
                 + " server varchar(64) NOT NULL, tier int NOT NULL, run varchar(64) NOT NULL,"
                 + " created_at timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), INDEX (uuid, server))");
+            s.execute("CREATE TABLE IF NOT EXISTS arcade_prize_log (id bigint AUTO_INCREMENT PRIMARY KEY, uuid char(36) NOT NULL,"
+                + " tier int NOT NULL, at timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), INDEX (uuid, at))");
             s.execute("CREATE TABLE IF NOT EXISTS arcade_dice (uuid char(36) PRIMARY KEY, given_at timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3))");
             s.execute("CREATE TABLE IF NOT EXISTS arcade_discovery (uuid char(36) PRIMARY KEY, offers int NOT NULL DEFAULT 0,"
                 + " last_offer timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3))");
@@ -94,6 +96,36 @@ public final class ArcadeDb {
                 p.setString(2, server);
                 p.setInt(3, tier);
                 p.setString(4, run);
+                p.executeUpdate();
+            }
+        }), IO);
+    }
+
+    /** How many prizes this player has cashed out in the last {@code hours} hours (any world). */
+    public CompletableFuture<Integer> recentPrizes(UUID player, int hours) {
+        return CompletableFuture.supplyAsync(() -> {
+            int[] count = {0};
+            run(c -> {
+                try (PreparedStatement p = c.prepareStatement(
+                        "SELECT COUNT(*) FROM arcade_prize_log WHERE uuid = ? AND at > NOW(3) - INTERVAL ? HOUR")) {
+                    p.setString(1, player.toString());
+                    p.setInt(2, hours);
+                    try (var r = p.executeQuery()) {
+                        if (r.next()) {
+                            count[0] = r.getInt(1);
+                        }
+                    }
+                }
+            });
+            return count[0];
+        }, IO);
+    }
+
+    public CompletableFuture<Void> logPrize(UUID player, int tier) {
+        return CompletableFuture.runAsync(() -> run(c -> {
+            try (PreparedStatement p = c.prepareStatement("INSERT INTO arcade_prize_log (uuid, tier) VALUES (?, ?)")) {
+                p.setString(1, player.toString());
+                p.setInt(2, tier);
                 p.executeUpdate();
             }
         }), IO);
