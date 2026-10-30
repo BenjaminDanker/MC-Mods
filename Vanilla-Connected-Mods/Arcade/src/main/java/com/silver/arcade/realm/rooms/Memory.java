@@ -30,7 +30,7 @@ public final class Memory extends BaseRoom {
     public String id() { return "memory"; }
     public String title() { return "Simon Says"; }
     public String explain() {
-        return "Watch the four pads light up, then hit them in the same order. With a partner, you take turns: one does the "
+        return "Watch the four pads light up, then right-click them in the same order. With a partner, you take turns: one does the "
             + "first step, the other the second, and so on. One wrong pad and the room is lost for both.";
     }
 

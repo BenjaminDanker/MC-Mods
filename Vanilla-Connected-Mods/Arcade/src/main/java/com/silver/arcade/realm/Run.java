@@ -75,13 +75,14 @@ public final class Run {
         boolean voided;
         Set<UUID> cleared = Set.of();
 
-        Party(Room room, Arena arena, List<UUID> members, long limit, long startedAt) {
+        Party(Room room, Arena arena, List<UUID> members, long limit, long startedAt, int tier) {
             this.room = room;
             this.arena = arena;
             this.members = members;
             this.limit = limit;
             this.startedAt = startedAt;
-            this.bar = new ServerBossEvent(UUID.randomUUID(), Component.literal(room.title()), BossEvent.BossBarColor.PURPLE, BossEvent.BossBarOverlay.PROGRESS);
+            this.bar = new ServerBossEvent(UUID.randomUUID(), Component.literal(room.title() + "  \u00b7  Tier " + tier), BossEvent.BossBarColor.PURPLE,
+                BossEvent.BossBarOverlay.PROGRESS);
         }
     }
 
@@ -190,7 +191,7 @@ public final class Run {
             Arena passArena = Arena.take(level);
             passArena.label("pass");
             passArena.commit();
-            Party party = new Party(new Room.Pass(), passArena, members, 1, server.getTickCount());
+            Party party = new Party(new Room.Pass(), passArena, members, 1, server.getTickCount(), tier);
             party.over = true;
             party.cleared = new HashSet<>(members);
             parties.add(party);
@@ -199,7 +200,7 @@ public final class Run {
         Room room = type.factory().get();
         Arena arena = Arena.take(level);
         LOGGER.info("Arcade room {} (tier {}) for {}", type.id(), tier, online.stream().map(p -> p.getName().getString()).toList());
-        Party party = new Party(room, arena, members, room.timeLimitTicks(tier), server.getTickCount());
+        Party party = new Party(room, arena, members, room.timeLimitTicks(tier), server.getTickCount(), tier);
         parties.add(party);
         arena.label(type.id() + " t" + tier);
         room.start(arena, online, tier);
@@ -207,6 +208,7 @@ public final class Run {
         for (ServerPlayer player : online) {
             lastRoom.put(player.getUUID(), type.id());
             NameTags.set(player, room.hideNameTags());
+            PlayerKit.enterRoom(player, room);
             ViewDistance.set(player, room.viewDistance());
             party.bar.addPlayer(player);
             Gamemaster.introduce(player, room, tier);
@@ -440,6 +442,17 @@ public final class Run {
             }
         }
         return false;
+    }
+
+    /** The Give up item: the room ends now for this player, as a fail. */
+    public void giveUp(ServerPlayer player) {
+        for (Party party : parties) {
+            if (!party.over && party.members.contains(player.getUUID()) && !party.arena.decorating()) {
+                party.room.giveUp(player);
+                Gamemaster.bar(player, "You gave up this room.");
+                return;
+            }
+        }
     }
 
     public boolean use(ServerPlayer player, net.minecraft.core.BlockPos pos) {

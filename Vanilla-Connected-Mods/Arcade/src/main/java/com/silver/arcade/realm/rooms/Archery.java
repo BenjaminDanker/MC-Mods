@@ -24,7 +24,7 @@ public final class Archery extends BaseRoom {
     public String id() { return "archery"; }
     public String title() { return "Archery"; }
     public String explain() {
-        return "A target lights up on the far wall. Hit it with an arrow and the next one lights. Hit them all before time runs out.";
+        return "A target lights up on the far wall. Shoot it with an arrow and the next one lights. Hit them all before time runs out.";
     }
 
     @Override

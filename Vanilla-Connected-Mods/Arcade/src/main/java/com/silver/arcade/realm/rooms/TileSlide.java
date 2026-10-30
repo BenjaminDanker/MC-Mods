@@ -24,7 +24,7 @@ public final class TileSlide extends BaseRoom {
     public String id() { return "slide"; }
     public String title() { return "The Sliding Picture"; }
     public String explain() {
-        return "Hit a tile next to the gap to slide it in. Make the frame match the finished picture beside it.";
+        return "Right-click a tile next to the gap to slide it in. Make the frame match the finished picture beside it.";
     }
 
     int size() { return tier >= 7 ? 4 : 3; }

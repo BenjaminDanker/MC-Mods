@@ -22,7 +22,7 @@ public final class Spleef extends BaseRoom {
     public String id() { return "spleef"; }
     public String title() { return "Spleef"; }
     public String explain() {
-        return "Hit the snow to break it. Break it under the others, keep it under yourself. Fall and you're out; "
+        return "Dig the snow with your shovel to break it. Break it under the others, keep it under yourself. Fall and you're out; "
             + "the last one standing wins.";
     }
 
@@ -74,7 +74,8 @@ public final class Spleef extends BaseRoom {
             double angle = Math.PI * 2 * i / list.size();
             ServerPlayer player = list.get(i);
             arena.put(player, Math.floor(Math.cos(angle) * (radius - 2)) + 0.5, 1, Math.floor(Math.sin(angle) * (radius - 2)) + 0.5, 0F); // centred on a block
-            give(player, new ItemStack(Items.DIAMOND_SHOVEL));
+            // Adventure mode: the client only digs blocks the tool is allowed to break.
+            give(player, com.silver.arcade.realm.PlayerKit.digger(player, new ItemStack(Items.DIAMOND_SHOVEL), Blocks.SNOW_BLOCK));
         }
     }
 

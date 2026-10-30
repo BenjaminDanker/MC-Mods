@@ -25,7 +25,7 @@ public final class PatternCopy extends BaseRoom {
     public String id() { return "pattern"; }
     public String title() { return "Copy the Picture"; }
     public String explain() {
-        return "A picture appears on the wall for a few seconds. When it hides, paint it on the canvas below: each hit turns a "
+        return "A picture appears on the wall for a few seconds. When it hides, paint it on the canvas below: each right-click turns a "
             + "square to the next colour. Get every square right.";
     }
 
@@ -117,8 +117,12 @@ public final class PatternCopy extends BaseRoom {
         if (pos.getZ() - arena.origin().getZ() != 5 || x < 0 || x >= size || y < 0 || y >= size) {
             return false;
         }
-        if (!hidden || finished()) {
-            return true; // no painting while the picture still shows
+        if (!hidden && !finished()) {
+            players.values().forEach(p -> Gamemaster.bar(p, "Remember it first: the picture hides in a moment."));
+            return true;
+        }
+        if (finished()) {
+            return true;
         }
         canvas[x][y] = (canvas[x][y] + 1) % colours;
         drawCanvas();

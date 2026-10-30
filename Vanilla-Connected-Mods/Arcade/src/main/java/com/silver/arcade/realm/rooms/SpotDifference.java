@@ -29,7 +29,7 @@ public final class SpotDifference extends BaseRoom {
     public String id() { return "spot"; }
     public String title() { return "Spot the Difference"; }
     public String explain() {
-        return "The two pictures match, except for a few blocks. Hit every difference on the right-hand picture. Three wrong hits and you lose.";
+        return "The two pictures match, except for a few blocks. Right-click every difference on the right-hand picture. Three wrong picks and you lose.";
     }
 
     int count() { return Math.min(9, 3 + tier / 2); }

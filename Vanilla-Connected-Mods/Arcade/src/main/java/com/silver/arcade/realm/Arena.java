@@ -365,11 +365,87 @@ public final class Arena {
     // ------------------------------------------------------------------------------------------------------
     // commit: write the staged blocks into the saved data of the unloaded chunks (worker thread)
 
+    /**
+     * Closes the gaps between a room's floor and its boards, so nothing to click has a hole under it and no board
+     * stands over the void:
+     * (a) a column standing just past the floor's edge (its lowest block 1-3 above the floor) is filled down to the
+     *     floor with the neighbouring floor block;
+     * (b) a one-block gap between the floor and a block right above it is filled the same way.
+     * Floating ledges (parkour, the drop, rising-floor steps) are higher than that or have no floor beside them.
+     */
+    static int sealGaps(Long2ObjectOpenHashMap<BlockState> blocks) {
+        int baseY = BASE_Y;
+        java.util.Map<Long, BlockState> floor = new java.util.HashMap<>();   // column -> its floor block (y 0 or -1)
+        java.util.Map<Long, Integer> lowest = new java.util.HashMap<>();     // column -> lowest block at y 1..16
+        for (var e : blocks.long2ObjectEntrySet()) {
+            if (e.getValue().isAir()) {
+                continue;
+            }
+            long p = e.getLongKey();
+            int y = BlockPos.getY(p) - baseY;
+            long column = BlockPos.asLong(BlockPos.getX(p), 0, BlockPos.getZ(p));
+            if (y == 0 || y == -1) {
+                if (y == 0 || !floor.containsKey(column)) {
+                    floor.put(column, e.getValue());
+                }
+            } else if (y >= 1 && y <= 16) {
+                lowest.merge(column, y, Math::min);
+            }
+        }
+        java.util.List<long[]> fills = new java.util.ArrayList<>();
+        java.util.List<BlockState> states = new java.util.ArrayList<>();
+        for (var e : lowest.entrySet()) {
+            long column = e.getKey();
+            int x = BlockPos.getX(column);
+            int z = BlockPos.getZ(column);
+            int low = e.getValue();
+            BlockState own = floor.get(column);
+            if (own == null) {
+                if (low > 3) {
+                    continue;
+                }
+                BlockState beside = null;
+                for (int[] d : new int[][] {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
+                    BlockState f = floor.get(BlockPos.asLong(x + d[0], 0, z + d[1]));
+                    if (f != null) {
+                        beside = f;
+                        break;
+                    }
+                }
+                if (beside == null) {
+                    continue;
+                }
+                for (int y = 0; y < low; y++) {
+                    fills.add(new long[] {BlockPos.asLong(x, baseY + y, z)});
+                    states.add(beside);
+                }
+            } else if (low == 2) {
+                long gap = BlockPos.asLong(x, baseY + 1, z);
+                BlockState there = blocks.get(gap);
+                if (there == null) { // staged air (a carved opening) is left alone
+                    fills.add(new long[] {gap});
+                    states.add(own);
+                }
+            }
+        }
+        int added = 0;
+        for (int i = 0; i < fills.size(); i++) {
+            if (blocks.putIfAbsent(fills.get(i)[0], states.get(i)) == null) {
+                added++;
+            }
+        }
+        return added;
+    }
+
     private void startWrite() {
         phase = Phase.WRITING;
         writeStartedAt = System.nanoTime();
         Long2ObjectOpenHashMap<BlockState> roomBlocks = solid;
         Long2ObjectOpenHashMap<BlockState> decoration = deco;
+        int sealed = sealGaps(roomBlocks);
+        if (sealed > 0) {
+            LOGGER.debug("Sealed {} gaps under boards in slot {}", sealed, slot);
+        }
         solid = new Long2ObjectOpenHashMap<>(0);
         deco = new Long2ObjectOpenHashMap<>(0);
         net.minecraft.server.MinecraftServer server = level.getServer();
@@ -400,6 +476,10 @@ public final class Arena {
             }
         }
         long t1 = System.nanoTime();
+        int propped = Shapes.propFalling(all);
+        if (propped > 0) {
+            LOGGER.debug("Propped {} falling blocks with barriers in slot {}", propped, slot);
+        }
         int[] shapes = Shapes.settle(all);
         shapesReacting = shapes[0];
         shapesFixed = shapes[1];

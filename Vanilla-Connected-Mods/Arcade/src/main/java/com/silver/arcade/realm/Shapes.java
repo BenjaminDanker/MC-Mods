@@ -120,6 +120,30 @@ final class Shapes {
      * Settles the states in {@code map} in place until nothing changes any more (a block's shape can depend on what its
      * neighbour's shape became: a wall under a wall, a chain of pointed dripstone). Returns {blocks that react, changes}.
      */
+    /**
+     * Sand, gravel, concrete powder and the like would fall at the first block update if nothing is under them (they
+     * are written without the usual checks): any such block with air below gets an invisible barrier underneath.
+     * Returns how many were propped.
+     */
+    static int propFalling(Long2ObjectMap<BlockState> map) {
+        BlockState barrier = net.minecraft.world.level.block.Blocks.BARRIER.defaultBlockState();
+        java.util.List<Long> props = new java.util.ArrayList<>();
+        for (var entry : map.long2ObjectEntrySet()) {
+            if (!(entry.getValue().getBlock() instanceof net.minecraft.world.level.block.FallingBlock)) {
+                continue;
+            }
+            long below = BlockPos.asLong(BlockPos.getX(entry.getLongKey()), BlockPos.getY(entry.getLongKey()) - 1, BlockPos.getZ(entry.getLongKey()));
+            BlockState under = map.get(below);
+            if (under == null || under.isAir() || !under.getFluidState().isEmpty() || under.canBeReplaced()) {
+                props.add(below);
+            }
+        }
+        for (long pos : props) {
+            map.put(pos, barrier);
+        }
+        return props.size();
+    }
+
     static int[] settle(Long2ObjectMap<BlockState> map) {
         View view = new View(map);
         Object proxy = Proxy.newProxyInstance(Shapes.class.getClassLoader(), new Class<?>[] {LevelReader.class, ScheduledTickAccess.class}, view);

@@ -27,7 +27,7 @@ public final class HotPotato extends BaseRoom {
     public String id() { return "hot_potato"; }
     public String title() { return "Hot Potato"; }
     public String explain() {
-        return "Whoever wears the TNT must hit someone to pass it on. When the fuse runs out, the one wearing it is out. Nobody gets hurt.";
+        return "Whoever wears the TNT must punch someone to pass it on. When the fuse runs out, the one wearing it is out. Nobody gets hurt.";
     }
 
     @Override

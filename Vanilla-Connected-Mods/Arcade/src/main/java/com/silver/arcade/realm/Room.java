@@ -76,6 +76,16 @@ public interface Room {
         return 6;
     }
 
+    /** Whether players get hungry here (the arcade has no food; off unless a room's game is about it). */
+    default boolean hunger() {
+        return false;
+    }
+
+    /** The player used the Give up item: they leave the room as failed (others play on). */
+    default void giveUp(ServerPlayer player) {
+        left(player.getUUID());
+    }
+
     /** Hide everyone's name tag in this room (name tags show through walls; hide-and-seek style rooms need this off). */
     default boolean hideNameTags() {
         return false;

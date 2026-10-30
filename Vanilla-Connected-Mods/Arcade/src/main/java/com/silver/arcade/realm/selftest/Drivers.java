@@ -933,6 +933,9 @@ final class Drivers {
                     return;
                 }
                 ServerPlayer pv = c.p(victim);
+                if (pv.getY() < c.o().getY() + 0.5) {
+                    return; // already falling: moving the winner down to the victim's height would drop it below the out line too
+                }
                 c.putAbs(w, pv.getX() + 2.0, pv.getY(), pv.getZ());
                 // the blocks the victim's feet touch (a bot standing on a block edge rests on two or four of them)
                 var box = pv.getBoundingBox();

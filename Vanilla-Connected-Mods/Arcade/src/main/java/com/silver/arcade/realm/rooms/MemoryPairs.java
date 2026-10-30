@@ -34,7 +34,7 @@ public final class MemoryPairs extends BaseRoom {
     public String id() { return "pairs"; }
     public String title() { return "Pairs"; }
     public String explain() {
-        return "Hit a tile to turn it over, then another. A matching pair stays face up; a miss turns back. Find every pair.";
+        return "Right-click a tile to turn it over, then another. A matching pair stays face up; a miss turns back. Find every pair.";
     }
 
     int pairs() { return Math.min(FACES.length, 6 + tier); }

@@ -25,7 +25,7 @@ public final class Hanoi extends BaseRoom {
     public String id() { return "hanoi"; }
     public String title() { return "The Tower"; }
     public String explain() {
-        return "Move the whole stack from the left post to the right post. Hit a post's gold base to lift its top ring, then "
+        return "Move the whole stack from the left post to the right post. Right-click a post's gold base to lift its top ring, then "
             + "another base to put it down. A ring can never sit on a smaller one.";
     }
 

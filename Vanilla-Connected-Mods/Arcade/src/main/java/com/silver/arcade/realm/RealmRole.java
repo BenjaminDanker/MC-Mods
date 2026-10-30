@@ -139,6 +139,17 @@ public final class RealmRole implements Run.Host {
             return run != null && run.hit(user, pos) ? InteractionResult.SUCCESS : InteractionResult.PASS;
         });
         com.silver.arcade.selftest.SelfTest.install(server, "realm", this, config, db); // self-test hook: inert unless config/arcade-selftest.json exists
+        // Registered straight into the dispatcher: the realm starts after the usual command registration.
+        server.getCommands().getDispatcher().register(net.minecraft.commands.Commands.literal("giveup").executes(context -> {
+                ServerPlayer user = context.getSource().getPlayerOrException();
+                Run run = runOf(user.getUUID());
+                if (run == null) {
+                    context.getSource().sendFailure(Component.literal("You are not in a room."));
+                    return 0;
+                }
+                run.giveUp(user);
+                return 1;
+            }));
         LOGGER.info("Arcade realm open: {} room types", Rooms.all().size());
     }
 
@@ -364,6 +375,7 @@ public final class RealmRole implements Run.Host {
 
     private void toHall(ServerPlayer player) {
         NameTags.set(player, false);
+        PlayerKit.leaveRoom(player);
         ViewDistance.set(player, HALL_VIEW);
         player.getInventory().clearContent();
         player.setGameMode(GameType.ADVENTURE);
@@ -371,6 +383,7 @@ public final class RealmRole implements Run.Host {
         player.teleportTo(level(), HALL.getX() + 0.5, HALL.getY() + 1, HALL.getZ() + 0.5, Set.of(), 0F, 0F, false);
         player.setHealth(player.getMaxHealth());
         player.getFoodData().setFoodLevel(20);
+        PlayerKit.fed(player);
     }
 
     @Override

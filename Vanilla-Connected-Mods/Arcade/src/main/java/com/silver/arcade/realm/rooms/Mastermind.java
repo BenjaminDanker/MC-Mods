@@ -26,7 +26,7 @@ public final class Mastermind extends BaseRoom {
     public String id() { return "mastermind"; }
     public String title() { return "Crack the Code"; }
     public String explain() {
-        return "I've hidden a colour code. Hit the pegs on the bottom row to set your guess, then hit the gold block to check it. "
+        return "I've hidden a colour code. Right-click the pegs on the bottom row to set your guess, then right-click the gold block to check it. "
             + "Gold beside a row means a right colour in the right place; iron means a right colour in the wrong place.";
     }
 

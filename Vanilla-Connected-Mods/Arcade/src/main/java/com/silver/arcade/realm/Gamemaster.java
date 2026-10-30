@@ -19,10 +19,18 @@ public final class Gamemaster {
             .append(Component.literal(text).withStyle(ChatFormatting.LIGHT_PURPLE).withStyle(style -> style.withBold(false))));
     }
 
+    /**
+     * A short signal in the middle of the screen, kept small: only the subtitle line is used (the big title stays empty),
+     * shown briefly. The boss bar names the room and the action bar carries status, so nothing else needs the screen.
+     */
     public static void title(ServerPlayer player, String title, String subtitle) {
-        player.connection.send(new ClientboundSetTitlesAnimationPacket(5, 40, 10));
-        player.connection.send(new ClientboundSetSubtitleTextPacket(Component.literal(subtitle).withStyle(ChatFormatting.GRAY)));
-        player.connection.send(new ClientboundSetTitleTextPacket(Component.literal(title).withStyle(ChatFormatting.GOLD)));
+        player.connection.send(new ClientboundSetTitlesAnimationPacket(3, 25, 8));
+        Component line = Component.literal(title).withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD);
+        if (subtitle != null && !subtitle.isBlank()) {
+            line = line.copy().append(Component.literal("  " + subtitle).withStyle(style -> style.withColor(ChatFormatting.GRAY).withBold(false)));
+        }
+        player.connection.send(new ClientboundSetSubtitleTextPacket(line));
+        player.connection.send(new ClientboundSetTitleTextPacket(Component.empty()));
     }
 
     public static void bar(ServerPlayer player, String text) {
@@ -31,11 +39,11 @@ public final class Gamemaster {
 
     /** Explains a room the first time this player meets it; afterwards only names it. */
     public static void introduce(ServerPlayer player, Room room, int tier) {
-        title(player, room.title(), "Tier " + tier);
+        // No title: the boss bar already names the room and the tier.
         if (player.addTag(SEEN_PREFIX + room.id())) {
             say(player, room.explain());
         } else {
-            bar(player, "Type !explain to hear the rules again.");
+            bar(player, "!explain repeats the rules, /giveup ends the room");
         }
     }
 

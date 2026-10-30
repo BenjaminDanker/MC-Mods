@@ -28,7 +28,7 @@ public final class TreasureHunt extends BaseRoom {
     public String id() { return "treasure"; }
     public String title() { return "Buried Treasure"; }
     public String explain() {
-        return "Treasure is buried under the sand. Hit sand to dig. The colour at the bottom of each hole says how close the nearest "
+        return "Treasure is buried under the sand. Dig the sand with your shovel. The colour at the bottom of each hole says how close the nearest "
             + "treasure is: blue is cold, red is burning. Find it all before your digs run out.";
     }
 
@@ -79,6 +79,9 @@ public final class TreasureHunt extends BaseRoom {
         int n = 0;
         for (ServerPlayer player : players.values()) {
             arena.put(player, 0.5 + n++, 1, -HALF - 1.5, 0F);
+            // Adventure mode: the client only digs blocks the tool is allowed to break.
+            player.getInventory().placeItemBackInInventory(com.silver.arcade.realm.PlayerKit.digger(player,
+                new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.IRON_SHOVEL), Blocks.SAND));
         }
     }
 

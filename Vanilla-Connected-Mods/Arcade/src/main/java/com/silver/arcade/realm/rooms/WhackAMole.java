@@ -19,7 +19,7 @@ public final class WhackAMole extends BaseRoom {
     public String id() { return "whack"; }
     public String title() { return "Whack-a-Mole"; }
     public String explain() {
-        return "Lanterns pop up out of the holes. Hit them before they duck back down. Reach the score before time runs out.";
+        return "Lanterns pop up out of the holes. Right-click them before they duck back down. Reach the score before time runs out.";
     }
 
     int target() { return Math.min(40, 12 + tier * 2); }

@@ -31,7 +31,7 @@ public final class SplitSimon extends BaseRoom {
     public String title() { return "Two Booths"; }
     public String explain() {
         return "Two booths, two of you. One sees the colours light up; the other has the pads. Talk to each other in chat: "
-            + "the watcher calls the colours, the presser hits them in order. One wrong pad and you both lose.";
+            + "the watcher calls the colours, the presser right-clicks them in order. One wrong pad and you both lose.";
     }
 
     int length() { return Math.min(16, 4 + tier); }

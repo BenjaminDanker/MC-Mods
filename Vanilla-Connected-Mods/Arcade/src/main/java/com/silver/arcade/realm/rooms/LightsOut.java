@@ -16,7 +16,7 @@ public final class LightsOut extends BaseRoom {
     public String id() { return "lights_out"; }
     public String title() { return "Lights Out"; }
     public String explain() {
-        return "Hit a lamp on the wall and it flips, along with the lamps above, below and beside it. Put every lamp out.";
+        return "Right-click a lamp on the wall and it flips, along with the lamps above, below and beside it. Put every lamp out.";
     }
 
     int size() { return Math.min(5, 3 + tier / 3); }
