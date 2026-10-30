@@ -180,7 +180,7 @@ public final class RealmRole implements Run.Host {
     }
 
     private void onJoin(ServerPlayer player) {
-        ViewDistance.set(player, 0); // the hall and the rooms need no extended view
+        ViewDistance.set(player, HALL_VIEW); // the hall and the rooms need no extended view
         Run waiting = runOf(player.getUUID());
         if (waiting != null && waiting.isAway(player.getUUID())) {
             // Back within the grace period: straight back into the paused room, kit and all.
