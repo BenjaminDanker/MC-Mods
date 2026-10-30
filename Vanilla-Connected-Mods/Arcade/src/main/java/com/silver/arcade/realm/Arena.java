@@ -133,6 +133,7 @@ public final class Arena {
     private long decoMax;
 
     private final java.util.Set<Long> requested = new java.util.HashSet<>();
+    private final java.util.Map<Long, Long> askedAt = new java.util.HashMap<>();
     private final java.util.Map<Long, Long> loadedAt = new java.util.HashMap<>();
 
     /**
@@ -177,7 +178,13 @@ public final class Arena {
             }
             return now - seen >= 20;
         }
-        if (requested.add(key)) {
+        // Not loaded: ask (again, if an earlier ticket expired and the chunk unloaded meanwhile).
+        loadedAt.remove(key);
+        long now = level.getGameTime();
+        Long asked = askedAt.get(key);
+        if (asked == null || now - asked >= 100) {
+            requested.add(key);
+            askedAt.put(key, now);
             level.getChunkSource().addTicketWithRadius(net.minecraft.server.level.TicketType.PORTAL, new net.minecraft.world.level.ChunkPos(cx, cz), 1);
         }
         return false;

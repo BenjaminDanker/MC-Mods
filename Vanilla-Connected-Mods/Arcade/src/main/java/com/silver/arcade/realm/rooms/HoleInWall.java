@@ -32,7 +32,8 @@ public final class HoleInWall extends BaseRoom {
 
     public int timeLimitTicks(int tier) {
         this.tier = tier;
-        return 80 + wallCount() * (START_Z + 4) * stepTicks() + 200;
+        // Per wall: its run from START_Z past the stage, the step that spawns it and the 30-tick pause after it.
+        return 80 + wallCount() * ((START_Z + 5) * stepTicks() + 40) + 300;
     }
 
     @Override

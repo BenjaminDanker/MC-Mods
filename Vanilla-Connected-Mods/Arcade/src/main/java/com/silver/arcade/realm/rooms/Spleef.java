@@ -71,7 +71,7 @@ public final class Spleef extends BaseRoom {
         for (int i = 0; i < list.size(); i++) {
             double angle = Math.PI * 2 * i / list.size();
             ServerPlayer player = list.get(i);
-            arena.put(player, Math.cos(angle) * (radius - 2) + 0.5, 1, Math.sin(angle) * (radius - 2) + 0.5, 0F);
+            arena.put(player, Math.floor(Math.cos(angle) * (radius - 2)) + 0.5, 1, Math.floor(Math.sin(angle) * (radius - 2)) + 0.5, 0F); // centred on a block
             give(player, new ItemStack(Items.DIAMOND_SHOVEL));
         }
     }

@@ -62,21 +62,48 @@ final class HallDoors {
         });
     }
 
+    /** Every sign has its own spot; a missing one (not yet loaded, or gone) is put up once its spot is loaded. */
     private void ensureSigns(long now) {
-        if (!signs.isEmpty() || now % 100 != 0 || config.hall.doors.isEmpty()
-                || !level().isPositionEntityTicking(net.minecraft.core.BlockPos.containing(config.hall.doors.get(0).x, 101, config.hall.doors.get(0).z))) {
+        if (now % 100 != 0 || config.hall.doors.isEmpty()) {
             return;
         }
-        for (ArcadeConfig.HallDoor door : config.hall.doors) {
-            boolean alongX = "x".equals(door.axis);
-            double cx = door.x + (alongX ? door.width / 2.0 : 0.5);
-            double cz = door.z + (alongX ? 0.5 : door.width / 2.0);
-            sign(cx, door.y + door.height + 0.4, cz, "\u2684 PLAY \u2684");
+        if (signSpots.isEmpty()) {
+            for (ArcadeConfig.HallDoor door : config.hall.doors) {
+                boolean alongX = "x".equals(door.axis);
+                signSpots.add(new SignSpot(door.x + (alongX ? door.width / 2.0 : 0.5), door.y + door.height + 0.4,
+                    door.z + (alongX ? 0.5 : door.width / 2.0), "\u2684 PLAY \u2684"));
+            }
+            signSpots.add(new SignSpot(0.5, 110.0, -7.5, "HOME"));
         }
-        sign(0.5, 110.0, -7.5, "HOME");
+        for (SignSpot spot : signSpots) {
+            if (spot.entity != null && !spot.entity.isRemoved()) {
+                continue;
+            }
+            if (level().isPositionEntityTicking(net.minecraft.core.BlockPos.containing(spot.x, spot.y, spot.z))) {
+                signs.remove(spot.entity);
+                spot.entity = sign(spot.x, spot.y, spot.z, spot.text);
+            }
+        }
     }
 
-    private void sign(double x, double y, double z, String text) {
+    private static final class SignSpot {
+        final double x;
+        final double y;
+        final double z;
+        final String text;
+        net.minecraft.world.entity.Entity entity;
+
+        SignSpot(double x, double y, double z, String text) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.text = text;
+        }
+    }
+
+    private final List<SignSpot> signSpots = new ArrayList<>();
+
+    private net.minecraft.world.entity.Entity sign(double x, double y, double z, String text) {
         try {
             var tag = net.minecraft.nbt.TagParser.parseCompoundFully("{billboard:\"center\",shadow:1b,background:0,"
                 + "transformation:{translation:[0f,0f,0f],left_rotation:[0f,0f,0f,1f],scale:[2.5f,2.5f,2.5f],right_rotation:[0f,0f,0f,1f]},"
@@ -88,10 +115,12 @@ final class HallDoors {
                 entity.snapTo(x, y, z, 0F, 0F);
                 signs.add(entity);
                 level().addFreshEntity(entity);
+                return entity;
             }
         } catch (Exception failure) {
             org.slf4j.LoggerFactory.getLogger("arcade").error("ALERT: a hall sign could not be put up", failure);
         }
+        return null;
     }
 
     void tick(long now, List<ServerPlayer> free) {

@@ -47,6 +47,8 @@ public final class DoorRole {
     private final ArcadeDb db;
     private final Rewards rewards;
     private final List<Door> doors = new ArrayList<>();
+    /** Parts of doors standing now (identity); any other door part found loading is a leftover. */
+    private final java.util.Set<Entity> liveParts = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
     private final Map<UUID, Long> lastDoorAt = new HashMap<>();
     private final Map<UUID, Long> nextCheckAt = new HashMap<>();
     private final Map<UUID, ArcadeDb.Profile> profiles = new java.util.concurrent.ConcurrentHashMap<>();
@@ -95,7 +97,7 @@ public final class DoorRole {
         });
         // Doors are never saved: any door entity found when a chunk loads is a leftover.
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents.ENTITY_LOAD.register((entity, level) -> {
-            if (entity.entityTags().contains(DOOR_TAG) && doors.stream().noneMatch(d -> d.parts.contains(entity))) {
+            if (entity.entityTags().contains(DOOR_TAG) && !liveParts.contains(entity)) {
                 entity.discard();
             }
         });
@@ -105,6 +107,7 @@ public final class DoorRole {
 
     private void tick() {
         long now = server.getTickCount();
+        tickDie(now);
         altar.tick(now);
         for (Iterator<Door> it = doors.iterator(); it.hasNext();) {
             Door door = it.next();
@@ -228,6 +231,7 @@ public final class DoorRole {
             }
             entity.snapTo(at.x, at.y, at.z, yaw, 0F);
             entity.addTag(DOOR_TAG);
+            liveParts.add(entity); // before it enters the world: the leftover filter runs inside addFreshEntity
             level.addFreshEntity(entity);
             return entity;
         } catch (Exception failure) {
@@ -237,6 +241,7 @@ public final class DoorRole {
     }
 
     private void close(Door door, boolean fade) {
+        door.parts.forEach(liveParts::remove);
         door.parts.forEach(Entity::discard);
         if (fade) {
             door.level.sendParticles(ParticleTypes.REVERSE_PORTAL, door.centre.x, door.centre.y + 1.5, door.centre.z, 40, 0.5, 1.2, 0.5, 0.05);
@@ -293,13 +298,51 @@ public final class DoorRole {
             }
             profiles.put(id, profile);
             if (profile.visited() && !profile.hasDie()) {
-                online.getInventory().placeItemBackInInventory(Die.create());
-                online.sendSystemMessage(Component.literal("Something rattles in your pocket: the Gamemaster's Die. Roll it whenever you "
-                    + "want to play, and his door opens; friends nearby can follow you through.").withStyle(ChatFormatting.LIGHT_PURPLE));
-                db.markDieGiven(id);
-                profiles.put(id, new ArcadeDb.Profile(true, true, profile.offers(), profile.secondsSinceOffer()));
+                // Not right away: MPDS loads the player's soulbound items a few seconds after joining and would wipe it.
+                dieDue.put(id, new long[] {server.getTickCount() + DIE_DELAY_TICKS, 0});
             }
         }));
+    }
+
+    private static final int DIE_DELAY_TICKS = 200;
+    private static final int DIE_VERIFY_TICKS = 100;
+    /** Player -> {tick the die is due or checked, attempts so far}. */
+    private final Map<UUID, long[]> dieDue = new HashMap<>();
+
+    /** Hands the die over after the join settles, and only records it once it is still there a little later. */
+    private void tickDie(long now) {
+        dieDue.entrySet().removeIf(entry -> {
+            long[] state = entry.getValue();
+            if (now < state[0]) {
+                return false;
+            }
+            ServerPlayer player = server.getPlayerList().getPlayer(entry.getKey());
+            if (player == null) {
+                return true; // asked again on the next join
+            }
+            if (state[1] > 0 && Die.carries(player)) {
+                db.markDieGiven(entry.getKey());
+                ArcadeDb.Profile p = profiles.get(entry.getKey());
+                if (p != null) {
+                    profiles.put(entry.getKey(), new ArcadeDb.Profile(true, true, p.offers(), p.secondsSinceOffer()));
+                }
+                return true;
+            }
+            if (state[1] >= 3) {
+                LOGGER.warn("Could not keep the Gamemaster's Die in {}'s inventory after 3 tries", player.getName().getString());
+                return true;
+            }
+            if (!Die.carries(player)) {
+                player.getInventory().placeItemBackInInventory(Die.create());
+                if (state[1] == 0) {
+                    player.sendSystemMessage(Component.literal("Something rattles in your pocket: the Gamemaster's Die. Roll it whenever you "
+                        + "want to play, and his door opens; friends nearby can follow you through.").withStyle(ChatFormatting.LIGHT_PURPLE));
+                }
+            }
+            state[1]++;
+            state[0] = now + DIE_VERIFY_TICKS;
+            return false;
+        });
     }
 
     private void deliverPrizes(ServerPlayer player) {

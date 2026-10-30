@@ -40,7 +40,8 @@ public final class BlockParty extends BaseRoom {
 
     public int timeLimitTicks(int tier) {
         this.tier = tier;
-        return 60 + rounds() * (callTicks() + 60) + 100;
+        // Per round: the call, 50 ticks with the floor gone, 30 to repaint, plus slack for the 5-tick checks.
+        return 60 + rounds() * (callTicks() + 100) + 200;
     }
 
     private static Block concrete(DyeColor colour) {

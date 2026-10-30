@@ -12,6 +12,13 @@ public final class ConnectFour extends BaseRoom {
     private final ConnectFourBoard board = new ConnectFourBoard();
     private ServerPlayer player;
     private long botMoveAt = -1;
+    private java.util.concurrent.CompletableFuture<Integer> thinking;
+    private static final java.util.concurrent.Executor THINKER = java.util.concurrent.Executors.newSingleThreadExecutor(task -> {
+        Thread thread = new Thread(task, "arcade-connect4");
+        thread.setDaemon(true);
+        thread.setPriority(Thread.MIN_PRIORITY);
+        return thread;
+    });
 
     public String id() { return "connect4"; }
     public String title() { return "Connect Four"; }
@@ -95,9 +102,20 @@ public final class ConnectFour extends BaseRoom {
         if (botMoveAt == 0) {
             botMoveAt = tickInRoom + 15;
         }
-        if (botMoveAt > 0 && tickInRoom >= botMoveAt && !finished()) {
+        if (botMoveAt > 0 && botMoveAt != Long.MAX_VALUE && tickInRoom >= botMoveAt && !finished() && thinking == null) {
+            // The deep searches cost up to ~100 ms: think on a background thread. Nobody touches the board meanwhile
+            // (the player can't move during the bot's turn), and the move is played when it's ready.
+            botMoveAt = Long.MAX_VALUE;
+            thinking = java.util.concurrent.CompletableFuture.supplyAsync(() -> board.botMove(tier, random), THINKER);
+            return;
+        }
+        if (thinking != null && thinking.isDone()) {
+            int col = thinking.join();
+            thinking = null;
             botMoveAt = -1;
-            int col = board.botMove(tier, random);
+            if (finished()) {
+                return;
+            }
             int row = board.drop(col, 2);
             arena.set(col, 2 + row, 6, Blocks.CONCRETE.red().defaultBlockState());
             if (board.wins(2)) {
