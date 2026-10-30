@@ -132,7 +132,15 @@ public final class RealmRole implements Run.Host {
                 return InteractionResult.PASS;
             }
             Run run = runOf(user.getUUID());
-            return run != null && run.use(user, hit.getBlockPos()) ? InteractionResult.SUCCESS : InteractionResult.PASS;
+            if (run == null) {
+                return InteractionResult.PASS;
+            }
+            // One right-click on a block with no use of its own arrives twice (main hand, then off hand): act on the
+            // main hand only, or every click counts double (a check sent twice, a peg or a light flipped twice).
+            if (hand != net.minecraft.world.InteractionHand.MAIN_HAND) {
+                return InteractionResult.PASS;
+            }
+            return run.use(user, hit.getBlockPos()) ? InteractionResult.SUCCESS : InteractionResult.PASS;
         });
         AttackBlockCallback.EVENT.register((player, world, hand, pos, direction) -> {
             if (!(player instanceof ServerPlayer user)) {

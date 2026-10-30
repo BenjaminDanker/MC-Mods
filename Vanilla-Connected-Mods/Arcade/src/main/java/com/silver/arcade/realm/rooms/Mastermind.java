@@ -59,7 +59,7 @@ public final class Mastermind extends BaseRoom {
         java.util.Arrays.fill(guess, -1); // empty pegs until the player picks colours
         // Vault floor: steel plates (iron and polished deepslate) with riveted seams; the code board is a black steel
         // panel in an iron frame (guesses in wool, answer pegs gold and iron, all bright against it). The gold check
-        // button sits on a dark pedestal with a lamp over it.
+        // button sits on a dark pedestal.
         int bx1 = pegs() + pegs() + 2, top = 2 + rows() + 1;
         for (int x = -3; x <= bx1 + 1; x++) {
             for (int z = -2; z <= 7; z++) { // the floor runs under the board too: no gap to fall through
@@ -78,7 +78,6 @@ public final class Mastermind extends BaseRoom {
         }
         arena.set(-2, 2, 6, st("waxed_copper_bulb[lit=true]")); // the check button (gold and iron mean scores here)
         arena.set(-2, 1, 6, st("chiseled_polished_blackstone"));
-        arena.set(-3, 2, 6, st("redstone_lamp[lit=true]"));
         // A palette strip so players see which colours are in play.
         for (int c = 0; c < colours(); c++) {
             arena.set(-2 - 0, 3 + c, 7, wool(c));
