@@ -43,6 +43,8 @@ public final class RealmRole implements Run.Host {
     private static final BlockPos START = new BlockPos(0, 100, 8);
     private static final BlockPos EXIT = new BlockPos(0, 100, -8);
     private HallDoors doors;
+    /** View distance in the hall (chunks): the whole nave (~130 blocks from the arrival) and the colossus at its end. */
+    private static final int HALL_VIEW = 9;
 
     private final MinecraftServer server;
     private final ArcadeConfig config;
@@ -362,7 +364,7 @@ public final class RealmRole implements Run.Host {
 
     private void toHall(ServerPlayer player) {
         NameTags.set(player, false);
-        ViewDistance.set(player, 0);
+        ViewDistance.set(player, HALL_VIEW);
         player.getInventory().clearContent();
         player.setGameMode(GameType.ADVENTURE);
         player.removeAllEffects();
