@@ -21,7 +21,7 @@ public final class RedLight extends BaseRoom {
     private final Random random = new Random();
     private final Map<UUID, Vec3> frozenAt = new HashMap<>();
     private boolean green;
-    private long switchAt = 60;
+    private long switchAt = 0; // green right on "Go!"
     private long redSince;
 
     public String id() { return "red_light"; }

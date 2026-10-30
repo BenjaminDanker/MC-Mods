@@ -100,6 +100,17 @@ public final class Run {
 
     public Run(MinecraftServer server, ServerLevel level, Host host, List<ServerPlayer> group, int startTier, int prizeTier, boolean choiceFirst,
             boolean together) {
+        this(server, level, host, group, startTier, prizeTier, choiceFirst, together, null);
+    }
+
+    /** An admin's test climb (/arcade play): the first room is {@code testRoom}; test climbs never pay prizes. */
+    private RoomType testRoom;
+    private boolean test;
+
+    public Run(MinecraftServer server, ServerLevel level, Host host, List<ServerPlayer> group, int startTier, int prizeTier, boolean choiceFirst,
+            boolean together, RoomType testRoom) {
+        this.testRoom = testRoom;
+        this.test = testRoom != null;
         this.together = together;
         this.server = server;
         this.level = level;
@@ -146,7 +157,8 @@ public final class Run {
         List<UUID> order = new ArrayList<>(players);
         Collections.shuffle(order, random);
         for (List<UUID> party : split(order)) {
-            RoomType type = Rooms.pick(party.size(), tier, lastRoom.get(party.get(0)), random);
+            RoomType type = testRoom != null ? testRoom : Rooms.pick(party.size(), tier, lastRoom.get(party.get(0)), random);
+            testRoom = null; // only the first room is chosen; the climb then goes on as usual
             if (type == null && party.size() > 1) {
                 // Nothing fits this party size: everyone in it plays alone.
                 for (UUID solo : party) {
@@ -413,7 +425,7 @@ public final class Run {
             }
             if (gold || elapsed >= CHOICE_TICKS && !emerald) {
                 players.remove(id);
-                host.cashOut(player, prizeTier);
+                host.cashOut(player, test ? 0 : prizeTier); // test climbs pay nothing
             } else if (emerald && elapsed >= 60) {
                 onward.add(id);
             }

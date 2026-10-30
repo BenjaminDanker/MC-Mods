@@ -156,6 +156,17 @@ public final class RealmRole implements Run.Host {
                 }
                 return 1;
             }));
+        // Admins: /arcade play <room> [tier] starts a test climb straight into that room (no prizes).
+        dispatcher.register(net.minecraft.commands.Commands.literal("arcade")
+            .then(net.minecraft.commands.Commands.literal("play")
+                .then(net.minecraft.commands.Commands.argument("room", com.mojang.brigadier.arguments.StringArgumentType.word())
+                    .suggests((context, builder) -> net.minecraft.commands.SharedSuggestionProvider.suggest(
+                        Rooms.all().stream().map(RoomType::id), builder))
+                    .executes(context -> testClimb(context.getSource(), com.mojang.brigadier.arguments.StringArgumentType.getString(context, "room"), 1))
+                    .then(net.minecraft.commands.Commands.argument("tier", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1, 200))
+                        .executes(context -> testClimb(context.getSource(),
+                            com.mojang.brigadier.arguments.StringArgumentType.getString(context, "room"),
+                            com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(context, "tier")))))));
         dispatcher.register(net.minecraft.commands.Commands.literal("explain")
             .requires(source -> source.getPlayer() != null && runOf(source.getPlayer().getUUID()) != null)
             .executes(context -> {
@@ -351,6 +362,29 @@ public final class RealmRole implements Run.Host {
         int dx = pos.getX() - centre.getX();
         int dz = pos.getZ() - centre.getZ();
         return pos.getY() == centre.getY() && dx * dx + dz * dz <= 5;
+    }
+
+    private int testClimb(net.minecraft.commands.CommandSourceStack source, String roomId, int tier)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer player = source.getPlayerOrException();
+        RoomType type = Rooms.all().stream().filter(t -> t.id().equals(roomId)).findFirst().orElse(null);
+        if (type == null) {
+            source.sendFailure(Component.literal("No room called " + roomId + "."));
+            return 0;
+        }
+        if (runOf(player.getUUID()) != null) {
+            source.sendFailure(Component.literal("Finish or /giveup your current climb first."));
+            return 0;
+        }
+        if (type.minPlayers() > 1) {
+            source.sendFailure(Component.literal(roomId + " needs at least " + type.minPlayers() + " players."));
+            return 0;
+        }
+        LOGGER.info("Arcade test climb: {} plays {} at tier {} (level {})", player.getName().getString(), roomId, tier, Difficulty.level(type, tier));
+        runs.add(new Run(server, level(), this, List.of(player), tier, 0, false, false, type));
+        server.getCommands().sendCommands(player);
+        source.sendSuccess(() -> Component.literal("Test climb: " + roomId + " at tier " + tier + " (no prizes)."), false);
+        return 1;
     }
 
     /** Starts a climb for a group (together = a Grand Game: everyone always in the same room). */

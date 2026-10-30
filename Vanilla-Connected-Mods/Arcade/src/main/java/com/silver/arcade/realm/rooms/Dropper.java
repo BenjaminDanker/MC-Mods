@@ -71,10 +71,10 @@ public final class Dropper extends BaseRoom {
                 }
             }
         }
-        // The top: a ring to stand on around the opening.
+        // The top: the start ledge, level with the rim of the shaft.
         for (int tx = -HALF - 3; tx <= HALF + 3; tx++) {
             for (int tz = -HALF - 3; tz <= -HALF - 2; tz++) {
-                arena.set(tx, HEIGHT + 1, tz, st(Math.abs(tx) == HALF + 3 || Math.floorMod(tx, 3) == 0 ? "gold_block" : "quartz_bricks"));
+                arena.set(tx, HEIGHT, tz, st(Math.abs(tx) == HALF + 3 || Math.floorMod(tx, 3) == 0 ? "gold_block" : "quartz_bricks"));
             }
         }
         com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.LighthouseLook.build(arena, tier, HALF, HEIGHT));
@@ -98,14 +98,15 @@ public final class Dropper extends BaseRoom {
 
     private void top(ServerPlayer player) {
         player.resetFallDistance();
-        arena.put(player, 0.5, HEIGHT + 2, -HALF - 2.5, 0F);
+        arena.put(player, 0.5, HEIGHT + 1, -HALF - 2.5, 0F);
     }
 
     @Override
     public void tick(long tickInRoom) {
         for (ServerPlayer player : undecided()) {
             player.resetFallDistance(); // no fall damage in the drop
-            if (player.isInWater()) {
+            // isInWater can lag a tick behind a fast landing; the pool block at the feet counts too
+            if (player.isInWater() || player.level().getFluidState(player.blockPosition()).is(net.minecraft.tags.FluidTags.WATER)) {
                 clear(player);
                 Gamemaster.bar(player, "Splash! Cleared.");
                 top(player);

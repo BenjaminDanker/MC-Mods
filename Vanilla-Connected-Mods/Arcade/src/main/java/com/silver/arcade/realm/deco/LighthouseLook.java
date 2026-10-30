@@ -17,7 +17,7 @@ public final class LighthouseLook {
         Deco d = new Deco(arena, 13131L);
         int H = height;
         d.keepOut(-half - 1, -1, -half - 1, half + 1, H + 40, half + 1);      // the shaft and everything above its opening
-        d.keepOut(-half - 3, H + 1, -half - 3, half + 3, H + 4, -half - 2);   // the start ledge and its headroom
+        d.keepOut(-half - 3, H, -half - 3, half + 3, H + 3, -half - 2);   // the start ledge and its headroom
         // ---- outer cladding: an octagonal striped tower round the shaft, down from just under the ledge ----
         double R = half + 4.6;
         int cladTop = H;
@@ -52,11 +52,9 @@ public final class LighthouseLook {
         }
         // ---- the golden lantern room on four pillars high above the shaft top ----
         int ly = H + 14;
-        for (int[] c : new int[][] {{-half - 2, -half - 2}, {half + 2, -half - 2}, {-half - 2, half + 2}, {half + 2, half + 2}}) {
+        // the front two stand just behind the start ledge's railing, so they never cross the ledge
+        for (int[] c : new int[][] {{-half - 2, -half - 4}, {half + 2, -half - 4}, {-half - 2, half + 2}, {half + 2, half + 2}}) {
             for (int y = cladTop + 1; y <= ly; y++) {
-                if (c[1] < 0 && y >= H + 1 && y <= H + 4) {
-                    continue; // the ledge corners
-                }
                 d.set(c[0], y, c[1], y % 4 == 0 ? "gold_block" : "quartz_pillar");
             }
         }
@@ -77,17 +75,17 @@ public final class LighthouseLook {
         }
         // ---- the ledge's frame: a gilded railing behind the start and an arch over it ----
         for (int x = -half - 3; x <= half + 3; x++) {
-            d.set(x, H + 1, -half - 4, "gold_block");
-            d.set(x, H + 2, -half - 4, "quartz_bricks");
+            d.set(x, H, -half - 4, "gold_block");
+            d.set(x, H + 1, -half - 4, "quartz_bricks");
         }
         for (int z = -half - 4; z <= -half - 2; z++) {
-            d.set(-half - 4, H + 2, z, "quartz_bricks");
-            d.set(half + 4, H + 2, z, "quartz_bricks");
-            d.set(-half - 4, H + 1, z, "gold_block");
-            d.set(half + 4, H + 1, z, "gold_block");
+            d.set(-half - 4, H + 1, z, "quartz_bricks");
+            d.set(half + 4, H + 1, z, "quartz_bricks");
+            d.set(-half - 4, H, z, "gold_block");
+            d.set(half + 4, H, z, "gold_block");
         }
         for (int x : new int[] {-half - 3, half + 3}) {
-            d.set(x, H + 3, -half - 4, "lantern");
+            d.set(x, H + 2, -half - 4, "lantern");
         }
         // ---- the sea of clouds far below, islands rising from it, and the colossus ----
         int cy = -36;
