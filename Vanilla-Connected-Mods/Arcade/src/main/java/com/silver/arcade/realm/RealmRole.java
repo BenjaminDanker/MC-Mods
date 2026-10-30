@@ -71,7 +71,12 @@ public final class RealmRole implements Run.Host {
         doors.register();
         gamemaster = new GamemasterNpc(level());
         gamemaster.register();
-        level().setChunkForced(0, 0, true);
+        // The whole hall stays loaded (about 40 chunks): its signs, Gamemaster and doors must exist before anyone walks near.
+        for (int cx = -40 >> 4; cx <= 40 >> 4; cx++) {
+            for (int cz = -20 >> 4; cz <= 135 >> 4; cz++) {
+                level().setChunkForced(cx, cz, true);
+            }
+        }
         gamemaster.ensure();
         ServerTickEvents.END_SERVER_TICK.register(ticking -> tick());
         ServerPlayConnectionEvents.JOIN.register((handler, sender, joined) -> onJoin(handler.getPlayer()));
