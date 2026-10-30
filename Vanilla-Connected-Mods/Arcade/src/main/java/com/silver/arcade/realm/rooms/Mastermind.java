@@ -12,8 +12,8 @@ import net.minecraft.world.level.block.state.BlockState;
 
 /**
  * Mastermind: crack the Gamemaster's colour code. Set your guess on the bottom row (hit a peg to change its colour),
- * then hit the glowing copper check button. Beside each guess: a gold block per peg right in colour and place, an iron block per
- * right colour in the wrong place. Crack it before you run out of rows.
+ * then hit the glowing copper check button. Beside each guess, one marker per peg in the same order: gold where the peg is
+ * right in colour and place, iron where its colour is in the code elsewhere. Crack it before you run out of rows.
  */
 public final class Mastermind extends BaseRoom {
     private static final DyeColor[] COLOURS = {DyeColor.RED, DyeColor.BLUE, DyeColor.LIME, DyeColor.YELLOW, DyeColor.PURPLE,
@@ -22,15 +22,15 @@ public final class Mastermind extends BaseRoom {
     private int[] secret;
     private int[] guess;
     private int row; // how many guesses have been checked
-    /** Checked guesses, newest first, with their {gold, iron} scores. */
+    /** Checked guesses, newest first, with their per-peg marks (2 gold, 1 iron, 0 none). */
     private final java.util.List<int[][]> history = new java.util.ArrayList<>();
 
     public String id() { return "crack_the_code"; }
     public String title() { return "Crack the Code"; }
     public String explain() {
         return "I've hidden a colour code. Right-click the pegs on the bottom row to set your guess, then right-click the glowing copper button to check it. "
-            + "Beside each row, a gold block counts a right colour in the right place and an iron block a right colour in the wrong place. "
-            + "They are only counts, in no order: they don't say which peg.";
+            + "Beside each row, one marker per peg in the same order: gold means that peg is the right colour in the right place, "
+            + "iron means its colour is in the code but somewhere else.";
     }
 
     // 25 levels in two stages: 4 pegs with 4 to 8 colours (levels 1-12), then 5 pegs with 5 to 8 colours; never fewer
@@ -106,13 +106,12 @@ public final class Mastermind extends BaseRoom {
         for (int i = 0; i < pegs(); i++) {
             arena.set(i, y, 6, pegsRow[i] < 0 ? Blocks.TINTED_GLASS.defaultBlockState() : wool(pegsRow[i])); // dark glass: an empty peg
         }
-        // Feedback: gold per right colour in the right place, iron per right colour in the wrong place, dark otherwise.
+        // Feedback, one marker per peg in the same order: gold = right colour and place, iron = colour elsewhere, dark = no.
         int x = pegs() + 1;
-        int gold = score == null ? 0 : score[0];
-        int iron = score == null ? 0 : score[1];
         for (int i = 0; i < pegs(); i++) {
-            arena.set(x + i, y, 6, i < gold ? Blocks.GOLD_BLOCK.defaultBlockState()
-                : i < gold + iron ? Blocks.IRON_BLOCK.defaultBlockState() : st("polished_blackstone"));
+            int mark = score == null ? 0 : score[i];
+            arena.set(x + i, y, 6, mark == 2 ? Blocks.GOLD_BLOCK.defaultBlockState()
+                : mark == 1 ? Blocks.IRON_BLOCK.defaultBlockState() : st("polished_blackstone"));
         }
     }
 
@@ -161,7 +160,7 @@ public final class Mastermind extends BaseRoom {
             }
         }
         int[] s = MastermindCode.score(secret, guess, colours());
-        history.add(0, new int[][] {guess.clone(), s});
+        history.add(0, new int[][] {guess.clone(), MastermindCode.marks(secret, guess, colours())});
         row++;
         if (s[0] == pegs()) {
             drawBoard();
