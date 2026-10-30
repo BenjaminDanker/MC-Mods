@@ -69,8 +69,25 @@ public final class LavaRising extends BaseRoom {
             arena.set(x, i, z, random.nextInt(4) == 0 ? st("waxed_copper_block") : st("waxed_cut_copper_slab[type=top,waterlogged=false]"));
         }
         top = steps() + 1;
+        // The landing is the next step along the spiral (one up, one gap over, like every ledge), not on top of the last
+        // ledge: there it would be in the climber's face and two blocks above the ledge before.
         int[] last = ledges.get(ledges.size() - 1);
-        arena.fill(last[0] - 1, top, last[2] - 1, last[0] + 1, top, last[2] + 1, Blocks.GOLD_BLOCK.defaultBlockState());
+        int lx = last[0] + dx;
+        int lz = last[2] + dz;
+        if (Math.abs(lx) > HALF - 1 || Math.abs(lz) > HALF - 1) {
+            int t = dx;
+            dx = -dz;
+            dz = t;
+            lx = last[0] + dx;
+            lz = last[2] + dz;
+        }
+        for (int gx = lx - 1; gx <= lx + 1; gx++) {
+            for (int gz = lz - 1; gz <= lz + 1; gz++) {
+                if (Math.abs(gx) <= HALF && Math.abs(gz) <= HALF && Math.abs(gx - last[0]) + Math.abs(gz - last[2]) > 1) {
+                    arena.set(gx, top, gz, Blocks.GOLD_BLOCK.defaultBlockState());
+                }
+            }
+        }
         // The shaft: glass walls so the climb is seen, with blackstone bands.
         for (int y = 1; y <= top + 3; y++) {
             var wall = y % 6 == 0 ? st("waxed_cut_copper") : st("orange_stained_glass");
