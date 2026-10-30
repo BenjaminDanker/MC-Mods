@@ -47,7 +47,7 @@ final class RoomsSuite {
     static {
         Object[][] max = {{"typing_race", 25}, {"mental_math", 25}, {"maze", 25}, {"connect_four", 15}, {"simon_says", 25}, {"parkour", 25}, {"lights_out", 25},
             {"copy_the_picture", 25}, {"archery", 25}, {"drop", 25}, {"floor_is_falling", 25}, {"red_light_green_light", 25}, {"hold_the_ring", 26}, {"spleef", 15},
-            {"sumo", 15}, {"two_booths", 18}, {"block_party", 25}, {"crack_the_code", 27}, {"sliding_picture", 25}, {"pairs", 25}, {"musical_chairs", 15},
+            {"sumo", 15}, {"two_booths", 18}, {"block_party", 25}, {"crack_the_code", 25}, {"sliding_picture", 25}, {"pairs", 25}, {"musical_chairs", 15},
             {"hot_potato", 15}, {"king_of_the_hill", 15}, {"hide_and_seek", 15}, {"whack_a_mole", 25}, {"tower", 26}, {"spot_the_difference", 26}, {"buried_treasure", 26},
             {"rising_floor", 26}, {"hole_in_the_wall", 26}};
         for (Object[] m : max) {

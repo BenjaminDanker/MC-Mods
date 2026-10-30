@@ -33,11 +33,13 @@ public final class Mastermind extends BaseRoom {
             + "iron means its colour is in the code but somewhere else.";
     }
 
-    // 25 levels in two stages: 4 pegs with 4 to 8 colours (levels 1-12), then 5 pegs with 5 to 8 colours; never fewer
-    // than 8 rows (5 pegs, 8 colours and 7 rows was not reliably solvable).
-    int pegs() { return tier <= 12 ? 4 : 5; }
-    int colours() { return Math.min(COLOURS.length, tier <= 12 ? 4 + tier / 3 : 5 + (tier - 13) / 3); }
-    int rows() { return Math.max(8, tier <= 12 ? 10 - tier / 6 : 10 - (tier - 13) / 4); }
+    // 25 levels, Wordle-style markers at every level: 4 pegs (levels 1-8), 5 (9-17), then 6; colours 4 up to all 8 by
+    // level 12; rows 10 down to 6 by level 16.
+    int pegs() { return tier <= 8 ? 4 : tier <= 17 ? 5 : 6; }
+    int colours() { return Math.min(COLOURS.length, 4 + tier / 3); }
+    int rows() { return Math.max(6, 10 - tier / 4); }
+    /** The board's height in rows: tall enough for the guesses and for the colour strip beside it. */
+    int boardRows() { return Math.max(rows(), colours()); }
 
     public int timeLimitTicks(int tier) {
         this.tier = tier;
@@ -60,7 +62,7 @@ public final class Mastermind extends BaseRoom {
         // Vault floor: steel plates (iron and polished deepslate) with riveted seams; the code board is a black steel
         // panel in an iron frame (guesses in wool, answer pegs gold and iron, all bright against it). The gold check
         // button sits on a dark pedestal.
-        int bx1 = pegs() + pegs() + 2, top = 2 + rows() + 1;
+        int bx1 = pegs() + pegs() + 2, top = 2 + boardRows() + 1;
         for (int x = -3; x <= bx1 + 1; x++) {
             for (int z = -2; z <= 7; z++) { // the floor runs under the board too: no gap to fall through
                 arena.set(x, 0, z, st(Math.floorMod(x, 3) == 0 || Math.floorMod(z, 3) == 0 ? "polished_deepslate"
@@ -83,7 +85,7 @@ public final class Mastermind extends BaseRoom {
             arena.set(-2 - 0, 3 + c, 7, wool(c));
         }
         drawGuess();
-        com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.VaultLook.build(arena, tier, pegs(), rows()));
+        com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.VaultLook.build(arena, tier, pegs(), boardRows()));
         int i = 0;
         for (ServerPlayer player : players.values()) {
             arena.put(player, 1.5 + i++, 1, 1.5, 0F);

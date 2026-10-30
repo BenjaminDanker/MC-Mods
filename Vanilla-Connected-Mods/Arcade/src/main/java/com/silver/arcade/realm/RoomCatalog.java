@@ -63,7 +63,7 @@ public final class RoomCatalog {
         Rooms.add(new RoomType("two_booths", Room.Kind.DUO, 2, 2, 1, SplitSimon::new).curve(Difficulty.linear(1, 18, Difficulty.After.HOLD)));
         // Batch 3 (phase 3).
         Rooms.add(new RoomType("block_party", Room.Kind.GROUP, 1, 16, 1, BlockParty::new).curve(Difficulty.linear(1, 25, Difficulty.After.HOLD)));
-        Rooms.add(new RoomType("crack_the_code", Room.Kind.DUO, 1, 2, 3, Mastermind::new).curve(Difficulty.linear(3, 27, Difficulty.After.HOLD)));
+        Rooms.add(new RoomType("crack_the_code", Room.Kind.DUO, 1, 2, 1, Mastermind::new).curve(Difficulty.linear(1, 25, Difficulty.After.HOLD)));
         Rooms.add(new RoomType("sliding_picture", Room.Kind.DUO, 1, 2, 1, TileSlide::new).curve(Difficulty.linear(1, 25, Difficulty.After.HOLD)));
         Rooms.add(new RoomType("pairs", Room.Kind.DUO, 1, 2, 1, MemoryPairs::new).curve(Difficulty.linear(1, 25, Difficulty.After.HOLD)));
         Rooms.add(new RoomType("musical_chairs", Room.Kind.GROUP, 2, 16, 1, MusicalChairs::new).curve(Difficulty.linear(1, 15, Difficulty.After.HOLD)));
