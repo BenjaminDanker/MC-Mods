@@ -131,6 +131,7 @@ public final class RealmRole implements Run.Host {
             Run run = runOf(user.getUUID());
             return run != null && run.hit(user, pos) ? InteractionResult.SUCCESS : InteractionResult.PASS;
         });
+        com.silver.arcade.selftest.SelfTest.install(server, "realm", this, config, db); // self-test hook: inert unless config/arcade-selftest.json exists
         LOGGER.info("Arcade realm open: {} room types", Rooms.all().size());
     }
 

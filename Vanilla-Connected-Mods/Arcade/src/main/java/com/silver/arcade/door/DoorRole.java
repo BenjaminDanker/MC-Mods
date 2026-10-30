@@ -99,6 +99,7 @@ public final class DoorRole {
                 entity.discard();
             }
         });
+        com.silver.arcade.selftest.SelfTest.install(server, "door", this, config, db); // self-test hook: inert unless config/arcade-selftest.json exists
         LOGGER.info("Arcade door role: up to {} discovery doors for newcomers; the die opens doors on demand", config.door.discoveryMax);
     }
 

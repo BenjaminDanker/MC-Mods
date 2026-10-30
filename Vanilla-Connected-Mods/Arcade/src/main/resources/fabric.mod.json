@@ -7,6 +7,9 @@
   "authors": ["BenjaminDanker"],
   "license": "MIT",
   "environment": "server",
+  "mixins": [
+    "arcade.mixins.json"
+  ],
   "entrypoints": {
     "main": ["com.silver.arcade.ArcadeMod"]
   },
