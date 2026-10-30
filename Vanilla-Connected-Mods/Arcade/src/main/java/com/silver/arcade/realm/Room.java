@@ -19,7 +19,7 @@ public interface Room {
 
     String title();
 
-    /** The Gamemaster's explanation, said the first time a player meets this room (or on !explain). */
+    /** The Gamemaster's explanation, said the first time a player meets this room (or on /explain). */
     String explain();
 
     /** Hard time limit at this tier. */

@@ -43,9 +43,10 @@ public final class Gamemaster {
         // No title: the boss bar already names the room and the tier.
         if (player.addTag(SEEN_PREFIX + room.id())) {
             say(player, room.explain());
+            player.sendSystemMessage(Component.literal("/explain repeats the rules  \u00b7  /giveup ends the room").withStyle(ChatFormatting.DARK_GRAY));
             return true;
         } else {
-            bar(player, "!explain repeats the rules, /giveup ends the room");
+            player.sendSystemMessage(Component.literal("/explain repeats the rules  \u00b7  /giveup ends the room").withStyle(ChatFormatting.DARK_GRAY));
         }
         return false;
     }

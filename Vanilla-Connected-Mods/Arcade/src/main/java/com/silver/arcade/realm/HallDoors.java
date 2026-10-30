@@ -188,16 +188,33 @@ final class HallDoors {
         maybeCall(now, free);
     }
 
+    /** True while the player waits behind a door (for a climb or a Grand Game). */
+    boolean isWaiting(java.util.UUID id) {
+        return grandWaiting.contains(id) || waiting.values().stream().anyMatch(set -> set.contains(id));
+    }
+
+    /** /giveup in a waiting room: back out to the hall (the others behind that door keep waiting). */
+    void leave(ServerPlayer player) {
+        java.util.UUID id = player.getUUID();
+        grandWaiting.remove(id);
+        waiting.values().forEach(set -> set.remove(id));
+        forgetGone();
+        player.teleportTo(level(), 0.5, 101, 0.5, Set.of(), 0F, 0F, false);
+        server.getCommands().sendCommands(player);
+    }
+
     private void enter(int index, ServerPlayer player, long now) {
         ArcadeConfig.HallDoor door = config.hall.doors.get(index);
         player.teleportTo(level(), door.waitX, door.waitY, door.waitZ, Set.of(), door.waitYaw, 0F, false);
         if (callOpen(now)) {
             grandWaiting.add(player.getUUID());
             Gamemaster.say(player, "To the Grand Game with you.");
+            server.getCommands().sendCommands(player);
             return;
         }
         waiting.computeIfAbsent(index, i -> new LinkedHashSet<>()).add(player.getUUID());
         firstAt.putIfAbsent(index, now);
+        server.getCommands().sendCommands(player); // /giveup becomes available
     }
 
     /** The Gamemaster calls a Grand Game when the arcade is busy enough, no more than once per cooldown. */

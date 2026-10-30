@@ -140,14 +140,31 @@ public final class RealmRole implements Run.Host {
         });
         com.silver.arcade.selftest.SelfTest.install(server, "realm", this, config, db); // self-test hook: inert unless config/arcade-selftest.json exists
         // Registered straight into the dispatcher: the realm starts after the usual command registration.
-        server.getCommands().getDispatcher().register(net.minecraft.commands.Commands.literal("giveup").executes(context -> {
+        // /giveup and /explain exist for a player only while they can be used (the command list is re-sent to them
+        // when they enter or leave a waiting room or a climb).
+        var dispatcher = server.getCommands().getDispatcher();
+        dispatcher.register(net.minecraft.commands.Commands.literal("giveup")
+            .requires(source -> source.getPlayer() != null && (runOf(source.getPlayer().getUUID()) != null
+                || doors.isWaiting(source.getPlayer().getUUID())))
+            .executes(context -> {
                 ServerPlayer user = context.getSource().getPlayerOrException();
                 Run run = runOf(user.getUUID());
-                if (run == null) {
-                    context.getSource().sendFailure(Component.literal("You are not in a room."));
+                if (run != null) {
+                    run.giveUp(user);
+                } else if (doors.isWaiting(user.getUUID())) {
+                    doors.leave(user);
+                }
+                return 1;
+            }));
+        dispatcher.register(net.minecraft.commands.Commands.literal("explain")
+            .requires(source -> source.getPlayer() != null && runOf(source.getPlayer().getUUID()) != null)
+            .executes(context -> {
+                ServerPlayer user = context.getSource().getPlayerOrException();
+                Run run = runOf(user.getUUID());
+                if (run == null || !run.explain(user)) {
+                    context.getSource().sendFailure(Component.literal("There's nothing to explain right now."));
                     return 0;
                 }
-                run.giveUp(user);
                 return 1;
             }));
         LOGGER.info("Arcade realm open: {} room types", Rooms.all().size());
@@ -340,6 +357,7 @@ public final class RealmRole implements Run.Host {
     private void startRun(List<ServerPlayer> group, boolean together) {
         LOGGER.info("Arcade {} starts for {}", together ? "Grand Game" : "run", group.stream().map(p -> p.getName().getString()).toList());
         runs.add(new Run(server, level(), this, new ArrayList<>(group), 1, 0, false, together));
+        group.forEach(p -> server.getCommands().sendCommands(p));
     }
 
     private void gather(List<ServerPlayer> onCircle) {
@@ -386,6 +404,7 @@ public final class RealmRole implements Run.Host {
         player.setHealth(player.getMaxHealth());
         player.getFoodData().setFoodLevel(20);
         PlayerKit.fed(player);
+        server.getCommands().sendCommands(player);
     }
 
     @Override

@@ -215,7 +215,7 @@ public final class DiscoveredCommandPolicies {
         add(policies, CommandClassification.PUBLIC, null, "faction-lock", "faction-lock", "/faction");
         add(policies, CommandClassification.PUBLIC, null, "element-choice", "element-choice", "/skills");
         // The arcade: anyone in a room may end it early.
-        add(policies, CommandClassification.PUBLIC, null, "arcade", "arcade", "/giveup");
+        add(policies, CommandClassification.PUBLIC, null, "arcade", "arcade", "/giveup", "/explain");
         add(policies, CommandClassification.PERMISSION, "commands.admin.bending", "element-choice", "element-choice",
                 "/skills check", "/skills admin");
 

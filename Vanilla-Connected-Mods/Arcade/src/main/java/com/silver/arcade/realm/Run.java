@@ -202,9 +202,8 @@ public final class Run {
             return;
         }
         Room room = type.factory().get();
-        // The room plays at its own level for this climb tier (config/arcade-difficulty.json); forced test rooms
-        // without a curve entry play at the climb tier.
-        int roomLevel = Math.max(1, Difficulty.level(type.id(), tier));
+        // The room plays at its own level for this climb tier (its curve in RoomCatalog).
+        int roomLevel = Math.max(1, Difficulty.level(type, tier));
         Arena arena = Arena.take(level);
         LOGGER.info("Arcade room {} (tier {}, level {}) for {}", type.id(), tier, roomLevel, online.stream().map(p -> p.getName().getString()).toList());
         Party party = new Party(room, arena, members, room.timeLimitTicks(roomLevel), server.getTickCount(), tier);
@@ -434,10 +433,6 @@ public final class Run {
     public boolean chat(ServerPlayer player, String message) {
         for (Party party : parties) {
             if (!party.over && party.members.contains(player.getUUID())) {
-                if (message.trim().equalsIgnoreCase("!explain")) {
-                    Gamemaster.explainAgain(player, party.room);
-                    return true;
-                }
                 return party.room.chat(player, message);
             }
         }
@@ -472,7 +467,18 @@ public final class Run {
         return false;
     }
 
-    /** The Give up item: the room ends now for this player, as a fail. */
+    /** /explain: the rules of the room this player is in, again. */
+    public boolean explain(ServerPlayer player) {
+        for (Party party : parties) {
+            if (!party.over && party.members.contains(player.getUUID())) {
+                Gamemaster.explainAgain(player, party.room);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** /giveup: the room ends now for this player, as a fail. */
     public void giveUp(ServerPlayer player) {
         for (Party party : parties) {
             if (!party.over && party.members.contains(player.getUUID()) && !party.arena.decorating()) {
@@ -557,6 +563,7 @@ public final class Run {
         }
         players.add(id);
         LOGGER.info("Arcade: {} rejoined their group's climb at tier {}", player.getName().getString(), tier);
+        server.getCommands().sendCommands(player);
         player.setGameMode(net.minecraft.world.level.GameType.ADVENTURE);
         Gamemaster.say(player, "Back in the game. Your group is at tier " + tier + "; you'll join them from the next round.");
         if (phase == Phase.ROOMS) {

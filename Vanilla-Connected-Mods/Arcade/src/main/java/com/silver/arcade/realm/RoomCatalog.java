@@ -46,7 +46,8 @@ public final class RoomCatalog {
         Rooms.add(new RoomType("typing", Room.Kind.GROUP, 1, 16, 1, TypingRace::new));
         Rooms.add(new RoomType("math", Room.Kind.GROUP, 1, 16, 1, MathSprint::new));
         Rooms.add(new RoomType("maze", Room.Kind.DUO, 1, 2, 1, Maze::new));
-        Rooms.add(new RoomType("connect4", Room.Kind.SOLO, 1, 1, 1, ConnectFour::new));
+        // Connect Four: the bot's level 1-15 (ConnectFourBoard), one per climb tier, then it holds.
+        Rooms.add(new RoomType("connect4", Room.Kind.SOLO, 1, 1, 1, ConnectFour::new).curve(Difficulty.linear(1, 15, Difficulty.After.HOLD)));
         Rooms.add(new RoomType("memory", Room.Kind.DUO, 1, 2, 1, Memory::new));
         Rooms.add(new RoomType("parkour", Room.Kind.SOLO, 1, 1, 1, Parkour::new));
         Rooms.add(new RoomType("lights_out", Room.Kind.DUO, 1, 2, 1, LightsOut::new));
