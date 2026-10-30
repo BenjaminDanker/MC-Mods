@@ -93,7 +93,7 @@ final class RoomsSuite {
         ANIM.put("archery", List.of(BLOCKS));
         ANIM.put("hole_in_the_wall", List.of(BLOCKS));
         ANIM.put("musical_chairs", List.of(SOUND));
-        ANIM.put("red_light_green_light", List.of("ClientboundSetTitleTextPacket~Green"));
+        ANIM.put("red_light_green_light", List.of("ClientboundSetSubtitleTextPacket~Green")); // signals use the subtitle line only
         ANIM.put("parkour", List.of());
     }
 
@@ -294,7 +294,8 @@ final class RoomsSuite {
         }
         // --- what the player was told and shown
         List<PacketLog.Rec> got = PacketLog.since(bots[0], marks.get(bots[0]));
-        t.check(label + ": the title with the room's name was sent", PacketLog.hasText(got, "ClientboundSetTitleTextPacket", live.room.title()), "");
+        // The room is named on the boss bar now (no big title any more): a boss bar was shown.
+        t.check(label + ": the boss bar was shown", PacketLog.count(got, "ClientboundBossEventPacket") > 0, "");
         t.check(label + ": the timer bar was sent", PacketLog.has(got, "ClientboundBossEventPacket"), "");
         if (win && cleared.contains(ids.get(0))) {
             t.check(label + ": 'Cleared!' bar shown", PacketLog.hasText(got, "ClientboundSystemChatPacket", "Cleared!"), "");
@@ -358,7 +359,7 @@ final class RoomsSuite {
         }
         t.check(label + ": the run reaches the choice platform", choice && choiceArena != null, "phase " + t.on(live::phase));
         List<PacketLog.Rec> got = PacketLog.since(bots[0], marks.get(bots[0]));
-        t.check(label + ": 'Tier " + tier + " cleared' title sent", PacketLog.hasText(got, "ClientboundSetTitleTextPacket", "cleared"), "");
+        t.check(label + ": 'Tier " + tier + " cleared' title sent", PacketLog.hasText(got, "ClientboundSetSubtitleTextPacket", "cleared"), "");
         if (choiceArena instanceof Arena choose) {
             boolean there = t.on(() -> {
                 ServerPlayer p = t.server.getPlayerList().getPlayerByName(bots[0]);

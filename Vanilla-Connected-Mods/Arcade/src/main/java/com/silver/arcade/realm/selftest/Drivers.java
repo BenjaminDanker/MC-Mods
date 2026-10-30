@@ -885,10 +885,21 @@ final class Drivers {
                 }
             } else if (!landed[0]) {
                 landed[0] = true; // one landing, then the bot stays put and settles on the gold
+                // the gold landing is a 3x3 one gap along the spiral from the last ledge: find its centre at the top
+                int[] gold = null;
+                for (int gx = -10; gx <= 10 && gold == null; gx++) {
+                    for (int gz = -10; gz <= 10; gz++) {
+                        if (level(c).getBlockState(c.at(gx, top, gz)).is(net.minecraft.world.level.block.Blocks.GOLD_BLOCK)
+                                && level(c).getBlockState(c.at(gx + 1, top, gz + 1)).is(net.minecraft.world.level.block.Blocks.GOLD_BLOCK)) {
+                            gold = new int[] {gx + 1, gz + 1};
+                            break;
+                        }
+                    }
+                }
+                int[] spot = gold != null ? gold : new int[] {ledges.get(ledges.size() - 1)[0], ledges.get(ledges.size() - 1)[2]};
                 for (int i = 0; i < c.n(); i++) {
                     if (!c.decided(i)) {
-                        int[] last = ledges.get(ledges.size() - 1);
-                        c.putAbs(i, c.o().getX() + last[0] + 0.5, c.o().getY() + top + 1.0, c.o().getZ() + last[2] + 0.5);
+                        c.putAbs(i, c.o().getX() + spot[0] + 0.5, c.o().getY() + top + 1.0, c.o().getZ() + spot[1] + 0.5);
                     }
                 }
             }
