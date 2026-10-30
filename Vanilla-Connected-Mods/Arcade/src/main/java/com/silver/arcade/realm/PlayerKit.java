@@ -20,8 +20,6 @@ import net.minecraft.world.level.block.Block;
  */
 public final class PlayerKit {
     private static final Identifier REACH = Identifier.fromNamespaceAndPath("arcade", "room_reach");
-    /** Extra blocks of reach in rooms (4.5 + 5.5 = 10). */
-    private static final double EXTRA_REACH = 5.5;
 
     private PlayerKit() {
     }
@@ -29,7 +27,7 @@ public final class PlayerKit {
     public static void enterRoom(ServerPlayer player, Room room) {
         var reach = player.getAttribute(Attributes.BLOCK_INTERACTION_RANGE);
         if (reach != null) {
-            reach.addOrUpdateTransientModifier(new AttributeModifier(REACH, EXTRA_REACH, AttributeModifier.Operation.ADD_VALUE));
+            reach.addOrUpdateTransientModifier(new AttributeModifier(REACH, Math.max(0, room.reach() - 4.5), AttributeModifier.Operation.ADD_VALUE));
         }
         if (!room.hunger()) {
             fed(player);

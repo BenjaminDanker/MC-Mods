@@ -76,6 +76,11 @@ public interface Room {
         return 6;
     }
 
+    /** How far players can reach in this room, in blocks (vanilla is 4.5; boards stand a few blocks away). */
+    default double reach() {
+        return 10;
+    }
+
     /** Whether players get hungry here (the arcade has no food; off unless a room's game is about it). */
     default boolean hunger() {
         return false;

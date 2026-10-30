@@ -32,6 +32,12 @@ public final class SpotDifference extends BaseRoom {
         return "The two pictures match, except for a few blocks. Right-click every difference on the right-hand picture. Three wrong picks and you lose.";
     }
 
+    /** Pictures grow to 11x11 side by side: reach every corner from the floor. */
+    @Override
+    public double reach() {
+        return 16;
+    }
+
     int count() { return Math.min(9, 3 + tier / 2); }
 
     public int timeLimitTicks(int tier) {
@@ -82,7 +88,7 @@ public final class SpotDifference extends BaseRoom {
         com.silver.arcade.realm.deco.Deco.async(arena, () -> com.silver.arcade.realm.deco.DetectiveLook.build(arena, tier, size));
         int n = 0;
         for (ServerPlayer player : players.values()) {
-            arena.put(player, 0.5 + n++, 1, -1.5, 0F);
+            arena.put(player, 0.5 + n++, 1, 1.5, 0F);
         }
     }
 
