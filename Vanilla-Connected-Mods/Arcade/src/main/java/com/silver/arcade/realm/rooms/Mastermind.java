@@ -12,7 +12,7 @@ import net.minecraft.world.level.block.state.BlockState;
 
 /**
  * Mastermind: crack the Gamemaster's colour code. Set your guess on the bottom row (hit a peg to change its colour),
- * then hit the gold button block. Beside each guess: a gold block per peg right in colour and place, an iron block per
+ * then hit the glowing copper check button. Beside each guess: a gold block per peg right in colour and place, an iron block per
  * right colour in the wrong place. Crack it before you run out of rows.
  */
 public final class Mastermind extends BaseRoom {
@@ -28,8 +28,9 @@ public final class Mastermind extends BaseRoom {
     public String id() { return "mastermind"; }
     public String title() { return "Crack the Code"; }
     public String explain() {
-        return "I've hidden a colour code. Right-click the pegs on the bottom row to set your guess, then right-click the gold block to check it. "
-            + "Gold beside a row means a right colour in the right place; iron means a right colour in the wrong place.";
+        return "I've hidden a colour code. Right-click the pegs on the bottom row to set your guess, then right-click the glowing copper button to check it. "
+            + "Beside each row, a gold block counts a right colour in the right place and an iron block a right colour in the wrong place. "
+            + "They are only counts, in no order: they don't say which peg.";
     }
 
     int pegs() { return tier >= 6 ? 5 : 4; }
@@ -59,7 +60,7 @@ public final class Mastermind extends BaseRoom {
         // button sits on a dark pedestal with a lamp over it.
         int bx1 = pegs() + pegs() + 2, top = 2 + rows() + 1;
         for (int x = -3; x <= bx1 + 1; x++) {
-            for (int z = -2; z <= 5; z++) {
+            for (int z = -2; z <= 7; z++) { // the floor runs under the board too: no gap to fall through
                 arena.set(x, 0, z, st(Math.floorMod(x, 3) == 0 || Math.floorMod(z, 3) == 0 ? "polished_deepslate"
                     : Math.floorMod(x + z, 2) == 0 ? "iron_block" : "smooth_stone"));
             }
@@ -69,7 +70,11 @@ public final class Mastermind extends BaseRoom {
                 arena.set(x, y, 7, st(x == -2 || x == bx1 || y == 1 || y == top ? "iron_block" : "polished_blackstone"));
             }
         }
-        arena.set(-2, 2, 6, Blocks.GOLD_BLOCK.defaultBlockState()); // the check button
+        // a steel plinth the peg row stands on (closes the space under the pegs)
+        for (int x = -3; x < bx1; x++) {
+            arena.set(x, 1, 6, st("polished_deepslate"));
+        }
+        arena.set(-2, 2, 6, st("waxed_copper_bulb[lit=true]")); // the check button (gold and iron mean scores here)
         arena.set(-2, 1, 6, st("chiseled_polished_blackstone"));
         arena.set(-3, 2, 6, st("redstone_lamp[lit=true]"));
         // A palette strip so players see which colours are in play.
@@ -98,7 +103,7 @@ public final class Mastermind extends BaseRoom {
 
     private void drawRow(int y, int[] pegsRow, int[] score) {
         for (int i = 0; i < pegs(); i++) {
-            arena.set(i, y, 6, pegsRow[i] < 0 ? Blocks.CONCRETE.lightGray().defaultBlockState() : wool(pegsRow[i]));
+            arena.set(i, y, 6, pegsRow[i] < 0 ? Blocks.TINTED_GLASS.defaultBlockState() : wool(pegsRow[i])); // dark glass: an empty peg
         }
         // Feedback: gold per right colour in the right place, iron per right colour in the wrong place, dark otherwise.
         int x = pegs() + 1;
@@ -169,9 +174,10 @@ public final class Mastermind extends BaseRoom {
             players.values().forEach(p -> Gamemaster.say(p, "Out of rows. The code was " + describe() + "."));
             return;
         }
-        java.util.Arrays.fill(guess, -1);
+        // the new guess starts as a copy of the last one: change only the pegs you want
         drawBoard();
-        players.values().forEach(p -> Gamemaster.bar(p, (rows() - row) + " guesses left"));
+        String said = s[0] + " right place, " + s[1] + " right colour wrong place · " + (rows() - row) + " guesses left";
+        players.values().forEach(p -> Gamemaster.bar(p, said));
     }
 
     private String describe() {
