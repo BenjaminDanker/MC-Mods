@@ -470,7 +470,8 @@ final class Drivers {
             boolean up = c.t.on(() -> !level(c).getBlockState(c.at(fb % columns, 2 + rows - 1 - fb / columns, 5)).is(Blocks.GLAZED_TERRACOTTA.black()));
             c.check("a turned tile shows its face", up, "");
             boolean down = c.until(() -> level(c).getBlockState(c.at(fb % columns, 2 + rows - 1 - fb / columns, 5)).is(Blocks.GLAZED_TERRACOTTA.black()), 80);
-            c.check("a mismatched tile turns back face down", down, "");
+            c.check("a mismatched tile turns back face down", down, down ? "" : c.t.on(() -> "first " + c.<Integer>f("first") + ", second " + c.<Integer>f("second")
+                + ", hideAt " + c.<Long>f("hideAt") + ", room clock " + c.<Long>f("now") + ", arena decorating " + c.live.arena.decorating()));
             return;
         }
         List<int[]> pairs = new ArrayList<>();

@@ -97,7 +97,7 @@ public final class DoorRole {
         });
         // Doors are never saved: any door entity found when a chunk loads is a leftover.
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents.ENTITY_LOAD.register((entity, level) -> {
-            if (entity.entityTags().contains(DOOR_TAG) && !liveParts.contains(entity)) {
+            if (entity.entityTags().contains(DOOR_TAG) && !liveParts.contains(entity) && !readopt(entity)) {
                 entity.discard();
             }
         });
@@ -238,6 +238,25 @@ public final class DoorRole {
             LOGGER.error("Could not build part of the arcade door", failure);
             return null;
         }
+    }
+
+    /**
+     * A part of a door that is still open, coming back with its chunk (a reload makes a new object with the same UUID):
+     * it takes the old object's place instead of being discarded as a leftover.
+     */
+    private boolean readopt(Entity entity) {
+        for (Door door : doors) {
+            for (int i = 0; i < door.parts.size(); i++) {
+                Entity old = door.parts.get(i);
+                if (old.getUUID().equals(entity.getUUID())) {
+                    liveParts.remove(old);
+                    liveParts.add(entity);
+                    door.parts.set(i, entity);
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private void close(Door door, boolean fade) {

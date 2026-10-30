@@ -212,7 +212,9 @@ final class WorldSuite {
             t.check("...and the entry is recorded (arcade_entries)", DoorSuites.rows("arcade_entries", id) == 1, "");
             // the door closes when its time is up
             long left = closesAt - t.tick();
-            boolean closed = t.until(() -> Reflect.<List<?>>get(SelfTest.ENV.roleObject, "doors").size() <= doorsBefore, (int) left + 100);
+            // This very door, not the list size: a door left over from an earlier run (frozen while the empty server was paused) closes on its
+            // own schedule right after the run starts, which shrinks the list while this door still stands.
+            boolean closed = t.until(() -> !Reflect.<List<?>>get(SelfTest.ENV.roleObject, "doors").contains(door), (int) left + 100);
             long lived = t.tick() - openedAt;
             int configured = SelfTest.ENV.config.door.dieDoorSeconds * 20;
             t.check("the door is taken down after " + SelfTest.ENV.config.door.dieDoorSeconds + " s", closed && Math.abs(lived - configured) < 40,
