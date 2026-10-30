@@ -178,7 +178,7 @@ public final class Mastermind extends BaseRoom {
         // the new guess starts as a copy of the last one: change only the pegs you want
         drawBoard();
         String said = s[0] + " right place, " + s[1] + " right colour wrong place · " + (rows() - row) + " guesses left";
-        players.values().forEach(p -> Gamemaster.bar(p, said));
+        players.values().forEach(p -> Gamemaster.say(p, said));
     }
 
     private String describe() {
