@@ -207,6 +207,7 @@ public final class Run {
         for (ServerPlayer player : online) {
             lastRoom.put(player.getUUID(), type.id());
             NameTags.set(player, room.hideNameTags());
+            ViewDistance.set(player, room.viewDistance());
             party.bar.addPlayer(player);
             Gamemaster.introduce(player, room, tier);
         }

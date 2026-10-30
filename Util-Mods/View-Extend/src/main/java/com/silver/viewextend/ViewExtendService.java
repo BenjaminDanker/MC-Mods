@@ -1125,8 +1125,10 @@ public final class ViewExtendService {
     }
 
     public int getEffectiveTotalDistance(ServerPlayer player, int normalDistance) {
-        return ViewDistancePolicy.effective(normalDistance, config.unsimulatedViewDistance(),
+        int effective = ViewDistancePolicy.effective(normalDistance, config.unsimulatedViewDistance(),
                 player.requestedViewDistance(), config.clientReportedViewDistanceHardCap());
+        Integer cap = ViewExtendApi.CAPS.get(player.getUUID());
+        return cap == null ? effective : Math.min(effective, Math.max(normalDistance, cap));
     }
 
     public int getRequiredClientLoadDistance(ServerPlayer player) {

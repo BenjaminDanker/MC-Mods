@@ -71,6 +71,11 @@ public interface Room {
     /** A player left mid-room: they fail it. */
     void left(UUID player);
 
+    /** How far players in this room see, in chunks (View Extend); 0 = the normal view distance. Big open maps ask for more. */
+    default int viewDistance() {
+        return 0;
+    }
+
     /** Hide everyone's name tag in this room (name tags show through walls; hide-and-seek style rooms need this off). */
     default boolean hideNameTags() {
         return false;

@@ -35,6 +35,7 @@ public class ViewExtendMod implements ModInitializer {
             if (service != null) service.onChunkAvailable(world, chunk);
         });
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+            ViewExtendApi.clear(handler.getPlayer().getUUID());
             if (service != null) service.resetPlayer(handler.player);
         });
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
