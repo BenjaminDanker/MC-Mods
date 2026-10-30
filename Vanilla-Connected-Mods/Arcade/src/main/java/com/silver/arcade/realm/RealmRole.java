@@ -173,13 +173,11 @@ public final class RealmRole implements Run.Host {
             .then(net.minecraft.commands.Commands.literal("stats")
                 .executes(context -> stats(context.getSource(), null))
                 .then(net.minecraft.commands.Commands.argument("room", com.mojang.brigadier.arguments.StringArgumentType.word())
-                    .suggests((context, builder) -> net.minecraft.commands.SharedSuggestionProvider.suggest(
-                        Rooms.all().stream().map(RoomType::id), builder))
+                    .suggests((context, builder) -> roomSuggestions(builder))
                     .executes(context -> stats(context.getSource(), com.mojang.brigadier.arguments.StringArgumentType.getString(context, "room")))))
             .then(net.minecraft.commands.Commands.literal("play")
                 .then(net.minecraft.commands.Commands.argument("room", com.mojang.brigadier.arguments.StringArgumentType.word())
-                    .suggests((context, builder) -> net.minecraft.commands.SharedSuggestionProvider.suggest(
-                        Rooms.all().stream().map(RoomType::id), builder))
+                    .suggests((context, builder) -> roomSuggestions(builder))
                     .executes(context -> testClimb(context.getSource(), com.mojang.brigadier.arguments.StringArgumentType.getString(context, "room"), 1))
                     .then(net.minecraft.commands.Commands.argument("tier", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1, 200))
                         .executes(context -> testClimb(context.getSource(),
@@ -389,7 +387,39 @@ public final class RealmRole implements Run.Host {
         return pos.getY() == centre.getY() && dx * dx + dz * dz <= 5;
     }
 
-    private int stats(net.minecraft.commands.CommandSourceStack source, String room) {
+    /** A room's title as one word ("Crack the Code" -> crack_the_code), accepted alongside its id. */
+    private static String titleWord(RoomType type) {
+        return type.factory().get().title().toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9]+", "_").replaceAll("^_|_$", "");
+    }
+
+    /** Suggests each room by id and by its title as one word; hovering shows the title. */
+    private static java.util.concurrent.CompletableFuture<com.mojang.brigadier.suggestion.Suggestions> roomSuggestions(
+            com.mojang.brigadier.suggestion.SuggestionsBuilder builder) {
+        String typed = builder.getRemaining().toLowerCase(java.util.Locale.ROOT);
+        for (RoomType type : Rooms.all()) {
+            Component title = Component.literal(type.factory().get().title());
+            for (String name : new String[] {type.id(), titleWord(type)}) {
+                if (name.startsWith(typed)) {
+                    builder.suggest(name, net.minecraft.network.chat.ComponentUtils.fromMessage(title));
+                }
+            }
+        }
+        return builder.buildFuture();
+    }
+
+    /** The room named by id or by its title as one word, or null. */
+    private static RoomType roomNamed(String name) {
+        for (RoomType type : Rooms.all()) {
+            if (type.id().equals(name) || titleWord(type).equals(name)) {
+                return type;
+            }
+        }
+        return null;
+    }
+
+    private int stats(net.minecraft.commands.CommandSourceStack source, String named) {
+        RoomType type = named == null ? null : roomNamed(named);
+        String room = type == null ? named : type.id();
         db.roomStats(room, 30).whenComplete((rows, failure) -> server.execute(() -> {
             if (failure != null) {
                 source.sendFailure(Component.literal("Could not read the room log."));
@@ -426,7 +456,7 @@ public final class RealmRole implements Run.Host {
     private int testClimb(net.minecraft.commands.CommandSourceStack source, String roomId, int tier)
             throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         ServerPlayer player = source.getPlayerOrException();
-        RoomType type = Rooms.all().stream().filter(t -> t.id().equals(roomId)).findFirst().orElse(null);
+        RoomType type = roomNamed(roomId);
         if (type == null) {
             source.sendFailure(Component.literal("No room called " + roomId + "."));
             return 0;
