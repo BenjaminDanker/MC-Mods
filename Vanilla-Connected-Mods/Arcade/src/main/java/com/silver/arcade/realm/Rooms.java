@@ -21,7 +21,12 @@ public final class Rooms {
 
     /** A room for exactly {@code players} players at {@code tier}, avoiding the previous room's type when possible. */
     public static RoomType pick(int players, int tier, String previous, Random random) {
-        RoomType forced = forced();
+        return pick(players, tier, previous, random, false);
+    }
+
+    /** {@code testPlayers}: everyone in the room is a test player, so the testing force file may choose the room. */
+    public static RoomType pick(int players, int tier, String previous, Random random, boolean testPlayers) {
+        RoomType forced = testPlayers ? forced() : null;
         if (forced != null && players >= forced.minPlayers() && players <= forced.maxPlayers()) {
             return forced;
         }

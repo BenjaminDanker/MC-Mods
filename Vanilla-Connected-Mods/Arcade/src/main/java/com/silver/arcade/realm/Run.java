@@ -152,22 +152,34 @@ public final class Run {
         return tier;
     }
 
+    /** True when every player in this climb is a test player: a self-test bot or the real-client QA driver. */
+    private boolean testPlayersOnly() {
+        for (UUID id : players) {
+            ServerPlayer p = server.getPlayerList().getPlayer(id);
+            if (p == null || !(com.silver.arcade.selftest.Bots.isBot(p) || p.getGameProfile().name().startsWith("QABot"))) {
+                return false;
+            }
+        }
+        return !players.isEmpty();
+    }
+
     /** Splits the players into parties for this round and starts a room for each. */
     private void startRound() {
         phase = Phase.ROOMS;
-        if (Rooms.forcedTier() > 0) {
+        // The testing force file only ever steers climbs of test players (self-test bots, the QA client), never a real player's.
+        if (testPlayersOnly() && Rooms.forcedTier() > 0) {
             tier = Rooms.forcedTier();
         }
         phaseStart = server.getTickCount();
         List<UUID> order = new ArrayList<>(players);
         Collections.shuffle(order, random);
         for (List<UUID> party : split(order)) {
-            RoomType type = testRoom != null ? testRoom : Rooms.pick(party.size(), tier, lastRoom.get(party.get(0)), random);
+            RoomType type = testRoom != null ? testRoom : Rooms.pick(party.size(), tier, lastRoom.get(party.get(0)), random, testPlayersOnly());
             testRoom = null; // only the first room is chosen; the climb then goes on as usual
             if (type == null && party.size() > 1) {
                 // Nothing fits this party size: everyone in it plays alone.
                 for (UUID solo : party) {
-                    launch(List.of(solo), Rooms.pick(1, tier, lastRoom.get(solo), random));
+                    launch(List.of(solo), Rooms.pick(1, tier, lastRoom.get(solo), random, testPlayersOnly()));
                 }
                 continue;
             }
@@ -589,7 +601,7 @@ public final class Run {
         player.setGameMode(net.minecraft.world.level.GameType.ADVENTURE);
         Gamemaster.say(player, "Back in the game. Your group is at tier " + tier + "; you'll join them from the next round.");
         if (phase == Phase.ROOMS) {
-            launch(List.of(id), Rooms.pick(1, tier, lastRoom.get(id), random));
+            launch(List.of(id), Rooms.pick(1, tier, lastRoom.get(id), random, testPlayersOnly()));
         } else if (phase == Phase.CHOICE && choiceArena != null) {
             choiceArena.put(player, 0.5, 1, 0.5, 180F);
             int cleared = prizeTier;
@@ -654,7 +666,7 @@ public final class Run {
             ServerPlayer player = server.getPlayerList().getPlayer(other);
             if (player != null) {
                 Gamemaster.say(player, "Your partner hasn't come back. No matter: a room of your own, same tier.");
-                launch(List.of(other), Rooms.pick(1, tier, lastRoom.get(other), random));
+                launch(List.of(other), Rooms.pick(1, tier, lastRoom.get(other), random, testPlayersOnly()));
             }
         }
         // A room still being prepared for people who are gone is thrown away at once.

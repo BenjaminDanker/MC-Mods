@@ -28,7 +28,7 @@ import net.minecraft.world.level.storage.LevelResource;
 import net.minecraft.world.phys.AABB;
 
 /**
- * Every room, at tier 1, tier 5 and the highest tier its caps reach: built, decorated, won through real inputs, lost,
+ * Every room, at its first tier, a middle tier and the top level of its curve (RoomCatalog): built, decorated, won through real inputs, lost,
  * and torn down again (arena released, ledger gone, nothing left behind).
  */
 final class RoomsSuite {
@@ -45,11 +45,11 @@ final class RoomsSuite {
     private static final String SOUND = "ClientboundSoundPacket|ClientboundSoundEntityPacket";
 
     static {
-        Object[][] max = {{"typing", 24}, {"math", 22}, {"maze", 26}, {"connect4", 12}, {"memory", 17}, {"parkour", 25}, {"lights_out", 23},
-            {"pattern", 8}, {"archery", 9}, {"dropper", 11}, {"falling_floor", 10}, {"red_light", 13}, {"waves", 8}, {"spleef", 12},
-            {"sumo", 9}, {"split_simon", 12}, {"block_party", 14}, {"mastermind", 12}, {"slide", 16}, {"pairs", 12}, {"chairs", 10},
-            {"hot_potato", 12}, {"king_hill", 13}, {"hide_seek", 15}, {"whack", 14}, {"hanoi", 9}, {"spot", 12}, {"treasure", 10},
-            {"lava_rising", 13}, {"hole_wall", 12}};
+        Object[][] max = {{"typing", 25}, {"math", 25}, {"maze", 25}, {"connect4", 15}, {"memory", 25}, {"parkour", 25}, {"lights_out", 25},
+            {"pattern", 25}, {"archery", 25}, {"dropper", 25}, {"falling_floor", 25}, {"red_light", 25}, {"waves", 26}, {"spleef", 15},
+            {"sumo", 15}, {"split_simon", 18}, {"block_party", 25}, {"mastermind", 27}, {"slide", 25}, {"pairs", 25}, {"chairs", 15},
+            {"hot_potato", 15}, {"king_hill", 15}, {"hide_seek", 15}, {"whack", 25}, {"hanoi", 26}, {"spot", 26}, {"treasure", 26},
+            {"lava_rising", 26}, {"hole_wall", 26}};
         for (Object[] m : max) {
             MAX_TIER.put((String) m[0], (Integer) m[1]);
         }
@@ -182,8 +182,9 @@ final class RoomsSuite {
         } else if (t.options.quick) {
             want.add(1);
         } else {
-            want.add(1);
-            want.add(5);
+            int first = type.minTier();
+            want.add(first);
+            want.add((first + max) / 2);
             want.add(max);
         }
         List<Integer> out = new ArrayList<>();
