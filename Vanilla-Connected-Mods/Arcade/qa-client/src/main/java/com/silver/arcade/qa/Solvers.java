@@ -149,6 +149,14 @@ public final class Solvers {
                     String before = W.idAt(b, p);
                     if (use(p, "lamp " + x + "," + y)) {
                         changed(p, before, 20);
+                        StringBuilder sb = new StringBuilder();
+                        for (int yy = n - 1; yy >= 0; yy--) {
+                            for (int xx = 0; xx < n; xx++) {
+                                sb.append(W.idAt(b, new BlockPos(x0 + xx, y0 + yy, z)).equals("shroomlight") ? '#' : '.');
+                            }
+                            sb.append('/');
+                        }
+                        Rec.event("lights_after_press", "x", x, "y", y, "board", sb.toString(), "hit", b.crosshair().hit() + " " + b.crosshair().pos());
                     }
                 }
             }

@@ -15,6 +15,8 @@ public final class Scenario {
     private final Solvers solve;
     private final Path force = Path.of(System.getProperty("arcadeqa.force", "force.txt"));
     private final int tier = Integer.getInteger("arcadeqa.tier", 1);
+    private final int chunkRadius = Integer.getInteger("arcadeqa.chunkRadius", 6);
+    private final int settle = Integer.getInteger("arcadeqa.settle", 60);
     private final String choice = System.getProperty("arcadeqa.choice", "gold");
     private static final String[] ALL = {"lights_out", "mastermind", "pattern", "pairs", "slide", "spot", "hanoi", "whack", "treasure",
         "typing", "math", "maze", "connect4", "memory", "parkour", "archery", "dropper", "falling_floor", "red_light", "waves",
@@ -42,6 +44,8 @@ public final class Scenario {
         List<String> rooms = new ArrayList<>();
         if (spec.equals("all")) {
             rooms.addAll(List.of(ALL));
+        } else if (spec.equals("none")) {
+            // chunk-only run
         } else if (spec.equals("group")) {
             rooms.addAll(List.of(GROUP));
         } else {
@@ -97,7 +101,9 @@ public final class Scenario {
     }
 
     private void hallTour() {
-        Chunks.report(b, "hall-arrival", 5);
+        Chunks.report(b, "hall-arrival", chunkRadius);
+        b.ticks(settle);
+        Chunks.report(b, "hall-settled", chunkRadius);
         b.shot("hall-arrival");
         Rec.event("hud_hall", "title", Hud.curTitle, "sub", Hud.curSub, "action", Hud.curAction, "bars", Hud.curBars);
     }
@@ -156,7 +162,9 @@ public final class Scenario {
             "dimension", b.call(() -> b.mc.level.dimension().identifier().toString()), "gameMode", b.call(() -> String.valueOf(b.mc.gameMode.getPlayerMode())),
             "food", b.call(() -> b.mc.player.getFoodData().getFoodLevel()), "health", b.call(() -> (double) b.mc.player.getHealth()));
         b.shot("start");
-        Chunks.report(b, room + "-start", 6);
+        Chunks.report(b, room + "-start", chunkRadius);
+        b.ticks(settle);
+        Chunks.report(b, room + "-settled", chunkRadius);
         // !explain
         int c0 = Hud.log.size();
         b.chat("!explain");

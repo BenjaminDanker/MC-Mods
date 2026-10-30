@@ -27,6 +27,9 @@ public final class Bot {
     private int shotNo;
 
     public <T> T call(Supplier<T> s) {
+        if (mc.isSameThread()) {
+            return s.get();
+        }
         CompletableFuture<T> f = new CompletableFuture<>();
         mc.execute(() -> {
             try {
@@ -251,6 +254,11 @@ public final class Bot {
             });
             ticks(5);
             Vec3 q = pos();
+            if (q.distanceTo(last) > 8) {
+                // Teleported (door, room start): stop walking, the target is meaningless now.
+                stopMoving();
+                return true;
+            }
             if (q.distanceTo(last) < 0.1) {
                 stuck++;
                 if (stuck >= 2) {
