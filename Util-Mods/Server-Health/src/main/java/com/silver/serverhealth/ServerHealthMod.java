@@ -39,6 +39,7 @@ public final class ServerHealthMod implements ModInitializer {
     private int ticks;
     private volatile boolean failing;
 
+    private static final java.nio.file.Path PORT_FILE = java.nio.file.Path.of("server-health-suggest.port");
     private volatile int suggestPort;
     private com.sun.net.httpserver.HttpServer suggestHttp;
 
@@ -49,6 +50,11 @@ public final class ServerHealthMod implements ModInitializer {
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTED.register(this::startSuggestions);
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
             if (suggestHttp != null) suggestHttp.stop(0);
+            try {
+                java.nio.file.Files.deleteIfExists(PORT_FILE);
+            } catch (java.io.IOException ignored) {
+                // a stale file only points at a closed port
+            }
         });
     }
 
@@ -99,6 +105,12 @@ public final class ServerHealthMod implements ModInitializer {
             http.start();
             suggestHttp = http;
             suggestPort = http.getAddress().getPort();
+            // also on disk: a server paused while empty sends no reports, and the capacity service may have restarted since
+            try {
+                java.nio.file.Files.writeString(PORT_FILE, Integer.toString(suggestPort));
+            } catch (java.io.IOException failure) {
+                LOGGER.warn("Could not write {}: {}", PORT_FILE, failure.toString());
+            }
         } catch (java.io.IOException failure) {
             LOGGER.warn("Command suggestions are off (could not open a loopback port): {}", failure.toString());
         }
