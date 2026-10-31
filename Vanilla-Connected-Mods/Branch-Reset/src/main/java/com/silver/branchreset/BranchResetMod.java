@@ -11,7 +11,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import mpds.mpds.sql;
+import com.silver.playersync.PlayerSync;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -22,7 +22,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Magic and Tech are exclusive branches. When Babylon moves a player to the other one, MPDS records a wipe request
+ * Magic and Tech are exclusive branches. When Babylon moves a player to the other one, Player Sync records a wipe request
  * for the branch they left; the server for that branch carries it out here, as soon as the player is offline.
  * Requests wait in the database, so a server that was off when the switch happened does it on its next start.
  */
@@ -77,7 +77,7 @@ public final class BranchResetMod implements ModInitializer {
         String mine = branch;
         io.execute(() -> {
             try {
-                List<sql.BranchWipe> pending = sql.pendingBranchWipes(mine);
+                List<PlayerSync.BranchWipe> pending = PlayerSync.pendingWipes(mine);
                 if (!pending.isEmpty()) {
                     server.execute(() -> pending.forEach(wipe -> process(server, wipe)));
                 }
@@ -88,7 +88,7 @@ public final class BranchResetMod implements ModInitializer {
     }
 
     /** Server thread. A player who is still online waits for the next poll. */
-    private void process(MinecraftServer server, sql.BranchWipe wipe) {
+    private void process(MinecraftServer server, PlayerSync.BranchWipe wipe) {
         UUID player;
         try {
             player = UUID.fromString(wipe.uuid());
@@ -114,7 +114,7 @@ public final class BranchResetMod implements ModInitializer {
                 wipe.name(), player, wipe.branch(), claimChunks, files);
             io.execute(() -> {
                 try {
-                    sql.markBranchWiped(wipe.id());
+                    PlayerSync.markWiped(wipe.id());
                 } catch (Exception failure) {
                     LOGGER.error("ALERT: wiped {} but could not mark request {} done; it will run again", wipe.name(), wipe.id(), failure);
                 } finally {

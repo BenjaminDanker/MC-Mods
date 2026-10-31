@@ -109,10 +109,6 @@ public final class DiscoveredCommandPolicies {
         add(policies, CommandClassification.PERMISSION, "aipets.admin.reconcile", "pet-companion", "pet_companion",
                 "/pet admin reconcile");
 
-        add(policies, CommandClassification.PERMISSION, "mpds.inventory.metadata.modify",
-                "mpds", "mpds", "/mpdsremovecustomidself");
-        add(policies, CommandClassification.INTERNAL, null, "mpds", "mpds", "/mpdscomplete", "/mpdselementclaim",
-                "/mpdsskillclaim");
         policies.add(CommandOrigin.FABRIC_BACKEND, "/return", CommandClassification.INTERNAL,
                 null, "Minecraft", "minecraft");
         // The same literal is a different command on Velocity: an eligible player uses it
@@ -122,15 +118,14 @@ public final class DiscoveredCommandPolicies {
                 null, "WakeUpLobby", "wakeuplobby");
         add(policies, CommandClassification.INTERNAL, null, "network-authorization", "network_authorization",
                 "/auth-tree-dump");
-        add(policies, CommandClassification.PERMISSION, "mpds.skip.manage", "mpds", "mpds", "/updateskip");
-        add(policies, CommandClassification.PERMISSION, "mpds.skip.inspect", "mpds", "mpds", "/showskip");
-        add(policies, CommandClassification.PERMISSION, "mpds.progression.modify", "mpds", "mpds",
-                "/mpdsdefeated", "/mpdsstage1", "/mpdselementunlock", "/mpdsskillpoints", "/mpdsbranchswitch");
-        add(policies, CommandClassification.PERMISSION, "mpds.reward.grant", "mpds", "mpds", "/mpdsgrantbossreward");
-        add(policies, CommandClassification.PERMISSION, "mpds.inventory.metadata.modify", "mpds", "mpds",
-                "/mpdssoulboundmax", "/mpdsremovecustomid");
-        add(policies, CommandClassification.PERMISSION, "mpds.inventory.metadata.inspect", "mpds", "mpds",
-                "/mpdsgetsoulboundmax");
+        add(policies, CommandClassification.PERMISSION, "playersync.progression.modify", "player-sync", "playersync",
+                "/playersync boss", "/playersync stage1", "/playersync element", "/playersync skillpoints", "/playersync branch");
+        add(policies, CommandClassification.PERMISSION, "playersync.reward.grant", "player-sync", "playersync",
+                "/playersync bossreward");
+        add(policies, CommandClassification.PERMISSION, "playersync.items.modify", "player-sync", "playersync",
+                "/playersync soulbound add", "/playersync removeitems");
+        add(policies, CommandClassification.PERMISSION, "playersync.items.inspect", "player-sync", "playersync",
+                "/playersync soulbound");
 
         add(policies, CommandClassification.PERMISSION, "portal.registry.view", "server-portals", "server_portals",
                 "/serverportals list");

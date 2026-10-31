@@ -25,6 +25,7 @@ dependencies {
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 	// Bending and the Adventure jars it nests, copied from the Bending mod jar into libs/ (not committed).
 	compileOnly fileTree(dir: 'libs', include: '*.jar')
+	compileOnly project(':player-sync')
 	compileOnly project(':network-authorization')
 	compileOnly 'com.silver:authorization-common:0.1.0'
 	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.11.3'

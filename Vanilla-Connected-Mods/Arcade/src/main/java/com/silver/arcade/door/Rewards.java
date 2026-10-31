@@ -117,13 +117,13 @@ public final class Rewards {
         return out;
     }
 
-    /** Magic: skill points go through MPDS (called by name; off the server thread). */
+    /** Magic: skill points go through Player Sync (called by name; off the server thread). */
     private static void givePoints(ServerPlayer player, int points) {
         String name = player.getName().getString();
         String uuid = player.getStringUUID();
         Thread.ofVirtual().start(() -> {
             try {
-                Class.forName("mpds.mpds.sql").getMethod("addSkillPoints", String.class, String.class, int.class)
+                Class.forName("com.silver.playersync.PlayerSync").getMethod("addSkillPoints", String.class, String.class, int.class)
                     .invoke(null, name, uuid, points);
             } catch (ReflectiveOperationException failure) {
                 LOGGER.error("ALERT: could not add {} arcade skill points for {}", points, name, failure);

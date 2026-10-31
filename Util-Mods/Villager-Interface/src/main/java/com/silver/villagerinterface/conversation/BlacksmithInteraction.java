@@ -1,7 +1,7 @@
 package com.silver.villagerinterface.conversation;
 
 import com.silver.villagerinterface.config.VillagerConfigEntry;
-import com.silver.soulbounditems.mpds.MpdsSoulboundApi;
+import com.silver.soulbounditems.playersync.SoulboundSlots;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.Item;
@@ -145,7 +145,7 @@ public final class BlacksmithInteraction {
         CAP_LOOKUP.execute(() -> {
             Integer max;
             try {
-                max = MpdsSoulboundApi.getSoulboundMax(name, uuid);
+                max = SoulboundSlots.slots(name, uuid);
             } catch (Exception e) {
                 max = null;
             }

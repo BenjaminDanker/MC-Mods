@@ -102,9 +102,7 @@ public final class CommandPolicyRuntime {
                     "selwand", "size", "snap", "snapshot", "snow", "sp", "superpickaxe", "thaw",
                     "toggleeditwand", "tracemask", "track", "tree" -> new String[]{"WorldEdit", "worldedit"};
             case "pet" -> new String[]{"Pet Companion", "pet_companion"};
-            case "mpdscomplete", "mpdsremovecustomidself", "updateskip", "showskip", "mpdsdefeated",
-                    "mpdsstage1", "mpdsgrantbossreward", "mpdssoulboundmax", "mpdsremovecustomid",
-                    "mpdsgetsoulboundmax" -> new String[]{"MPDS", "mpds"};
+            case "playersync" -> new String[]{"Player Sync", "playersync"};
             case "oclaims", "opac", "oparties" -> new String[]{"Open Parties and Claims", "openpartiesandclaims"};
             case "script", "distance", "log", "mobcaps", "perimeterinfo", "profile", "info", "entityviewdistance" ->
                     new String[]{"Carpet", "carpet"};
@@ -158,7 +156,7 @@ public final class CommandPolicyRuntime {
         if (parsedPaths.isEmpty()) return true;
         CommandPath path = parsedPaths.get(parsedPaths.size() - 1);
 
-        // A redirected command such as `/execute run mpdscomplete` may reach Brigadier with
+        // A redirected command such as `/execute run playersync boss ...` may reach Brigadier with
         // the target command's own node path. Never let a wrapper hide an INTERNAL target.
         if (player != null) {
             for (CommandPath candidate : parsedPaths) {

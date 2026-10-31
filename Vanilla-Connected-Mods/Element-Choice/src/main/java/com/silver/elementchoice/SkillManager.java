@@ -652,7 +652,7 @@ final class SkillManager {
                 store.markComplete(id, name, branch);
                 server.execute(() -> {
                     // The story function leaves this tag; /skills ascend looks for it.
-                    target.addTag("mpds_" + branch + "_completed");
+                    target.addTag("progress_" + branch + "_completed");
                     reply.accept(name + " is recorded as having finished the " + branch + " story; /server magitech now opens for them.");
                 });
             } catch (Exception failure) {

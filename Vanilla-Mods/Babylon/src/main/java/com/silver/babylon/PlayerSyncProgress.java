@@ -6,18 +6,18 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Calls MPDS's progression API (mpds.mpds.api.Progression) by name, so Babylon builds without MPDS. These calls
+ * Calls Player Sync (com.silver.playersync.PlayerSync) by name, so Babylon builds without it. These calls
  * talk to the database, so they run on {@link #IO}, never on the server thread.
  */
-final class MpdsProgression {
+final class PlayerSyncProgress {
     static final ExecutorService IO = Executors.newSingleThreadExecutor(task -> {
-        Thread thread = new Thread(task, "babylon-mpds");
+        Thread thread = new Thread(task, "babylon-player-sync");
         thread.setDaemon(true);
         return thread;
     });
-    private static final String API = "mpds.mpds.api.Progression";
+    private static final String API = "com.silver.playersync.PlayerSync";
 
-    private MpdsProgression() {
+    private PlayerSyncProgress() {
     }
 
     static void switchBranch(String name, String uuid, String from, String to) throws Exception {
@@ -28,8 +28,8 @@ final class MpdsProgression {
         call("setStage1Cleared", new Class<?>[] {String.class, String.class, boolean.class}, name, uuid, cleared);
     }
 
-    static int removeCustomIdFromStoredInventories(String uuid, String key, String value) throws Exception {
-        return (int) call("removeCustomIdFromStoredInventories", new Class<?>[] {String.class, String.class, String.class}, uuid, key, value);
+    static int removeStoredItems(String uuid, String key, String value) throws Exception {
+        return (int) call("removeStoredItems", new Class<?>[] {String.class, String.class, String.class}, uuid, key, value);
     }
 
     private static Object call(String method, Class<?>[] types, Object... args) throws Exception {

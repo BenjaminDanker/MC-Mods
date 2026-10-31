@@ -292,10 +292,10 @@ public final class BabylonMod implements ModInitializer {
         String name = player.getScoreboardName();
         String uuid = player.getStringUUID();
         java.util.UUID id = player.getUUID();
-        MpdsProgression.IO.execute(() -> {
+        PlayerSyncProgress.IO.execute(() -> {
             boolean recorded;
             try {
-                MpdsProgression.switchBranch(name, uuid, from.id, to.id);
+                PlayerSyncProgress.switchBranch(name, uuid, from.id, to.id);
                 recorded = true;
             } catch (Exception failure) {
                 LOGGER.error("ALERT: branch switch {} -> {} failed for {}", from.id, to.id, name, failure);
@@ -508,12 +508,12 @@ public final class BabylonMod implements ModInitializer {
 
         // Record stage 1 and drop the four boss items from the stored inventories (database, so off the server
         // thread), then send the player on from the server thread.
-        MpdsProgression.IO.execute(() -> {
+        PlayerSyncProgress.IO.execute(() -> {
             try {
-                MpdsProgression.setStage1Cleared(playerName, playerUuid, true);
+                PlayerSyncProgress.setStage1Cleared(playerName, playerUuid, true);
                 int removed = 0;
                 for (String bossItem : new String[] {ID_OCEAN, ID_SKY, ID_DESERT, ID_CAVE}) {
-                    removed += MpdsProgression.removeCustomIdFromStoredInventories(playerUuid, "id", bossItem);
+                    removed += PlayerSyncProgress.removeStoredItems(playerUuid, "id", bossItem);
                 }
                 LOGGER.info("{} stage 1 recorded; {} stored boss item(s) removed", playerName, removed);
             } catch (Exception e) {

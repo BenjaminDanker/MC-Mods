@@ -1,7 +1,7 @@
 package com.silver.soulbounditems.soulbound;
 
 import com.silver.soulbounditems.SoulboundItemsMod;
-import com.silver.soulbounditems.mpds.MpdsSoulboundApi;
+import com.silver.soulbounditems.playersync.SoulboundSlots;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.ItemStack;
@@ -91,19 +91,19 @@ public final class SoulboundRules {
         return new EnforcementResult(currentCounts, overflow > 0);
     }
 
-    /** Servers without MPDS (the arcade) have no soulbound cap; asking would only fail every time. */
-    private static final boolean MPDS_PRESENT = net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("mpds");
+    /** Servers without Player Sync (the arcade) have no soulbound cap; asking would only fail every time. */
+    private static final boolean PLAYER_SYNC_PRESENT = net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("playersync");
 
     public static int getSoulboundMaxOrUnlimited(ServerPlayer player) {
-        if (!MPDS_PRESENT) {
+        if (!PLAYER_SYNC_PRESENT) {
             return Integer.MAX_VALUE;
         }
         try {
-            return Math.max(0, MpdsSoulboundApi.getSoulboundMax(player.getName().getString(), player.getStringUUID()));
-        } catch (MpdsSoulboundApi.RecentFailureException e) {
+            return Math.max(0, SoulboundSlots.slots(player.getName().getString(), player.getStringUUID()));
+        } catch (SoulboundSlots.RecentFailureException e) {
             return Integer.MAX_VALUE;
         } catch (Exception e) {
-            SoulboundItemsMod.LOGGER.error("Failed to read MPDS SoulboundMax for {}", player.getName().getString(), e);
+            SoulboundItemsMod.LOGGER.error("Failed to read Player Sync SoulboundMax for {}", player.getName().getString(), e);
             return Integer.MAX_VALUE;
         }
     }

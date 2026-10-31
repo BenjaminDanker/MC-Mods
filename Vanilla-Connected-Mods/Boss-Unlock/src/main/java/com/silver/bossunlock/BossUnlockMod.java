@@ -3,7 +3,7 @@ package com.silver.bossunlock;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.silver.bossunlock.BossUnlockConfig.Rule;
-import mpds.mpds.sql;
+import com.silver.playersync.PlayerSync;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.loader.api.FabricLoader;
@@ -24,7 +24,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Unlocks an element (stored in MPDS, so every server shares it) for the players who defeat a configured
+ * Unlocks an element (stored in Player Sync, so every server shares it) for the players who defeat a configured
  * secondary boss. The player only gets one cryptic line the first time; what it means appears later, in the
  * Magic server's skill tree.
  */
@@ -116,16 +116,16 @@ public final class BossUnlockMod implements ModInitializer {
         String name = player.getName().getString();
         String uuid = player.getStringUUID();
         int bit = switch (element) {
-            case "air" -> sql.ElementProgress.AIR;
-            case "water" -> sql.ElementProgress.WATER;
-            case "earth" -> sql.ElementProgress.EARTH;
-            default -> sql.ElementProgress.FIRE;
+            case "air" -> PlayerSync.ElementProgress.AIR;
+            case "water" -> PlayerSync.ElementProgress.WATER;
+            case "earth" -> PlayerSync.ElementProgress.EARTH;
+            default -> PlayerSync.ElementProgress.FIRE;
         };
         net.minecraft.server.MinecraftServer server = player.level().getServer();
         java.util.UUID id = player.getUUID();
         io.execute(() -> {
             try {
-                boolean added = sql.unlockElement(name, uuid, bit);
+                boolean added = PlayerSync.unlockElement(name, uuid, bit);
                 LOGGER.info("{} defeated a boss: {} unlock recorded (new={})", name, element, added);
                 if (added) {
                     server.execute(() -> {

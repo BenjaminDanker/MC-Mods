@@ -5,7 +5,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import mpds.mpds.sql;
+import com.silver.playersync.PlayerSync;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
@@ -32,7 +32,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Keeps the two factions out of each other's equipment on Magitech. A player's faction is the story they finished
- * (recorded in MPDS). Tech machines and tools, and anything tagged with a faction, do nothing in the wrong hands;
+ * (recorded in Player Sync). Tech machines and tools, and anything tagged with a faction, do nothing in the wrong hands;
  * Bending is handled by Element Choice, which gives elements only to the Magic faction. Equipment can still be broken,
  * carried and stolen, so raiding the other side stays worthwhile.
  */
@@ -45,7 +45,7 @@ public final class FactionLockMod implements ModInitializer {
         return thread;
     });
 
-    /** The faction of a player, NONE until MPDS has answered. */
+    /** The faction of a player, NONE until Player Sync has answered. */
     public static Faction factionOf(UUID player) {
         return FACTIONS.getOrDefault(player, Faction.NONE);
     }
@@ -94,7 +94,7 @@ public final class FactionLockMod implements ModInitializer {
         var server = player.level().getServer();
         io.execute(() -> {
             try {
-                var done = sql.getCompletions(id.toString());
+                var done = PlayerSync.completions(id.toString());
                 Faction faction = Faction.of(done.magic(), done.tech());
                 LOGGER.info("{} belongs to faction {}", name, faction.id());
                 // Applied on the server thread, and only while the player is still online, so a reply that

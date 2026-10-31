@@ -120,12 +120,12 @@ final class WorldSuite {
         }
         t.check("...and it is recorded (arcade_dice)", DoorSuites.rows("arcade_dice", id) == 1, DoorSuites.rows("arcade_dice", id) + " rows");
         boolean dieSent = PacketLog.since(name, mark).stream().anyMatch(r -> r.info().contains("echo_shard"));
-        T.sleep(3000); // the player-data sync (MPDS) applies its saved state about a second after the join
+        T.sleep(3000); // the player-data sync (Player Sync) applies its saved state about a second after the join
         t.ticks(60);
         boolean gotDie = t.on(() -> Die.carries(DoorSuites.p(t, name)));
         t.check("...and the Die is still in the inventory three seconds later (not wiped by the player-data sync)", gotDie,
             gotDie ? "" : "the Die " + (dieSent ? "WAS" : "was not") + " sent to the player's inventory at join, then it was gone; arcade_dice says it was given; "
-                + LogScan.grep("Loaded authoritative MPDS state for " + name).size() + " MPDS state loads logged for this bot");
+                + LogScan.grep("Gave " + name + " their saved state").size() + " Player Sync loads logged for this bot");
         // not given twice: take it away, leave and come back
         t.run(() -> DoorSuites.p(t, name).getInventory().clearContent());
         Bots.kill(t, name);
@@ -247,7 +247,7 @@ final class WorldSuite {
     private static void altar(T t, Vec3 altar) throws Exception {
         String name = bot("walt");
         Bots.spawn(t, name, altar.x + 8, altar.y, altar.z + 8, false);
-        T.sleep(2500); // the player-data sync (MPDS) applies the saved state about a second after the join; give it time
+        T.sleep(2500); // the player-data sync (Player Sync) applies the saved state about a second after the join; give it time
         t.ticks(20);
         t.check("a player standing away from the altar is given nothing", !t.on(() -> Die.carries(DoorSuites.p(t, name))), inventory(t, name));
         long mark = PacketLog.mark(name);

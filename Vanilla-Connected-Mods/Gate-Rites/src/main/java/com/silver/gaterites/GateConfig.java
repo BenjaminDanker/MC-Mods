@@ -23,7 +23,7 @@ public final class GateConfig {
     public String frameBlock = "polyfactory:steel_block";
     public String ignitionItem = "minecraft:barrier";
     /** Tech: the tag the finished Tech story gives a player. Only they may light and enter a gate. */
-    public String completedTag = "mpds_tech_completed";
+    public String completedTag = "progress_tech_completed";
 
     public static GateConfig load(Path file) {
         try {

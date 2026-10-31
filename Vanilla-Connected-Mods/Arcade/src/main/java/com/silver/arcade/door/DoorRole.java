@@ -317,7 +317,7 @@ public final class DoorRole {
             }
             profiles.put(id, profile);
             if (profile.visited() && !profile.hasDie()) {
-                // Not right away: MPDS loads the player's soulbound items a few seconds after joining and would wipe it.
+                // Not right away: Player Sync loads the player's soulbound items a few seconds after joining and would wipe it.
                 dieDue.put(id, new long[] {server.getTickCount() + DIE_DELAY_TICKS, 0});
             }
         }));

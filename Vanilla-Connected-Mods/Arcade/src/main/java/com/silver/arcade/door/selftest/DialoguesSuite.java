@@ -292,15 +292,15 @@ final class DialoguesSuite {
     /** Rowan binds the held item to the soul for a spare of the same item; without the spare he cannot. */
     private static void soulbound(T t, String name, UUID uid, Object entry, Object script) throws Exception {
         Map<String, Object> nodes = Reflect.get(script, "nodes");
-        // the MPDS applies the bot's saved state (soulbound items only) some time after the join; if that lands in the middle of
+        // Player Sync applies the bot's saved state (soulbound items only) some time after the join; if that lands in the middle of
         // the test the freshly bound sword is wiped from the inventory, so wait for it to be logged first
-        for (long until = System.currentTimeMillis() + 15_000; com.silver.arcade.selftest.LogScan.grep("Loaded authoritative MPDS state for " + name).isEmpty()
+        for (long until = System.currentTimeMillis() + 15_000; com.silver.arcade.selftest.LogScan.grep("Gave " + name + " their saved state").isEmpty()
             && System.currentTimeMillis() < until;) {
             T.sleep(250);
         }
         t.ticks(20);
-        // a player with room in their Soul: the capacity the blacksmith asks the MPDS for is put in its short-lived cache
-        Class<?> api = Class.forName("com.silver.soulbounditems.mpds.MpdsSoulboundApi");
+        // a player with room in their Soul: the capacity the blacksmith asks Player Sync for is put in its short-lived cache
+        Class<?> api = Class.forName("com.silver.soulbounditems.playersync.SoulboundSlots");
         Map<String, Object> cache = Reflect.getStatic(api, "CACHE");
         Class<?> entryType = Class.forName(api.getName() + "$CacheEntry");
         var ctor = entryType.getDeclaredConstructors()[0];

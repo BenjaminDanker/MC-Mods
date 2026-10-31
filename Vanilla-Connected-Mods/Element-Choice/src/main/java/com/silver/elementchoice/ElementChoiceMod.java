@@ -6,7 +6,7 @@ import com.silver.elementchoice.skills.AbilityDef;
 import com.silver.elementchoice.skills.Realm;
 import com.silver.elementchoice.skills.SkillState;
 import com.silver.elementchoice.store.MemoryProgressStore;
-import com.silver.elementchoice.store.MpdsProgressStore;
+import com.silver.elementchoice.store.PlayerSyncProgressStore;
 import com.silver.elementchoice.store.ProgressStore;
 import me.moros.bending.api.GameProvider;
 import me.moros.bending.api.event.ElementChangeEvent;
@@ -36,7 +36,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Elemental progression for the Magic server. Bending has four elements; this mod decides which elements,
- * abilities and levels each player has, from a skill tree stored in MPDS. Players open the tree from a
+ * abilities and levels each player has, from a skill tree stored in Player Sync. Players open the tree from a
  * dialog, never by typing out commands.
  */
 public final class ElementChoiceMod implements ModInitializer {
@@ -54,7 +54,7 @@ public final class ElementChoiceMod implements ModInitializer {
     private final boolean claimsGuarded = net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("openpartiesandclaims");
     private final Ascension ascension = new Ascension();
     /** Set once the story is finished: the tag the Magic story's final function gives. */
-    private static final String MAGIC_COMPLETED_TAG = "mpds_magic_completed";
+    private static final String MAGIC_COMPLETED_TAG = "progress_magic_completed";
 
     /**
      * For other mods: whether this player began the Ascension rite and this cast is a pinnacle of their build. Returns the
@@ -346,7 +346,7 @@ public final class ElementChoiceMod implements ModInitializer {
             return new MemoryProgressStore(Integer.getInteger("elementchoice.unlocks", 0),
                 Integer.getInteger("elementchoice.points", 0));
         }
-        return new MpdsProgressStore();
+        return new PlayerSyncProgressStore();
     }
 
     private static final java.util.List<String> ELEMENTS = java.util.List.of("air", "water", "earth", "fire", "all");

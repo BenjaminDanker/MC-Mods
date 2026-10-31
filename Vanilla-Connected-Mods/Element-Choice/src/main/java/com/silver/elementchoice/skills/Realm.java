@@ -24,7 +24,7 @@ public enum Realm {
         return display;
     }
 
-    /** The bit this element has in the MPDS unlock mask. */
+    /** The bit this element has in the Player Sync unlock mask. */
     public int unlockBit() {
         return unlockBit;
     }

@@ -90,7 +90,7 @@ public final class ArcadeConfig {
         /** How many times the band's pool is drawn. */
         public int rolls = 1;
         public List<RewardItem> pool = new ArrayList<>();
-        /** Magic only: skill points added through MPDS. */
+        /** Magic only: skill points added through Player Sync. */
         public int skillPoints;
     }
 

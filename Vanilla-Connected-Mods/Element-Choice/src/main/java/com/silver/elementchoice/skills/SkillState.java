@@ -325,7 +325,7 @@ public final class SkillState {
 
     // ------------------------------------------------------------------ storage text
 
-    /** Canonical text stored in MPDS: owned elements, ability levels, then resilience. */
+    /** Canonical text stored in Player Sync: owned elements, ability levels, then resilience. */
     public String serializeTree() {
         List<String> parts = new ArrayList<>();
         for (Realm realm : Realm.values()) {

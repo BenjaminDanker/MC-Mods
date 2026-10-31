@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "playersync",
+  "version": "${version}",
+  "name": "Player Sync",
+  "description": "Carries a player's soulbound items, health, food, XP and effects between the network's servers (and everything they carry between Magic, Tech and Magitech), and stores their story progress.",
+  "authors": ["BenjaminDanker"],
+  "environment": "*",
+  "entrypoints": {
+    "main": ["com.silver.playersync.PlayerSyncMod"]
+  },
+  "mixins": ["playersync.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "26.2",
+    "java": ">=25",
+    "fabric-api": "*",
+    "network_authorization": "*"
+  }
+}

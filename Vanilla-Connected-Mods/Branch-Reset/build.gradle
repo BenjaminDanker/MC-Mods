@@ -23,8 +23,9 @@ dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
-	// MPDS and Open Parties and Claims, copied from the mods folder into libs/ (not committed).
+	// Open Parties and Claims, copied from the mods folder into libs/ (not committed).
 	compileOnly fileTree(dir: 'libs', include: '*.jar')
+	compileOnly project(':player-sync')
 	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.11.3'
 	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.11.3'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.3'

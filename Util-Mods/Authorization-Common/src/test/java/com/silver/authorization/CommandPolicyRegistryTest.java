@@ -26,8 +26,8 @@ class CommandPolicyRegistryTest {
         }
         for (String command : new String[] {"/bending modifier clear", "/bending export", "/b import file",
                 "/polydex reload", "/polyfactory debug list_models", "/graphlib list", "/bending choose fire",
-                "/bending remove fire", "/b choose water", "/skills check Steve icespike", "/skills admin points Steve 5", "/claimlist", "/claimlist player Steve", "/claimlist tp minecraft:overworld 1 2", "/skills admin max Steve", "/skills admin complete Steve magic", "/mpdselementunlock Steve fire",
-                "/mpdsskillpoints Steve 3", "/mpdsbranchswitch Steve magic tech", "/structurereset here"}) {
+                "/bending remove fire", "/b choose water", "/skills check Steve icespike", "/skills admin points Steve 5", "/claimlist", "/claimlist player Steve", "/claimlist tp minecraft:overworld 1 2", "/skills admin max Steve", "/skills admin complete Steve magic", "/playersync element Steve fire",
+                "/playersync skillpoints Steve 3", "/playersync branch Steve magic tech", "/structurereset here"}) {
             var decision = decide(command, true, false, false, false, ignored -> false);
             assertFalse(decision.allowed(), command);
             assertEquals(CommandClassification.PERMISSION, decision.classification(), command);
@@ -79,14 +79,14 @@ class CommandPolicyRegistryTest {
     @Test
     void internalIsHiddenAndNeverOwnerOverriddenForPlayer() {
         for (boolean owner : new boolean[]{false, true}) {
-            var decision = decide("/mpdscomplete", true, owner, false, true, ignored -> true);
+            var decision = decide("/auth-tree-dump", true, owner, false, true, ignored -> true);
             assertEquals(CommandClassification.INTERNAL, decision.classification());
             assertFalse(decision.visible());
             assertFalse(decision.allowed());
             assertFalse(decision.ownerOverride());
         }
 
-        assertTrue(decide("/mpdscomplete", false, false, true, false, ignored -> false).allowed());
+        assertTrue(decide("/auth-tree-dump", false, false, true, false, ignored -> false).allowed());
         assertFalse(decide("/return", true, true, false, false, ignored -> true).visible());
         assertTrue(decide("/return", false, false, true, false, ignored -> false).allowed());
     }
@@ -189,9 +189,9 @@ class CommandPolicyRegistryTest {
             assertTrue(owner.allowed(), path);
         }
 
-        for (String path : new String[]{"/list", "/msg", "/mpdsremovecustomidself", "/mpdsremovecustomidself key value"}) {
+        for (String path : new String[]{"/list", "/msg", "/playersync removeitems", "/playersync removeitems Steve key value"}) {
             var player = decide(path, true, false, false, false, ignored -> false);
-            if (path.startsWith("/mpdsremovecustomidself")) {
+            if (path.startsWith("/playersync")) {
                 assertEquals(CommandClassification.PERMISSION, player.classification(), path);
                 assertFalse(player.visible(), path);
                 assertFalse(player.allowed(), path);

@@ -27,7 +27,7 @@ import java.util.UUID;
  */
 public final class SpecialItemConversionManager {
 
-    private static final String MPDS_OCEAN_DEFEATED_TAG = "mpds_ocean_defeated";
+    private static final String PROGRESS_OCEAN_DEFEATED_TAG = "progress_ocean_defeated";
 
     private static final Set<UUID> PENDING_PLAYERS = new HashSet<>();
     private static final Map<UUID, Long> NEXT_ALLOWED_TICK = new HashMap<>();
@@ -140,11 +140,11 @@ public final class SpecialItemConversionManager {
     });
 
     /**
-     * Grants the ocean boss reward through MPDS's API (it raises the player's SoulboundMax once), off the server
-     * thread because it talks to the database. MPDS is called by name so Atlantis builds without it.
+     * Grants the ocean boss reward through Player Sync's API (it raises the player's SoulboundMax once), off the server
+     * thread because it talks to the database. Player Sync is called by name so Atlantis builds without it.
      */
     private static void tryMarkOceanDefeatedOnce(ServerPlayer player) {
-        if (player == null || player.entityTags().contains(MPDS_OCEAN_DEFEATED_TAG) || !GRANTING.add(player.getUUID())) {
+        if (player == null || player.entityTags().contains(PROGRESS_OCEAN_DEFEATED_TAG) || !GRANTING.add(player.getUUID())) {
             return;
         }
         MinecraftServer server = player.level().getServer();
@@ -153,23 +153,23 @@ public final class SpecialItemConversionManager {
         java.util.UUID id = player.getUUID();
         REWARD_IO.execute(() -> {
             try {
-                Class<?> api = Class.forName("mpds.mpds.api.BossRewards");
-                java.lang.reflect.Method grant = api.getMethod("grant", String.class, String.class, String.class, int.class);
+                Class<?> api = Class.forName("com.silver.playersync.PlayerSync");
+                java.lang.reflect.Method grant = api.getMethod("grantBossReward", String.class, String.class, String.class, int.class);
                 boolean granted = (boolean) grant.invoke(null, name, uuid, "ocean", 1);
                 if (granted) {
-                    api.getMethod("announce", MinecraftServer.class, java.util.UUID.class, String.class).invoke(null, server, id, "ocean");
+                    api.getMethod("announceBossReward", MinecraftServer.class, java.util.UUID.class, String.class).invoke(null, server, id, "ocean");
                 }
                 AtlantisMod.LOGGER.info("[Atlantis] ocean boss reward for {}: {}", name, granted ? "granted" : "already had it");
                 server.execute(() -> {
                     ServerPlayer online = server.getPlayerList().getPlayer(id);
                     if (online != null) {
-                        online.addTag(MPDS_OCEAN_DEFEATED_TAG);
+                        online.addTag(PROGRESS_OCEAN_DEFEATED_TAG);
                     }
                 });
             } catch (java.lang.reflect.InvocationTargetException e) {
-                AtlantisMod.LOGGER.error("Failed to grant the MPDS ocean boss reward for {}; it is retried next time", name, e.getCause());
+                AtlantisMod.LOGGER.error("Failed to grant the ocean boss reward for {}; it is retried next time", name, e.getCause());
             } catch (ReflectiveOperationException e) {
-                AtlantisMod.LOGGER.error("MPDS boss-reward API not available; the ocean reward for {} was not granted", name, e);
+                AtlantisMod.LOGGER.error("Player Sync boss-reward API not available; the ocean reward for {} was not granted", name, e);
             } finally {
                 GRANTING.remove(id);
             }

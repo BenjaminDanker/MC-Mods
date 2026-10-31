@@ -5,7 +5,7 @@ import net.minecraft.world.item.ItemStack;
 
 /**
  * Keeps crafted Soulbound stacks out of the death drop. They stay in the dead player's inventory, so a logout on the
- * death screen saves them (and MPDS sees them), and are copied to the new player when it respawns.
+ * death screen saves them (and Player Sync sees them), and are copied to the new player when it respawns.
  */
 public final class SoulboundDeathRetention {
     private SoulboundDeathRetention() {
