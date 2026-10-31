@@ -35,7 +35,7 @@ public final class SpotDifference extends BaseRoom {
     /** Pictures grow to 11x11 side by side: reach every corner from the floor. */
     @Override
     public double reach() {
-        return 16;
+        return 20;
     }
 
     int count() { return Math.min(14, 3 + tier / 2); } // 25 levels

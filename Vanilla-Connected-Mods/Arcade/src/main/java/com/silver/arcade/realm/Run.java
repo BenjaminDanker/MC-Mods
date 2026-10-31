@@ -467,6 +467,10 @@ public final class Run {
     public boolean chat(ServerPlayer player, String message) {
         for (Party party : parties) {
             if (!party.over && party.members.contains(player.getUUID())) {
+                // Not an answer: anything said before "Go!", or a line that looks like a command ("!explain", "/...").
+                if (party.countdown != 0 || message.startsWith("!") || message.startsWith("/")) {
+                    return false;
+                }
                 return party.room.chat(player, message);
             }
         }

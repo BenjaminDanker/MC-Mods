@@ -39,6 +39,12 @@ public final class Hanoi extends BaseRoom {
     /** Facing the posts (+z), +x is the player's left: post 0 (the start) on the left, post 2 (the goal) on the right. */
     private int postX(int p) { return (1 - p) * (2 * rings + 4); }
 
+    /** The outer towers stand more than 10 blocks from the start spot: reach them without walking. */
+    @Override
+    public double reach() {
+        return 14;
+    }
+
     @Override
     protected void build() {
         int half = 2 * rings + 4 + rings + 2;
@@ -106,12 +112,16 @@ public final class Hanoi extends BaseRoom {
     }
 
     private boolean press(ServerPlayer player, BlockPos pos) {
-        if (pos.getY() != arena.origin().getY() || pos.getZ() - arena.origin().getZ() != 2) {
+        // Anything belonging to a tower counts: its gold base and lamps, the birch post, or the rings stacked on it.
+        int dx = pos.getX() - arena.origin().getX();
+        int dy = pos.getY() - arena.origin().getY();
+        int dz = pos.getZ() - arena.origin().getZ();
+        if (dz < 1 || dz > 4 || dy < 0 || dy > rings + 3) {
             return false;
         }
         int p = -1;
         for (int i = 0; i < 3; i++) {
-            if (pos.getX() - arena.origin().getX() == postX(i)) {
+            if (Math.abs(dx - postX(i)) <= rings + 1) {
                 p = i;
             }
         }
