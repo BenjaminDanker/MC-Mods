@@ -436,16 +436,20 @@ public final class Solvers {
 
     /** Right-clicks a face-down tile; returns what it turned into. */
     String flip(BlockPos p) {
-        if (!use(p, "tile")) {
-            return null;
-        }
-        boolean ok = b.until(() -> !W.id(b.mc.level.getBlockState(p)).equals("black_glazed_terracotta"), 20);
-        if (!ok) {
+        // a mismatched pair stays up for a moment and clicks in that time do nothing: wait and try again, as a person would
+        for (int attempt = 0; attempt < 4; attempt++) {
+            if (!use(p, "tile")) {
+                return null;
+            }
+            boolean ok = b.until(() -> !W.id(b.mc.level.getBlockState(p)).equals("black_glazed_terracotta"), 12);
+            if (ok) {
+                return W.idAt(b, p);
+            }
             noEffect++;
-            Rec.event("no_effect", "pos", p.toShortString(), "still", "black_glazed_terracotta");
-            return null;
+            Rec.event("no_effect", "pos", p.toShortString(), "still", "black_glazed_terracotta", "attempt", attempt);
+            b.ticks(20);
         }
-        return W.idAt(b, p);
+        return null;
     }
 
     // ---------------------------------------------------------------- Sliding picture
@@ -873,11 +877,19 @@ public final class Solvers {
             seen = Hud.log.size();
             int words = text.split(" ").length;
             b.ticks(Math.max(30, words * 14)); // about 85 wpm: reading and typing
+            waitGo();
             b.chat(text);
             b.ticks(30);
             if (Hud.seen(seen, "not enough") ) {
                 return;
             }
+        }
+    }
+
+    /** Chat before "Go!" is not an answer: a person waits for the word. */
+    void waitGo() {
+        if (!b.until(() -> Hud.seen(roomHud, "go!"), 400)) {
+            Rec.event("problem", "text", "no 'Go!' seen before typing");
         }
     }
 
@@ -962,6 +974,7 @@ public final class Solvers {
                 return;
             }
             b.ticks(50); // a few seconds of thinking
+            waitGo();
             b.chat(Long.toString(v));
             b.ticks(20);
             if (Hud.seen(seen - 1, "cleared") || Hud.seen(seen - 1, "failed")) {

@@ -1048,7 +1048,8 @@ final class Solvers2 {
             while (e < 4 && solidPoint(mc, p.x + hx * e, p.y - 0.05, p.z + hz * e)) {
                 e += 0.1;
             }
-            boolean sprint = hd - e > 3.0;
+            // a step up needs speed to be over the edge in time; a flat gap needs it only when long
+            boolean sprint = hd - e > 3.0 || tops[ti] - p.y >= 0.9 && hd - e > 0.8;
             if (!sprint && mc.player.isSprinting()) {
                 Bot.keys(mc, false, false, false, false, false, false); // a sprint only ends when the forward key is let go
                 return false;
