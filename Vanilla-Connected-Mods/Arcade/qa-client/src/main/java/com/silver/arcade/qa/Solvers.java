@@ -13,6 +13,7 @@ import net.minecraft.world.phys.Vec3;
 public final class Solvers {
     private final Bot b;
     int clicks, noEffect, unreachable;
+    long deadline = Long.MAX_VALUE;
     double maxReach;
 
     public Solvers(Bot b) {
@@ -32,6 +33,9 @@ public final class Solvers {
 
     /** Aims at the block and right-clicks it. Returns false when the crosshair could not be put on it. */
     boolean use(BlockPos p, String what) {
+        if (Rec.tick > deadline) {
+            throw new IllegalStateException("driver time cap for this room reached");
+        }
         double d = b.reachTo(p), lim = b.reachLimit();
         maxReach = Math.max(maxReach, d);
         if (!b.aimAtBlock(p)) {
@@ -166,19 +170,29 @@ public final class Solvers {
     // ---------------------------------------------------------------- Mastermind
 
     void mastermind() {
-        List<BlockPos> pegs = W.scanExact(b, 14, 10, 14, "light_gray_concrete");
-        if (pegs.isEmpty()) {
-            problem("mastermind: no empty pegs visible");
+        List<BlockPos> bulbs = W.scan(b, 16, 10, 16, id -> id.equals("waxed_copper_bulb"));
+        if (bulbs.isEmpty()) {
+            problem("crack the code: no check button (waxed copper bulb) visible");
             return;
         }
-        int py = pegs.get(0).getY(), pz = pegs.get(0).getZ();
-        List<BlockPos> row = new ArrayList<>(pegs.stream().filter(p -> p.getY() == py && p.getZ() == pz).toList());
-        row.sort(Comparator.comparingInt(BlockPos::getX));
+        BlockPos button = bulbs.get(0);
+        int py = button.getY(), pz = button.getZ();
+        // The peg row starts two columns right of the button (bottom row): empty pegs are tinted glass, set pegs are wool.
+        List<BlockPos> row = new ArrayList<>();
+        for (int x = button.getX() + 2; ; x++) {
+            String id = W.idAt(b, new BlockPos(x, py, pz));
+            if (id.equals("tinted_glass") || id.endsWith("_wool")) {
+                row.add(new BlockPos(x, py, pz));
+            } else {
+                break;
+            }
+        }
         int np = row.size();
+        if (np == 0) {
+            problem("crack the code: no pegs found next to the button");
+            return;
+        }
         int px0 = row.get(0).getX();
-        List<BlockPos> golds = W.scanExact(b, 14, 10, 14, "gold_block");
-        BlockPos button = golds.stream().filter(p -> p.getY() == py && p.getZ() == pz && p.getX() < px0)
-            .max(Comparator.comparingInt(BlockPos::getX)).orElse(null);
         // Palette strip: wool blocks one plane behind the board, in the button's column, bottom to top = colour 0..
         List<String> palette = new ArrayList<>();
         if (button != null) {
@@ -193,8 +207,8 @@ public final class Solvers {
         }
         int colours = palette.size();
         Rec.event("board", "kind", "crack_the_code", "pegs", np, "colours", colours, "button", button == null ? "none" : button.toShortString(), "palette", String.join(",", palette));
-        if (button == null || colours == 0) {
-            problem("mastermind: could not find the check button or the colour strip on screen");
+        if (colours == 0) {
+            problem("crack the code: no colour strip visible beside the button");
             return;
         }
         // All codes, consistent-guess strategy.
@@ -286,19 +300,20 @@ public final class Solvers {
     // ---------------------------------------------------------------- Copy the picture
 
     void pattern() {
-        // The canvas starts all white wool; the picture shares its plane and columns, higher up.
-        List<BlockPos> whites = W.scanExact(b, 14, 12, 14, "white_wool");
-        if (whites.isEmpty()) {
-            problem("pattern: no canvas visible");
+        // The wall behind is red wool (z+1 of the canvas plane); canvas and picture are the wool blocks in the plane in front of it.
+        List<BlockPos> red = W.scanExact(b, 14, 14, 14, "red_wool");
+        if (red.isEmpty()) {
+            problem("copy the picture: no wall visible");
             return;
         }
         Map<Integer, Integer> perZ = new HashMap<>();
-        whites.forEach(p -> perZ.merge(p.getZ(), 1, Integer::sum));
-        int pz = perZ.entrySet().stream().max(Map.Entry.comparingByValue()).get().getKey();
+        red.forEach(p -> perZ.merge(p.getZ(), 1, Integer::sum));
+        int pz = perZ.entrySet().stream().max(Map.Entry.comparingByValue()).get().getKey() - 1;
         List<BlockPos> wool = W.scan(b, 14, 14, 14, s -> s.endsWith("_wool")).stream().filter(p -> p.getZ() == pz).toList();
-        int x0 = wool.stream().mapToInt(BlockPos::getX).min().getAsInt(), x1 = wool.stream().mapToInt(BlockPos::getX).max().getAsInt();
-        int y0 = wool.stream().mapToInt(BlockPos::getY).min().getAsInt(), y1 = wool.stream().mapToInt(BlockPos::getY).max().getAsInt();
-        int size = x1 - x0 + 1;
+        int size = (int) Math.round(Math.sqrt(wool.size() / 2.0));
+        int x0 = wool.stream().mapToInt(BlockPos::getX).min().getAsInt();
+        int y0 = wool.stream().mapToInt(BlockPos::getY).min().getAsInt();
+        int y1 = y0 + 2 * size;
         Rec.event("board", "kind", "copy_the_picture", "size", size, "x0", x0, "y0", y0, "y1", y1, "z", pz);
         // Read the picture while it shows.
         String[][] pic = new String[size][size];

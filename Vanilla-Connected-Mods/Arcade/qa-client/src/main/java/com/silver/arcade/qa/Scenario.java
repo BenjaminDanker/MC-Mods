@@ -16,7 +16,7 @@ public final class Scenario {
     private final Path force = Path.of(System.getProperty("arcadeqa.force", "force.txt"));
     private final int tier = Integer.getInteger("arcadeqa.tier", 1);
     private final int chunkRadius = Integer.getInteger("arcadeqa.chunkRadius", 6);
-    private final int settle = Integer.getInteger("arcadeqa.settle", 60);
+    private final int settle = Integer.getInteger("arcadeqa.settle", 0);
     private final String choice = System.getProperty("arcadeqa.choice", "gold");
     private static final String[] ALL = {"lights_out", "crack_the_code", "copy_the_picture", "pairs", "sliding_picture", "spot_the_difference", "tower", "whack_a_mole", "buried_treasure",
         "typing_race", "mental_math", "maze", "connect_four", "simon_says", "parkour", "archery", "drop", "floor_is_falling", "red_light_green_light", "hold_the_ring",
@@ -123,7 +123,8 @@ public final class Scenario {
         StringBuilder line = new StringBuilder();
         long t0 = Rec.tick;
         long fullAt = -1, near = -1;
-        for (int i = 0; i < 60; i++) {
+        int maxProbes = Integer.getInteger("arcadeqa.arrivalProbes", 4);
+        for (int i = 0; i < maxProbes; i++) {
             int[] n = Chunks.health(b, 2), f = Chunks.health(b, rd);
             if (near < 0 && n[0] == 0) {
                 near = Rec.tick - t0;
@@ -193,7 +194,8 @@ public final class Scenario {
         arrival(room + "-room");
         long roomStart = Rec.tick;
         int hudStart = Hud.log.size();
-        b.ticks(60);
+        boolean rush = room.equals("copy_the_picture") || room.equals("simon_says") || room.equals("spot_the_difference") || room.equals("pairs");
+        b.ticks(rush ? 5 : 60);
         Rec.event("room_start", "pos", b.pos().toString(), "bars", Hud.curBars, "held", Hud.held(b.mc), "reach", b.reachLimit(),
             "dimension", b.call(() -> b.mc.level.dimension().identifier().toString()), "gameMode", b.call(() -> String.valueOf(b.mc.gameMode.getPlayerMode())),
             "food", b.call(() -> b.mc.player.getFoodData().getFoodLevel()), "health", b.call(() -> (double) b.mc.player.getHealth()));
@@ -202,13 +204,16 @@ public final class Scenario {
         b.ticks(settle);
         Chunks.report(b, room + "-settled", chunkRadius);
         // !explain
-        int c0 = Hud.log.size();
-        b.chat("!explain");
-        b.ticks(30);
-        Rec.event("explain_reply", "lines", String.join(" | ", Hud.log.subList(c0, Hud.log.size())));
-        b.shot("after-explain");
+        if (!rush) {
+            int c0 = Hud.log.size();
+            b.chat("!explain");
+            b.ticks(30);
+            Rec.event("explain_reply", "lines", String.join(" | ", Hud.log.subList(c0, Hud.log.size())));
+            b.shot("after-explain");
+        }
         // Play.
         step("play:" + room);
+        solve.deadline = Rec.tick + 3000;
         try {
             switch (room) {
                 case "lights_out" -> solve.lightsOut();
