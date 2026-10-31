@@ -14,6 +14,7 @@ public final class Solvers {
     private final Bot b;
     int clicks, noEffect, unreachable;
     long deadline = Long.MAX_VALUE;
+    int roomHud;
     double maxReach;
 
     public Solvers(Bot b) {
@@ -257,7 +258,7 @@ public final class Solvers {
                 }
             }
             Rec.event("feedback", "n", guessNo + 1, "gold", gold, "iron", iron);
-            if (Hud.seen(0, "Cracked")) {
+            if (Hud.seen(roomHud, "Cracked")) {
                 return;
             }
             final int fg = gold, fi = iron;
@@ -654,7 +655,7 @@ public final class Solvers {
         Rec.event("board", "kind", "whack_a_mole", "holes", dirt.size());
         long end = Rec.tick + 20 * 70;
         int hits = 0;
-        while (Rec.tick < end && !Hud.seen(0, "cleared") && !won(Hud.log.size() - 1)) {
+        while (Rec.tick < end && !Hud.seen(roomHud, "cleared") && !won(Hud.log.size())) {
             BlockPos up = b.call(() -> {
                 for (BlockPos d : dirt) {
                     if (W.id(b.mc.level.getBlockState(d.above())).equals("jack_o_lantern")) {
@@ -688,7 +689,9 @@ public final class Solvers {
             problem("treasure: no sand field visible");
             return;
         }
-        int fy = sand.get(0).getY();
+        Map<Integer, Integer> perY = new HashMap<>();
+        sand.forEach(p -> perY.merge(p.getY(), 1, Integer::sum));
+        int fy = perY.entrySet().stream().max(Map.Entry.comparingByValue()).get().getKey();
         sand = sand.stream().filter(p -> p.getY() == fy).toList();
         int x0 = sand.stream().mapToInt(BlockPos::getX).min().getAsInt(), x1 = sand.stream().mapToInt(BlockPos::getX).max().getAsInt();
         int z0 = sand.stream().mapToInt(BlockPos::getZ).min().getAsInt(), z1 = sand.stream().mapToInt(BlockPos::getZ).max().getAsInt();
@@ -707,7 +710,7 @@ public final class Solvers {
         int dugOk = 0;
         double bestHeat = -1;
         int[] lastHot = null;
-        while (digs < 40 && !won(0) && !Hud.seen(0, "out of digs")) {
+        while (digs < 40 && !won(roomHud) && !Hud.seen(roomHud, "out of digs")) {
             // pick the candidate nearest to the hottest cell so far (or the field centre first)
             int[] target0 = null;
             double bd = 1e9;
@@ -809,7 +812,7 @@ public final class Solvers {
     // ---------------------------------------------------------------- chat rooms
 
     void typing() {
-        int seen = Hud.log.size();
+        int seen = roomHud;
         for (int line = 0; line < 3; line++) {
             String text = waitLine(seen, 200);
             if (text == null) {
@@ -842,7 +845,7 @@ public final class Solvers {
     }
 
     void math() {
-        int seen = Hud.log.size();
+        int seen = roomHud;
         for (int i = 0; i < 30; i++) {
             String text = waitLine(seen, 240);
             if (text == null) {

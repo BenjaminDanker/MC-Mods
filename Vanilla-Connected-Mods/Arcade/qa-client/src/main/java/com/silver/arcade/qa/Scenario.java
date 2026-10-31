@@ -194,7 +194,7 @@ public final class Scenario {
         arrival(room + "-room");
         long roomStart = Rec.tick;
         int hudStart = Hud.log.size();
-        boolean rush = room.equals("copy_the_picture") || room.equals("simon_says") || room.equals("spot_the_difference") || room.equals("pairs");
+        boolean rush = room.equals("copy_the_picture") || room.equals("simon_says") || room.equals("spot_the_difference") || room.equals("pairs") || room.equals("typing_race") || room.equals("mental_math");
         b.ticks(rush ? 5 : 60);
         Rec.event("room_start", "pos", b.pos().toString(), "bars", Hud.curBars, "held", Hud.held(b.mc), "reach", b.reachLimit(),
             "dimension", b.call(() -> b.mc.level.dimension().identifier().toString()), "gameMode", b.call(() -> String.valueOf(b.mc.gameMode.getPlayerMode())),
@@ -214,6 +214,7 @@ public final class Scenario {
         // Play.
         step("play:" + room);
         solve.deadline = Rec.tick + 3000;
+        solve.roomHud = since;
         try {
             switch (room) {
                 case "lights_out" -> solve.lightsOut();
