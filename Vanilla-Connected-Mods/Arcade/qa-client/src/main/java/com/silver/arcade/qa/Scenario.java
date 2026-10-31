@@ -13,6 +13,7 @@ import net.minecraft.world.phys.Vec3;
 public final class Scenario {
     private final Bot b;
     private final Solvers solve;
+    private final Solvers2 solve2;
     private final Path force = Path.of(System.getProperty("arcadeqa.force", "force.txt"));
     private final int tier = Integer.getInteger("arcadeqa.tier", 1);
     private final int chunkRadius = Integer.getInteger("arcadeqa.chunkRadius", 6);
@@ -27,6 +28,7 @@ public final class Scenario {
     public Scenario(Bot b) {
         this.b = b;
         this.solve = new Solvers(b);
+        this.solve2 = new Solvers2(b, solve);
     }
 
     private void step(String s) {
@@ -215,6 +217,7 @@ public final class Scenario {
         step("play:" + room);
         solve.deadline = Rec.tick + 3000;
         solve.roomHud = since;
+        solve.mark = Hud.log.size();
         try {
             switch (room) {
                 case "lights_out" -> solve.lightsOut();
@@ -227,6 +230,18 @@ public final class Scenario {
                 case "whack_a_mole" -> solve.whack();
                 case "buried_treasure" -> solve.treasure();
                 case "typing_race" -> solve.typing();
+                case "maze" -> solve2.maze();
+                case "connect_four" -> solve2.connectFour();
+                case "simon_says" -> solve2.simon();
+                case "parkour" -> solve2.parkour();
+                case "archery" -> solve2.archery();
+                case "drop" -> solve2.drop();
+                case "floor_is_falling" -> solve2.fallingFloor();
+                case "red_light_green_light" -> solve2.redLight();
+                case "hold_the_ring" -> solve2.holdTheRing();
+                case "block_party" -> solve2.blockParty();
+                case "rising_floor" -> solve2.risingFloor();
+                case "hole_in_the_wall" -> solve2.holeInWall();
                 case "mental_math" -> solve.math();
                 default -> observe(room);
             }

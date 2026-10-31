@@ -53,9 +53,107 @@ public final class Bot {
     }
 
     void tickPulse() {
+        Ctl c = ctl;
+        if (c != null) {
+            try {
+                if (c.tick(mc, ++ctlTicks)) {
+                    ctl = null;
+                    ctlDone = true;
+                }
+            } catch (Throwable t) {
+                Rec.event("ctl_crash", "error", t.toString());
+                ctl = null;
+                ctlDone = true;
+            }
+        }
         synchronized (tickLock) {
             tickLock.notifyAll();
         }
+    }
+
+    /** A per-tick controller: runs on the client thread at the end of every client tick (keys set now act on the next tick). */
+    public interface Ctl {
+        /** @param n 1 on the first call; returns true when finished */
+        boolean tick(Minecraft mc, int n);
+    }
+
+    private volatile Ctl ctl;
+    private volatile boolean ctlDone;
+    private int ctlTicks;
+
+    /** Runs a controller until it finishes or maxTicks pass; releases every key afterwards. True if it finished by itself. */
+    public boolean drive(Ctl c, int maxTicks) {
+        ctlDone = false;
+        ctlTicks = 0;
+        ctl = c;
+        long end = Rec.tick + maxTicks;
+        while (!ctlDone && Rec.tick < end) {
+            synchronized (tickLock) {
+                try {
+                    tickLock.wait(200);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        }
+        boolean fin = ctlDone;
+        ctl = null;
+        stopMoving();
+        run(() -> mc.options.keyUse.setDown(false));
+        return fin;
+    }
+
+    /** Client-thread helpers for controllers: the client's own use / attack / pick. */
+    public static void useItem(Minecraft mc) {
+        mc.startUseItem();
+    }
+
+    public static boolean attack(Minecraft mc) {
+        return mc.startAttack();
+    }
+
+    public static void pick(Minecraft mc) {
+        mc.pick(1.0f);
+    }
+
+    /** Sets the movement keys (client thread only). */
+    public static void keys(Minecraft mc, boolean fwd, boolean back, boolean left, boolean right, boolean jump, boolean sprint) {
+        mc.options.keyUp.setDown(fwd);
+        mc.options.keyDown.setDown(back);
+        mc.options.keyLeft.setDown(left);
+        mc.options.keyRight.setDown(right);
+        mc.options.keyJump.setDown(jump);
+        mc.options.keySprint.setDown(sprint);
+    }
+
+    /** Turns the head (client thread only). */
+    public static void face(Minecraft mc, float yaw, float pitch) {
+        mc.player.setYRot(yaw);
+        mc.player.setXRot(pitch);
+        mc.player.yRotO = yaw;
+        mc.player.xRotO = pitch;
+    }
+
+    public static float yawTo(double fromX, double fromZ, double toX, double toZ) {
+        return (float) (Math.toDegrees(Math.atan2(toZ - fromZ, toX - fromX)) - 90.0);
+    }
+
+    public record Mob(int id, String type, Vec3 pos, Vec3 eye, float health, boolean hostile) {
+    }
+
+    /** Living things around that are not the player: what a person sees. */
+    public java.util.List<Mob> mobs(double radius) {
+        return call(() -> {
+            java.util.List<Mob> out = new java.util.ArrayList<>();
+            for (net.minecraft.world.entity.Entity e : mc.level.entitiesForRendering()) {
+                if (e instanceof net.minecraft.world.entity.LivingEntity le && e != mc.player && le.isAlive()
+                    && !(e instanceof net.minecraft.world.entity.player.Player) && e.distanceTo(mc.player) <= radius) {
+                    out.add(new Mob(e.getId(), net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(e.getType()).getPath(),
+                        e.position(), e.getEyePosition(), le.getHealth(), e instanceof net.minecraft.world.entity.monster.Enemy));
+                }
+            }
+            return out;
+        });
     }
 
     public void ticks(int n) {
@@ -158,7 +256,19 @@ public final class Bot {
             Vec3.atCenterOf(p).add(0, 0.45, 0), Vec3.atCenterOf(p), Vec3.atCenterOf(p).add(0, -0.3, 0),
             Vec3.atCenterOf(p).add(0.35, 0.35, 0.35), Vec3.atCenterOf(p).add(-0.35, 0.35, -0.35)
         };
-        for (Vec3 s : spots) {
+        java.util.List<Vec3> all = new java.util.ArrayList<>(java.util.List.of(spots));
+        Vec3 e0 = eye();
+        Vec3 c0 = Vec3.atCenterOf(p);
+        // then the faces turned towards the eye (a neighbour can shadow the block's middle from the side)
+        for (double[] f : new double[][] {{0, 0, -0.49}, {0, 0, 0.49}, {-0.49, 0, 0}, {0.49, 0, 0}, {0, 0.49, 0}, {0, -0.49, 0}}) {
+            Vec3 face = c0.add(f[0], f[1], f[2]);
+            if (face.distanceToSqr(e0) < c0.distanceToSqr(e0)) {
+                for (double[] o : new double[][] {{0, 0, 0}, {0.25, 0.25, 0.25}, {-0.25, -0.25, -0.25}, {0.25, -0.25, 0.25}, {-0.25, 0.25, -0.25}}) {
+                    all.add(face.add(f[0] == 0 ? o[0] : 0, f[1] == 0 ? o[1] : 0, f[2] == 0 ? o[2] : 0));
+                }
+            }
+        }
+        for (Vec3 s : all) {
             look(s);
             Aim a = crosshair();
             if (a.pos() != null && a.pos().equals(p)) {
@@ -252,19 +362,19 @@ public final class Bot {
                 mc.player.setXRot(10f);
                 mc.options.keyUp.setDown(true);
             });
-            ticks(5);
+            ticks(2);
             Vec3 q = pos();
-            if (q.distanceTo(last) > 8) {
+            if (q.distanceTo(last) > 3) {
                 // Teleported (door, room start): stop walking, the target is meaningless now.
                 stopMoving();
                 return true;
             }
             if (q.distanceTo(last) < 0.1) {
                 stuck++;
-                if (stuck >= 2) {
+                if (stuck >= 5) {
                     run(() -> mc.options.keyJump.setDown(true));
                 }
-                if (stuck >= 12) {
+                if (stuck >= 30) {
                     stopMoving();
                     return false;
                 }

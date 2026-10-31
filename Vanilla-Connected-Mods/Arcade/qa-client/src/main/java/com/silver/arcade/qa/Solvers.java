@@ -15,6 +15,7 @@ public final class Solvers {
     int clicks, noEffect, unreachable;
     long deadline = Long.MAX_VALUE;
     int roomHud;
+    int mark;
     double maxReach;
 
     public Solvers(Bot b) {
@@ -36,6 +37,9 @@ public final class Solvers {
     boolean use(BlockPos p, String what) {
         if (Rec.tick > deadline) {
             throw new IllegalStateException("driver time cap for this room reached");
+        }
+        if (Math.abs(b.pos().x) < 120) {
+            throw new IllegalStateException("the room is over (back in the hall)");
         }
         double d = b.reachTo(p), lim = b.reachLimit();
         maxReach = Math.max(maxReach, d);
@@ -569,7 +573,9 @@ public final class Solvers {
     // ---------------------------------------------------------------- Spot the difference
 
     void spot() {
-        List<BlockPos> tc = W.scan(b, 18, 12, 14, s -> s.endsWith("_terracotta") && !s.contains("glazed"));
+        List<BlockPos> tc0 = W.scan(b, 18, 14, 14, s -> s.endsWith("_terracotta") && !s.contains("glazed"));
+        // the pictures hang on the dark oak panel wall: keep the terracotta cells that have it right behind them
+        List<BlockPos> tc = b.call(() -> tc0.stream().filter(q -> W.id(b.mc.level.getBlockState(q.south())).equals("dark_oak_planks")).toList());
         if (tc.isEmpty()) {
             problem("spot: no pictures visible");
             return;
@@ -631,12 +637,59 @@ public final class Solvers {
         Rec.event("board", "kind", "tower", "rings", rings, "bases", bases.toString());
         List<int[]> moves = new ArrayList<>();
         hanoiMoves(rings, 0, 2, 1, moves);
+        final int rr = rings;
+        final List<BlockPos> bs = bases;
         for (int[] m : moves) {
-            use(bases.get(m[0]), "base " + m[0]);
+            towerClick(bs, m[0], rr);
             b.ticks(3);
-            use(bases.get(m[1]), "base " + m[1]);
+            towerClick(bs, m[1], rr);
             b.ticks(3);
         }
+    }
+
+    /** Clicks the post: the nearest ring-wall / post block the crosshair can be put on (reach is 14, the outer posts are further than that from the start). */
+    void towerClick(List<BlockPos> bases, int post, int rings) {
+        BlockPos base = bases.get(post);
+        List<BlockPos> cand = new ArrayList<>();
+        for (int dy = 1; dy <= rings; dy++) {
+            cand.add(new BlockPos(base.getX(), base.getY() + dy, base.getZ() + 1)); // the birch post
+            for (int dx = -rings; dx <= rings; dx++) {
+                cand.add(new BlockPos(base.getX() + dx, base.getY() + dy, base.getZ() + 2)); // ring wall behind it
+            }
+        }
+        cand.add(base);
+        Map<BlockPos, Double> dist = b.call(() -> {
+            Map<BlockPos, Double> m = new HashMap<>();
+            Vec3 e = b.mc.player.getEyePosition();
+            for (BlockPos q : cand) {
+                double x = Math.max(q.getX(), Math.min(e.x, q.getX() + 1)), y = Math.max(q.getY(), Math.min(e.y, q.getY() + 1)), z = Math.max(q.getZ(), Math.min(e.z, q.getZ() + 1));
+                m.put(q, e.distanceTo(new Vec3(x, y, z)));
+            }
+            return m;
+        });
+        cand.sort(Comparator.comparingDouble(dist::get));
+        double lim = b.reachLimit();
+        int tries = 0;
+        for (BlockPos q : cand) {
+            if (dist.get(q) > lim - 0.2 || tries++ > 12) {
+                break;
+            }
+            String id = W.idAt(b, q);
+            if (id.equals("air")) {
+                continue;
+            }
+            if (b.aimAtBlock(q)) {
+                maxReach = Math.max(maxReach, b.reachTo(q));
+                b.rightClick();
+                clicks++;
+                return;
+            }
+            Bot.Aim a = b.crosshair();
+            Rec.event("tower_aim_fail", "cand", q.toShortString() + " " + id, "reach", round(b.reachTo(q)), "crosshair", a.hit() + " " + a.pos() + (a.pos() == null ? "" : " " + W.idAt(b, a.pos())));
+        }
+        unreachable++;
+        Rec.event("unaimable", "target", "tower post " + post, "reach", round(b.reachTo(base)), "limit", round(lim), "candidates", cand.size());
+        use(base, "base " + post);
     }
 
     static void hanoiMoves(int n, int from, int to, int via, List<int[]> out) {
@@ -684,98 +737,96 @@ public final class Solvers {
     // ---------------------------------------------------------------- Buried treasure
 
     void treasure() {
-        List<BlockPos> sand = W.scanExact(b, 16, 3, 20, "sand");
-        if (sand.isEmpty()) {
-            problem("treasure: no sand field visible");
+        // The field starts right in front of the players' strip (orange and yellow terracotta carpet): its columns give the
+        // field's width, the row after the strip is the near edge, and the sand column runs to the far rim.
+        Vec3 pp = b.pos();
+        int fy = b.call(() -> b.mc.player.blockPosition().below().getY());
+        List<BlockPos> strip = W.scan(b, 14, 1, 6, id -> id.equals("orange_terracotta") || id.equals("yellow_terracotta")).stream()
+            .filter(q -> q.getY() == fy).toList();
+        int fx0, fz0, side, depth;
+        if (strip.isEmpty()) {
+            problem("treasure: the players' strip is not in view; falling back to the biggest sand block");
             return;
         }
-        Map<Integer, Integer> perY = new HashMap<>();
-        sand.forEach(p -> perY.merge(p.getY(), 1, Integer::sum));
-        int fy = perY.entrySet().stream().max(Map.Entry.comparingByValue()).get().getKey();
-        sand = sand.stream().filter(p -> p.getY() == fy).toList();
-        int x0 = sand.stream().mapToInt(BlockPos::getX).min().getAsInt(), x1 = sand.stream().mapToInt(BlockPos::getX).max().getAsInt();
-        int z0 = sand.stream().mapToInt(BlockPos::getZ).min().getAsInt(), z1 = sand.stream().mapToInt(BlockPos::getZ).max().getAsInt();
-        Rec.event("board", "kind", "buried_treasure", "field", x0 + ".." + x1 + " x " + z0 + ".." + z1, "cells", sand.size());
-        List<int[]> cand = new ArrayList<>();
-        for (int x = x0; x <= x1; x++) {
-            for (int z = z0; z <= z1; z++) {
-                cand.add(new int[] {x, z});
-            }
+        fx0 = strip.stream().mapToInt(BlockPos::getX).min().getAsInt();
+        int fx1 = strip.stream().mapToInt(BlockPos::getX).max().getAsInt();
+        fz0 = strip.stream().mapToInt(BlockPos::getZ).max().getAsInt() + 1;
+        side = fx1 - fx0 + 1;
+        int zEnd = fz0;
+        int midX = (fx0 + fx1) / 2;
+        while (W.idAt(b, new BlockPos(midX, fy, zEnd + 1)).equals("sand")) {
+            zEnd++;
         }
-        int[] range = {0, 0, 1, 2, 4, 6, 9}; // heat -> max distance; see the room: red<=1, orange<=2, yellow<=4, lime<=6, lightblue<=9
+        depth = zEnd - fz0 + 1;
+        final int fyy = fy;
+        Rec.event("board", "kind", "buried_treasure", "field", fx0 + ".." + fx1 + " x " + fz0 + ".." + zEnd, "y", fyy, "cells", side * depth);
         Map<String, int[]> heatOf = Map.of("red_wool", new int[] {0, 1}, "orange_wool", new int[] {2, 2}, "yellow_wool", new int[] {3, 4},
-            "lime_wool", new int[] {5, 6}, "light_blue_wool", new int[] {7, 9}, "blue_wool", new int[] {10, 999});
+            "lime_wool", new int[] {5, 6}, "light_blue_wool", new int[] {7, 9}, "blue_wool", new int[] {10, 99});
         Set<Long> dug = new HashSet<>();
-        int digs = 0;
-        int dugOk = 0;
-        double bestHeat = -1;
-        int[] lastHot = null;
-        while (digs < 40 && !won(roomHud) && !Hud.seen(roomHud, "out of digs")) {
-            // pick the candidate nearest to the hottest cell so far (or the field centre first)
-            int[] target0 = null;
-            double bd = 1e9;
-            int cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
-            for (int[] c : cand) {
-                if (dug.contains(key(c[0], c[1]))) {
-                    continue;
-                }
-                int[] ref = lastHot != null ? lastHot : new int[] {cx, cz};
-                double d = Math.abs(c[0] - ref[0]) + Math.abs(c[1] - ref[1]);
-                if (lastHot == null) {
-                    d = Math.abs(c[0] - cx) + Math.abs(c[1] - cz);
-                    // spread first digs on a lattice
-                    if ((c[0] - x0) % 4 != 1 || (c[1] - z0) % 4 != 1) {
-                        d += 100;
+        List<int[]> readings = new ArrayList<>(); // {x, z, lo, hi}
+        int digs = 0, chests = 0, failedDigs = 0;
+        while (digs < 70 && !won(mark) && !Hud.seen(mark, "out of digs") && Rec.tick < deadline) {
+            int[] bestC = null;
+            double bestS = -1e9;
+            for (int x = fx0; x < fx0 + side; x++) {
+                for (int z = fz0; z < fz0 + depth; z++) {
+                    if (dug.contains(key(x, z))) {
+                        continue;
+                    }
+                    boolean ok = true;
+                    double sc = 0, minD = 99;
+                    for (int[] r : readings) {
+                        int d = Math.abs(r[0] - x) + Math.abs(r[1] - z);
+                        minD = Math.min(minD, d);
+                        if (d < r[2]) {
+                            ok = false;
+                            break;
+                        }
+                        if (d <= r[3]) {
+                            sc += 10;
+                        }
+                    }
+                    if (!ok) {
+                        continue;
+                    }
+                    sc += Math.min(minD, 4) - 0.05 * (Math.abs(x - (fx0 + side / 2)) + Math.abs(z - (fz0 + depth / 2)));
+                    if (sc > bestS) {
+                        bestS = sc;
+                        bestC = new int[] {x, z};
                     }
                 }
-                if (d < bd) {
-                    bd = d;
-                    target0 = c;
-                }
             }
-            if (target0 == null) {
-                break;
-            }
-            final int[] target = target0;
-            BlockPos pos = new BlockPos(target[0], fy, target[1]);
-            if (!digCell(pos)) {
-                dug.add(key(target[0], target[1]));
-                cand.removeIf(c -> c[0] == target[0] && c[1] == target[1]);
-                digs++;
-                if (digs >= 3 && dugOk == 0) {
-                    problem("treasure: three digs in a row did nothing; giving up on digging");
+            if (bestC == null) {
+                readings.clear(); // inconsistent readings (several chests): start the inference over
+                if (dug.size() >= side * depth) {
                     break;
                 }
                 continue;
             }
-            dugOk++;
+            BlockPos pos = new BlockPos(bestC[0], fyy, bestC[1]);
+            dug.add(key(bestC[0], bestC[1]));
             digs++;
-            dug.add(key(target[0], target[1]));
-            cand.removeIf(c -> c[0] == target[0] && c[1] == target[1]);
-            b.ticks(8);
-            String floor = W.idAt(b, pos.below());
-            int[] r = heatOf.get(floor);
-            Rec.event("dug", "cell", pos.toShortString(), "floor", floor, "n", digs);
-            if (floor.equals("chest")) {
-                lastHot = null;
+            if (!digCell(pos)) {
+                if (++failedDigs >= 4 && digs == failedDigs) {
+                    problem("treasure: " + failedDigs + " digs in a row did nothing; giving up on digging");
+                    break;
+                }
                 continue;
             }
+            b.ticks(8);
+            String floor = W.idAt(b, pos.below());
+            Rec.event("dug", "cell", pos.toShortString(), "floor", floor, "n", digs);
+            if (floor.equals("chest")) {
+                chests++;
+                readings.clear();
+                continue;
+            }
+            int[] r = heatOf.get(floor);
             if (r != null) {
-                final int lo = r[0], hi = r[1];
-                final int tx = target[0], tz = target[1];
-                cand.removeIf(c -> Math.abs(c[0] - tx) + Math.abs(c[1] - tz) < lo);
-                if (hi < 20 && (lastHot == null || lo < 5)) {
-                    lastHot = new int[] {tx, tz};
-                    // narrow to ring of possible cells
-                    final int fhi = hi;
-                    List<int[]> ring = cand.stream().filter(c -> Math.abs(c[0] - tx) + Math.abs(c[1] - tz) <= fhi).toList();
-                    if (!ring.isEmpty() && lo <= 4) {
-                        cand.clear();
-                        cand.addAll(ring);
-                    }
-                }
+                readings.add(new int[] {bestC[0], bestC[1], r[0], r[1]});
             }
         }
+        Rec.event("treasure_done", "digs", digs, "chestsFound", chests);
     }
 
     static long key(int x, int z) {
