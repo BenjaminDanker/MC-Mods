@@ -25,6 +25,7 @@ dependencies {
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 	// Polymer (nested in polymer-bundled) and Bending, copied into libs/ (not committed).
 	compileOnly fileTree(dir: 'libs', include: '*.jar')
+	compileOnly "com.silver:portals:1.0.0"
 	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.11.3'
 	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.11.3'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.3'

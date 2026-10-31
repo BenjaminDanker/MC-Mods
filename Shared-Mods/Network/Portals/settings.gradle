@@ -1,0 +1,16 @@
+pluginManagement {
+    repositories {
+        maven {
+            name = 'Fabric'
+            url = 'https://maven.fabricmc.net/'
+        }
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+rootProject.name = 'portals'
+
+includeBuild('../../../Util-Mods/Authorization-Common')
+include 'network-authorization'
+project(':network-authorization').projectDir = file('../../../Util-Mods/Network-Authorization/fabric')

@@ -20,9 +20,6 @@ import java.util.UUID;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.loader.api.FabricLoader;
-import net.kyrptonaught.customportalapi.CustomPortalBlock;
-import net.kyrptonaught.customportalapi.portal.PortalIgnitionSource;
-import net.kyrptonaught.customportalapi.portal.PortalPlacer;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -133,12 +130,11 @@ final class TechPortal {
         return InteractionResult.SUCCESS;
     }
 
-    /** The position beside the clicked frame block that server-portals accepted as the inside of a gate, or null. */
+    /** The position beside the clicked frame block that Portals accepted as the inside of a gate, or null. */
     private BlockPos tryLight(ServerLevel level, ServerPlayer player, BlockPos clicked) {
-        PortalIgnitionSource source = PortalIgnitionSource.ItemUseSource(ignition).withPlayer(player);
         for (Direction direction : Direction.values()) {
             BlockPos inside = clicked.relative(direction).immutable();
-            if (level.getBlockState(inside).isAir() && PortalPlacer.attemptPortalLight(level, inside, source)) {
+            if (level.getBlockState(inside).isAir() && com.silver.portals.Portals.light(level, inside, ignition, player)) {
                 return inside;
             }
         }
@@ -154,7 +150,7 @@ final class TechPortal {
         seen.add(start);
         while (!queue.isEmpty() && found.size() < MAX_PORTAL_BLOCKS) {
             BlockPos pos = queue.poll();
-            if (!(level.getBlockState(pos).getBlock() instanceof CustomPortalBlock)) {
+            if (!(com.silver.portals.Portals.isPortal(level.getBlockState(pos)))) {
                 continue;
             }
             found.add(pos);
@@ -242,7 +238,7 @@ final class TechPortal {
     /** Removes the lit portal blocks and leaves the frame. */
     private static void breakGate(Lit gate) {
         for (BlockPos pos : gate.blocks) {
-            if (gate.level.getBlockState(pos).getBlock() instanceof CustomPortalBlock) {
+            if (com.silver.portals.Portals.isPortal(gate.level.getBlockState(pos))) {
                 gate.level.setBlock(pos, Blocks.AIR.defaultBlockState(), 3);
             }
         }
@@ -291,7 +287,7 @@ final class TechPortal {
                 for (ServerLevel level : server.getAllLevels()) {
                     if (level.dimension().identifier().equals(dimension)) {
                         BlockPos pos = new BlockPos(entry.get("x").getAsInt(), entry.get("y").getAsInt(), entry.get("z").getAsInt());
-                        if (level.getBlockState(pos).getBlock() instanceof CustomPortalBlock) {
+                        if (com.silver.portals.Portals.isPortal(level.getBlockState(pos))) {
                             level.setBlock(pos, Blocks.AIR.defaultBlockState(), 3);
                             removed++;
                         }

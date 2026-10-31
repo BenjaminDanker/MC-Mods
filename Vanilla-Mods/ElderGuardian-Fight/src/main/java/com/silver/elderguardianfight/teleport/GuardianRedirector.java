@@ -3,10 +3,6 @@ package com.silver.elderguardianfight.teleport;
 import com.silver.elderguardianfight.ElderGuardianFightMod;
 import com.silver.elderguardianfight.config.ConfigManager;
 import com.silver.elderguardianfight.config.ElderGuardianControlConfig;
-import com.silver.portalprotocol.PortalRequestPayload;
-import com.silver.portalprotocol.PortalRequestPayloadCodec;
-import com.silver.portalprotocol.PortalRequestSigner;
-import com.silver.portalprotocol.PortalPetTransferGate;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -59,11 +55,6 @@ public final class GuardianRedirector {
             return;
         }
 
-        final String secret = com.silver.portalprotocol.PortalRequestSecret.resolve(config.portalRequestSecret());
-        if (secret == null || secret.isBlank()) {
-            ElderGuardianFightMod.LOGGER.warn("portalRequestSecret is blank; cannot send portal requests");
-            return;
-        }
 
         String destinationPortalCandidate = config.portalRedirectTargetPortal();
         final String destinationPortal = destinationPortalCandidate != null ? destinationPortalCandidate : "";
@@ -77,8 +68,8 @@ public final class GuardianRedirector {
             ServerPlayer requestPlayer = player;
             server.execute(() -> {
                 try {
-                    if (PortalPetTransferGate.send(requestPlayer, targetServer, destinationPortal, secret))
-                        ElderGuardianFightMod.LOGGER.info("Queued guardian redirect for {} -> {} after pet preparation", requestPlayer.getName().getString(), targetServer);
+                    if (com.silver.portals.Portals.transfer(requestPlayer, targetServer, destinationPortal, "elder guardian redirect"))
+                        ElderGuardianFightMod.LOGGER.info("Queued guardian redirect for {} -> {}", requestPlayer.getName().getString(), targetServer);
                 } catch (Exception ex) {
                     ElderGuardianFightMod.LOGGER.error("Error sending guardian redirect portal request for {}", requestPlayer.getName().getString(), ex);
                 }

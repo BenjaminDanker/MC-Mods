@@ -42,7 +42,7 @@ public final class MagitechConfig {
         public int x;
         public int z;
         public String frameBlock;
-        /** The portal registration (in server-portals.json) that this dock's gate belongs to. */
+        /** The portal registration (in portals.json) that this dock's gate belongs to. */
         public String portal;
 
         public Dock() {

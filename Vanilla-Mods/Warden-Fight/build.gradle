@@ -36,7 +36,7 @@ dependencies {
 
 	// Fabric API. This is technically optional, but you probably want it anyway.
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
-	implementation "com.silver:mc-portal-protocol:1.0.0"
+	compileOnly "com.silver:portals:1.0.0"
 }
 
 processResources {

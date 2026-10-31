@@ -2,10 +2,6 @@ package com.silver.skyislands.portal;
 
 import com.silver.skyislands.config.SkyIslandsPortalConfig;
 import com.silver.skyislands.config.SkyIslandsPortalConfigManager;
-import com.silver.portalprotocol.PortalRequestPayload;
-import com.silver.portalprotocol.PortalRequestPayloadCodec;
-import com.silver.portalprotocol.PortalRequestSigner;
-import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.network.chat.Component;
 import org.slf4j.Logger;
@@ -98,35 +94,16 @@ public final class PortalRedirector {
             return false;
         }
 
-        String secret = com.silver.portalprotocol.PortalRequestSecret.resolve(config.portalRequestSecret());
-        if (secret == null || secret.isBlank()) {
-            return false;
-        }
-
         String destinationPortal = portalOverride != null && !portalOverride.isBlank()
             ? portalOverride
             : VANILLA_ENTRANCE_PORTAL;
 
         player.sendSystemMessage(Component.literal("Redirecting you to " + targetServer + "..."), false);
 
-        try {
-            long issuedAtMs = System.currentTimeMillis();
-            String nonce = PortalRequestPayloadCodec.generateNonce();
-            byte[] unsigned = PortalRequestPayloadCodec.encodeUnsigned(player.getUUID(), targetServer.trim(), destinationPortal, issuedAtMs, nonce);
-            byte[] signature = PortalRequestSigner.hmacSha256(secret.trim(), unsigned);
-            byte[] signed = PortalRequestPayloadCodec.encodeSigned(player.getUUID(), targetServer.trim(), destinationPortal, issuedAtMs, nonce, signature);
-            LOGGER.info("[Sky-Islands][portal] sending portal request player={} target={} portal='{}' issuedAtMs={} nonce={}",
-                player.getName().getString(),
-                targetServer.trim(),
-                destinationPortal,
-                issuedAtMs,
-                nonce);
-            ServerPlayNetworking.send(player, new PortalRequestPayload(signed));
+        boolean sent = com.silver.portals.Portals.transfer(player, targetServer.trim(), destinationPortal, "sky-islands " + reason);
+        if (sent) {
             LOGGER.info("Sent Sky-Islands portal request for {} -> {} ({})", player.getName().getString(), targetServer, reason);
-            return true;
-        } catch (Exception ex) {
-            LOGGER.error("Failed sending Sky-Islands portal request for {} ({})", player.getName().getString(), reason, ex);
-            return false;
         }
+        return sent;
     }
 }

@@ -778,8 +778,8 @@ public class EndResetManager {
             return;
         }
 
-        if (hasPendingServerPortalsHandoff(player)) {
-            EnderFightMod.LOGGER.info("Skipping offline End safeguard for {} – pending ServerPortals handoff detected",
+        if (arrivingThroughPortal(player)) {
+            EnderFightMod.LOGGER.info("Skipping offline End safeguard for {} – arriving through a portal",
                 player.getName().getString());
             if (persistentState.clearRecordedPlayer(player.getUUID())) {
                 persistentState.save(server);
@@ -1689,20 +1689,7 @@ public class EndResetManager {
         }
     }
 
-    private boolean hasPendingServerPortalsHandoff(ServerPlayer player) {
-        try {
-            Class<?> modClass = Class.forName("de.michiruf.serverportals.ServerPortalsMod");
-            Method hasPending = modClass.getMethod("hasPendingPortalTeleport", java.util.UUID.class);
-            Object result = hasPending.invoke(null, player.getUUID());
-            if (result instanceof Boolean booleanResult) {
-                return booleanResult;
-            }
-        } catch (ClassNotFoundException e) {
-            return false;
-        } catch (ReflectiveOperationException e) {
-            EnderFightMod.LOGGER.debug("Unable to query ServerPortals handoff for {}: {}",
-                player.getName().getString(), e.getMessage());
-        }
-        return false;
+    private boolean arrivingThroughPortal(ServerPlayer player) {
+        return com.silver.portals.Portals.arrivalPending(player.getUUID());
     }
 }

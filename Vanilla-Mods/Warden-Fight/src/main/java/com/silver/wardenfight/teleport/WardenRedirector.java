@@ -3,10 +3,6 @@ package com.silver.wardenfight.teleport;
 import com.silver.wardenfight.WardenFightMod;
 import com.silver.wardenfight.config.ConfigManager;
 import com.silver.wardenfight.config.WardenControlConfig;
-import com.silver.portalprotocol.PortalRequestPayload;
-import com.silver.portalprotocol.PortalRequestPayloadCodec;
-import com.silver.portalprotocol.PortalRequestSigner;
-import com.silver.portalprotocol.PortalPetTransferGate;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -58,11 +54,6 @@ public final class WardenRedirector {
             return;
         }
 
-        final String secret = com.silver.portalprotocol.PortalRequestSecret.resolve(config.portalRequestSecret());
-        if (secret == null || secret.isBlank()) {
-            WardenFightMod.LOGGER.warn("portalRequestSecret is blank; cannot send portal requests");
-            return;
-        }
 
         String destinationPortalCandidate = config.portalRedirectTargetPortal();
         final String destinationPortal = destinationPortalCandidate != null ? destinationPortalCandidate : "";
@@ -76,8 +67,8 @@ public final class WardenRedirector {
             ServerPlayer requestPlayer = player;
             server.execute(() -> {
                 try {
-                    if (PortalPetTransferGate.send(requestPlayer, targetServer, destinationPortal, secret))
-                        WardenFightMod.LOGGER.info("Queued warden redirect for {} -> {} after pet preparation", requestPlayer.getName().getString(), targetServer);
+                    if (com.silver.portals.Portals.transfer(requestPlayer, targetServer, destinationPortal, "warden redirect"))
+                        WardenFightMod.LOGGER.info("Queued warden redirect for {} -> {}", requestPlayer.getName().getString(), targetServer);
                 } catch (Exception ex) {
                     WardenFightMod.LOGGER.error("Error sending warden redirect portal request for {}", requestPlayer.getName().getString(), ex);
                 }

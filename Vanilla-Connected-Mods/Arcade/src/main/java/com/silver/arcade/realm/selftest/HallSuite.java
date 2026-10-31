@@ -30,7 +30,7 @@ final class HallSuite {
     static void run(T t) throws Exception {
         List<ArcadeConfig.HallDoor> doors = SelfTest.ENV.config.hall.doors;
         t.check("the hall has 10 doors configured", doors.size() == 10, doors.size() + " doors");
-        Cleanup.force("typing 1"); // a cheap room behind every door
+        Cleanup.force("typing_race 1"); // a cheap room behind every door
         int signs = t.on(() -> t.server.overworld().getEntities((net.minecraft.world.entity.Entity) null, new net.minecraft.world.phys.AABB(-100, 90, -100, 100, 140, 160),
             e -> e.entityTags().contains("arcade_hall_sign")).size());
         t.ok("hall signs standing before the first bot arrives: " + signs + " (they are put up when someone is in the hall)");
@@ -100,9 +100,9 @@ final class HallSuite {
         // the exit pad sends a bot home
         long mark = PacketLog.mark(a);
         t.run(() -> t.server.getPlayerList().getPlayerByName(a).teleportTo(t.server.overworld(), 0.5, 101, -7.5, Set.of(), 0F, 0F, false));
-        boolean queued = t.until(() -> !LogScan.grep("arcade exit requested proxy transfer for " + a).isEmpty(), 200);
+        boolean queued = t.until(() -> !LogScan.grep("arcade exit: asked the proxy to move " + a).isEmpty(), 200);
         List<PacketLog.Rec> got = PacketLog.since(a, mark);
-        t.check("the exit pad queues a transfer home (server-portals request)", queued, queued ? LogScan.grep("arcade exit requested proxy transfer for " + a).get(0) : "no log line");
+        t.check("the exit pad queues a transfer home (Portals request)", queued, queued ? LogScan.grep("arcade exit: asked the proxy to move " + a).get(0) : "no log line");
         t.check("...the request reached the player as a packet", PacketLog.hasText(got, "ClientboundCustomPayloadPacket", "portal"), PacketLog.snapshot(a).stream()
             .filter(r -> r.type().equals("ClientboundCustomPayloadPacket")).map(PacketLog.Rec::info).distinct().toList().toString());
         t.check("...with the Gamemaster's farewell", PacketLog.hasText(got, "ClientboundSystemChatPacket", "Leaving so soon"), "");

@@ -111,7 +111,7 @@ public final class CommandPolicyRuntime {
             case "collective" -> new String[]{"Collective", "collective"};
             case "servercore" -> new String[]{"ServerCore", "servercore"};
             case "viaver", "viaversion", "vvfabric" -> new String[]{"ViaVersion", "viaversion"};
-            case "serverportals" -> new String[]{"MCServerPortals", "server_portals"};
+            case "portals" -> new String[]{"Portals", "portals"};
             case "skyislands" -> new String[]{"Sky Islands", "skyislands"};
             case "dimensions", "disabledimensions" -> new String[]{"Disable Dimensions", "disable_dimensions"};
             case "atlantis" -> new String[]{"Atlantis", "atlantis"};

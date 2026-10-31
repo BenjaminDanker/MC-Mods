@@ -10,3 +10,5 @@ pluginManagement {
 }
 
 rootProject.name = 'Magitech-Core'
+// Portals, built from source
+includeBuild('../../Shared-Mods/Network/Portals')

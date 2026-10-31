@@ -11,4 +11,4 @@ pluginManagement {
 
 rootProject.name = 'Warden-Fight'
 
-includeBuild('../../Util-Mods/MC-Portal-Protocol')
+includeBuild('../../Shared-Mods/Network/Portals')

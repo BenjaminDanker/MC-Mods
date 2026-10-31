@@ -11,7 +11,7 @@ pluginManagement {
 
 rootProject.name = 'Ender-Fight'
 
-includeBuild('../../Util-Mods/MC-Portal-Protocol')
+includeBuild('../../Shared-Mods/Network/Portals')
 includeBuild('../../Util-Mods/Authorization-Common')
 include 'network-authorization'
 project(':network-authorization').projectDir = file('../../Util-Mods/Network-Authorization/fabric')

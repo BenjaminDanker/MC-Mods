@@ -1,11 +1,10 @@
 package com.silver.gaterites;
 
-import de.michiruf.serverportals.ServerPortalsMod;
 import net.minecraft.server.level.ServerPlayer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** Sends a traveller to the gate's destination through the proxy: the same signed request a server-portals portal makes. */
+/** Sends a traveller to the gate's destination through the proxy: the same signed request a portal makes. */
 final class Crossing {
     private static final Logger LOGGER = LoggerFactory.getLogger("gate-rites");
 
@@ -21,7 +20,7 @@ final class Crossing {
             LOGGER.error("ALERT: gate-rites.json has no arrivalPortal; {} cannot cross", traveller.getName().getString());
             return false;
         }
-        boolean queued = ServerPortalsMod.transfer(traveller, config.targetServer, config.arrivalPortal, "gate-rites " + config.role + " gate");
+        boolean queued = com.silver.portals.Portals.transfer(traveller, config.targetServer, config.arrivalPortal, "gate-rites " + config.role + " gate");
         if (!queued) {
             LOGGER.error("ALERT: the crossing for {} to {} was not queued", traveller.getName().getString(), config.targetServer);
         }

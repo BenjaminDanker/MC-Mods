@@ -33,7 +33,7 @@ public final class MagitechCoreMod implements ModInitializer {
         LeyCompass.register();
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             MagitechConfig config = MagitechConfig.load(FabricLoader.getInstance().getConfigDir().resolve("magitech.json"));
-            if (FabricLoader.getInstance().isModLoaded("server-portals")) {
+            if (FabricLoader.getInstance().isModLoaded("portals")) {
                 Landings landings = new Landings(server, config);
                 server.execute(landings::ensure);
                 DockRespawn.register(server, landings);

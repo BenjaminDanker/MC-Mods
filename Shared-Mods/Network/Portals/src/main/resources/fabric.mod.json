@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "portals",
+  "version": "${version}",
+  "name": "Portals",
+  "description": "Portals between the network's servers: frames lit with an item send players through the proxy to another server's arrival point. Also the signed transfer request every mod uses to move a player.",
+  "authors": ["BenjaminDanker"],
+  "environment": "server",
+  "entrypoints": {
+    "main": ["com.silver.portals.PortalsMod"]
+  },
+  "mixins": ["portals.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "26.2",
+    "java": ">=25",
+    "fabric-api": "*",
+    "network_authorization": "*"
+  }
+}

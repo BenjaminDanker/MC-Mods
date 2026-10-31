@@ -275,10 +275,10 @@ class CommandPolicyRegistryTest {
                 decide("/disabledimensions", true, false, false, false, ignored -> false)
                         .requiredPermission().orElseThrow().value());
         assertEquals("portal.registry.manage",
-                decide("/serverportals register", true, false, false, false, ignored -> false)
+                decide("/portals register", true, false, false, false, ignored -> false)
                         .requiredPermission().orElseThrow().value());
         assertEquals("portal.registry.view",
-                decide("/serverportals list", true, false, false, false, ignored -> false)
+                decide("/portals list", true, false, false, false, ignored -> false)
                         .requiredPermission().orElseThrow().value());
         assertEquals("commands.admin.openpac",
                 decide("/opac sub create", true, false, false, false, ignored -> false)

@@ -2,10 +2,6 @@ package com.silver.babylon;
 
 import com.silver.babylon.config.BabylonConfig;
 import com.silver.babylon.config.BabylonConfigManager;
-import com.silver.portalprotocol.PortalRequestPayload;
-import com.silver.portalprotocol.PortalRequestPayloadCodec;
-import com.silver.portalprotocol.PortalRequestSigner;
-import com.silver.portalprotocol.PortalPetTransferGate;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
@@ -324,12 +320,11 @@ public final class BabylonMod implements ModInitializer {
 
     /** Sends a signed request to the proxy to move the player to a path's server. */
     private void redirect(ServerPlayer player, BabylonConfig.Choice choice) {
-        String secret = com.silver.portalprotocol.PortalRequestSecret.resolve(config.portalRequestSecret);
-        if (choice.targetServer == null || choice.targetServer.isBlank() || secret == null || secret.isBlank()) {
-            LOGGER.warn("Cannot redirect {}: target server or secret is blank", player.getScoreboardName());
+        if (choice.targetServer == null || choice.targetServer.isBlank()) {
+            LOGGER.warn("Cannot redirect {}: no target server", player.getScoreboardName());
             return;
         }
-        PortalPetTransferGate.send(player, choice.targetServer, choice.targetPortal == null ? "" : choice.targetPortal, secret);
+        com.silver.portals.Portals.transfer(player, choice.targetServer, choice.targetPortal == null ? "" : choice.targetPortal, "babylon");
     }
 
     private String labelOf(String id) {
@@ -502,7 +497,6 @@ public final class BabylonMod implements ModInitializer {
         java.util.UUID playerId = player.getUUID();
 
         final String targetServer = chosen != null ? chosen.targetServer : config.portalRedirectTargetServer;
-        final String secret = com.silver.portalprotocol.PortalRequestSecret.resolve(config.portalRequestSecret);
         String destinationPortalCandidate = chosen != null ? chosen.targetPortal : config.portalRedirectTargetPortal;
         final String destinationPortal = destinationPortalCandidate != null ? destinationPortalCandidate : "";
 
@@ -528,11 +522,9 @@ public final class BabylonMod implements ModInitializer {
 
                 if (targetServer == null || targetServer.isBlank()) {
                     LOGGER.warn("Target server is blank; skipping redirect for {}", playerName);
-                } else if (secret == null || secret.isBlank()) {
-                    LOGGER.warn("portalRequestSecret is blank; cannot send portal request for {}", playerName);
                 } else {
-                    if (PortalPetTransferGate.send(onlinePlayer, targetServer, destinationPortal, secret))
-                        LOGGER.info("Queued Babylon redirect for {} -> {} after pet preparation", playerName, targetServer);
+                    if (com.silver.portals.Portals.transfer(onlinePlayer, targetServer, destinationPortal, "babylon"))
+                        LOGGER.info("Queued Babylon redirect for {} -> {} ", playerName, targetServer);
                 }
 
                 LOGGER.info("{} stage1 done", playerName);

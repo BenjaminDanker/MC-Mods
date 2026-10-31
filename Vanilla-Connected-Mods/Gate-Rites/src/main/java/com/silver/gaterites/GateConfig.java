@@ -14,12 +14,12 @@ public final class GateConfig {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     public String role = "";
-    /** The server a gate leads to, and the name of the landing the traveller arrives at there (a server-portals portal name). */
+    /** The server a gate leads to, and the name of the landing the traveller arrives at there (a Portals arrival name). */
     public String targetServer = "magitech";
     public String arrivalPortal = "";
     /** How long a gate stays open for the one traveller it was made for. */
     public int openSeconds = 60;
-    /** Tech: the frame the Gate Core lights, and the item its server-portals registration is lit with (an item nobody can hold). */
+    /** Tech: the frame the Gate Core lights, and the item its portal registration is lit with (an item nobody can hold). */
     public String frameBlock = "polyfactory:steel_block";
     public String ignitionItem = "minecraft:barrier";
     /** Tech: the tag the finished Tech story gives a player. Only they may light and enter a gate. */

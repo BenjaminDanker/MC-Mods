@@ -7,8 +7,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import net.kyrptonaught.customportalapi.portal.PortalIgnitionSource;
-import net.kyrptonaught.customportalapi.portal.PortalPlacer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
@@ -28,7 +26,7 @@ import org.slf4j.LoggerFactory;
  * Each faction arrives on its own landing dock: a flat stone pad with a lit gate back to its home server. Both docks
  * stand on one continent, each on its own side of it (magic to the west, tech to the east by default), so the two
  * factions can always walk to each other. Built once; docks.json records where. When a dock is built or moved, its
- * arrival point is written into this server's server-portals.json, which takes effect at the next start.
+ * arrival point is written into this server's portals.json, which takes effect at the next start.
  */
 final class Landings {
     private static final Logger LOGGER = LoggerFactory.getLogger("magitech");
@@ -185,35 +183,13 @@ final class Landings {
         LOGGER.info("Removed the old {} gate at {} {} {}", dock.faction, cx, y, gateZ);
     }
 
-    /** Points this dock's portal registration at the new arrival (read by server-portals at the next start). */
+    /** Points this dock's portal arrival at the new spot (Portals reads it at the next start). */
     private void writePortalArrival(MagitechConfig.Dock dock, JsonObject at) {
-        Path portals = server.getServerDirectory().resolve("config").resolve("server-portals.json");
-        try {
-            JsonObject root = new Gson().fromJson(Files.readString(portals), JsonObject.class);
-            for (var element : root.getAsJsonArray("portals")) {
-                JsonObject portal = element.getAsJsonObject();
-                if (dock.portal.equals(portal.get("index").getAsString())) {
-                    JsonObject location = new JsonObject();
-                    JsonObject previous = portal.has("arrivalLocation") ? portal.getAsJsonObject("arrivalLocation") : new JsonObject();
-                    location.addProperty("world", "minecraft:overworld");
-                    location.addProperty("x", at.get("x").getAsDouble());
-                    location.addProperty("y", at.get("y").getAsDouble());
-                    location.addProperty("z", at.get("z").getAsDouble());
-                    // The facing (yaw, pitch) set in the config stays as it was.
-                    for (String kept : new String[] {"yaw", "pitch"}) {
-                        if (previous.has(kept)) {
-                            location.add(kept, previous.get(kept));
-                        }
-                    }
-                    portal.add("arrivalLocation", location);
-                    writeAtomically(portals, new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(root));
-                    LOGGER.info("Portal {} now arrives at {} {} {}", dock.portal, at.get("x"), at.get("y"), at.get("z"));
-                    return;
-                }
-            }
-            LOGGER.error("ALERT: server-portals.json has no portal {}; set its arrival by hand", dock.portal);
-        } catch (IOException | RuntimeException failure) {
-            LOGGER.error("ALERT: could not update the arrival of portal {} in {}", dock.portal, portals, failure);
+        if (com.silver.portals.Portals.setArrival(server, dock.portal, "minecraft:overworld",
+                at.get("x").getAsDouble(), at.get("y").getAsDouble(), at.get("z").getAsDouble())) {
+            LOGGER.info("Portal {} now arrives at {} {} {}", dock.portal, at.get("x"), at.get("y"), at.get("z"));
+        } else {
+            LOGGER.error("ALERT: portals.json has no portal {}; set its arrival by hand", dock.portal);
         }
     }
 
@@ -244,7 +220,7 @@ final class Landings {
             }
         }
         Item ignition = BuiltInRegistries.ITEM.getValue(Identifier.parse(config.ignitionItem));
-        boolean lit = PortalPlacer.attemptPortalLight(level, new BlockPos(cx - 1, y, gateZ), PortalIgnitionSource.ItemUseSource(ignition));
+        boolean lit = com.silver.portals.Portals.light(level, new BlockPos(cx - 1, y, gateZ), ignition, null);
         JsonObject at = new JsonObject();
         at.addProperty("x", cx - 0.5);
         at.addProperty("y", (double) y);

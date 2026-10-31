@@ -39,7 +39,7 @@ dependencies {
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 	compileOnly project(':network-authorization')
 	compileOnly 'com.silver:authorization-common:0.1.0'
-	implementation "com.silver:mc-portal-protocol:1.0.0"
+	compileOnly "com.silver:portals:1.0.0"
 }
 
 processResources {

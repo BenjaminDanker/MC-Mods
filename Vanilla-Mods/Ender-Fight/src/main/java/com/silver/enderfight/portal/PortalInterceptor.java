@@ -1,9 +1,5 @@
 package com.silver.enderfight.portal;
 
-import com.silver.portalprotocol.PortalRequestPayload;
-import com.silver.portalprotocol.PortalRequestPayloadCodec;
-import com.silver.portalprotocol.PortalRequestSigner;
-import com.silver.portalprotocol.PortalPetTransferGate;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
@@ -27,7 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Observes End portal teleports and forwards the players to a designated vanilla server instead of the
- * Overworld. Integrate with the MCServerPortals bridge so the redirect can piggyback on the existing
+ * Overworld. Integrate with Portals so the redirect can piggyback on the existing
  * transfer packet code.
  */
 public final class PortalInterceptor {
@@ -45,9 +41,6 @@ public final class PortalInterceptor {
     private static final Set<UUID> endPortalExitRequired = ConcurrentHashMap.newKeySet();
     private static final Map<UUID, Long> endPortalOutsideSince = new ConcurrentHashMap<>();
 
-    private static volatile boolean trackingLookupAttempted;
-    private static Class<?> portalTrackingClass;
-    private static Method trackingSetLastMethod;
 
     private PortalInterceptor() {
     }
@@ -195,25 +188,10 @@ public final class PortalInterceptor {
             return false;
         }
 
-        // If this player is mid-handoff via MCServerPortals (e.g. logging in while standing in a portal),
-        // do not intercept the collision-based End exit detection or they can bounce back immediately.
-        try {
-            Class<?> serverPortalsModClass = Class.forName("de.michiruf.serverportals.ServerPortalsMod");
-            UUID playerId = player.getUUID();
-
-            boolean skipForPending = invokeServerPortalsBoolean(serverPortalsModClass, "hasPendingPortalTeleport", playerId);
-            boolean skipForQueued = invokeServerPortalsBoolean(serverPortalsModClass, "hasQueuedLoginHandoff", playerId);
-            if (skipForPending || skipForQueued) {
-                EnderFightMod.LOGGER.debug(
-                        "Skipping End portal collision redirect for {} - MCServerPortals handoff pending={}, queued={}",
-                        player.getName().getString(),
-                        skipForPending,
-                        skipForQueued
-                );
-                return false;
-            }
-        } catch (Exception e) {
-            EnderFightMod.LOGGER.debug("Could not check MCServerPortals pending/queued state (collision): {}", e.getMessage());
+        // A player arriving through a portal (e.g. logging in while standing in one) is left alone, or they bounce back.
+        if (com.silver.portals.Portals.arrivalPending(player.getUUID())) {
+            EnderFightMod.LOGGER.debug("Skipping End portal collision redirect for {}: arriving through a portal", player.getName().getString());
+            return false;
         }
         
         // Check cooldown
@@ -284,11 +262,6 @@ public final class PortalInterceptor {
             return false;
         }
 
-        String secret = com.silver.portalprotocol.PortalRequestSecret.resolve(config.portalRequestSecret());
-        if (secret == null || secret.isBlank()) {
-            EnderFightMod.LOGGER.warn("portalRequestSecret is blank; cannot send portal request for {}", entity.getName().getString());
-            return false;
-        }
 
         String destinationPortal = resolvePortalHandoffName(config, targetServer.trim());
 
@@ -303,7 +276,7 @@ public final class PortalInterceptor {
         player.sendSystemMessage(Component.literal("Redirecting you to " + targetServer + "..."), false);
 
         try {
-            if (!PortalPetTransferGate.send(player, targetServer, destinationPortal, secret)) return false;
+            if (!com.silver.portals.Portals.transfer(player, targetServer, destinationPortal, "end portal redirect")) return false;
             EnderFightMod.LOGGER.info("Queued Ender-Fight redirect for {} -> {} after pet preparation", player.getName().getString(), targetServer);
         } catch (Exception ex) {
             EnderFightMod.LOGGER.error("Failed sending Ender-Fight portal request for {}", player.getName().getString(), ex);
@@ -329,26 +302,10 @@ public final class PortalInterceptor {
             return;
         }
         
-        // Check if this is a MCServerPortals handoff - if so, skip interception
-        try {
-            Class<?> serverPortalsModClass = Class.forName("de.michiruf.serverportals.ServerPortalsMod");
-            UUID playerId = player.getUUID();
-
-            boolean skipForPending = invokeServerPortalsBoolean(serverPortalsModClass, "hasPendingPortalTeleport", playerId);
-            boolean skipForQueued = invokeServerPortalsBoolean(serverPortalsModClass, "hasQueuedLoginHandoff", playerId);
-            EnderFightMod.LOGGER.debug("PortalInterceptor handoff status for {}: pending={} queued={}",
-                    player.getName().getString(),
-                    skipForPending,
-                    skipForQueued);
-            if (skipForPending || skipForQueued) {
-                EnderFightMod.LOGGER.info("Skipping portal redirect for {} - MCServerPortals handoff pending={}, queued={}"
-                        , player.getName().getString()
-                        , skipForPending
-                        , skipForQueued);
-                return;
-            }
-        } catch (Exception e) {
-            EnderFightMod.LOGGER.debug("Could not check MCServerPortals pending/queued state: {}", e.getMessage());
+        // A player arriving through a portal is left alone.
+        if (com.silver.portals.Portals.arrivalPending(player.getUUID())) {
+            EnderFightMod.LOGGER.info("Skipping portal redirect for {}: arriving through a portal", player.getName().getString());
+            return;
         }
 
         if (consumeRedirectSuppression(player)) {
@@ -376,45 +333,9 @@ public final class PortalInterceptor {
         suppressedRedirects.add(player.getUUID());
     }
 
+    /** Tells Portals the player left through the End exit, so the portal there won't send them straight back. */
     private static void markPortalExit(ServerPlayer player) {
-        ensurePortalTrackingReflection();
-        if (portalTrackingClass == null || trackingSetLastMethod == null) {
-            return;
-        }
-
-        if (!portalTrackingClass.isInstance(player)) {
-            return;
-        }
-
-        try {
-            trackingSetLastMethod.invoke(player, END_EXIT_TAG);
-        } catch (ReflectiveOperationException ex) {
-            EnderFightMod.LOGGER.debug("Failed to update ServerPortals tracking for {}", player.getName().getString(), ex);
-        }
-    }
-
-    private static void ensurePortalTrackingReflection() {
-        if (trackingLookupAttempted) {
-            return;
-        }
-
-        synchronized (PortalInterceptor.class) {
-            if (trackingLookupAttempted) {
-                return;
-            }
-
-            try {
-                portalTrackingClass = Class.forName("de.michiruf.serverportals.api.EntityPortalTracking");
-                trackingSetLastMethod = portalTrackingClass.getMethod("serverportals$setLastPortalName", String.class);
-                EnderFightMod.LOGGER.info("Detected MCServerPortals tracking API; portal tags will be propagated");
-            } catch (ClassNotFoundException | NoSuchMethodException ex) {
-                EnderFightMod.LOGGER.debug("MCServerPortals tracking API not available; skipping portal tag integration");
-                portalTrackingClass = null;
-                trackingSetLastMethod = null;
-            } finally {
-                trackingLookupAttempted = true;
-            }
-        }
+        com.silver.portals.Portals.cameThrough(player, END_EXIT_TAG);
     }
 
     public static boolean isManagedEndDimension(ResourceKey<Level> key) {
@@ -439,13 +360,4 @@ public final class PortalInterceptor {
         return suppressedRedirects.remove(player.getUUID());
     }
 
-    private static boolean invokeServerPortalsBoolean(Class<?> modClass, String methodName, UUID playerId) {
-        try {
-            java.lang.reflect.Method method = modClass.getMethod(methodName, UUID.class);
-            Object result = method.invoke(null, playerId);
-            return result instanceof Boolean && (Boolean) result;
-        } catch (ReflectiveOperationException ignored) {
-            return false;
-        }
-    }
 }

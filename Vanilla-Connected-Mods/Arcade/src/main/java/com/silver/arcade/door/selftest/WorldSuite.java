@@ -202,10 +202,10 @@ final class WorldSuite {
                 ServerPlayer p = DoorSuites.p(t, name);
                 p.teleportTo(t.server.overworld(), centre.x, centre.y, centre.z, java.util.Set.of(), p.getYRot(), 0F, false);
             });
-            boolean sent = t.until(() -> DoorSuites.logged("arcade door requested proxy transfer for " + name), 20 * 10);
+            boolean sent = t.until(() -> DoorSuites.logged("arcade door: asked the proxy to move " + name), 20 * 10);
             List<PacketLog.Rec> through = PacketLog.since(name, mark4);
-            t.check("walking into the door queues a transfer to the arcade (server-portals request)", sent,
-                sent ? "" : "no 'requested proxy transfer' log line; recent: " + DoorSuites.chat(name, mark4));
+            t.check("walking into the door queues a transfer to the arcade (Portals request)", sent,
+                sent ? "" : "no 'asked the proxy to move' log line; recent: " + DoorSuites.chat(name, mark4));
             t.check("...the transfer request was sent to the player as a packet", PacketLog.hasText(through, "ClientboundCustomPayloadPacket", "portal"),
                 DoorSuites.describe(through, "ClientboundCustomPayloadPacket"));
             T.sleep(500);

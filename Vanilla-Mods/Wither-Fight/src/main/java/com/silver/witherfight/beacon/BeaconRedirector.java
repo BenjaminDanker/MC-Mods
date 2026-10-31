@@ -3,10 +3,6 @@ package com.silver.witherfight.beacon;
 import com.silver.witherfight.WitherFightMod;
 import com.silver.witherfight.config.ConfigManager;
 import com.silver.witherfight.config.WitherControlConfig;
-import com.silver.portalprotocol.PortalRequestPayload;
-import com.silver.portalprotocol.PortalRequestPayloadCodec;
-import com.silver.portalprotocol.PortalRequestSigner;
-import com.silver.portalprotocol.PortalPetTransferGate;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.world.level.block.BeaconBlock;
 import net.minecraft.world.level.block.Block;
@@ -113,11 +109,6 @@ public final class BeaconRedirector {
             return false;
         }
 
-        String secret = com.silver.portalprotocol.PortalRequestSecret.resolve(config.portalRequestSecret());
-        if (secret == null || secret.isBlank()) {
-            WitherFightMod.LOGGER.warn("portalRequestSecret is blank; cannot send portal request for {}", player.getName().getString());
-            return false;
-        }
 
         player.sendSystemMessage(Component.literal("Redirecting you to " + targetServer + "..."));
 
@@ -126,7 +117,7 @@ public final class BeaconRedirector {
             destinationPortal = "";
         }
 
-        boolean queued = PortalPetTransferGate.send(player, targetServer, destinationPortal, secret);
+        boolean queued = com.silver.portals.Portals.transfer(player, targetServer, destinationPortal, "wither beacon redirect");
         if (queued) WitherFightMod.LOGGER.info("Queued beacon redirect for {} -> {} after pet preparation", player.getName().getString(), targetServer);
         return queued;
     }

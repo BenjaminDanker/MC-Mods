@@ -127,10 +127,10 @@ public final class DiscoveredCommandPolicies {
         add(policies, CommandClassification.PERMISSION, "playersync.items.inspect", "player-sync", "playersync",
                 "/playersync soulbound");
 
-        add(policies, CommandClassification.PERMISSION, "portal.registry.view", "server-portals", "server_portals",
-                "/serverportals list");
-        add(policies, CommandClassification.PERMISSION, "portal.registry.manage", "server-portals", "server_portals",
-                "/serverportals", "/serverportals register", "/serverportals unregister");
+        add(policies, CommandClassification.PERMISSION, "portal.registry.view", "portals", "portals",
+                "/portals list");
+        add(policies, CommandClassification.PERMISSION, "portal.registry.manage", "portals", "portals",
+                "/portals", "/portals register", "/portals unregister", "/portals send");
         add(policies, CommandClassification.PERMISSION, "skyislands.inspect", "sky-islands", "skyislands",
                 "/skyislands", "/skyislands dragons", "/skyislands dragons all", "/skyislands dragons loaded",
                 "/skyislands dragons virtual", "/skyislands giants", "/skyislands giants all",

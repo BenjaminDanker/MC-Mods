@@ -1,0 +1,51 @@
+plugins {
+    id 'net.fabricmc.fabric-loom' version '1.17-SNAPSHOT'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+repositories {
+    maven { url 'https://maven.nucleoid.xyz' }
+}
+
+loom {
+    mods {
+        "portals" {
+            sourceSet sourceSets.main
+        }
+    }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+    compileOnly project(':network-authorization')
+    compileOnly 'com.silver:authorization-common:0.1.0'
+    // portal blocks show as vanilla portals to vanilla clients
+    // bundled inside this jar, and not passed on to mods that build against Portals
+    compileOnly("eu.pb4:polymer-core:${project.polymer_version}") { exclude group: 'net.fabricmc.fabric-api' }
+    include("eu.pb4:polymer-core:${project.polymer_version}") { exclude group: 'net.fabricmc.fabric-api' }
+}
+
+processResources {
+    inputs.property "version", project.version
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = 25
+}
+
+java {
+    withSourcesJar()
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
+}

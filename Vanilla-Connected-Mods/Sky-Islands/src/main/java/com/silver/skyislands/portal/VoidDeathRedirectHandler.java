@@ -9,8 +9,6 @@ import net.minecraft.world.phys.Vec3;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -104,87 +102,17 @@ public final class VoidDeathRedirectHandler {
     }
 
     private static boolean tryStageAtSkyIslandsArrival(ServerPlayer player) {
-        try {
-            Class<?> modClass = Class.forName("de.michiruf.serverportals.ServerPortalsMod");
-            Field configField = modClass.getField("CONFIG");
-            Object config = configField.get(null);
-            if (config == null) {
-                LOGGER.info("[Sky-Islands][portal] local arrival staging skipped for {}: ServerPortals config missing",
-                    player.getName().getString());
-                return false;
-            }
-
-            Method portalsMethod = config.getClass().getMethod("portals");
-            Object portalsObj = portalsMethod.invoke(config);
-            if (!(portalsObj instanceof Iterable<?> portals)) {
-                LOGGER.info("[Sky-Islands][portal] local arrival staging skipped for {}: portal list missing",
-                    player.getName().getString());
-                return false;
-            }
-
-            Object matchedPortal = null;
-            String matchedPortalName = SKY_ISLANDS_ENTRANCE_PORTAL;
-            for (Object portal : portals) {
-                if (portal == null) {
-                    continue;
-                }
-
-                Method indexMethod = portal.getClass().getMethod("index");
-                String index = (String) indexMethod.invoke(portal);
-                if (index == null || !index.equalsIgnoreCase(SKY_ISLANDS_ENTRANCE_PORTAL)) {
-                    continue;
-                }
-
-                Method arrivalLocationMethod = portal.getClass().getMethod("arrivalLocation");
-                Object arrivalLocation = arrivalLocationMethod.invoke(portal);
-                if (arrivalLocation == null) {
-                    continue;
-                }
-
-                matchedPortal = portal;
-                break;
-            }
-
-            if (matchedPortal == null) {
-                LOGGER.info("[Sky-Islands][portal] local arrival staging skipped for {}: no local portal entry named {}",
-                    player.getName().getString(),
-                    SKY_ISLANDS_ENTRANCE_PORTAL);
-                return false;
-            }
-
-            Method teleportMethod = modClass.getDeclaredMethod(
-                "teleportPlayerToArrival",
-                ServerPlayer.class,
-                matchedPortal.getClass(),
-                String.class,
-                String.class
-            );
-            teleportMethod.setAccessible(true);
-            Object result = teleportMethod.invoke(null, player, matchedPortal, matchedPortalName, "sky-islands void rescue");
-            boolean teleported = result instanceof Boolean && (Boolean) result;
-            if (!teleported) {
-                LOGGER.info("[Sky-Islands][portal] local arrival staging failed for {} via portal {}",
-                    player.getName().getString(),
-                    matchedPortalName);
-                return false;
-            }
-
-            player.setHealth(player.getMaxHealth());
-            player.setAbsorptionAmount(0.0F);
-            player.setDeltaMovement( Vec3.ZERO);
-            player.fallDistance = 0.0F;
-            LOGGER.info("[Sky-Islands][portal] local arrival staging teleported {} via portal {} to pos=({}, {}, {})",
-                player.getName().getString(),
-                matchedPortalName,
-                player.getX(),
-                player.getY(),
-                player.getZ());
-            return true;
-        } catch (Exception ex) {
-            LOGGER.info("[Sky-Islands][portal] local arrival staging failed for {}: {}",
-                player.getName().getString(),
-                ex.getMessage());
+        if (!com.silver.portals.Portals.sendToArrival(player, SKY_ISLANDS_ENTRANCE_PORTAL)) {
+            LOGGER.info("[Sky-Islands][portal] local arrival staging skipped for {}: no arrival point {}",
+                player.getName().getString(), SKY_ISLANDS_ENTRANCE_PORTAL);
             return false;
         }
+        player.setHealth(player.getMaxHealth());
+        player.setAbsorptionAmount(0.0F);
+        player.setDeltaMovement(Vec3.ZERO);
+        player.fallDistance = 0.0F;
+        LOGGER.info("[Sky-Islands][portal] local arrival staging teleported {} via portal {} to pos=({}, {}, {})",
+            player.getName().getString(), SKY_ISLANDS_ENTRANCE_PORTAL, player.getX(), player.getY(), player.getZ());
+        return true;
     }
 }

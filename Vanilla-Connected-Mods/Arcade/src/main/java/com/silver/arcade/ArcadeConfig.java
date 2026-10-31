@@ -15,7 +15,7 @@ public final class ArcadeConfig {
     public String role = "door";
     /** The registry name of the arcade server, where doors lead. */
     public String arcadeServer = "arcade";
-    /** The arcade's server-portals arrival (its hall). */
+    /** The arcade's Portals arrival (its hall). */
     public String hallPortal = "arcade_hall";
     /** This server's registry name (rewards are kept per server). */
     public String serverName = "";

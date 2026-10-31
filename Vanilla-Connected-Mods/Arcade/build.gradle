@@ -23,8 +23,9 @@ dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
-	// server-portals, Polymer and authorization-common, copied into libs/ (not committed).
+	// Polymer and authorization-common, copied into libs/ (not committed).
 	compileOnly fileTree(dir: 'libs', include: '*.jar')
+	compileOnly "com.silver:portals:1.0.0"
 	// The arcade server has no Player Sync, so the database driver travels with this mod.
 	implementation include('com.mysql:mysql-connector-j:9.2.0')
 	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.11.3'
