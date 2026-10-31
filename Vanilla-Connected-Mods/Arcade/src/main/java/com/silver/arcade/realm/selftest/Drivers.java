@@ -169,6 +169,7 @@ final class Drivers {
         int[] hold = {0};
         int[] fall = {0}; // 0 not yet, 1 settling on the first checkpoint, 2 fell, 3 done
         double[] expect = new double[3];
+        int every = c.t.on(() -> Reflect.<Integer>call(c.live.room, "checkpointEvery"));
         boolean ok = c.driveUntilEnded(() -> {
             int[][] jumps = c.f("jumps");
             BlockPos finish = c.f("finish");
@@ -192,7 +193,7 @@ final class Drivers {
             }
             if (k[0] < jumps.length) {
                 int[] j = jumps[k[0]];
-                boolean check = k[0] > 0 && k[0] % 8 == 0;
+                boolean check = k[0] > 0 && k[0] % every == 0;
                 for (int i = 0; i < c.n(); i++) {
                     c.putAbs(i, o.getX() + j[0] + 0.5, o.getY() + j[1] + 1.0, o.getZ() + j[2] + 0.5);
                 }

@@ -218,6 +218,11 @@ final class RoomsSuite {
         TickMonitor.reset();
         long start = System.nanoTime();
         List<UUID> ids = t.on(() -> Pool.players(t, bots).stream().map(ServerPlayer::getUUID).toList());
+        try (TestDb db = new TestDb()) {
+            db.clearPrizeLog(ids); // cash-outs pay less each time within the window; every case expects the full prize
+        } catch (Exception failure) {
+            t.fail(label + ": prize log cleared", failure.toString());
+        }
         Live live;
         try {
             live = t.on(() -> {

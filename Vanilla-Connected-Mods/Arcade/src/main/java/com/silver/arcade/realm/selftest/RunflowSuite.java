@@ -28,6 +28,7 @@ final class RunflowSuite {
         UUID id = t.on(() -> t.server.getPlayerList().getPlayerByName(name).getUUID());
         Bots.kill(t, name);
         try (TestDb db = new TestDb()) {
+            db.clearPrizeLog(List.of(id));
             db.insert("REPLACE INTO arcade_entries (uuid, name, origin) VALUES (?, ?, ?)", id.toString(), name, "magic");
         }
         Bots.spawn(t, name, 0.5, 101, 0.5, false);
@@ -51,7 +52,12 @@ final class RunflowSuite {
                 Object v = Reflect.get(live.room, "tier");
                 return (Integer) v;
             });
-            t.check(label + ": the room (" + type + ") is at tier " + round, tier == round, "tier " + tier);
+            // a room plays at its own level for the climb tier (its curve), which can lag the tier
+            int level = t.on(() -> {
+                Object v = Reflect.get(live.party, "level");
+                return (Integer) v;
+            });
+            t.check(label + ": the room (" + type + ") is at its level (" + level + ") for climb tier " + round, tier == level && level >= 1 && level <= round, "tier " + tier + ", level " + level);
             if (previous != null) {
                 t.check(label + ": a different room type from the last (" + previous + " -> " + type + ")", !type.equals(previous), "");
             }
@@ -88,7 +94,7 @@ final class RunflowSuite {
             t.check("gold: the prize row is for the bot's origin server (magic) at tier 3", db.prizes(id).equals(List.of("magic:3")), String.valueOf(db.prizes(id)));
         }
         // standing on neither side for 20 s cashes out
-        Cleanup.force("typing 1");
+        Cleanup.force("typing_race 1");
         t.run(() -> Reflect.call(SelfTest.ENV.roleObject, "startRun", new ArrayList<>(List.of(t.server.getPlayerList().getPlayerByName(name))), false));
         t.until(() -> Live.find(id) != null, 200);
         Live live = t.on(() -> Live.find(id));

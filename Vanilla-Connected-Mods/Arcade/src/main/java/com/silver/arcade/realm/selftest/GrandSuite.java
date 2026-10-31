@@ -19,7 +19,7 @@ final class GrandSuite {
 
     static void run(T t) throws Exception {
         List<ArcadeConfig.HallDoor> doors = SelfTest.ENV.config.hall.doors;
-        Cleanup.force("typing 1");
+        Cleanup.force("typing_race 1");
         String[] bots = Pool.ensure(t, 6);
         List<UUID> ids = t.on(() -> Pool.players(t, bots).stream().map(ServerPlayer::getUUID).toList());
         Object hall = Reflect.get(SelfTest.ENV.roleObject, "doors");

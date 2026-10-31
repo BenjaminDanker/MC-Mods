@@ -16,7 +16,7 @@ import java.util.UUID;
  * the test created. Rows are only ever removed by the UUID of a test bot.
  */
 public final class TestDb implements AutoCloseable {
-    public static final List<String> TABLES = List.of("arcade_entries", "arcade_prizes", "arcade_dice", "arcade_discovery", "arcade_suspended");
+    public static final List<String> TABLES = List.of("arcade_entries", "arcade_prizes", "arcade_dice", "arcade_discovery", "arcade_suspended", "arcade_prize_log");
     private final Connection connection;
 
     public TestDb() throws SQLException {
@@ -131,6 +131,16 @@ public final class TestDb implements AutoCloseable {
             }
         }
         return removed;
+    }
+
+    /** The product pays less for repeated cash-outs (arcade_prize_log); a test that expects a full prize starts from an empty log. */
+    public void clearPrizeLog(Collection<UUID> ids) throws SQLException {
+        for (UUID id : ids) {
+            try (PreparedStatement p = connection.prepareStatement("DELETE FROM arcade_prize_log WHERE uuid = ?")) {
+                p.setString(1, id.toString());
+                p.executeUpdate();
+            }
+        }
     }
 
     @Override
