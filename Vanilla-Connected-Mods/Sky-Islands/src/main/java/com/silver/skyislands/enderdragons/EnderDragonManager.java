@@ -981,10 +981,10 @@ public final class EnderDragonManager {
             virtualStore.upsert(updated);
         }
 
-        if (serverTicks % 600 == 0) {
+        if (serverTicks % 600 == 0 && LOGGER.isDebugEnabled()) {  // a debugging aid: every 30 s, only with debug logging on
             int loadedCount = loaded.size();
             int virtualCount = virtualStore.size();
-            LOGGER.info("[Sky-Islands] Dragons summary: virtual={} loaded={} (activationRadius={} despawnRadius={})",
+            LOGGER.debug("[Sky-Islands] Dragons summary: virtual={} loaded={} (activationRadius={} despawnRadius={})",
                 virtualCount, loadedCount, getActivationRadiusBlocks(), getDespawnRadiusBlocks());
 
             int shown = 0;
@@ -997,13 +997,13 @@ public final class EnderDragonManager {
                 String phase = loadedDragon != null ? String.valueOf(loadedDragon.getPhaseManager().getCurrentPhase().getPhase()) : "<virtual>";
                 boolean provoked = loadedDragon instanceof DragonProvokedAccess access && access.skyIslands$isProvoked();
 
-                LOGGER.info("[Sky-Islands]  - id={} virtualPos=({}, {}, {}) heading=({}, {})",
+                LOGGER.debug("[Sky-Islands]  - id={} virtualPos=({}, {}, {}) heading=({}, {})",
                         shortId(s.id()),
                         round1(s.pos().x), round1(s.pos().y), round1(s.pos().z),
                         round2(s.headingX()), round2(s.headingZ()));
 
                 if (loadedDragon != null) {
-                    LOGGER.info("[Sky-Islands]    loaded entityPos=({}, {}, {}) phase={} provoked={}",
+                    LOGGER.debug("[Sky-Islands]    loaded entityPos=({}, {}, {}) phase={} provoked={}",
                             round1(loadedDragon.getX()), round1(loadedDragon.getY()), round1(loadedDragon.getZ()),
                             phase, provoked);
                 }

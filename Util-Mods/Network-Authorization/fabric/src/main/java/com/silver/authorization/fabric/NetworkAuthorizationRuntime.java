@@ -183,6 +183,10 @@ public final class NetworkAuthorizationRuntime implements Authorization {
         }
     }
 
+    private static final java.time.Duration CATALOG_FAILURE_LOG_EVERY = java.time.Duration.ofMinutes(10);
+    private volatile int catalogFailures;
+    private volatile Instant lastCatalogFailureLog = Instant.EPOCH;
+
     private void maybeSendCommandCatalog() {
         Optional<ServerId> server = config.serverId();
         Optional<byte[]> key = config.backendKey();
@@ -220,13 +224,26 @@ public final class NetworkAuthorizationRuntime implements Authorization {
                             if (!input.readBoolean()) throw new IllegalStateException("Velocity rejected runtime catalog");
                         }
                     }
+                    boolean news = !fingerprint.equals(lastCatalogFingerprint) || catalogFailures > 0;
                     lastCatalogFingerprint = fingerprint;
                     lastCatalogAcceptedAt = clock.instant();
-                    log.info("[CommandPolicy] Runtime command catalog synchronized server={} paths={} generation={} epoch={}",
-                            server.orElseThrow(), entries.size(), generation, backendEpoch);
+                    // the periodic refresh (every half minute) is silent: only a new catalog, or the first success after failures, is news
+                    if (news) {
+                        log.info("[CommandPolicy] Runtime command catalog synchronized server={} paths={} generation={} epoch={}{}",
+                                server.orElseThrow(), entries.size(), generation, backendEpoch,
+                                catalogFailures > 0 ? " (after " + catalogFailures + " failed attempts)" : "");
+                    } else {
+                        log.debug("[CommandPolicy] Runtime command catalog refreshed server={} generation={}", server.orElseThrow(), generation);
+                    }
+                    catalogFailures = 0;
                 } catch (Exception failure) {
-                    log.warn("[CommandPolicy] Runtime command catalog sync failed for {}: {}",
-                            server.orElseThrow(), failure.toString());
+                    // the first failure, then a reminder at most every 10 minutes while it keeps failing
+                    Instant at = clock.instant();
+                    if (catalogFailures++ == 0 || !lastCatalogFailureLog.plus(CATALOG_FAILURE_LOG_EVERY).isAfter(at)) {
+                        lastCatalogFailureLog = at;
+                        log.warn("[CommandPolicy] Runtime command catalog sync failed for {}{}: {}", server.orElseThrow(),
+                                catalogFailures > 1 ? " (" + catalogFailures + " attempts so far)" : "", failure.toString());
+                    }
                 } finally {
                     catalogSendInFlight.set(false);
                 }
