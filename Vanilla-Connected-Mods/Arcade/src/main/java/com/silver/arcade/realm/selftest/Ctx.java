@@ -24,6 +24,8 @@ final class Ctx {
         this.bots = bots;
         this.tier = tier;
         this.label = label;
+        // like a player, act only after the countdown's "Go!" (chat before it is not an answer)
+        t.until(() -> t.on(() -> Reflect.<Integer>get(live.party, "countdown")) == 0, 20 * 15);
     }
 
     int n() {
