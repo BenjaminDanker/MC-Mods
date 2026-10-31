@@ -153,6 +153,36 @@ public final class NetworkAuthorizationRuntime implements Authorization {
         }
     }
 
+    private volatile String lastWrittenCatalog = "";
+
+    /**
+     * The same catalog, saved as config/network-authorization-commands.json whenever it changes: the home page's admin side
+     * reads it for command autofill and its "only our own commands" filter (each entry says which mod a command comes from),
+     * also while the server is asleep.
+     */
+    private void writeCatalogFile(List<com.silver.authorization.CommandCatalogEntry> entries, String fingerprint) {
+        if (fingerprint.equals(lastWrittenCatalog)) return;
+        try {
+            com.google.gson.JsonArray list = new com.google.gson.JsonArray();
+            for (var entry : entries) {
+                com.google.gson.JsonObject o = new com.google.gson.JsonObject();
+                o.addProperty("path", entry.path().canonical());
+                o.addProperty("executable", entry.executable());
+                entry.source().ifPresent(v -> o.addProperty("source", v));
+                entry.modId().ifPresent(v -> o.addProperty("mod", v));
+                list.add(o);
+            }
+            java.nio.file.Path dir = net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir();
+            java.nio.file.Path tmp = dir.resolve("network-authorization-commands.json.tmp");
+            java.nio.file.Files.writeString(tmp, list.toString());
+            java.nio.file.Files.move(tmp, dir.resolve("network-authorization-commands.json"),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            lastWrittenCatalog = fingerprint;
+        } catch (Exception failure) {
+            log.debug("[NetworkAuthorization] Could not save the command catalog file: {}", failure.toString());
+        }
+    }
+
     private void maybeSendCommandCatalog() {
         Optional<ServerId> server = config.serverId();
         Optional<byte[]> key = config.backendKey();
@@ -160,6 +190,7 @@ public final class NetworkAuthorizationRuntime implements Authorization {
         List<com.silver.authorization.CommandCatalogEntry> entries = CommandPolicyRuntime.catalogEntries();
         String fingerprint = entries.stream().map(entry -> entry.path().canonical() + "\0" + entry.executable()
                 + "\0" + entry.source().orElse("") + "\0" + entry.modId().orElse("")).collect(java.util.stream.Collectors.joining("\n"));
+        writeCatalogFile(entries, fingerprint);
         Instant now = clock.instant();
         boolean changed = !fingerprint.equals(lastCatalogFingerprint);
         boolean refreshDue = !lastCatalogAcceptedAt.plus(CATALOG_REFRESH).isAfter(now);
