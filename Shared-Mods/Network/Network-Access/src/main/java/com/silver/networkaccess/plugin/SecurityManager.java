@@ -39,10 +39,14 @@ public class SecurityManager {
      */
     private final java.util.Set<String> offlineTestNames;
 
+    /** The whitelist is enforced only while this file exists (whitelist-on in the data folder); off by default. */
+    private final java.nio.file.Path whitelistSwitch;
+
     public SecurityManager(Logger logger, WhitelistStore whitelistStore, java.nio.file.Path dataDir) {
         this.logger = logger;
         this.whitelistStore = whitelistStore;
         this.offlineTestNames = loadOfflineTestNames(dataDir.resolve("offline-test-names.txt"));
+        this.whitelistSwitch = dataDir.resolve("whitelist-on");
         if (!offlineTestNames.isEmpty()) {
             logger.warn("[Security] TEST PROXY: {} offline-mode name(s) are let in ({}). This must never be the live proxy.",
                 offlineTestNames.size(), offlineTestNames);
@@ -150,7 +154,7 @@ public class SecurityManager {
         //     // Optional: reject
         // }
 
-        if (!whitelistStore.isWhitelisted(uuid)) {
+        if (java.nio.file.Files.exists(whitelistSwitch) && !whitelistStore.isWhitelisted(uuid)) {
             logger.info("[Security] Connection from {} denied (Not Whitelisted).", uuid);
             event.setResult(ResultedEvent.ComponentResult.denied(
                 Component.text("You are not whitelisted on this server.", NamedTextColor.RED)
