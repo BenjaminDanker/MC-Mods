@@ -14,16 +14,21 @@ import org.slf4j.Logger;
 import java.io.IOException;
 import java.util.UUID;
 
-/** {@code /networkaccess whitelist <list|add|remove> [player]}: edits the proxy whitelist (admission managers and console). */
+/**
+ * {@code /whitelist [on|off|list|add <player>|remove <player>]}: the proxy whitelist (admission managers and console).
+ * It is enforced only while the whitelist-on file exists in the data folder; on/off create and delete that file.
+ */
 public final class WhitelistCommand implements SimpleCommand {
-    private static final String USAGE = "§7Usage: /networkaccess whitelist <list|add|remove> [player]";
+    private static final String USAGE = "§7Usage: /whitelist <on|off|list|add|remove> [player]";
 
     private final WhitelistStore store;
     private final UUIDResolver uuidResolver;
     private final Logger logger;
+    private final java.nio.file.Path whitelistSwitch;
 
-    public WhitelistCommand(ProxyServer proxy, WhitelistStore store, Logger logger) {
+    public WhitelistCommand(ProxyServer proxy, WhitelistStore store, java.nio.file.Path whitelistSwitch, Logger logger) {
         this.store = store;
+        this.whitelistSwitch = whitelistSwitch;
         this.logger = logger;
         this.uuidResolver = new UUIDResolver(proxy, logger);
     }
@@ -32,11 +37,21 @@ public final class WhitelistCommand implements SimpleCommand {
     public void execute(Invocation invocation) {
         CommandSource source = invocation.source();
         String[] args = invocation.arguments();
-        if (args.length == 0 || !args[0].equalsIgnoreCase("whitelist")) {
-            source.sendMessage(Component.text(USAGE));
-            return;
+        // the handler below indexes the action at args[1] (it was a subcommand before)
+        String[] shifted = new String[args.length + 1];
+        shifted[0] = "whitelist";
+        System.arraycopy(args, 0, shifted, 1, args.length);
+        handleWhitelistCommand(source, shifted);
+    }
+
+    @Override
+    public java.util.List<String> suggest(Invocation invocation) {
+        String[] args = invocation.arguments();
+        if (args.length <= 1) {
+            String typed = args.length == 0 ? "" : args[0].toLowerCase();
+            return java.util.stream.Stream.of("on", "off", "list", "add", "remove").filter(o -> o.startsWith(typed)).toList();
         }
-        handleWhitelistCommand(source, args);
+        return java.util.List.of();
     }
 
     @Override
@@ -51,7 +66,28 @@ public final class WhitelistCommand implements SimpleCommand {
         }
 
         if (args.length < 2) {
+            source.sendMessage(Component.text(java.nio.file.Files.exists(whitelistSwitch)
+                    ? "§aThe whitelist is on." : "§eThe whitelist is off (anyone may join)."));
             source.sendMessage(Component.text(USAGE));
+            return;
+        }
+
+        if (args[1].equalsIgnoreCase("on") || args[1].equalsIgnoreCase("off")) {
+            boolean on = args[1].equalsIgnoreCase("on");
+            try {
+                if (on) {
+                    if (!java.nio.file.Files.exists(whitelistSwitch)) java.nio.file.Files.createFile(whitelistSwitch);
+                } else {
+                    java.nio.file.Files.deleteIfExists(whitelistSwitch);
+                }
+                logger.info("[NetworkAccess] Whitelist turned {} by {}", on ? "on" : "off",
+                        source instanceof Player player ? player.getUsername() : "console");
+                source.sendMessage(Component.text(on ? "§aThe whitelist is on: only listed players can join."
+                        : "§aThe whitelist is off: anyone may join."));
+            } catch (IOException e) {
+                logger.error("Failed to switch the whitelist", e);
+                source.sendMessage(Component.text("§cFailed to switch the whitelist: " + e.getMessage()));
+            }
             return;
         }
 
@@ -74,7 +110,7 @@ public final class WhitelistCommand implements SimpleCommand {
         }
 
         if (args.length < 3) {
-            source.sendMessage(Component.text("§7Usage: /networkaccess whitelist " + args[1].toLowerCase() + " <player>"));
+            source.sendMessage(Component.text("§7Usage: /whitelist " + args[1].toLowerCase() + " <player>"));
             return;
         }
 

@@ -56,7 +56,8 @@ public final class NetworkAccessVelocity {
             maintenance.refresh();
             proxy.getEventManager().register(this, maintenance);
             proxy.getScheduler().buildTask(this, maintenance::refresh).delay(Duration.ofSeconds(5)).repeat(Duration.ofSeconds(5)).schedule();
-            proxy.getCommandManager().register("networkaccess", new WhitelistCommand(proxy, whitelistStore, logger));
+            // the proxy's /whitelist replaces the vanilla one on the servers behind it (the proxy decides who gets in)
+            proxy.getCommandManager().register("whitelist", new WhitelistCommand(proxy, whitelistStore, dataDir.resolve("whitelist-on"), logger));
             logger.info("[NetworkAccess] Network Access ready");
         } catch (Exception ex) {
             logger.error("Failed to initialize Network Access", ex);
