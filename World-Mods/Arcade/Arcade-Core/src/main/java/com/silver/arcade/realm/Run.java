@@ -79,6 +79,8 @@ public final class Run {
         boolean firstTime;
         /** The players meeting this room for the first time. */
         final Set<UUID> newcomers = new HashSet<>();
+        /** Who used /giveup here: they stay in the climb if everyone else in the room clears it. */
+        final Set<UUID> gaveUp = new HashSet<>();
         /** Ticks of countdown left once the room is ready (-1: not started yet). */
         int countdown = -1;
         /** Where each player stood when the countdown began: they are held there until "Go!". */
@@ -371,10 +373,10 @@ public final class Run {
                 }
                 if (party.room.finished() || elapsed >= party.limit) {
                     party.over = true;
-                    party.cleared = party.room.cleared();
+                    party.cleared = carryGivers(party, party.room.cleared());
                     party.bar.removeAllPlayers();
                     if (party.level > 0 && !party.voided) {
-                        host.roomResult(party.room.id(), party.level, party.members.size(), party.cleared.size(),
+                        host.roomResult(party.room.id(), party.level, party.members.size(), party.room.cleared().size(),
                             (int) (Math.min(elapsed, party.limit) / 20), (int) (party.limit / 20), test);
                     }
                 } else {
@@ -389,6 +391,30 @@ public final class Run {
         } else if (phase == Phase.CHOICE) {
             choiceTick(now);
         }
+    }
+
+    /**
+     * A player who gave up in a shared room is carried when everyone else there cleared it (a team win); in a race or a
+     * versus game someone else failed too, so giving up stays a fail and never beats trying.
+     */
+    private Set<UUID> carryGivers(Party party, Set<UUID> cleared) {
+        if (party.gaveUp.isEmpty() || party.members.size() < 2) {
+            return cleared;
+        }
+        List<UUID> others = party.members.stream().filter(id -> !party.gaveUp.contains(id)).toList();
+        if (others.isEmpty() || !cleared.containsAll(others)) {
+            return cleared;
+        }
+        Set<UUID> carried = new HashSet<>(cleared);
+        for (UUID id : party.gaveUp) {
+            if (carried.add(id)) {
+                ServerPlayer player = server.getPlayerList().getPlayer(id);
+                if (player != null) {
+                    Gamemaster.say(player, "Your team cleared the room: you're still in the climb.");
+                }
+            }
+        }
+        return carried;
     }
 
     /** 3 s, or long enough to read the rules when someone is new here: 10-20 s by the length of the explanation. */
@@ -616,10 +642,11 @@ public final class Run {
                         Gamemaster.say(other, name + " gave up this room.");
                     }
                 }
-                if (party.room.finished()) {
-                    Gamemaster.say(player, "You gave up this room.");
+                party.gaveUp.add(player.getUUID());
+                if (party.members.size() > 1 && !party.room.finished()) {
+                    Gamemaster.say(player, "You gave up this room. If everyone else clears it, you stay in the climb.");
                 } else {
-                    Gamemaster.say(player, "You gave up this room; it ends when the others finish or give up too.");
+                    Gamemaster.say(player, "You gave up this room.");
                 }
                 return;
             }
