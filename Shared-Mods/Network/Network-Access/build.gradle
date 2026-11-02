@@ -1,0 +1,58 @@
+plugins {
+    id 'java'
+    id 'com.gradleup.shadow' version '9.3.0'
+}
+
+group = 'com.silver'
+version = '0.1.0'
+
+java { toolchain { languageVersion = JavaLanguageVersion.of(25) } }
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://repo.papermc.io/repository/maven-public/' }
+}
+
+dependencies {
+    // Provided at runtime by the 'network-authorization' Velocity plugin (declared @Dependency), not shaded.
+    compileOnly 'com.silver:network-authorization-velocity:0.1.0'
+    compileOnly 'com.silver:authorization-common:0.1.0'
+    testImplementation 'com.silver:network-authorization-velocity:0.1.0'
+    testImplementation 'com.silver:authorization-common:0.1.0'
+    compileOnly 'com.velocitypowered:velocity-api:3.4.0-SNAPSHOT'
+    annotationProcessor 'com.velocitypowered:velocity-api:3.4.0-SNAPSHOT'
+    compileOnly 'com.google.code.gson:gson:2.10.1'
+    implementation 'org.yaml:snakeyaml:2.2'
+    implementation 'com.zaxxer:HikariCP:7.0.2'
+    implementation 'org.mariadb.jdbc:mariadb-java-client:3.5.7'
+    testImplementation 'com.velocitypowered:velocity-api:3.4.0-SNAPSHOT'
+    testImplementation 'org.slf4j:slf4j-api:2.0.13'
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.11.3'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.11.3'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.3'
+    testImplementation 'org.mockito:mockito-core:5.18.0'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 25
+    options.encoding = 'UTF-8'
+}
+
+tasks.test {
+    useJUnitPlatform()
+}
+
+tasks.shadowJar {
+    mergeServiceFiles()
+    archiveBaseName.set('network-access')
+    archiveClassifier.set('')
+}
+
+// Only the shadow jar is deployable (it carries Hikari, MariaDB and SnakeYAML); keep the plain jar from sharing its name.
+tasks.jar {
+    archiveClassifier.set('thin')
+}
+
+tasks.build {
+    dependsOn tasks.shadowJar
+}

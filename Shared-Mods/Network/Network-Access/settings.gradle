@@ -1,0 +1,4 @@
+rootProject.name = 'network-access'
+
+// Compile against the authorization plugin's API (ProxyAuthorization) and the shared permission nodes.
+includeBuild('../Network-Authorization')

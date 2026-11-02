@@ -1,0 +1,217 @@
+package com.silver.networkaccess.plugin;
+
+import com.velocitypowered.api.event.ResultedEvent;
+import com.velocitypowered.api.event.Subscribe;
+import com.velocitypowered.api.event.connection.PreLoginEvent;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import org.slf4j.Logger;
+
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * Handles security features for the network like rate limiting, greylisting, and whitelisting.
+ * Validates connections before they are fully established to minimize overhead and prevent bot attacks.
+ */
+public class SecurityManager {
+
+    private final Logger logger;
+    private final WhitelistStore whitelistStore;
+
+    // Rate limiting: who -> [timestamp1, timestamp2, ...]; greylisting: who -> expiration timestamp. "Who" is the address, except
+    // for loopback: everyone from outside arrives through the tunnel as 127.0.0.1, so one address-wide block would lock out every
+    // outside player at once (and anyone could trigger it). There it is the player name instead.
+    private final Map<String, long[]> connectionHistory = new ConcurrentHashMap<>();
+    private final Map<String, Long> greylist = new ConcurrentHashMap<>();
+
+    // Settings
+    private static final int MAX_CONN_PER_WINDOW = 3;
+    private static final long WINDOW_MILLIS = 5000;
+    private static final long GREYLIST_DURATION_MILLIS = 5 * 60 * 1000; // 5 minutes
+
+    /**
+     * Offline-mode names allowed in anyway: ONLY for a test copy of the proxy (its test bots and QA client), read from
+     * offline-test-names.txt in the plugin's data folder, one exact name per line. The live proxy has no such file.
+     */
+    private final java.util.Set<String> offlineTestNames;
+
+    public SecurityManager(Logger logger, WhitelistStore whitelistStore, java.nio.file.Path dataDir) {
+        this.logger = logger;
+        this.whitelistStore = whitelistStore;
+        this.offlineTestNames = loadOfflineTestNames(dataDir.resolve("offline-test-names.txt"));
+        if (!offlineTestNames.isEmpty()) {
+            logger.warn("[Security] TEST PROXY: {} offline-mode name(s) are let in ({}). This must never be the live proxy.",
+                offlineTestNames.size(), offlineTestNames);
+        }
+    }
+
+    private java.util.Set<String> loadOfflineTestNames(java.nio.file.Path file) {
+        if (!java.nio.file.Files.isRegularFile(file)) {
+            return java.util.Set.of();
+        }
+        try {
+            return java.nio.file.Files.readAllLines(file).stream().map(String::trim)
+                .filter(name -> !name.isEmpty() && !name.startsWith("#")).collect(java.util.stream.Collectors.toUnmodifiableSet());
+        } catch (java.io.IOException unreadable) {
+            logger.error("[Security] Could not read {}; no offline names are let in", file, unreadable);
+            return java.util.Set.of();
+        }
+    }
+
+    @Subscribe
+    public void onPreLogin(PreLoginEvent event) {
+        InetSocketAddress remoteAddress = event.getConnection().getRemoteAddress();
+        InetAddress address = remoteAddress.getAddress();
+        String username = event.getUsername();
+        boolean shared = address == null || address.isLoopbackAddress();
+        String ip = shared ? "name:" + String.valueOf(username).toLowerCase(java.util.Locale.ROOT) : address.getHostAddress();
+        
+        // 1. IP Greylist Check
+        Long greylistExpiry = greylist.get(ip);
+        if (greylistExpiry != null) {
+            if (System.currentTimeMillis() < greylistExpiry) {
+                logger.warn("[Security] Blocked connection from greylisted IP: {}", ip);
+                event.setResult(PreLoginEvent.PreLoginComponentResult.denied(
+                    Component.text("Too many rapid connection attempts. Please try again in a few minutes.", NamedTextColor.RED)
+                ));
+                return;
+            } else {
+                // Greylist expired
+                greylist.remove(ip);
+            }
+        }
+
+        // 2. IP Rate Limiting Check
+        if (isRateLimited(ip)) {
+            logger.warn("[Security] IP {} hit connection rate limit, greylisting for 5m.", ip);
+            greylist.put(ip, System.currentTimeMillis() + GREYLIST_DURATION_MILLIS);
+            event.setResult(PreLoginEvent.PreLoginComponentResult.denied(
+                Component.text("Too many rapid connection attempts. Please try again later.", NamedTextColor.RED)
+            ));
+            return;
+        }
+
+        // 3. Username/Handshake Validation
+        if (!isValidUsername(username)) {
+            logger.warn("[Security] Invalid username from {}: {}", shared ? "the tunnel" : ip, username);
+            if (!shared) {  // a bad name says nothing about the other players sharing the tunnel's address
+                greylist.put(ip, System.currentTimeMillis() + GREYLIST_DURATION_MILLIS);
+            }
+            event.setResult(PreLoginEvent.PreLoginComponentResult.denied(
+                Component.text("Invalid username format or characters.", NamedTextColor.RED)
+            ));
+            return;
+        }
+        
+        // Hostname length validation isn't directly exposed in PreLoginEvent, 
+        // but often handled by the proxy or can be checked via reflection/custom handlers.
+        // We rely on standard Velocity hostname validation, but enforce strict UUID checks below.
+        
+        // Note: UUID Check cannot be perfectly done in PreLoginEvent for offline mode, 
+        // but for online mode we assume Velocity handles the UUID auth.
+        // However, we want to reject NON-WHITELISTED players.
+        // Velocity handles the actual username->UUID resolution after PreLoginEvent.
+        // We will do another check in ServerPreConnect or LoginEvent to enforce the whitelist strictly by UUID.
+        // But if proxy is online mode and we get UUID here (if it's somehow available), we could check.
+        // Usually, UUID is available in LoginEvent (after PreLogin).
+        
+        // See PlayerChooseInitialServerEvent or LoginEvent for whitelist enforcement.
+    }
+    
+    @Subscribe
+    public void onLogin(com.velocitypowered.api.event.connection.LoginEvent event) {
+        // Here we have the resolved UUID for the player.
+        UUID uuid = event.getPlayer().getUniqueId();
+        
+        // Add more rigorous forwarding validation checks if needed
+        // Velocity handles 'online-mode' validation if configured properly, but we can verify player state
+        // Floodgate players are intentionally represented as offline-mode players
+        // to Velocity, but are authenticated by Floodgate. Their configured
+        // username prefix (".") cannot occur in a normal Java username.
+        boolean floodgatePlayer = event.getPlayer().getUsername().startsWith(".");
+        boolean testName = offlineTestNames.contains(event.getPlayer().getUsername());
+        if (!event.getPlayer().isOnlineMode() && !floodgatePlayer && !testName) {
+            logger.warn("[Security] Rejecting offline mode connection for {}", event.getPlayer().getUsername());
+            event.setResult(ResultedEvent.ComponentResult.denied(
+                Component.text("Offline mode connections are not allowed.", NamedTextColor.RED)
+            ));
+            return;
+        }
+        
+        // Validate public key if required by your setup (1.19+ feature usually handled by proxy)
+        // If Velocity is properly configured, it already dropped players without keys if 'force-key-authentication' = true
+        // But if you want to explicitly check:
+        // if (event.getPlayer().getIdentifiedKey() == null) {
+        //     logger.warn("[Security] Player {} is missing a public key.", event.getPlayer().getUsername());
+        //     // Optional: reject
+        // }
+
+        if (!whitelistStore.isWhitelisted(uuid)) {
+            logger.info("[Security] Connection from {} denied (Not Whitelisted).", uuid);
+            event.setResult(ResultedEvent.ComponentResult.denied(
+                Component.text("You are not whitelisted on this server.", NamedTextColor.RED)
+            ));
+        }
+    }
+
+    private boolean isRateLimited(String ip) {
+        long now = System.currentTimeMillis();
+        if (connectionHistory.size() > 512) {
+            // Addresses with no connection inside the window can't be rate limited any more; forget them.
+            connectionHistory.entrySet().removeIf(entry -> {
+                synchronized (entry.getValue()) {
+                    for (long at : entry.getValue()) {
+                        if (now - at <= WINDOW_MILLIS) {
+                            return false;
+                        }
+                    }
+                    return true;
+                }
+            });
+            greylist.values().removeIf(expiry -> expiry <= now);
+        }
+        long[] history = connectionHistory.computeIfAbsent(ip, k -> new long[MAX_CONN_PER_WINDOW]);
+        
+        synchronized (history) {
+            // Find oldest entry
+            int oldestIdx = 0;
+            long oldestTime = Long.MAX_VALUE;
+            for (int i = 0; i < history.length; i++) {
+                if (history[i] < oldestTime) {
+                    oldestTime = history[i];
+                    oldestIdx = i;
+                }
+            }
+
+            // Check if oldest is within window
+            if (now - oldestTime <= WINDOW_MILLIS) {
+                return true; // Rate limited
+            }
+
+            // Replace oldest with current time
+            history[oldestIdx] = now;
+            return false;
+        }
+    }
+
+    private boolean isValidUsername(String username) {
+        if (username == null) return false;
+        if (username.length() < 3 || username.length() > 16) return false;
+        
+        // Valid characters for Minecraft username
+        for (int i = 0; i < username.length(); i++) {
+            char c = username.charAt(i);
+            if (!(c >= 'a' && c <= 'z') &&
+                !(c >= 'A' && c <= 'Z') &&
+                !(c >= '0' && c <= '9') &&
+                c != '_') {
+                return false;
+            }
+        }
+        return true;
+    }
+}
