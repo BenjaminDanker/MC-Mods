@@ -135,7 +135,7 @@ public final class Routing {
         STICKY_CANCELLED.add(listener);
     }
 
-    /** Runs after the routing plugin reloads its config (/wakeuplobby reload). */
+    /** Runs after the routing plugin reloads its config (/routing reload). */
     public static void onReload(Runnable listener) {
         RELOAD.add(listener);
     }

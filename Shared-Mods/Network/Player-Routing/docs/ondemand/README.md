@@ -14,7 +14,7 @@ How it works
 Server side (user systemd units, linger on, none of them enabled at boot): `mc-ctl`, `mc-stop-wait` and `example-server.service` here.
 Units use `Restart=on-failure`, so only a crash restarts a server; `mc-stop-wait` stops the server gracefully and waits for it to save.
 
-Config (plugins/on-demand-servers/config.yml, plugin `on-demand-servers`; before the split this section lived in wakeuplobby's config.yml, same keys):
+Config (plugins/on-demand-servers/config.yml, plugin `on-demand-servers`; written by mc-net):
 
     on_demand:
       enabled: true

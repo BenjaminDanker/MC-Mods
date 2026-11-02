@@ -115,7 +115,7 @@ public final class DiscoveredCommandPolicies {
         // to return from the holding lobby. Origin scoping prevents the vanilla INTERNAL
         // rule from leaking into the proxy command tree.
         policies.add(CommandOrigin.VELOCITY_PROXY, "/return", CommandClassification.PUBLIC,
-                null, "WakeUpLobby", "wakeuplobby");
+                null, "player-routing", "player-routing");
         add(policies, CommandClassification.INTERNAL, null, "network-authorization", "network_authorization",
                 "/auth-tree-dump");
         add(policies, CommandClassification.PERMISSION, "playersync.progression.modify", "player-sync", "playersync",

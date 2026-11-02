@@ -107,11 +107,11 @@ final class ProgressStore {
         SyncStore.ensureRow(name, uuid);
         String finished = "magic".equals(from) || "tech".equals(from) ? completedColumn(from) + " = FALSE, " : "";
         SyncStore.transaction(c -> {
-            SyncStore.execute(c, "DELETE FROM wakeup_player_visits WHERE player_uuid = ? AND server_name = ?", s -> {
+            SyncStore.execute(c, "DELETE FROM routing_player_visits WHERE player_uuid = ? AND server_name = ?", s -> {
                 s.setString(1, uuid);
                 s.setString(2, from);
             });
-            SyncStore.execute(c, "INSERT INTO wakeup_player_visits (player_uuid, server_name) VALUES (?, ?)"
+            SyncStore.execute(c, "INSERT INTO routing_player_visits (player_uuid, server_name) VALUES (?, ?)"
                 + " ON DUPLICATE KEY UPDATE last_visited_at = CURRENT_TIMESTAMP(3)", s -> {
                     s.setString(1, uuid);
                     s.setString(2, to);

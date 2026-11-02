@@ -9,7 +9,7 @@ import java.util.Objects;
 
 /** Database credentials loaded from a private environment-style file. */
 public record DatabaseSettings(String jdbcUrl, String user, String password) {
-    private static final String DEFAULT_FILE = ".config/wakeuplobby/database.env";
+    private static final String DEFAULT_FILE = ".config/mc-network/database.env";
 
     public DatabaseSettings {
         if (jdbcUrl == null || jdbcUrl.isBlank()) throw new IllegalArgumentException("WAKEUP_DB_JDBC_URL is required");

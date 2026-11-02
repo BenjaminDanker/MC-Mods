@@ -47,9 +47,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
         dependencies = {@Dependency(id = "player-routing"), @Dependency(id = "on-demand-servers"),
                 @Dependency(id = "network-authorization")})
 public class WaitingLobbyPlugin {
-    private static final PermissionNode SERVER_PERMISSION = PermissionNodes.WAKEUPLOBBY_SERVER;
-    private static final PermissionNode BIG_VIP_PERMISSION = PermissionNodes.WAKEUPLOBBY_QUEUE_BIGVIP;
-    private static final PermissionNode VIP_PERMISSION = PermissionNodes.WAKEUPLOBBY_QUEUE_VIP;
+    private static final PermissionNode SERVER_PERMISSION = PermissionNodes.ROUTING_SERVER;
+    private static final PermissionNode BIG_VIP_PERMISSION = PermissionNodes.WAITINGLOBBY_QUEUE_BIGVIP;
+    private static final PermissionNode VIP_PERMISSION = PermissionNodes.WAITINGLOBBY_QUEUE_VIP;
 
     private final ProxyServer proxy;
     private final Logger logger;

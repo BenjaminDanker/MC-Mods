@@ -39,14 +39,6 @@ public class LobbyConfigLoader {
             return;
         }
 
-        // First start after the plugin was renamed from wakeuplobby: take over the old config once.
-        Path legacy = dataDir.resolveSibling("wakeuplobby").resolve(CONFIG_FILE_NAME);
-        if (Files.isRegularFile(legacy)) {
-            Files.copy(legacy, cfg);
-            log.info("[PlayerRouting] Copied the old configuration {} to {}", legacy, cfg);
-            return;
-        }
-
         String defaultYaml = """
 broadcast_ip: ipv4 address
 holding_server: waiting_lobby

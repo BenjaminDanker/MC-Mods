@@ -33,7 +33,7 @@ public final class MariaDbRoutingRepository implements AutoCloseable {
         config.setJdbcUrl(settings.jdbcUrl());
         config.setUsername(settings.user());
         config.setPassword(settings.password());
-        config.setPoolName("WakeUpLobbyRouting");
+        config.setPoolName("PlayerRouting");
         config.setMaximumPoolSize(4);
         config.setMinimumIdle(1);
         config.setConnectionTimeout(5_000);
@@ -43,16 +43,18 @@ public final class MariaDbRoutingRepository implements AutoCloseable {
     }
 
     public void migrate() throws SQLException, IOException {
-        String routingSql = readMigration("/db/migration/V001__create_wakeup_routing.sql");
+        String routingSql = readMigration("/db/migration/V001__create_routing.sql");
         String authorizationSql = readMigration("/db/migration/V002__create_authorization.sql");
         String authorizationSeedSql = readMigration("/db/migration/V003__seed_initial_authorization.sql");
         String defaultPlayerRolesSql = readMigration("/db/migration/V004__data_driven_default_player_roles.sql");
         String firstPartyPolicySql = readMigration("/db/migration/V005__seed_first_party_authorization_policy.sql");
         String commandPolicySql = readMigration("/db/migration/V006__seed_central_command_policy.sql");
         String playerSyncSql = readMigration("/db/migration/V007__rename_player_sync_permissions.sql");
+        String routingPermissionsSql = readMigration("/db/migration/V008__rename_routing_permissions.sql");
         try (Connection connection = dataSource.getConnection()) {
             connection.setAutoCommit(false);
             try {
+                renameOldTables(connection);
                 ensureMigrationTable(connection);
                 applyMigration(connection, 1, "create WakeUpLobby routing state", routingSql);
                 applyMigration(connection, 2, "create centralized authorization schema", authorizationSql);
@@ -61,6 +63,7 @@ public final class MariaDbRoutingRepository implements AutoCloseable {
                 applyMigration(connection, 5, "seed first-party centralized authorization policy", firstPartyPolicySql);
                 applyMigration(connection, 6, "seed centralized command administration policy", commandPolicySql);
                 applyMigration(connection, 7, "rename the old player-data permissions to Player Sync", playerSyncSql);
+                applyMigration(connection, 8, "rename the wakeuplobby permissions to routing and waitinglobby", routingPermissionsSql);
                 connection.commit();
             } catch (SQLException failure) {
                 connection.rollback();
@@ -86,7 +89,7 @@ public final class MariaDbRoutingRepository implements AutoCloseable {
     private static void applyMigration(Connection connection, int version, String description, String sql)
             throws SQLException {
         try (PreparedStatement lookup = connection.prepareStatement(
-                "SELECT 1 FROM wakeup_schema_migrations WHERE version=?")) {
+                "SELECT 1 FROM routing_schema_migrations WHERE version=?")) {
             lookup.setInt(1, version);
             try (ResultSet rows = lookup.executeQuery()) {
                 if (rows.next()) return;
@@ -100,16 +103,42 @@ public final class MariaDbRoutingRepository implements AutoCloseable {
             }
         }
         try (PreparedStatement insert = connection.prepareStatement(
-                "INSERT IGNORE INTO wakeup_schema_migrations(version, description) VALUES (?, ?)")) {
+                "INSERT IGNORE INTO routing_schema_migrations(version, description) VALUES (?, ?)")) {
             insert.setInt(1, version);
             insert.setString(2, description);
             insert.executeUpdate();
         }
     }
 
+    /** The tables were called wakeup_* while this was the wake-up-lobby plugin; rename them once (rows, keys and all). */
+    private static void renameOldTables(Connection connection) throws SQLException {
+        String[][] renames = {
+            {"wakeup_schema_migrations", "routing_schema_migrations"},
+            {"wakeup_player_state", "routing_player_state"},
+            {"wakeup_player_visits", "routing_player_visits"},
+        };
+        for (String[] rename : renames) {
+            if (tableExists(connection, rename[0]) && !tableExists(connection, rename[1])) {
+                try (Statement statement = connection.createStatement()) {
+                    statement.execute("RENAME TABLE " + rename[0] + " TO " + rename[1]);
+                }
+            }
+        }
+    }
+
+    static boolean tableExists(Connection connection, String table) throws SQLException {
+        try (PreparedStatement lookup = connection.prepareStatement(
+                "SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?")) {
+            lookup.setString(1, table);
+            try (ResultSet rows = lookup.executeQuery()) {
+                return rows.next();
+            }
+        }
+    }
+
     private static void ensureMigrationTable(Connection connection) throws SQLException {
         try (Statement statement = connection.createStatement()) {
-            statement.execute("CREATE TABLE IF NOT EXISTS wakeup_schema_migrations ("
+            statement.execute("CREATE TABLE IF NOT EXISTS routing_schema_migrations ("
                     + "version INT NOT NULL PRIMARY KEY, "
                     + "description VARCHAR(255) NOT NULL, "
                     + "applied_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)"
@@ -124,7 +153,7 @@ public final class MariaDbRoutingRepository implements AutoCloseable {
         try (Connection connection = dataSource.getConnection()) {
             try (Statement statement = connection.createStatement();
                  ResultSet rows = statement.executeQuery(
-                         "SELECT player_uuid, preferred_server, last_listed_server FROM wakeup_player_state")) {
+                         "SELECT player_uuid, preferred_server, last_listed_server FROM routing_player_state")) {
                 while (rows.next()) {
                     UUID playerId = UUID.fromString(rows.getString(1));
                     String preferredServer = rows.getString(2);
@@ -135,7 +164,7 @@ public final class MariaDbRoutingRepository implements AutoCloseable {
             }
             try (Statement statement = connection.createStatement();
                  ResultSet rows = statement.executeQuery(
-                         "SELECT player_uuid, server_name FROM wakeup_player_visits")) {
+                         "SELECT player_uuid, server_name FROM routing_player_visits")) {
                 while (rows.next()) {
                     UUID playerId = UUID.fromString(rows.getString(1));
                     visited.computeIfAbsent(playerId, ignored -> new HashSet<>()).add(rows.getString(2));
@@ -156,7 +185,7 @@ public final class MariaDbRoutingRepository implements AutoCloseable {
             connection.setAutoCommit(false);
             try {
                 try (PreparedStatement player = connection.prepareStatement(
-                        "INSERT INTO wakeup_player_state(player_uuid, preferred_server, last_successful_server, last_listed_server) "
+                        "INSERT INTO routing_player_state(player_uuid, preferred_server, last_successful_server, last_listed_server) "
                                 + "VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE "
                                 + "preferred_server=COALESCE(preferred_server, VALUES(preferred_server)), "
                                 + "last_successful_server=COALESCE(last_successful_server, VALUES(last_successful_server)), "
@@ -172,7 +201,7 @@ public final class MariaDbRoutingRepository implements AutoCloseable {
                     player.executeBatch();
                 }
                 try (PreparedStatement visit = connection.prepareStatement(
-                        "INSERT INTO wakeup_player_visits(player_uuid, server_name) VALUES (?, ?) "
+                        "INSERT INTO routing_player_visits(player_uuid, server_name) VALUES (?, ?) "
                                 + "ON DUPLICATE KEY UPDATE last_visited_at=last_visited_at")) {
                     for (var entry : visited.entrySet()) {
                         for (String server : entry.getValue()) {
@@ -199,7 +228,7 @@ public final class MariaDbRoutingRepository implements AutoCloseable {
             connection.setAutoCommit(false);
             try {
                 try (PreparedStatement player = connection.prepareStatement(
-                        "INSERT INTO wakeup_player_state(player_uuid, preferred_server, last_successful_server, last_listed_server) "
+                        "INSERT INTO routing_player_state(player_uuid, preferred_server, last_successful_server, last_listed_server) "
                                 + "VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE preferred_server=VALUES(preferred_server), "
                                 + "last_successful_server=VALUES(last_successful_server), "
                                 + "last_listed_server=COALESCE(VALUES(last_listed_server), last_listed_server)")) {
@@ -210,7 +239,7 @@ public final class MariaDbRoutingRepository implements AutoCloseable {
                     player.executeUpdate();
                 }
                 try (PreparedStatement visit = connection.prepareStatement(
-                        "INSERT INTO wakeup_player_visits(player_uuid, server_name) VALUES (?, ?) "
+                        "INSERT INTO routing_player_visits(player_uuid, server_name) VALUES (?, ?) "
                                 + "ON DUPLICATE KEY UPDATE last_visited_at=CURRENT_TIMESTAMP(3)")) {
                     visit.setString(1, playerId.toString());
                     visit.setString(2, server);
@@ -231,7 +260,7 @@ public final class MariaDbRoutingRepository implements AutoCloseable {
         Set<String> servers = new HashSet<>();
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(
-                     "SELECT server_name FROM wakeup_player_visits WHERE player_uuid = ?")) {
+                     "SELECT server_name FROM routing_player_visits WHERE player_uuid = ?")) {
             statement.setString(1, playerId.toString());
             try (ResultSet rows = statement.executeQuery()) {
                 while (rows.next()) servers.add(rows.getString(1));
@@ -263,7 +292,7 @@ public final class MariaDbRoutingRepository implements AutoCloseable {
     public void setPreferredServer(UUID playerId, String server) throws SQLException {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(
-                     "INSERT INTO wakeup_player_state(player_uuid, preferred_server) VALUES (?, ?) "
+                     "INSERT INTO routing_player_state(player_uuid, preferred_server) VALUES (?, ?) "
                              + "ON DUPLICATE KEY UPDATE preferred_server=VALUES(preferred_server)")) {
             statement.setString(1, playerId.toString());
             statement.setString(2, server);

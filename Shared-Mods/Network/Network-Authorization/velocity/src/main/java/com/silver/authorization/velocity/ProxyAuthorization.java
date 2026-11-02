@@ -15,7 +15,7 @@ import java.util.UUID;
  * Network Authorization plugin has not created its service.
  */
 public final class ProxyAuthorization {
-    private static final PermissionNode SERVER_PERMISSION = PermissionNodes.WAKEUPLOBBY_SERVER;
+    private static final PermissionNode SERVER_PERMISSION = PermissionNodes.ROUTING_SERVER;
     private static volatile AuthorizationService service;
 
     private ProxyAuthorization() { }
@@ -68,7 +68,7 @@ public final class ProxyAuthorization {
         return player != null && isAdminOn(player.getUniqueId(), serverNameOrNull);
     }
 
-    /** {@code wakeuplobby.server} on the player's current server (the proxy's "bypass"). */
+    /** {@code routing.server} on the player's current server (the proxy's "bypass"). */
     public static boolean hasBypass(Player player) {
         return hasOnCurrentServer(player, SERVER_PERMISSION);
     }

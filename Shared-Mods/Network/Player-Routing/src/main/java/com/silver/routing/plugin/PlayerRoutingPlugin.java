@@ -64,7 +64,7 @@ import java.util.stream.Collectors;
 @Plugin(id = "player-routing", name = "Player Routing", version = "1.0.0",
         dependencies = {@Dependency(id = "network-authorization"), @Dependency(id = "on-demand-servers")})
 public class PlayerRoutingPlugin {
-    private static final PermissionNode SERVER_PERMISSION = PermissionNodes.WAKEUPLOBBY_SERVER;
+    private static final PermissionNode SERVER_PERMISSION = PermissionNodes.ROUTING_SERVER;
 
     private final ProxyServer proxy;
     private final Logger logger;
@@ -77,7 +77,7 @@ public class PlayerRoutingPlugin {
     private CommandRegistrar commandRegistrar;
 
     private static final MinecraftChannelIdentifier RETURN_OVERWORLD_CHANNEL =
-        MinecraftChannelIdentifier.from("wakeuplobby:return_overworld");
+        MinecraftChannelIdentifier.from("routing:return_overworld");
 
     public String computeReturnDestination(UUID playerId) {
         LobbyConfig cfg = runtime == null ? null : runtime.currentConfig();
@@ -314,7 +314,7 @@ public class PlayerRoutingPlugin {
             return;
         }
 
-        boolean isAdmin = hasBypass(player); // wakeuplobby.bypass
+        boolean isAdmin = hasBypass(player); // routing.server
         logger.info("[PlayerRouting] onPreConnect: player={} isAdmin={}", player.getUsername(), isAdmin);
 
         // If an admin manually requests a server while a sticky-wait is in progress, cancel the sticky-wait.

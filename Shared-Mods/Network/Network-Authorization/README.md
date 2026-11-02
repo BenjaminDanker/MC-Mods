@@ -1,14 +1,14 @@
 # Network Authorization
 
-The Fabric module receives player-bound snapshots from WakeUpLobby over the dedicated
+The Fabric module receives player-bound snapshots from the proxy (network-authorization plugin) over the dedicated
 `silverauth:sync_v1` channel. It evaluates them locally through `authorization-common`;
 it has no MariaDB dependency and never falls back to vanilla OP for central decisions.
 
 Install `network-authorization` on each active Fabric backend alongside any migrated
 first-party mod. On first startup it creates `config/network-authorization.properties`.
 Set `server_id` to the exact canonical Velocity server key (for example `vanilla`) and set
-`backend_key_base64` to that backend's unique key. WakeUpLobby creates
-`plugins/wakeuplobby/authorization-backend-keys.properties`; put the same Base64 key
+`backend_key_base64` to that backend's unique key. mc-net writes
+`plugins/network-authorization/authorization-backend-keys.properties`; put the same Base64 key
 under the matching server ID there. Use a different random 32-byte-or-longer key for
 every backend. Do not reuse portal signing material. `waiting_lobby` is configured only
 if it is an actual Fabric backend; a proxy-only holding server needs no Fabric config.

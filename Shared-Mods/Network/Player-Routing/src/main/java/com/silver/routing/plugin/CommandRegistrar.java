@@ -22,7 +22,7 @@ import java.util.UUID;
  * Centralises registration and handling for all player-routing commands.
  */
 public class CommandRegistrar {
-    private static final String WAKEUPLOBBY_USAGE = "§7Usage: /wakeuplobby reload";
+    private static final String RELOAD_USAGE = "§7Usage: /routing reload";
 
     private final ProxyServer proxy;
     private final RuntimeState runtime;
@@ -51,12 +51,12 @@ public class CommandRegistrar {
         registerForceServerCommand();
         registerReturnCommand();
         registered = true;
-        logger.info("[PlayerRouting] Commands registered: /wakeuplobby reload, /server (override), /forceserver, /return");
+        logger.info("[PlayerRouting] Commands registered: /routing reload, /server (override), /forceserver, /return");
     }
 
     private void registerReloadCommand() {
         proxy.getCommandManager().register(
-            "wakeuplobby",
+            "routing",
             new SimpleCommand() {
                 @Override
                 public void execute(Invocation invocation) {
@@ -64,7 +64,7 @@ public class CommandRegistrar {
                     String[] args = invocation.arguments();
 
                     if (args.length == 0) {
-                        source.sendMessage(Component.text(WAKEUPLOBBY_USAGE));
+                        source.sendMessage(Component.text(RELOAD_USAGE));
                         return;
                     }
 
@@ -88,7 +88,7 @@ public class CommandRegistrar {
                         return;
                     }
 
-                    source.sendMessage(Component.text(WAKEUPLOBBY_USAGE));
+                    source.sendMessage(Component.text(RELOAD_USAGE));
                 }
 
                 @Override
@@ -106,7 +106,7 @@ public class CommandRegistrar {
     private boolean canManageWakeupLobby(CommandSource source) {
         if (source instanceof ConsoleCommandSource) return true;
         return source instanceof Player player
-                && plugin.hasAuthorizationPermission(player, PermissionNodes.WAKEUPLOBBY_MANAGE);
+                && plugin.hasAuthorizationPermission(player, PermissionNodes.ROUTING_MANAGE);
     }
 
     private boolean canForceServer(CommandSource source) {
@@ -121,7 +121,7 @@ public class CommandRegistrar {
     // them for PLAYER users without removing the commands from Minecraft.
     proxy.getCommandManager().register("msg",
         new SanitizedForwardCommand(proxy, logger, this::hasBypass,
-                player -> plugin.hasAuthorizationPermission(player, PermissionNodes.WAKEUPLOBBY_SELECTORS),
+                player -> plugin.hasAuthorizationPermission(player, PermissionNodes.ROUTING_SELECTORS),
                 "minecraft:msg", "msg", true));
     }
 
@@ -353,6 +353,6 @@ public class CommandRegistrar {
     }
 
     private boolean hasBypass(Player player) {
-        return plugin.hasAuthorizationPermission(player, PermissionNodes.WAKEUPLOBBY_SERVER);
+        return plugin.hasAuthorizationPermission(player, PermissionNodes.ROUTING_SERVER);
     }
 }

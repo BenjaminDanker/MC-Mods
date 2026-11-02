@@ -3,13 +3,13 @@
 Velocity plugin `player-routing`: the routing core of the proxy. Depends on `network-authorization` and `on-demand-servers`.
 
 - Config (servers, groups, holding server, return order, return specials): `plugins/player-routing/config.yml`.
-  On first start, if it is missing and `plugins/wakeuplobby/config.yml` exists, that file is copied over once.
 - Routing database (visits, preferred/last server, completed branches, portal transfers): MariaDB, credentials from
-  `~/.config/wakeuplobby/database.env` (`WAKEUP_DB_JDBC_URL`, `WAKEUP_DB_USER`, `WAKEUP_DB_PASSWORD`; env vars override).
-  Table names keep their `wakeup_` prefix; migrations in `src/main/resources/db/migration` run at startup.
+  `~/.config/mc-network/database.env` (`WAKEUP_DB_JDBC_URL`, `WAKEUP_DB_USER`, `WAKEUP_DB_PASSWORD`; env vars override).
+  Tables `routing_player_state`, `routing_player_visits`, `routing_schema_migrations` (renamed from `wakeup_*` at
+  startup if needed); migrations in `src/main/resources/db/migration` run at startup.
 - Pre-connect policy: exclusive branches, completion gates, no `/server` for players, downward-only tiers.
 - Sticky waits: a player waits in the holding server and is moved when the target answers (`StickyRouter`).
-- Commands: `/wakeuplobby reload`, `/server`, `/forceserver`, `/return`, `/msg`.
+- Commands: `/routing reload`, `/server`, `/forceserver`, `/return`, `/msg`.
 - Public API for other proxy plugins: `com.silver.routing.api.Routing` (lives only in this jar; declare
   `@Dependency(id = "player-routing")`). Used by `portals` and `waiting-lobby`.
 

@@ -15,7 +15,7 @@ import net.minecraft.server.level.ServerPlayer;
  */
 public final class ReturnOverworldHandler {
     public static final CustomPacketPayload.Type<ReturnOverworldPayload> PACKET_ID =
-        new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath("wakeuplobby", "return_overworld"));
+        new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath("routing", "return_overworld"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, ReturnOverworldPayload> codec =
         StreamCodec.ofMember(ReturnOverworldPayload::write, ReturnOverworldPayload::read);
@@ -43,7 +43,7 @@ public final class ReturnOverworldHandler {
         }
 
         Component message = Component.literal("You have been returned to the Overworld.");
-        manager.teleportPlayerToOverworld(player, message, "WakeUpLobby /return");
+        manager.teleportPlayerToOverworld(player, message, "proxy /return");
     }
 
     public record ReturnOverworldPayload() implements CustomPacketPayload {

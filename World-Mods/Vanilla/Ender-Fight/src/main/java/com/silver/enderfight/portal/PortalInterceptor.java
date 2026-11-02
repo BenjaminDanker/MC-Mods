@@ -253,7 +253,7 @@ public final class PortalInterceptor {
     }
 
     /**
-     * Sends the player to the configured upstream server by requesting a signed transfer via WakeUpLobby.
+     * Sends the player to the configured upstream server by requesting a signed transfer via Portals.
      */
     protected static boolean redirectPlayer(Entity entity, EndControlConfig config) {
         String targetServer = config.portalRedirectTargetServer();

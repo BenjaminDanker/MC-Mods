@@ -2,10 +2,10 @@ package com.silver.authorization;
 
 /** Typed identifiers already used by first-party code; role membership remains data-driven. */
 public final class PermissionNodes {
-    public static final PermissionNode WAKEUPLOBBY_SERVER = PermissionNode.of("wakeuplobby.server");
-    public static final PermissionNode WAKEUPLOBBY_QUEUE_BIGVIP = PermissionNode.of("wakeuplobby.queue.bigvip");
-    public static final PermissionNode WAKEUPLOBBY_QUEUE_VIP = PermissionNode.of("wakeuplobby.queue.vip");
-    public static final PermissionNode WAKEUPLOBBY_SELECTORS = PermissionNode.of("wakeuplobby.selectors");
+    public static final PermissionNode ROUTING_SERVER = PermissionNode.of("routing.server");
+    public static final PermissionNode WAITINGLOBBY_QUEUE_BIGVIP = PermissionNode.of("waitinglobby.queue.bigvip");
+    public static final PermissionNode WAITINGLOBBY_QUEUE_VIP = PermissionNode.of("waitinglobby.queue.vip");
+    public static final PermissionNode ROUTING_SELECTORS = PermissionNode.of("routing.selectors");
 
     public static final PermissionNode AIPETS_USE = PermissionNode.of("aipets.use");
     public static final PermissionNode AIPETS_ADOPT = PermissionNode.of("aipets.adopt");
@@ -21,7 +21,7 @@ public final class PermissionNodes {
     public static final PermissionNode STAFF_ROLES_MODIFY = PermissionNode.of("staff.roles.modify");
     public static final PermissionNode STAFF_PERMISSIONS_MODIFY = PermissionNode.of("staff.permissions.modify");
 
-    public static final PermissionNode WAKEUPLOBBY_MANAGE = PermissionNode.of("wakeuplobby.manage");
+    public static final PermissionNode ROUTING_MANAGE = PermissionNode.of("routing.manage");
     public static final PermissionNode SERVER_SWITCH_FORCE = PermissionNode.of("server.switch.force");
     public static final PermissionNode ADMISSION_MANAGE = PermissionNode.of("admission.manage");
     public static final PermissionNode PORTAL_USE = PermissionNode.of("portal.use");

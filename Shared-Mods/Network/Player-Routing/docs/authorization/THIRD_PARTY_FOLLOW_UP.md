@@ -11,7 +11,7 @@ The bridge has no authenticated server/source binding, signature, nonce, timesta
 size/rate limit, or robust framing. It is not used by silverauth:sync_v1 and does not grant
 OP by itself.
 
-WakeUpLobby now provides its own /server command behind centralized wakeuplobby.server,
+WakeUpLobby now provides its own /server command behind centralized routing.server (formerly wakeuplobby.server),
 so the bridge is not needed for that narrow action. No first-party source callsites for
 /proxycommand were found, but its arbitrary-command interface may have manual/external users.
 It remains deployed and unchanged to avoid silently removing an unverified workflow. If removed

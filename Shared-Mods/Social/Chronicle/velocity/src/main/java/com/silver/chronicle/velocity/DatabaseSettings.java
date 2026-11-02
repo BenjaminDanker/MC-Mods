@@ -10,7 +10,7 @@ record DatabaseSettings(String jdbcUrl, String username, String password) {
     static DatabaseSettings load() throws IOException {
         String configured = System.getenv("WAKEUP_DB_ENV_FILE");
         Path file = configured == null || configured.isBlank()
-                ? Path.of(System.getProperty("user.home"), ".config", "wakeuplobby", "database.env")
+                ? Path.of(System.getProperty("user.home"), ".config", "mc-network", "database.env")
                 : Path.of(configured);
         Map<String, String> values = new HashMap<>();
         if (Files.isRegularFile(file)) {

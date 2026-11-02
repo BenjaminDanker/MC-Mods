@@ -14,7 +14,7 @@ import java.util.UUID;
 import javax.sql.DataSource;
 
 /**
- * Transactional MariaDB persistence for portal transfers (table wakeup_portal_transfers, created by the routing
+ * Transactional MariaDB persistence for portal transfers (table portal_transfers, created by the routing
  * plugin's first migration; {@link #ensureTable()} also creates it so this plugin works on a fresh database).
  */
 public final class PortalTransferRepository {
@@ -24,10 +24,15 @@ public final class PortalTransferRepository {
         this.dataSource = dataSource;
     }
 
-    /** Same DDL as the routing plugin's V001 migration; IF NOT EXISTS makes it a no-op on the live database. */
+    /** Creates portal_transfers if missing; first renames the old wakeup_portal_transfers (from the wake-up-lobby days). */
     public void ensureTable() throws SQLException {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
-            statement.execute("CREATE TABLE IF NOT EXISTS wakeup_portal_transfers ("
+            if (tableExists(connection, "wakeup_portal_transfers") && !tableExists(connection, "portal_transfers")) {
+                statement.execute("RENAME TABLE wakeup_portal_transfers TO portal_transfers");
+                statement.execute("ALTER TABLE portal_transfers RENAME INDEX ix_wakeup_transfer_player_status TO ix_portal_transfer_player_status, "
+                        + "RENAME INDEX ix_wakeup_transfer_expiry TO ix_portal_transfer_expiry");
+            }
+            statement.execute("CREATE TABLE IF NOT EXISTS portal_transfers ("
                     + "transfer_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY, "
                     + "player_uuid CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, "
                     + "source_server VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, "
@@ -39,9 +44,19 @@ public final class PortalTransferRepository {
                     + "claimed_at TIMESTAMP(3) NULL, "
                     + "completed_at TIMESTAMP(3) NULL, "
                     + "updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3), "
-                    + "INDEX ix_wakeup_transfer_player_status (player_uuid, status), "
-                    + "INDEX ix_wakeup_transfer_expiry (status, expires_at)"
+                    + "INDEX ix_portal_transfer_player_status (player_uuid, status), "
+                    + "INDEX ix_portal_transfer_expiry (status, expires_at)"
                     + ") ENGINE=InnoDB");
+        }
+    }
+
+    private static boolean tableExists(Connection connection, String table) throws SQLException {
+        try (PreparedStatement lookup = connection.prepareStatement(
+                "SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?")) {
+            lookup.setString(1, table);
+            try (ResultSet rows = lookup.executeQuery()) {
+                return rows.next();
+            }
         }
     }
 
@@ -50,7 +65,7 @@ public final class PortalTransferRepository {
         Map<UUID, PortalTransfer> pending = new HashMap<>();
         try (Connection connection = dataSource.getConnection()) {
             try (PreparedStatement expire = connection.prepareStatement(
-                    "UPDATE wakeup_portal_transfers SET status='EXPIRED' "
+                    "UPDATE portal_transfers SET status='EXPIRED' "
                             + "WHERE status IN ('PENDING','CLAIMED') AND expires_at <= ?")) {
                 expire.setTimestamp(1, Timestamp.from(now));
                 expire.executeUpdate();
@@ -58,14 +73,14 @@ public final class PortalTransferRepository {
             // CLAIMED is only an in-process connection attempt. If Velocity stopped
             // before completing it, no live attempt remains, so make it resumable.
             try (PreparedStatement recover = connection.prepareStatement(
-                    "UPDATE wakeup_portal_transfers SET status='PENDING', claimed_at=NULL "
+                    "UPDATE portal_transfers SET status='PENDING', claimed_at=NULL "
                             + "WHERE status='CLAIMED' AND expires_at > ?")) {
                 recover.setTimestamp(1, Timestamp.from(now));
                 recover.executeUpdate();
             }
             try (PreparedStatement statement = connection.prepareStatement(
                     "SELECT transfer_id, player_uuid, source_server, target_server, arrival_portal, "
-                            + "status, issued_at, expires_at FROM wakeup_portal_transfers "
+                            + "status, issued_at, expires_at FROM portal_transfers "
                             + "WHERE status='PENDING' AND expires_at > ? ORDER BY issued_at")) {
                 statement.setTimestamp(1, Timestamp.from(now));
                 try (ResultSet rows = statement.executeQuery()) {
@@ -87,13 +102,13 @@ public final class PortalTransferRepository {
             connection.setAutoCommit(false);
             try {
                 try (PreparedStatement cancel = connection.prepareStatement(
-                        "UPDATE wakeup_portal_transfers SET status='CANCELLED' "
+                        "UPDATE portal_transfers SET status='CANCELLED' "
                                 + "WHERE player_uuid=? AND status IN ('PENDING','CLAIMED')")) {
                     cancel.setString(1, playerId.toString());
                     cancel.executeUpdate();
                 }
                 try (PreparedStatement insert = connection.prepareStatement(
-                        "INSERT INTO wakeup_portal_transfers(transfer_id, player_uuid, source_server, target_server, "
+                        "INSERT INTO portal_transfers(transfer_id, player_uuid, source_server, target_server, "
                                 + "arrival_portal, status, issued_at, expires_at) VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?)")) {
                     insert.setString(1, transfer.transferId().toString());
                     insert.setString(2, playerId.toString());
@@ -121,7 +136,7 @@ public final class PortalTransferRepository {
             try {
                 int changed;
                 try (PreparedStatement claim = connection.prepareStatement(
-                        "UPDATE wakeup_portal_transfers SET status='CLAIMED', claimed_at=? "
+                        "UPDATE portal_transfers SET status='CLAIMED', claimed_at=? "
                                 + "WHERE player_uuid=? AND target_server=? AND status='PENDING' AND expires_at>?")) {
                     claim.setTimestamp(1, Timestamp.from(now));
                     claim.setString(2, playerId.toString());
@@ -136,7 +151,7 @@ public final class PortalTransferRepository {
                 PortalTransfer transfer;
                 try (PreparedStatement select = connection.prepareStatement(
                         "SELECT transfer_id, player_uuid, source_server, target_server, arrival_portal, "
-                                + "status, issued_at, expires_at FROM wakeup_portal_transfers "
+                                + "status, issued_at, expires_at FROM portal_transfers "
                                 + "WHERE player_uuid=? AND target_server=? AND status='CLAIMED' ORDER BY claimed_at DESC LIMIT 1")) {
                     select.setString(1, playerId.toString());
                     select.setString(2, target);
@@ -163,7 +178,7 @@ public final class PortalTransferRepository {
     public void complete(UUID transferId) throws SQLException {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(
-                     "UPDATE wakeup_portal_transfers SET status='COMPLETED', completed_at=CURRENT_TIMESTAMP(3) "
+                     "UPDATE portal_transfers SET status='COMPLETED', completed_at=CURRENT_TIMESTAMP(3) "
                              + "WHERE transfer_id=? AND status='CLAIMED'")) {
             statement.setString(1, transferId.toString());
             statement.executeUpdate();
@@ -173,7 +188,7 @@ public final class PortalTransferRepository {
     public void cancelActive(UUID playerId) throws SQLException {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(
-                     "UPDATE wakeup_portal_transfers SET status='CANCELLED' "
+                     "UPDATE portal_transfers SET status='CANCELLED' "
                              + "WHERE player_uuid=? AND status IN ('PENDING','CLAIMED')")) {
             statement.setString(1, playerId.toString());
             statement.executeUpdate();
@@ -183,7 +198,7 @@ public final class PortalTransferRepository {
     private void updateTransferStatus(UUID transferId, String next, String expected) throws SQLException {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(
-                     "UPDATE wakeup_portal_transfers SET status=? WHERE transfer_id=? AND status=?")) {
+                     "UPDATE portal_transfers SET status=? WHERE transfer_id=? AND status=?")) {
             statement.setString(1, next);
             statement.setString(2, transferId.toString());
             statement.setString(3, expected);

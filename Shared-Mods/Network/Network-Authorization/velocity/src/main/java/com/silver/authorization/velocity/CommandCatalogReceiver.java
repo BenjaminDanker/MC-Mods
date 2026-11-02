@@ -25,7 +25,7 @@ public final class CommandCatalogReceiver implements AutoCloseable {
     private final AuthorizationService authorization;
     private final CommandCatalogStore catalogs;
     private final Logger log;
-    private final ExecutorService clients = Executors.newCachedThreadPool(daemonFactory("WakeUpLobby-CatalogClient"));
+    private final ExecutorService clients = Executors.newCachedThreadPool(daemonFactory("CommandCatalog-Client"));
     private volatile ServerSocket listener;
     private volatile Thread acceptThread;
 
@@ -66,7 +66,7 @@ public final class CommandCatalogReceiver implements AutoCloseable {
         socket.setReuseAddress(true);
         socket.bind(new InetSocketAddress(bind, port));
         receiver.listener = socket;
-        Thread thread = daemonFactory("WakeUpLobby-CatalogAccept").newThread(receiver::acceptLoop);
+        Thread thread = daemonFactory("CommandCatalog-Accept").newThread(receiver::acceptLoop);
         receiver.acceptThread = thread;
         thread.start();
         log.info("[CommandPolicy] Authenticated catalog listener ready on {}:{}", bind, port);

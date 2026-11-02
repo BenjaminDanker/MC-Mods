@@ -10,7 +10,7 @@ import java.util.Objects;
 import org.slf4j.Logger;
 import org.yaml.snakeyaml.Yaml;
 
-/** Reads plugins/on-demand-servers/config.yml (the {@code on_demand} section, same keys as it had in wakeuplobby's config.yml). */
+/** Reads plugins/on-demand-servers/config.yml (the {@code on_demand} section, written by mc-net). */
 public final class OnDemandConfig {
     private static final String CONFIG_FILE_NAME = "config.yml";
 
