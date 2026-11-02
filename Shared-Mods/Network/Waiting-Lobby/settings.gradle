@@ -1,0 +1,5 @@
+rootProject.name = 'waiting-lobby'
+
+includeBuild('../Network-Authorization')
+includeBuild('../On-Demand-Servers')
+includeBuild('../Player-Routing')
