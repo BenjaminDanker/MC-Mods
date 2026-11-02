@@ -24,7 +24,7 @@ final class VelocityConfig {
             logger.error("[ResonantMessage] Could not locate the existing Network Authorization key file; cross-world chat is disabled");
             return Map.of();
         }
-        Path file = pluginsDirectory.resolve("wakeuplobby")
+        Path file = pluginsDirectory.resolve("network-authorization")
                 .resolve("authorization-backend-keys.properties");
         try {
             if (!Files.isRegularFile(file)) {

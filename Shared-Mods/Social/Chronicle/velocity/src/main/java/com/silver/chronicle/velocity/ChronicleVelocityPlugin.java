@@ -488,10 +488,10 @@ public final class ChronicleVelocityPlugin {
     private void loadExistingBackendKeys() {
         Path plugins = dataDirectory.getParent();
         if (plugins == null) {
-            logger.error("[Chronicle] Cannot locate the existing WakeUpLobby backend-key file");
+            logger.error("[Chronicle] Cannot locate the Network Authorization backend-key file");
             return;
         }
-        Path file = plugins.resolve("wakeuplobby").resolve("authorization-backend-keys.properties");
+        Path file = plugins.resolve("network-authorization").resolve("authorization-backend-keys.properties");
         if (!Files.isRegularFile(file)) {
             logger.error("[Chronicle] Existing centralized backend keys are missing at {}", file.getFileName());
             return;
