@@ -19,13 +19,15 @@ import java.util.Locale;
 import java.util.UUID;
 
 /**
- * {@code /whitelist [server] [on|off|list|add <player>|remove <player>]} (admission managers and console). Without a
- * server name it is the network whitelist, checked when a player joins; with one it is that server's own whitelist,
- * checked when a player goes there. It replaces the vanilla /whitelist of the servers behind the proxy.
+ * {@code /whitelist <all|server> <on|off|list|add <player>|remove <player>>} (admission managers and console).
+ * {@code all} is the network whitelist, checked when a player joins; a server name is that server's own whitelist,
+ * checked when a player goes there. Plain {@code /whitelist} shows which ones are on. It replaces the vanilla
+ * /whitelist of the servers behind the proxy.
  */
 public final class WhitelistCommand implements SimpleCommand {
-    private static final String USAGE = "§7Usage: /whitelist [server] <on|off|list|add|remove> [player]";
+    private static final String USAGE = "§7Usage: /whitelist <all|server> <on|off|list|add|remove> [player]";
     private static final List<String> ACTIONS = List.of("on", "off", "list", "add", "remove");
+    private static final String ALL = "all";
 
     private final ProxyServer proxy;
     private final Whitelists whitelists;
@@ -47,18 +49,21 @@ public final class WhitelistCommand implements SimpleCommand {
             return;
         }
         String[] args = invocation.arguments();
+        if (args.length == 0) {
+            overview(source);
+            return;
+        }
         String server = null;
-        int at = 0;
-        if (args.length > 0 && !ACTIONS.contains(args[0].toLowerCase(Locale.ROOT))) {
+        if (!args[0].equalsIgnoreCase(ALL)) {
             var registered = proxy.getServer(args[0]);
             if (registered.isEmpty()) {
-                source.sendMessage(Component.text("§cThere is no server called " + args[0] + "."));
+                source.sendMessage(Component.text("§cThere is no server called " + args[0] + " (use all for every server)."));
                 source.sendMessage(Component.text(USAGE));
                 return;
             }
             server = registered.get().getServerInfo().getName();
-            at = 1;
         }
+        int at = 1;
         String scope = server == null ? "The network whitelist" : "The " + server + " whitelist";
 
         if (args.length <= at) {
@@ -74,8 +79,8 @@ public final class WhitelistCommand implements SimpleCommand {
                 case "list" -> list(source, whitelists.store(server), scope);
                 case "add", "remove" -> {
                     if (args.length <= at + 1) {
-                        source.sendMessage(Component.text("§7Usage: /whitelist " + (server == null ? "" : server + " ")
-                                + action + " <player>"));
+                        source.sendMessage(Component.text("§7Usage: /whitelist " + (server == null ? ALL : server)
+                                + " " + action + " <player>"));
                         return;
                     }
                     change(source, whitelists.store(server), scope, action, args[at + 1]);
@@ -86,6 +91,19 @@ public final class WhitelistCommand implements SimpleCommand {
             logger.error("Failed to update a whitelist", e);
             source.sendMessage(Component.text("§cFailed updating the whitelist: " + e.getMessage()));
         }
+    }
+
+    /** Plain /whitelist: the network whitelist and every server's, on or off. */
+    private void overview(CommandSource source) {
+        source.sendMessage(Component.text("§7Whitelists (on = only listed players):"));
+        source.sendMessage(Component.text("  §fall§7 (joining the network): " + state(null)));
+        proxy.getAllServers().stream().map(s -> s.getServerInfo().getName()).sorted()
+                .forEach(name -> source.sendMessage(Component.text("  §f" + name + "§7: " + state(name))));
+        source.sendMessage(Component.text(USAGE));
+    }
+
+    private String state(String server) {
+        return whitelists.isOn(server) ? "§aon" : "§8off";
     }
 
     private void switchWhitelist(CommandSource source, String server, String scope, boolean on) throws IOException {
@@ -158,15 +176,15 @@ public final class WhitelistCommand implements SimpleCommand {
         String[] args = invocation.arguments();
         String typed = args.length == 0 ? "" : args[args.length - 1].toLowerCase(Locale.ROOT);
         if (args.length <= 1) {
-            List<String> options = new ArrayList<>(ACTIONS);
+            List<String> options = new ArrayList<>(List.of(ALL));
             proxy.getAllServers().forEach(s -> options.add(s.getServerInfo().getName()));
             return options.stream().filter(o -> o.toLowerCase(Locale.ROOT).startsWith(typed)).toList();
         }
-        if (args.length == 2 && !ACTIONS.contains(args[0].toLowerCase(Locale.ROOT))) {
+        if (args.length == 2) {
             return ACTIONS.stream().filter(o -> o.startsWith(typed)).toList();
         }
-        String action = args[args.length - 2].toLowerCase(Locale.ROOT);
-        if (action.equals("add") || action.equals("remove")) {
+        String action = args[1].toLowerCase(Locale.ROOT);
+        if (args.length == 3 && (action.equals("add") || action.equals("remove"))) {
             return proxy.getAllPlayers().stream().map(Player::getUsername)
                     .filter(n -> n.toLowerCase(Locale.ROOT).startsWith(typed)).toList();
         }
