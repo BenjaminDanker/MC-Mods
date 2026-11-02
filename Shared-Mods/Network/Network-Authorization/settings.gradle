@@ -1,0 +1,18 @@
+pluginManagement {
+    repositories {
+        maven {
+            name = 'Fabric'
+            url = 'https://maven.fabricmc.net/'
+        }
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'network-authorization-root'
+
+// :common is published as com.silver:authorization-common:0.1.0, so consumers
+// (and :fabric) keep depending on it by those coordinates.
+include 'common'
+project(':common').name = 'authorization-common'
+include 'fabric'

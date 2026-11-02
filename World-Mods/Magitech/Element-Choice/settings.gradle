@@ -11,7 +11,7 @@ pluginManagement {
 
 rootProject.name = 'Element-Choice'
 
-includeBuild('../../../Shared-Mods/Network/Authorization-Common')
+includeBuild('../../../Shared-Mods/Network/Network-Authorization')
 include 'network-authorization'
 project(':network-authorization').projectDir = file('../../../Shared-Mods/Network/Network-Authorization/fabric')
 

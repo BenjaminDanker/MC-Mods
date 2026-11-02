@@ -1,0 +1,15 @@
+// Aggregate root: makes the loom plugin available to :fabric.
+// The real builds are in common/ and fabric/.
+plugins {
+	id 'net.fabricmc.fabric-loom' version '1.17-SNAPSHOT' apply false
+}
+
+// Inside this build, :fabric resolves authorization-common from :authorization-common
+// (consumer builds get the same substitution from includeBuild of this directory).
+project(':fabric') {
+	configurations.configureEach {
+		resolutionStrategy.dependencySubstitution {
+			substitute module('com.silver:authorization-common') using project(':authorization-common')
+		}
+	}
+}

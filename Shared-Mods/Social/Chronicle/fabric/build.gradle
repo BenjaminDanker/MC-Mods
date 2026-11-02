@@ -17,8 +17,8 @@ dependencies {
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
     implementation "net.fabricmc:fabric-loader:${project.loader_version}"
     implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
-    compileOnly files('../../../Network/Network-Authorization/fabric/build/libs/network-authorization-0.1.0-SNAPSHOT.jar')
-    compileOnly files('../../../Network/Authorization-Common/build/libs/authorization-common-0.1.0.jar')
+    compileOnly project(':network-authorization')
+    compileOnly 'com.silver:authorization-common:0.1.0'
 }
 
 processResources {

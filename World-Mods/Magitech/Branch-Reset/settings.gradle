@@ -11,7 +11,7 @@ pluginManagement {
 
 rootProject.name = 'Branch-Reset'
 
-includeBuild('../../../Shared-Mods/Network/Authorization-Common')
+includeBuild('../../../Shared-Mods/Network/Network-Authorization')
 include 'network-authorization'
 project(':network-authorization').projectDir = file('../../../Shared-Mods/Network/Network-Authorization/fabric')
 // Player Sync, built from source (it stores what these mods read and record)

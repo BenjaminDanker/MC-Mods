@@ -9,3 +9,7 @@ pluginManagement {
 rootProject.name = 'Chronicle'
 include 'fabric'
 include 'velocity'
+
+includeBuild('../../Network/Network-Authorization')
+include 'network-authorization'
+project(':network-authorization').projectDir = file('../../Network/Network-Authorization/fabric')

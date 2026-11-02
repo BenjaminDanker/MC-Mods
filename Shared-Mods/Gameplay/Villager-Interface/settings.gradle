@@ -10,6 +10,6 @@ pluginManagement {
 }
 
 rootProject.name = 'Villager-Interface'
-includeBuild('../../Network/Authorization-Common')
+includeBuild('../../Network/Network-Authorization')
 include 'network-authorization'
 project(':network-authorization').projectDir = file('../../Network/Network-Authorization/fabric')

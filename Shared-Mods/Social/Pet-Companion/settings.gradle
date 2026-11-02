@@ -11,7 +11,7 @@ pluginManagement {
 
 rootProject.name = 'Pet-Companion'
 
-includeBuild('../../Network/Authorization-Common')
+includeBuild('../../Network/Network-Authorization')
 
 include 'pet-common'
 include 'pet-service'
