@@ -30,11 +30,12 @@ public final class Whitelists {
         if (server == null) {
             return network;
         }
-        WhitelistStore store = servers.get(server);
+        String key = server.toLowerCase(java.util.Locale.ROOT); // one store per folder
+        WhitelistStore store = servers.get(key);
         if (store == null) {
             store = WhitelistStore.atFile(serverDir(server).resolve("whitelist.json"), logger);
             store.ensureFileAndLoad();
-            servers.put(server, store);
+            servers.put(key, store);
         }
         return store;
     }
