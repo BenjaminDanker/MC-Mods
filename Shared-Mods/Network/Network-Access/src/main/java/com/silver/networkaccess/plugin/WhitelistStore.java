@@ -15,7 +15,8 @@ import java.util.TreeSet;
 import java.util.UUID;
 
 /**
- * Persistent Velocity-level whitelist backed by a JSON file (UUIDs).
+ * One whitelist backed by a JSON file of UUIDs: the network's (whitelist.json) or one server's
+ * (servers/&lt;name&gt;/whitelist.json).
  */
 public final class WhitelistStore {
     private static final String FILE_NAME = "whitelist.json";
@@ -25,8 +26,17 @@ public final class WhitelistStore {
     private final Set<UUID> uuids = new TreeSet<>();
 
     public WhitelistStore(Path dataDir, Logger logger) {
+        this(logger, dataDir.resolve(FILE_NAME));
+    }
+
+    private WhitelistStore(Logger logger, Path file) {
         this.logger = logger;
-        this.filePath = dataDir.resolve(FILE_NAME);
+        this.filePath = file;
+    }
+
+    /** One server's whitelist at the given file. */
+    static WhitelistStore atFile(Path file, Logger logger) {
+        return new WhitelistStore(logger, file);
     }
 
     public synchronized void ensureFileAndLoad() throws IOException {
@@ -62,7 +72,7 @@ public final class WhitelistStore {
 
         uuids.clear();
         uuids.addAll(loaded);
-        logger.info("[NetworkAccess] Loaded {} whitelisted player(s)", uuids.size());
+        logger.info("[NetworkAccess] Loaded {} whitelisted player(s) from {}", uuids.size(), filePath.getParent().getFileName());
     }
     
     /**

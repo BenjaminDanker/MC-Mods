@@ -4,9 +4,6 @@ import com.google.inject.Inject;
 import com.silver.authorization.PortalRequestCodec;
 import com.silver.authorization.velocity.DatabaseSettings;
 import com.silver.routing.api.Routing;
-import com.velocitypowered.api.command.CommandMeta;
-import com.velocitypowered.api.command.CommandSource;
-import com.velocitypowered.api.command.SimpleCommand;
 import com.velocitypowered.api.event.PostOrder;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.connection.PluginMessageEvent;
@@ -22,7 +19,6 @@ import com.velocitypowered.api.proxy.ProxyServer;
 import com.velocitypowered.api.proxy.ServerConnection;
 import com.velocitypowered.api.proxy.messages.MinecraftChannelIdentifier;
 import com.velocitypowered.api.proxy.server.RegisteredServer;
-import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import net.kyori.adventure.text.Component;
@@ -54,7 +50,6 @@ public final class PortalsVelocity {
     private PortalTransferStore store;
     private volatile PortalHandoffService handoffService;
     private volatile PortalCommandHandler commandHandler;
-    private final PortalTokenVerifier tokenVerifier;
     private final PortalRequestVerifier requestVerifier;
     private final ItemReturnService itemReturn;
 
@@ -63,7 +58,6 @@ public final class PortalsVelocity {
         this.proxy = proxy;
         this.logger = logger;
         this.dataDir = dataDir;
-        this.tokenVerifier = new PortalTokenVerifier(logger);
         this.requestVerifier = new PortalRequestVerifier(logger);
         this.itemReturn = new ItemReturnService(logger);
     }
@@ -96,7 +90,6 @@ public final class PortalsVelocity {
                 }
             });
 
-            registerWlCommand();
             logger.info("[Portals] Portals ready");
         } catch (Exception ex) {
             logger.error("Failed to initialize Portals", ex);
@@ -105,7 +98,6 @@ public final class PortalsVelocity {
 
     private void applyConfig() throws java.io.IOException {
         PortalsConfig config = PortalsConfig.load(dataDir);
-        tokenVerifier.updateSecrets(config.globalSecret(), config.perPortalSecrets());
         requestVerifier.updateSecrets(config.backendRequestSecrets());
     }
 
@@ -247,46 +239,6 @@ public final class PortalsVelocity {
         }
     }
 
-    private void registerWlCommand() {
-        CommandMeta meta = proxy.getCommandManager()
-                .metaBuilder("wl")
-                .plugin(this)
-                .hint(LiteralArgumentBuilder.<CommandSource>literal("wl")
-                        .requires(source -> false)
-                        .build())
-                .build();
-
-        proxy.getCommandManager().register(meta, new SimpleCommand() {
-            @Override
-            public void execute(Invocation inv) {
-                if (!(inv.source() instanceof Player player)) {
-                    inv.source().sendMessage(Component.text("Players only."));
-                    return;
-                }
-
-                String[] args = inv.arguments();
-                if (args.length < 3 || !args[0].equalsIgnoreCase("portal")) {
-                    return;
-                }
-
-                String target = args[1];
-                String token = args[2];
-                String arrivalPortal = args.length > 3 ? args[3] : null;
-
-                logger.info("[Portals] /wl portal: player={} target={} arrivalPortal={}",
-                        player.getUsername(), target, arrivalPortal);
-
-                if (commandHandler == null) {
-                    logger.warn("[Portals] /wl portal invoked before initialization completed");
-                    player.sendMessage(Component.text("§cPortal system not ready yet. Try again shortly."));
-                    return;
-                }
-
-                commandHandler.handle(player, target, token, Optional.ofNullable(arrivalPortal));
-            }
-        });
-    }
-
     private static HikariDataSource openPool(DatabaseSettings settings) {
         HikariConfig config = new HikariConfig();
         // Shaded Velocity plugins do not reliably preserve JDBC's service-loader metadata; name the bundled driver.
@@ -304,11 +256,6 @@ public final class PortalsVelocity {
     }
 
     private final class VelocityDependencies implements PortalCommandHandler.Dependencies {
-        @Override
-        public boolean verifyPortalToken(String target, String token) {
-            return tokenVerifier.verify(target, token);
-        }
-
         @Override
         public CompletionStage<?> createTransfer(UUID playerId, String sourceServer, String targetServer, String arrivalPortal) {
             return handoffService.createTransfer(playerId, sourceServer, targetServer, arrivalPortal);
@@ -334,11 +281,6 @@ public final class PortalsVelocity {
         @Override
         public void markInternalOnce(UUID playerId, String target) {
             Routing.markInternalOnce(playerId, target);
-        }
-
-        @Override
-        public void notifyInvalidToken(Player player) {
-            player.sendMessage(Component.text("§cInvalid portal token."));
         }
 
         @Override

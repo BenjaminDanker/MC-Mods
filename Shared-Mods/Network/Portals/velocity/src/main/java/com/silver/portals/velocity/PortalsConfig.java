@@ -13,25 +13,13 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Portal secrets, read from plugins/portals/config.yml. These keys used to live in the routing plugin's config.yml with
- * the same names and meaning:
- * <ul>
- *   <li>{@code portal_secret} / {@code portal_secrets.<target>}: token for {@code /wl portal <target> <token> [portal]}</li>
- *   <li>{@code backend_portal_request_secrets.<backend>} (or {@code "*"}): signs the portals:transfer requests</li>
- * </ul>
+ * Portal secrets, read from plugins/portals/config.yml (written by mc-net):
+ * {@code backend_portal_request_secrets.<backend>} (or {@code "*"}) signs the portals:transfer requests.
  */
-public record PortalsConfig(String globalSecret, Map<String, String> perPortalSecrets,
-                            Map<String, String> backendRequestSecrets) {
+public record PortalsConfig(Map<String, String> backendRequestSecrets) {
     private static final String FILE = "config.yml";
 
     private static final String DEFAULT_YAML = """
-# Portal token configuration for `/wl portal <target> <token> [source_portal]`.
-# - If `portal_secrets.<target>` is set, it MUST match for that target.
-# - Otherwise, `portal_secret` (global) is used.
-# - If neither are set, every `/wl portal` call will fail with "Invalid portal token".
-portal_secret: ""
-portal_secrets: {}
-
 # Backend -> proxy portal request authentication.
 # Each backend server that can initiate a portal transfer MUST have a shared secret here.
 # Key: the Velocity server name (e.g. "vanilla"). Value: a long random string.
@@ -40,8 +28,6 @@ backend_portal_request_secrets: {}
 """;
 
     public PortalsConfig {
-        globalSecret = globalSecret == null ? "" : globalSecret;
-        perPortalSecrets = Map.copyOf(perPortalSecrets);
         backendRequestSecrets = Map.copyOf(backendRequestSecrets);
     }
 
@@ -62,10 +48,7 @@ backend_portal_request_secrets: {}
         if (root == null) {
             root = Map.of();
         }
-        return new PortalsConfig(
-                Objects.toString(root.get("portal_secret"), "").trim(),
-                secrets(root.get("portal_secrets")),
-                secrets(root.get("backend_portal_request_secrets")));
+        return new PortalsConfig(secrets(root.get("backend_portal_request_secrets")));
     }
 
     private static Map<String, String> secrets(Object value) {

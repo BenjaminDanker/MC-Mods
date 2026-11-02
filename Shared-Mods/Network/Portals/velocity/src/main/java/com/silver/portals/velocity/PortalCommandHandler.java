@@ -9,18 +9,17 @@ import java.util.UUID;
 import java.util.concurrent.CompletionStage;
 
 /**
- * Encapsulates the behavioural logic for the /wl portal command so it can be unit tested.
+ * Handles a verified portal request (portals:transfer): stores the transfer, then sends the player straight to the
+ * target or through the waiting lobby.
  */
 public class PortalCommandHandler {
 
     public interface Dependencies {
-        boolean verifyPortalToken(String target, String token);
         CompletionStage<?> createTransfer(UUID playerId, String sourceServer, String targetServer, String arrivalPortal);
         Optional<String> currentServerName(Player player);
         Optional<HoldingConnection> resolveHoldingServer(Player player, String target, Optional<String> originServer);
         void beginStickyWait(UUID playerId, String target, Optional<String> originServer);
         void markInternalOnce(UUID playerId, String target);
-        void notifyInvalidToken(Player player);
         void notifyTransferFailure(Player player);
         String holdingServerName();
 
@@ -46,26 +45,6 @@ public class PortalCommandHandler {
         this.dependencies = Objects.requireNonNull(dependencies, "dependencies");
     }
 
-    public boolean handle(Player player, String targetServer, String token, Optional<String> arrivalPortalOpt) {
-        Objects.requireNonNull(player, "player");
-        Objects.requireNonNull(targetServer, "targetServer");
-        Objects.requireNonNull(token, "token");
-        Objects.requireNonNull(arrivalPortalOpt, "arrivalPortalOpt");
-
-        log.info("[Portals] /wl portal: player={} target={} arrivalPortal={}",
-                player.getUsername(), targetServer, arrivalPortalOpt.orElse("<none>"));
-
-        if (!dependencies.verifyPortalToken(targetServer, token)) {
-            log.warn("[Portals] Portal token verification failed for target={}", targetServer);
-            dependencies.notifyInvalidToken(player);
-            return false;
-        }
-
-        log.info("[Portals] Portal token verified successfully");
-
-        return handleAuthorized(player, targetServer, arrivalPortalOpt);
-    }
-
     public boolean handleAuthorized(Player player, String targetServer, Optional<String> arrivalPortalOpt) {
         Objects.requireNonNull(player, "player");
         Objects.requireNonNull(targetServer, "targetServer");
@@ -73,12 +52,12 @@ public class PortalCommandHandler {
 
         UUID playerId = player.getUniqueId();
         Optional<String> originServer = dependencies.currentServerName(player);
-        log.info("[Portals] /wl portal: origin='{}' target='{}' holding='{}'",
+        log.info("[Portals] portal request: origin='{}' target='{}' holding='{}'",
                 originServer.orElse("<none>"), targetServer, dependencies.holdingServerName());
 
         Optional<HoldingConnection> holdingConnection = dependencies.resolveHoldingServer(player, targetServer, originServer);
         if (holdingConnection.isEmpty()) {
-            log.error("[Portals] Holding server '{}' not found when processing /wl portal for player {}",
+            log.error("[Portals] Holding server '{}' not found when processing a portal request for player {}",
                     dependencies.holdingServerName(), player.getUsername());
             return false;
         }

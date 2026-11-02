@@ -34,19 +34,8 @@ class PortalCommandHandlerTest {
     }
 
     @Test
-    void returnsFalseAndNotifiesWhenTokenInvalid() {
-        dependencies.verifyResult = false;
-
-        boolean result = handler.handle(player, "target-server", "bad-token", Optional.of("portal_a"));
-
-        assertFalse(result);
-        assertTrue(dependencies.invalidTokenNotified, "Expected invalid token notification");
-        assertFalse(dependencies.createCalled, "Should not create a transfer when token is invalid");
-    }
-
-    @Test
     void storesPortalAndPreparesStickyWhenValid() {
-        boolean result = handler.handle(player, "target-server", "good-token", Optional.of("portal_a"));
+        boolean result = handler.handleAuthorized(player, "target-server", Optional.of("portal_a"));
 
         assertTrue(result);
         assertTrue(dependencies.createCalled);
@@ -63,7 +52,7 @@ class PortalCommandHandlerTest {
     void returnsFalseWhenHoldingServerMissing() {
         dependencies.holdingAvailable = false;
 
-        boolean result = handler.handle(player, "target-server", "good-token", Optional.empty());
+        boolean result = handler.handleAuthorized(player, "target-server", Optional.empty());
 
         assertFalse(result);
         assertTrue(dependencies.connectionResolved, "Should attempt to resolve holding server");
@@ -71,7 +60,6 @@ class PortalCommandHandlerTest {
     }
 
     private static final class StubDependencies implements PortalCommandHandler.Dependencies {
-        boolean verifyResult = true;
         boolean holdingAvailable = true;
         boolean createCalled;
         UUID createPlayerId;
@@ -79,14 +67,8 @@ class PortalCommandHandlerTest {
         boolean beginStickyCalled;
         boolean markInternalCalled;
         String markInternalTarget;
-        boolean invalidTokenNotified;
         boolean connectionResolved;
         boolean connectionInvoked;
-
-        @Override
-        public boolean verifyPortalToken(String target, String token) {
-            return verifyResult;
-        }
 
         @Override
         public CompletionStage<?> createTransfer(UUID playerId, String sourceServer, String targetServer, String arrivalPortal) {
@@ -119,11 +101,6 @@ class PortalCommandHandlerTest {
         public void markInternalOnce(UUID playerId, String target) {
             markInternalCalled = true;
             markInternalTarget = target;
-        }
-
-        @Override
-        public void notifyInvalidToken(Player player) {
-            invalidTokenNotified = true;
         }
 
         @Override

@@ -7,7 +7,9 @@ import com.silver.networkaccess.plugin.Maintenance;
 import com.silver.networkaccess.plugin.NetworkBans;
 import com.silver.networkaccess.plugin.SecurityManager;
 import com.silver.networkaccess.plugin.WhitelistCommand;
+import com.silver.networkaccess.plugin.ServerWhitelistCheck;
 import com.silver.networkaccess.plugin.WhitelistStore;
+import com.silver.networkaccess.plugin.Whitelists;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
 import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
@@ -56,8 +58,11 @@ public final class NetworkAccessVelocity {
             maintenance.refresh();
             proxy.getEventManager().register(this, maintenance);
             proxy.getScheduler().buildTask(this, maintenance::refresh).delay(Duration.ofSeconds(5)).repeat(Duration.ofSeconds(5)).schedule();
-            // the proxy's /whitelist replaces the vanilla one on the servers behind it (the proxy decides who gets in)
-            proxy.getCommandManager().register("whitelist", new WhitelistCommand(proxy, whitelistStore, dataDir.resolve("whitelist-on"), logger));
+            // the network whitelist is checked at login (SecurityManager), each server's own one when a player goes there
+            Whitelists whitelists = new Whitelists(dataDir, whitelistStore, logger);
+            proxy.getEventManager().register(this, new ServerWhitelistCheck(whitelists, logger));
+            // the proxy's /whitelist replaces the vanilla one on the servers behind it
+            proxy.getCommandManager().register("whitelist", new WhitelistCommand(proxy, whitelists, logger));
             logger.info("[NetworkAccess] Network Access ready");
         } catch (Exception ex) {
             logger.error("Failed to initialize Network Access", ex);
