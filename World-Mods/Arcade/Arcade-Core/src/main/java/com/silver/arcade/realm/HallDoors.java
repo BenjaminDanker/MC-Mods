@@ -27,7 +27,7 @@ final class HallDoors {
         void start(List<ServerPlayer> group, boolean together);
     }
 
-    private static final int WAIT_TICKS = 5 * 20;
+    private static final int WAIT_TICKS = 10 * 20;
     private static final int MAX_GROUP = 4;
 
     private final MinecraftServer server;

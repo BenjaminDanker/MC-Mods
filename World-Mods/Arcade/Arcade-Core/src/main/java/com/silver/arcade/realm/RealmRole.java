@@ -37,7 +37,7 @@ public final class RealmRole implements Run.Host {
     private static final Logger LOGGER = LoggerFactory.getLogger("arcade");
     /** Seconds a run, left mid-way, can be resumed. */
     private static final long RESUME_SECONDS = 15 * 60;
-    private static final int GATHER_TICKS = 5 * 20;
+    private static final int GATHER_TICKS = 10 * 20;
     private static final int MAX_GROUP = 4;
     private static final BlockPos HALL = new BlockPos(0, 100, 0);
     private static final BlockPos START = new BlockPos(0, 100, 8);
@@ -66,6 +66,9 @@ public final class RealmRole implements Run.Host {
 
     public void register() {
         RoomCatalog.registerAll();
+        // Nothing in the arcade should grow on its own: budding amethyst and vines in a room's look would spread past the
+        // blocks the arena records, and the growth would outlive the room.
+        level().getGameRules().set(net.minecraft.world.level.gamerules.GameRules.RANDOM_TICK_SPEED, 0, server);
         Arena.clearLeftovers(level(), server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("arcade-arenas"));
         ensureHall();
         previews = new Previews(level());

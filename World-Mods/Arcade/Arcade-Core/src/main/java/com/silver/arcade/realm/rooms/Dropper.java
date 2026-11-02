@@ -13,6 +13,9 @@ public final class Dropper extends BaseRoom {
     private static final int HEIGHT = 56;
     private static final int HALF = 4;
     private final Random random = new Random();
+    private int poolX;
+    private int poolZ;
+    private int poolSize;
 
     public String id() { return "drop"; }
     public String title() { return "The Drop"; }
@@ -57,6 +60,9 @@ public final class Dropper extends BaseRoom {
             }
         }
         arena.fill(px, 0, pz, px + pool - 1, 0, pz + pool - 1, Blocks.WATER.defaultBlockState());
+        poolX = px;
+        poolZ = pz;
+        poolSize = pool;
         // Ledges: more and wider as tiers climb, never closing the shaft.
         int ledges = Math.min(20, 3 + (2 * tier) / 3);
         for (int i = 0; i < ledges; i++) {
@@ -105,8 +111,11 @@ public final class Dropper extends BaseRoom {
     public void tick(long tickInRoom) {
         for (ServerPlayer player : undecided()) {
             player.resetFallDistance(); // no fall damage in the drop
-            // isInWater can lag a tick behind a fast landing; the pool block at the feet counts too
-            if (player.isInWater() || player.level().getFluidState(player.blockPosition()).is(net.minecraft.tags.FluidTags.WATER)) {
+            // A fast landing can stop on the pool's rim or the floor under the water before isInWater catches up, so
+            // touching down with any part of you over the pool counts as a splash too (checked before "missed").
+            boolean down = player.onGround() && heightOf(player) < 2;
+            if (player.isInWater() || player.level().getFluidState(player.blockPosition()).is(net.minecraft.tags.FluidTags.WATER)
+                    || down && overPool(player)) {
                 clear(player);
                 Gamemaster.bar(player, "Splash! Cleared.");
                 top(player);
@@ -117,6 +126,17 @@ public final class Dropper extends BaseRoom {
                 top(player);
             }
         }
+    }
+
+    /** Whether the player's footprint overlaps the pool's columns (arena coordinates). */
+    private boolean overPool(ServerPlayer player) {
+        var box = player.getBoundingBox();
+        var origin = arena.origin();
+        int minX = (int) Math.floor(box.minX - origin.getX());
+        int maxX = (int) Math.floor(box.maxX - origin.getX() - 1e-6);
+        int minZ = (int) Math.floor(box.minZ - origin.getZ());
+        int maxZ = (int) Math.floor(box.maxZ - origin.getZ() - 1e-6);
+        return maxX >= poolX && minX <= poolX + poolSize - 1 && maxZ >= poolZ && minZ <= poolZ + poolSize - 1;
     }
 
     @Override

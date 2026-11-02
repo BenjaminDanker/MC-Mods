@@ -37,8 +37,7 @@ public final class GeodeLook {
                     } else if (depth > 0.8) {
                         s = "calcite";
                     } else if (depth > -0.6) {
-                        int k = Math.floorMod(x * 13 + y * 7 + z * 5, 19);
-                        s = k == 0 ? "budding_amethyst" : "amethyst_block";
+                        s = "amethyst_block";
                     } else {
                         s = null;
                     }

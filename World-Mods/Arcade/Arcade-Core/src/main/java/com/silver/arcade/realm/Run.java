@@ -19,7 +19,8 @@ import net.minecraft.world.BossEvent;
 import net.minecraft.world.level.block.Blocks;
 
 /**
- * One group's climb. Each round, the group is split at random (everyone alone, in pairs, or all together) and every
+ * One group's climb. Each round is, at random, a group round (everyone together in a race, versus or team game), a solo
+ * round (everyone their own puzzle or personal game) or, for three or more, a pairs round (two-player games); every
  * party gets a room of the current tier. Who clears goes to the choice platform: the gold side cashes out (the prize
  * for the highest tier cleared), the emerald side goes on to the next tier. Who fails loses the run.
  */
@@ -76,8 +77,12 @@ public final class Run {
         boolean over;
         /** Someone meets this room for the first time: a longer countdown, to read the rules. */
         boolean firstTime;
+        /** The players meeting this room for the first time. */
+        final Set<UUID> newcomers = new HashSet<>();
         /** Ticks of countdown left once the room is ready (-1: not started yet). */
         int countdown = -1;
+        /** Where each player stood when the countdown began: they are held there until "Go!". */
+        final java.util.Map<UUID, net.minecraft.world.phys.Vec3> heldAt = new java.util.HashMap<>();
         /** Cancelled because a teammate left: its players moved on to fresh rooms; no outcome here. */
         boolean voided;
         Set<UUID> cleared = Set.of();
@@ -173,37 +178,54 @@ public final class Run {
         phaseStart = server.getTickCount();
         List<UUID> order = new ArrayList<>(players);
         Collections.shuffle(order, random);
-        for (List<UUID> party : split(order)) {
-            RoomType type = testRoom != null ? testRoom : Rooms.pick(party.size(), tier, lastRoom.get(party.get(0)), random, testPlayersOnly());
-            testRoom = null; // only the first room is chosen; the climb then goes on as usual
-            if (type == null && party.size() > 1) {
-                // Nothing fits this party size: everyone in it plays alone.
-                for (UUID solo : party) {
-                    launch(List.of(solo), Rooms.pick(1, tier, lastRoom.get(solo), random, testPlayersOnly()));
-                }
-                continue;
-            }
-            launch(party, type);
-        }
-    }
-
-    /** Random grouping: alone (most often), in pairs, or all together. Groups of 3 split 2+1, 4 split 2+2. */
-    List<List<UUID>> split(List<UUID> order) {
-        List<List<UUID>> out = new ArrayList<>();
         int n = order.size();
-        double roll = random.nextDouble();
-        if (together) {
-            out.add(List.copyOf(order));
-        } else if (n == 1 || roll < 0.4) {
-            order.forEach(id -> out.add(List.of(id)));
-        } else if (roll < 0.75 || n == 2 && roll < 0.85) {
-            for (int i = 0; i < n; i += 2) {
-                out.add(order.subList(i, Math.min(n, i + 2)));
+        if (testRoom != null) {
+            RoomType test = testRoom;
+            testRoom = null; // only the first room is chosen; the climb then goes on as usual
+            if (n >= test.minPlayers() && n <= test.maxPlayers()) {
+                launch(order, test);
+            } else {
+                order.forEach(id -> launch(List.of(id), test));
+            }
+            return;
+        }
+        if (together || n == 1) {
+            RoomType type = Rooms.pick(n, tier, lastRoom.get(order.get(0)), random, testPlayersOnly());
+            if (type != null || n == 1) {
+                launch(order, type);
+                return;
             }
         } else {
-            out.add(List.copyOf(order));
+            double roll = random.nextDouble();
+            if (roll < 0.5) {
+                // A group round: everyone together in one game (a race, a versus or a team room).
+                RoomType type = Rooms.pick(n, tier, lastRoom.get(order.get(0)), random, testPlayersOnly(),
+                    t -> t.kind() != Room.Kind.SOLO);
+                if (type != null) {
+                    launch(order, type);
+                    return;
+                }
+            } else if (n >= 3 && roll < 0.65) {
+                // A pairs round for the two-player games (Sumo, Two Booths, ...); an odd one out plays alone.
+                for (int i = 0; i < n; i += 2) {
+                    List<UUID> pair = order.subList(i, Math.min(n, i + 2));
+                    RoomType type = pair.size() == 2 ? Rooms.pick(2, tier, lastRoom.get(pair.get(0)), random, testPlayersOnly(),
+                        t -> t.kind() == Room.Kind.DUO) : null;
+                    if (type != null) {
+                        launch(pair, type);
+                    } else {
+                        pair.forEach(this::launchSolo);
+                    }
+                }
+                return;
+            }
         }
-        return out;
+        // A solo round: everyone gets a room of their own (puzzles and personal games, never a race meant for a crowd).
+        order.forEach(this::launchSolo);
+    }
+
+    private void launchSolo(UUID id) {
+        launch(List.of(id), Rooms.pick(1, tier, lastRoom.get(id), random, testPlayersOnly(), t -> t.kind() != Room.Kind.GROUP));
     }
 
     private void launch(List<UUID> members, RoomType type) {
@@ -249,6 +271,7 @@ public final class Run {
             party.bar.addPlayer(player);
             if (Gamemaster.introduce(player, room, tier)) {
                 party.firstTime = true;
+                party.newcomers.add(player.getUUID());
             }
         }
     }
@@ -288,17 +311,20 @@ public final class Run {
                 if (!party.arena.decorating() && party.countdown != 0) {
                     // A moment before the room starts: long enough to read the rules the first time.
                     if (party.countdown < 0) {
-                        party.countdown = party.firstTime ? 8 * 20 : 3 * 20;
+                        party.countdown = countdownTicks(party);
                     }
+                    holdInPlace(party);
                     party.countdown--;
                     party.startedAt++;
                     allOver = false;
-                    if (party.countdown % 20 == 0 || party.countdown == (party.firstTime ? 8 * 20 : 3 * 20) - 1) {
+                    if (party.countdown % 20 == 0 || party.countdown == countdownTicks(party) - 1) {
                         int seconds = (party.countdown + 19) / 20;
                         for (UUID id : party.members) {
                             ServerPlayer player = server.getPlayerList().getPlayer(id);
                             if (player != null) {
-                                Gamemaster.bar(player, seconds > 0 ? "Starting in " + seconds + "..." : "Go!");
+                                String wait = party.newcomers.contains(id) ? "Read the rules in chat  \u00b7  starting in "
+                                    : party.firstTime ? "New here for someone: a moment to read  \u00b7  starting in " : "Starting in ";
+                                Gamemaster.bar(player, seconds > 0 ? wait + seconds + "..." : "Go!");
                             }
                         }
                     }
@@ -357,9 +383,71 @@ public final class Run {
             }
             if (allOver) {
                 endRound();
+            } else if (now % 20 == 0) {
+                tellWhoIsWaiting();
             }
         } else if (phase == Phase.CHOICE) {
             choiceTick(now);
+        }
+    }
+
+    /** 3 s, or long enough to read the rules when someone is new here: 10-20 s by the length of the explanation. */
+    private static int countdownTicks(Party party) {
+        if (!party.firstTime) {
+            return 3 * 20;
+        }
+        int words = party.room.explain().split("\\s+").length;
+        return Math.max(10, Math.min(20, 3 + words / 4)) * 20; // about four words a second, plus a moment to look around
+    }
+
+    /** Finished parties wait for the others before the next round: say so on their action bar. */
+    private void tellWhoIsWaiting() {
+        List<String> playing = new ArrayList<>();
+        for (Party party : parties) {
+            if (!party.over && !party.voided) {
+                for (UUID id : party.members) {
+                    ServerPlayer player = server.getPlayerList().getPlayer(id);
+                    if (player != null) {
+                        playing.add(player.getName().getString());
+                    }
+                }
+            }
+        }
+        if (playing.isEmpty()) {
+            return;
+        }
+        for (Party party : parties) {
+            if (!party.over || party.voided) {
+                continue;
+            }
+            for (UUID id : party.members) {
+                ServerPlayer player = server.getPlayerList().getPlayer(id);
+                if (player != null) {
+                    Gamemaster.bar(player, (party.cleared.contains(id) ? "Cleared! " : "")
+                        + "Waiting for " + String.join(", ", playing) + " to finish their room...");
+                }
+            }
+        }
+    }
+
+    /** Nobody moves before "Go!": anyone who walked off their start spot is put back (looking around is fine). */
+    private void holdInPlace(Party party) {
+        for (UUID id : party.members) {
+            ServerPlayer player = server.getPlayerList().getPlayer(id);
+            if (player == null || player.isSpectator()) {
+                continue;
+            }
+            net.minecraft.world.phys.Vec3 start = party.heldAt.computeIfAbsent(id, ignored -> player.position());
+            net.minecraft.world.phys.Vec3 now = player.position();
+            double dx = now.x - start.x;
+            double dz = now.z - start.z;
+            if (dx * dx + dz * dz > 0.04 || now.y - start.y > 0.6) {
+                player.teleportTo(party.arena.level(), start.x, start.y, start.z, Set.of(), player.getYRot(), player.getXRot(), false);
+                player.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO);
+            }
+        }
+        if (party.countdown == 1) {
+            party.heldAt.clear();
         }
     }
 
@@ -521,7 +609,18 @@ public final class Run {
         for (Party party : parties) {
             if (!party.over && party.members.contains(player.getUUID()) && !party.arena.decorating()) {
                 party.room.giveUp(player);
-                Gamemaster.bar(player, "You gave up this room.");
+                String name = player.getName().getString();
+                for (UUID id : party.members) {
+                    ServerPlayer other = server.getPlayerList().getPlayer(id);
+                    if (other != null && other != player) {
+                        Gamemaster.say(other, name + " gave up this room.");
+                    }
+                }
+                if (party.room.finished()) {
+                    Gamemaster.say(player, "You gave up this room.");
+                } else {
+                    Gamemaster.say(player, "You gave up this room; it ends when the others finish or give up too.");
+                }
                 return;
             }
         }

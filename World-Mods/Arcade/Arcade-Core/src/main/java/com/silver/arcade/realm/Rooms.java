@@ -38,13 +38,19 @@ public final class Rooms {
 
     /** {@code testPlayers}: everyone in the room is a test player, so the testing force file may choose the room. */
     public static RoomType pick(int players, int tier, String previous, Random random, boolean testPlayers) {
+        return pick(players, tier, previous, random, testPlayers, type -> true);
+    }
+
+    /** As above, among the rooms {@code allowed} accepts (the testing force file still wins when it fits). */
+    public static RoomType pick(int players, int tier, String previous, Random random, boolean testPlayers,
+            java.util.function.Predicate<RoomType> allowed) {
         RoomType forced = testPlayers ? forced() : null;
         if (forced != null && players >= forced.minPlayers() && players <= forced.maxPlayers()) {
             return forced;
         }
         List<RoomType> fits = new ArrayList<>();
         for (RoomType type : TYPES) {
-            if (players >= type.minPlayers() && players <= type.maxPlayers() && Difficulty.level(type, tier) > 0) {
+            if (players >= type.minPlayers() && players <= type.maxPlayers() && Difficulty.level(type, tier) > 0 && allowed.test(type)) {
                 fits.add(type);
             }
         }
