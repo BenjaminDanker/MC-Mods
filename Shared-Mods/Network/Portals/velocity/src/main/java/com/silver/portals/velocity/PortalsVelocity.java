@@ -32,7 +32,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Portal hand-off between backends: the /wl portal command, the signed portals:transfer requests from the Portals mod,
+ * Portal hand-off between backends: the signed portals:transfer requests from the Portals mod,
  * the portals:arrival login reply, durable transfers, and the item return used by /return. Player movement itself
  * (waiting for a target to start, holding lobby) belongs to the routing plugin, reached through {@link Routing}.
  */

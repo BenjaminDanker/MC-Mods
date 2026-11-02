@@ -16,6 +16,7 @@ import com.velocitypowered.api.event.player.ServerConnectedEvent;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
 import com.velocitypowered.api.plugin.Dependency;
 import com.velocitypowered.api.plugin.Plugin;
+import com.velocitypowered.api.proxy.ConnectionRequestBuilder;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
 import net.kyori.adventure.bossbar.BossBar;
@@ -438,6 +439,15 @@ public class WaitingLobbyPlugin {
 
                     // Clear an internal marker if ServerPreConnectEvent never consumed it.
                     Routing.clearInternalMark(entry.playerId());
+                    if (error == null && result != null
+                            && result.getStatus() == ConnectionRequestBuilder.Status.CONNECTION_CANCELLED) {
+                        // A plugin refused the move (e.g. that server's whitelist): the server is up, so waiting or
+                        // waking it again would only loop. Tell the player and let them go.
+                        logger.info("[Admission] {} was refused by {}; not waiting for it", player.getUsername(), target);
+                        proxy.getPlayer(entry.playerId()).ifPresent(refused -> refused.disconnect(
+                                Component.text("You can't enter " + target + " right now.")));
+                        return;
+                    }
                     OnDemandServers.markOffline(target);
 
                     Optional<Player> stillOnline = proxy.getPlayer(entry.playerId());

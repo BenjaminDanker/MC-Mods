@@ -65,7 +65,7 @@ public class UUIDResolver {
         // Apply overall timeout to prevent indefinite waiting
         return future.orTimeout(OVERALL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                 .exceptionally(ex -> {
-                    logger.warn("[WakeUpLobby] UUID resolution for '{}' timed out or failed: {}", name, ex.getMessage());
+                    logger.warn("[NameLookup] UUID resolution for '{}' timed out or failed: {}", name, ex.getMessage());
                     return Optional.empty();
                 });
     }
@@ -97,24 +97,24 @@ public class UUIDResolver {
                         String uuidStr = json.get("id").getAsString();
                         String formattedUuid = formatUUID(uuidStr);
                         if (attempt > 1) {
-                            logger.info("[WakeUpLobby] Successfully resolved '{}' on attempt {}", name, attempt);
+                            logger.info("[NameLookup] Successfully resolved '{}' on attempt {}", name, attempt);
                         }
                         return Optional.of(UUID.fromString(formattedUuid));
                     }
                 } else if (responseCode == 204 || responseCode == 404) {
                     // Player doesn't exist - no need to retry
-                    logger.debug("[WakeUpLobby] Player '{}' not found via Mojang API", name);
+                    logger.debug("[NameLookup] Player '{}' not found via Mojang API", name);
                     return Optional.empty();
                 } else if (responseCode == 429) {
                     // Rate limited - definitely retry
-                    logger.warn("[WakeUpLobby] Mojang API rate limited (attempt {}/{})", attempt, MAX_RETRIES);
+                    logger.warn("[NameLookup] Mojang API rate limited (attempt {}/{})", attempt, MAX_RETRIES);
                     lastException = new Exception("Rate limited (429)");
                 } else {
-                    logger.warn("[WakeUpLobby] Mojang API returned code {} (attempt {}/{})", responseCode, attempt, MAX_RETRIES);
+                    logger.warn("[NameLookup] Mojang API returned code {} (attempt {}/{})", responseCode, attempt, MAX_RETRIES);
                     lastException = new Exception("HTTP " + responseCode);
                 }
             } catch (Exception e) {
-                logger.warn("[WakeUpLobby] Failed to resolve UUID for '{}' (attempt {}/{}): {}", name, attempt, MAX_RETRIES, e.getMessage());
+                logger.warn("[NameLookup] Failed to resolve UUID for '{}' (attempt {}/{}): {}", name, attempt, MAX_RETRIES, e.getMessage());
                 lastException = e;
             }
             
@@ -130,7 +130,7 @@ public class UUIDResolver {
             }
         }
         
-        logger.warn("[WakeUpLobby] All {} attempts failed for resolving '{}'", MAX_RETRIES, name);
+        logger.warn("[NameLookup] All {} attempts failed for resolving '{}'", MAX_RETRIES, name);
         return Optional.empty();
     }
 
@@ -172,7 +172,7 @@ public class UUIDResolver {
         // Apply overall timeout to prevent indefinite waiting
         return future.orTimeout(OVERALL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                 .exceptionally(ex -> {
-                    logger.debug("[WakeUpLobby] Name resolution for '{}' timed out or failed: {}", uuid, ex.getMessage());
+                    logger.debug("[NameLookup] Name resolution for '{}' timed out or failed: {}", uuid, ex.getMessage());
                     return Optional.empty();
                 });
     }
@@ -204,24 +204,24 @@ public class UUIDResolver {
                         JsonObject json = JsonParser.parseString(response.toString()).getAsJsonObject();
                         String name = json.get("name").getAsString();
                         if (attempt > 1) {
-                            logger.info("[WakeUpLobby] Successfully resolved name for '{}' on attempt {}", uuid, attempt);
+                            logger.info("[NameLookup] Successfully resolved name for '{}' on attempt {}", uuid, attempt);
                         }
                         return Optional.of(name);
                     }
                 } else if (responseCode == 204 || responseCode == 404) {
                     // UUID doesn't exist - no need to retry
-                    logger.debug("[WakeUpLobby] UUID '{}' not found via Mojang API", uuid);
+                    logger.debug("[NameLookup] UUID '{}' not found via Mojang API", uuid);
                     return Optional.empty();
                 } else if (responseCode == 429) {
                     // Rate limited - definitely retry
-                    logger.warn("[WakeUpLobby] Mojang API rate limited (attempt {}/{})", attempt, MAX_RETRIES);
+                    logger.warn("[NameLookup] Mojang API rate limited (attempt {}/{})", attempt, MAX_RETRIES);
                     lastException = new Exception("Rate limited (429)");
                 } else {
-                    logger.warn("[WakeUpLobby] Mojang API returned code {} (attempt {}/{})", responseCode, attempt, MAX_RETRIES);
+                    logger.warn("[NameLookup] Mojang API returned code {} (attempt {}/{})", responseCode, attempt, MAX_RETRIES);
                     lastException = new Exception("HTTP " + responseCode);
                 }
             } catch (Exception e) {
-                logger.debug("[WakeUpLobby] Failed to resolve name for '{}' (attempt {}/{}): {}", uuid, attempt, MAX_RETRIES, e.getMessage());
+                logger.debug("[NameLookup] Failed to resolve name for '{}' (attempt {}/{}): {}", uuid, attempt, MAX_RETRIES, e.getMessage());
                 lastException = e;
             }
             
@@ -237,7 +237,7 @@ public class UUIDResolver {
             }
         }
         
-        logger.debug("[WakeUpLobby] All {} attempts failed for resolving name for '{}'", MAX_RETRIES, uuid);
+        logger.debug("[NameLookup] All {} attempts failed for resolving name for '{}'", MAX_RETRIES, uuid);
         return Optional.empty();
     }
 }
