@@ -14,3 +14,10 @@ rootProject.name = 'portals'
 includeBuild('../Network-Authorization')
 include 'network-authorization'
 project(':network-authorization').projectDir = file('../Network-Authorization/fabric')
+
+// Velocity half of Portals (the proxy plugin 'portals'); a separate Java project beside the Fabric root.
+include 'velocity'
+project(':velocity').name = 'portals-velocity'
+
+// Compile against the routing plugin's API (com.silver.wakeup.api.Routing).
+includeBuild('../../../../Velocity-Wakeup-Lobby')
