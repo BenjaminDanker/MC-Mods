@@ -89,3 +89,6 @@ TODO.md
 **/logs/*.log
 **/logs/*.log.gz
 Util-Mods/Spawn-Protect/libs/
+
+# Third-party jars copied into a module's libs/ to compile against (never committed)
+**/libs/*.jar
