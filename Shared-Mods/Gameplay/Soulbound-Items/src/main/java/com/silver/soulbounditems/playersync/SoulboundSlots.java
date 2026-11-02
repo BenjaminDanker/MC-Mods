@@ -70,7 +70,7 @@ public final class SoulboundSlots {
                 API_CLASS = Class.forName("com.silver.playersync.PlayerSync");
             }
 
-            SLOTS_METHOD = API_CLASS.getMethod("slots", String.class, String.class);
+            SLOTS_METHOD = API_CLASS.getMethod("soulboundSlots", String.class, String.class);
             return SLOTS_METHOD;
         }
     }

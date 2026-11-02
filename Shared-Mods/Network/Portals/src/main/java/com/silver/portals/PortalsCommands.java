@@ -73,7 +73,7 @@ final class PortalsCommands {
         portal.frame = BuiltInRegistries.BLOCK.getKey(BlockStateArgument.getBlock(ctx, "frame").getState().getBlock()).toString();
         portal.lightWith = BuiltInRegistries.ITEM.getKey(ItemArgument.getItem(ctx, "lightWith").item().value()).toString();
         Integer color = HexColorArgument.getHexColor(ctx, "color");
-        portal.color = color == null ? 0 : color;
+        portal.color = color == null ? 0 : color & 0xFFFFFF; // plain RGB, like converted configs
         portal.toServer = StringArgumentType.getString(ctx, "server");
         portal.toPortal = toPortal;
         if (!PortalsMod.register(portal)) {
