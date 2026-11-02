@@ -1,0 +1,21 @@
+pluginManagement {
+    repositories {
+        maven {
+            name = 'Fabric'
+            url = 'https://maven.fabricmc.net/'
+        }
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'Pet-Companion'
+
+includeBuild('../../Network/Authorization-Common')
+
+include 'pet-common'
+include 'pet-service'
+include 'pet-fabric'
+include 'pet-velocity'
+include 'network-authorization'
+project(':network-authorization').projectDir = file('../../Network/Network-Authorization/fabric')

@@ -1,0 +1,15 @@
+pluginManagement {
+    repositories {
+        maven {
+            name = 'Fabric'
+            url = 'https://maven.fabricmc.net/'
+        }
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'Spawn-Protect'
+includeBuild('../../Network/Authorization-Common')
+include 'network-authorization'
+project(':network-authorization').projectDir = file('../../Network/Network-Authorization/fabric')

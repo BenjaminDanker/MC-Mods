@@ -11,6 +11,6 @@ pluginManagement {
 
 rootProject.name = 'portals'
 
-includeBuild('../../../Util-Mods/Authorization-Common')
+includeBuild('../Authorization-Common')
 include 'network-authorization'
-project(':network-authorization').projectDir = file('../../../Util-Mods/Network-Authorization/fabric')
+project(':network-authorization').projectDir = file('../Network-Authorization/fabric')
