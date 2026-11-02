@@ -8,7 +8,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * Static API of the on-demand-servers plugin for the other proxy plugins (wakeuplobby). Every call is safe before the plugin has
+ * Static API of the on-demand-servers plugin for the other proxy plugins (player-routing, waiting-lobby). Every call is safe before the plugin has
  * started: queries answer "unknown/no", requests do nothing.
  */
 public final class OnDemandServers {
@@ -83,7 +83,7 @@ public final class OnDemandServers {
         return s != null && s.enabled();
     }
 
-    /** The server that holds players in the waiting lobby (never pinged, never managed). Set by wakeuplobby on every config load. */
+    /** The server that holds players in the waiting lobby (never pinged, never managed). Set by player-routing on every config load. */
     public static void setHoldingServer(Supplier<String> holdingServer) {
         OnDemandService s = service;
         if (s != null) {
@@ -99,7 +99,7 @@ public final class OnDemandServers {
         }
     }
 
-    /** Sends the Wake-on-LAN packet for the machine that runs this server (wakeuplobby knows the MAC addresses). */
+    /** Sends the Wake-on-LAN packet for the machine that runs this server (player-routing knows the MAC addresses). */
     public static void setWakeHost(Consumer<String> wakeHost) {
         OnDemandService s = service;
         if (s != null) {

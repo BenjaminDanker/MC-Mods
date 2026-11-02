@@ -3,7 +3,7 @@ package com.silver.portals.velocity;
 import com.google.inject.Inject;
 import com.silver.authorization.PortalRequestCodec;
 import com.silver.authorization.velocity.DatabaseSettings;
-import com.silver.wakeup.api.Routing;
+import com.silver.routing.api.Routing;
 import com.velocitypowered.api.command.CommandMeta;
 import com.velocitypowered.api.command.CommandSource;
 import com.velocitypowered.api.command.SimpleCommand;
@@ -41,7 +41,7 @@ import java.util.concurrent.TimeUnit;
  * (waiting for a target to start, holding lobby) belongs to the routing plugin, reached through {@link Routing}.
  */
 @Plugin(id = "portals", name = "Portals", version = "1.0.0",
-        dependencies = {@Dependency(id = "wakeuplobby"), @Dependency(id = "network-authorization")})
+        dependencies = {@Dependency(id = "player-routing"), @Dependency(id = "network-authorization")})
 public final class PortalsVelocity {
     private static final MinecraftChannelIdentifier PORTAL_HANDOFF_CHANNEL = MinecraftChannelIdentifier.from("portals:arrival");
     private static final MinecraftChannelIdentifier PORTAL_REQUEST_CHANNEL = MinecraftChannelIdentifier.from("portals:transfer");

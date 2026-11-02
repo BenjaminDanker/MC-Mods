@@ -19,5 +19,5 @@ project(':network-authorization').projectDir = file('../Network-Authorization/fa
 include 'velocity'
 project(':velocity').name = 'portals-velocity'
 
-// Compile against the routing plugin's API (com.silver.wakeup.api.Routing).
-includeBuild('../../../../Velocity-Wakeup-Lobby')
+// Compile against the routing plugin's API (com.silver.routing.api.Routing).
+includeBuild('../Player-Routing')

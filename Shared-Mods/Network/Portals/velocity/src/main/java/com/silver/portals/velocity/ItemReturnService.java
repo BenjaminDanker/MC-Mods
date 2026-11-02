@@ -1,8 +1,8 @@
 package com.silver.portals.velocity;
 
-import com.silver.wakeup.api.ItemReturn;
-import com.silver.wakeup.api.ReturnRemoveResponse;
-import com.silver.wakeup.config.ReturnSpecial;
+import com.silver.routing.api.ItemReturn;
+import com.silver.routing.api.ReturnRemoveResponse;
+import com.silver.routing.config.ReturnSpecial;
 import com.velocitypowered.api.event.connection.PluginMessageEvent;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.messages.MinecraftChannelIdentifier;

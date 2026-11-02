@@ -1,0 +1,4 @@
+rootProject.name = 'player-routing'
+
+includeBuild('../Network-Authorization')
+includeBuild('../On-Demand-Servers')

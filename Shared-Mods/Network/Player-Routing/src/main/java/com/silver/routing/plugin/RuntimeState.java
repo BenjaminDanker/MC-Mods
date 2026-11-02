@@ -1,0 +1,111 @@
+package com.silver.routing.plugin;
+
+import com.silver.routing.config.LobbyConfig;
+import com.silver.routing.session.StickyRouter;
+import com.silver.ondemand.wake.WakeService;
+import com.velocitypowered.api.proxy.ProxyServer;
+import org.slf4j.Logger;
+
+import java.io.IOException;
+import java.net.UnknownHostException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.function.Function;
+
+/**
+ * Holds mutable runtime state derived from the player-routing configuration and rebuilds
+ * the supporting services (WakeService, StickyRouter) whenever the config changes.
+ */
+public class RuntimeState {
+    private final ProxyServer proxy;
+    private final PlayerRoutingPlugin plugin;
+    private final Logger logger;
+
+    private LobbyConfig currentConfig;
+    private String holdingServer = "waiting_lobby";
+    private long graceSec = 90;
+    private long pingEverySec = 2;
+    // Replaced whole on reload (event threads read them while a reload runs).
+    private volatile Map<String, List<String>> groups = Map.of();
+    private volatile Map<String, String> serverToMac = Map.of();
+    private WakeService wakeService;
+    private volatile StickyRouter stickyRouter;
+
+    public RuntimeState(ProxyServer proxy,
+                        PlayerRoutingPlugin plugin,
+                        Logger logger) {
+        this.proxy = proxy;
+        this.plugin = plugin;
+        this.logger = logger;
+    }
+
+    void applyConfig(LobbyConfig config, Function<UUID, List<String>> allowedTargetsDownward) throws IOException {
+        this.currentConfig = config;
+        this.holdingServer = config.holdingServer();
+        this.graceSec = config.graceSec();
+        this.pingEverySec = config.pingEverySec();
+
+        this.serverToMac = Map.copyOf(config.serverToMac());
+        Map<String, List<String>> newGroups = new HashMap<>();
+        config.groups().forEach((key, value) -> newGroups.put(key, List.copyOf(value)));
+        this.groups = Map.copyOf(newGroups);
+
+        try {
+            this.wakeService = new WakeService(config.broadcastIp());
+        } catch (UnknownHostException ex) {
+            throw new IOException("Invalid broadcast IP: " + config.broadcastIp(), ex);
+        }
+
+        StickyRouter previousRouter = this.stickyRouter;
+        StickyRouter newRouter = new StickyRouter(
+                proxy,
+                plugin,
+                holdingServer,
+                graceSec,
+                pingEverySec,
+                groups,
+                serverToMac,
+                wakeService,
+                logger,
+                allowedTargetsDownward
+        );
+        newRouter.sharePlayerStateFrom(previousRouter);
+        this.stickyRouter = newRouter;
+
+        logger.info("[PlayerRouting] Config applied. Holding={}, grace={}s, interval={}s",
+            holdingServer, graceSec, pingEverySec);
+    }
+
+    /** Sends the Wake-on-LAN packet for the machine that runs this server, if it has a MAC address configured. */
+    void wakeHost(String server) {
+        String mac = serverToMac.get(server);
+        if (mac == null || mac.isBlank() || wakeService == null) {
+            return;
+        }
+        try {
+            wakeService.wake(mac);
+        } catch (Exception failure) {
+            logger.warn("[OnDemand] Wake-on-LAN for '{}' failed: {}", server, failure.toString());
+        }
+    }
+
+    StickyRouter stickyRouter() {
+        return Objects.requireNonNull(stickyRouter, "StickyRouter not initialised");
+    }
+
+    LobbyConfig currentConfig() {
+        return currentConfig;
+    }
+
+    String holdingServer() {
+        return holdingServer;
+    }
+
+    List<String> groupMembers(String group) {
+        return groups.getOrDefault(group, List.of());
+    }
+}

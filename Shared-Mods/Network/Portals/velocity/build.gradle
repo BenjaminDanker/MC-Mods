@@ -14,9 +14,9 @@ repositories {
 }
 
 dependencies {
-    // Provided at runtime by the 'wakeuplobby' Velocity plugin (declared @Dependency): the Routing API lives only in that jar.
-    compileOnly 'com.silver:wake-up-lobby:1.0.0'
-    testImplementation 'com.silver:wake-up-lobby:1.0.0'
+    // Provided at runtime by the 'player-routing' Velocity plugin (declared @Dependency): the Routing API lives only in that jar.
+    compileOnly 'com.silver:player-routing:1.0.0'
+    testImplementation 'com.silver:player-routing:1.0.0'
     // Provided at runtime by 'network-authorization' (declared @Dependency): DatabaseSettings and PortalRequestCodec.
     compileOnly 'com.silver:network-authorization-velocity:0.1.0'
     compileOnly 'com.silver:authorization-common:0.1.0'
