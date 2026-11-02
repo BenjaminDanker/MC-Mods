@@ -16,3 +16,6 @@ rootProject.name = 'network-authorization-root'
 include 'common'
 project(':common').name = 'authorization-common'
 include 'fabric'
+include 'velocity'
+project(':velocity').name = 'network-authorization-velocity'
+
