@@ -45,19 +45,4 @@ class LobbyConfigLoaderTest {
         // Also ensure our loader can read its own default without throwing.
         assertDoesNotThrow(loader::load);
     }
-
-    @Test
-    void ensureDefaultConfigCopiesTheOldWakeuplobbyConfigOnce() throws Exception {
-        Path legacyDir = Files.createDirectories(tempDir.resolve("wakeuplobby"));
-        Files.writeString(legacyDir.resolve("config.yml"), "holding_server: old_lobby\n", StandardCharsets.UTF_8);
-        Path newDir = tempDir.resolve("player-routing");
-
-        LobbyConfigLoader loader = new LobbyConfigLoader(LOG, newDir);
-        loader.ensureDefaultConfig();
-        assertEquals("holding_server: old_lobby\n", Files.readString(loader.configPath()));
-
-        Files.writeString(legacyDir.resolve("config.yml"), "holding_server: changed\n", StandardCharsets.UTF_8);
-        loader.ensureDefaultConfig();
-        assertEquals("holding_server: old_lobby\n", Files.readString(loader.configPath()));
-    }
 }

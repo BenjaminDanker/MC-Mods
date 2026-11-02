@@ -29,8 +29,8 @@ class VisitRefreshIT {
         assertEquals(Set.of("magic"), service.refreshVisitedServers(player));
         try (Connection connection = DriverManager.getConnection(settings.jdbcUrl(), settings.user(), settings.password());
              Statement statement = connection.createStatement()) {
-            statement.executeUpdate("DELETE FROM wakeup_player_visits WHERE player_uuid='" + player + "' AND server_name='magic'");
-            statement.executeUpdate("INSERT INTO wakeup_player_visits(player_uuid, server_name) VALUES ('" + player + "','tech')");
+            statement.executeUpdate("DELETE FROM routing_player_visits WHERE player_uuid='" + player + "' AND server_name='magic'");
+            statement.executeUpdate("INSERT INTO routing_player_visits(player_uuid, server_name) VALUES ('" + player + "','tech')");
         }
         assertEquals(Set.of("tech"), service.refreshVisitedServers(player), "refresh must see the other process's change");
         assertEquals(Set.of("tech"), service.visitedServers(player));

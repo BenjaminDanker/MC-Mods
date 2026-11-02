@@ -239,7 +239,7 @@ class CommandPolicyRegistryTest {
         assertEquals(CommandClassification.PUBLIC, proxy.classification());
         assertTrue(proxy.visible());
         assertTrue(proxy.allowed());
-        assertEquals("WakeUpLobby", proxy.source().orElseThrow());
+        assertEquals("player-routing", proxy.source().orElseThrow());
     }
 
     @Test
