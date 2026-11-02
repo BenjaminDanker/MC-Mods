@@ -55,20 +55,13 @@ public final class SkyIslandsPortalConfigManager {
             changed = true;
         }
 
-        String secret = loaded.portalRequestSecret();
-        if (secret == null || secret.isBlank()) {
-            secret = SkyIslandsPortalConfig.DEFAULT_PORTAL_REQUEST_SECRET;
-            changed = true;
-        }
-
         if (!changed) {
             return loaded;
         }
 
         SkyIslandsPortalConfig updated = new SkyIslandsPortalConfig(
             loaded.portalRedirectEnabled(),
-            targetServer,
-            secret
+            targetServer
         );
         this.config = updated;
         save();

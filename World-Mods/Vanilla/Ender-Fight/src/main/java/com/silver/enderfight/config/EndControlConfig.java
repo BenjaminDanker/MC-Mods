@@ -7,7 +7,6 @@ package com.silver.enderfight.config;
 public final class EndControlConfig {
     public static final int DEFAULT_CUSTOM_BREATH_TRACKING_USES = 5;
     public static final String DEFAULT_CUSTOM_BREATH_ID = "special_dragon_breath";
-    public static final String DEFAULT_PORTAL_REQUEST_SECRET = ""; // the network secret comes from ~/.config/mc-network/shared.properties
 
     public static EndControlConfig createDefault() {
         return new EndControlConfig(
@@ -19,8 +18,7 @@ public final class EndControlConfig {
             DEFAULT_CUSTOM_BREATH_TRACKING_USES,
             DEFAULT_CUSTOM_BREATH_ID,
             false,
-            "",
-            DEFAULT_PORTAL_REQUEST_SECRET
+            ""
         );
     }
 
@@ -33,7 +31,6 @@ public final class EndControlConfig {
     private final String customBreathId;
     private final boolean portalRedirectEnabled;
     private final String portalRedirectTargetServer;
-    private final String portalRequestSecret;
 
     public EndControlConfig(
         double resetIntervalHours,
@@ -44,8 +41,7 @@ public final class EndControlConfig {
         int customBreathTrackingUsesDefault,
         String customBreathId,
         boolean portalRedirectEnabled,
-        String portalRedirectTargetServer,
-        String portalRequestSecret
+        String portalRedirectTargetServer
     ) {
         this.resetIntervalHours = resetIntervalHours;
         this.resetWarningSeconds = resetWarningSeconds;
@@ -56,7 +52,6 @@ public final class EndControlConfig {
         this.customBreathId = customBreathId;
         this.portalRedirectEnabled = portalRedirectEnabled;
         this.portalRedirectTargetServer = portalRedirectTargetServer;
-        this.portalRequestSecret = portalRequestSecret;
     }
 
     public double resetIntervalHours() {
@@ -93,10 +88,6 @@ public final class EndControlConfig {
 
     public String portalRedirectTargetServer() {
         return portalRedirectTargetServer;
-    }
-
-    public String portalRequestSecret() {
-        return portalRequestSecret;
     }
 
     public long resetIntervalTicks() {

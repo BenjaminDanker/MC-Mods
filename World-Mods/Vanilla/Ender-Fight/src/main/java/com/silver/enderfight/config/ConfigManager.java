@@ -55,13 +55,6 @@ public final class ConfigManager {
             portalRedirectTargetServer = "";
         }
 
-        String portalRequestSecret = loaded.portalRequestSecret();
-        if (portalRequestSecret == null || portalRequestSecret.isBlank()) {
-            portalRequestSecret = EndControlConfig.DEFAULT_PORTAL_REQUEST_SECRET;
-            EnderFightMod.LOGGER.info("Config missing portal request secret; defaulting to '{}'", portalRequestSecret);
-            changed = true;
-        }
-
         if (portalRedirectEnabled && portalRedirectTargetServer.isBlank()) {
             EnderFightMod.LOGGER.warn("Portal redirect is enabled but portalRedirectTargetServer is blank; disabling redirect until configured");
             portalRedirectEnabled = false;
@@ -95,8 +88,7 @@ public final class ConfigManager {
             usesDefault,
             customBreathId,
             portalRedirectEnabled,
-            portalRedirectTargetServer,
-            portalRequestSecret
+            portalRedirectTargetServer
         );
         this.config = updated;
         save();

@@ -9,8 +9,7 @@ public final class WardenControlConfig {
             true,
             10,
             "warden",
-            "",
-            "" // the network secret comes from ~/.config/mc-network/shared.properties
+            ""
         );
     }
 
@@ -18,14 +17,12 @@ public final class WardenControlConfig {
     private final int portalRedirectRange;
     private final String portalRedirectTargetServer;
     private final String portalRedirectTargetPortal;
-    private final String portalRequestSecret;
 
-    public WardenControlConfig(boolean portalRedirectEnabled, int portalRedirectRange, String portalRedirectTargetServer, String portalRedirectTargetPortal, String portalRequestSecret) {
+    public WardenControlConfig(boolean portalRedirectEnabled, int portalRedirectRange, String portalRedirectTargetServer, String portalRedirectTargetPortal) {
         this.portalRedirectEnabled = portalRedirectEnabled;
         this.portalRedirectRange = portalRedirectRange;
         this.portalRedirectTargetServer = portalRedirectTargetServer;
         this.portalRedirectTargetPortal = portalRedirectTargetPortal;
-        this.portalRequestSecret = portalRequestSecret;
     }
 
     public boolean portalRedirectEnabled() {
@@ -42,9 +39,5 @@ public final class WardenControlConfig {
 
     public String portalRedirectTargetPortal() {
         return portalRedirectTargetPortal;
-    }
-
-    public String portalRequestSecret() {
-        return portalRequestSecret;
     }
 }

@@ -49,12 +49,6 @@ public final class ConfigManager {
             ElderGuardianFightMod.LOGGER.info("Config missing portal redirect target server; defaulting to '{}'", targetServer);
         }
 
-        String secret = loaded.portalRequestSecret();
-        if (secret == null || secret.isBlank()) {
-            secret = defaults.portalRequestSecret();
-            ElderGuardianFightMod.LOGGER.info("Config missing portal request secret; defaulting to '{}'", secret);
-        }
-
         String targetPortal = loaded.portalRedirectTargetPortal();
         if (targetPortal == null) {
             targetPortal = "";
@@ -62,11 +56,10 @@ public final class ConfigManager {
 
         boolean changed = enabled != loaded.portalRedirectEnabled()
             || (loaded.portalRedirectTargetServer() == null || loaded.portalRedirectTargetServer().isBlank())
-            || (loaded.portalRequestSecret() == null || loaded.portalRequestSecret().isBlank())
             || loaded.portalRedirectTargetPortal() == null;
 
         if (changed) {
-            ElderGuardianControlConfig updated = new ElderGuardianControlConfig(enabled, targetServer, targetPortal, secret);
+            ElderGuardianControlConfig updated = new ElderGuardianControlConfig(enabled, targetServer, targetPortal);
             this.config = updated;
             save();
             return updated;

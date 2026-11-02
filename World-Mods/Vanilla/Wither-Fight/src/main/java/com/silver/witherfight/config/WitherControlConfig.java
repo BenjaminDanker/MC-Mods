@@ -9,26 +9,22 @@ public final class WitherControlConfig {
         return new WitherControlConfig(
             true,
             "desert",
-            "",
-            "" // the network secret comes from ~/.config/mc-network/shared.properties
+            ""
         );
     }
 
     private final boolean portalRedirectEnabled;
     private final String portalRedirectTargetServer;
     private final String portalRedirectTargetPortal;
-    private final String portalRequestSecret;
 
     public WitherControlConfig(
         boolean portalRedirectEnabled,
         String portalRedirectTargetServer,
-        String portalRedirectTargetPortal,
-        String portalRequestSecret
+        String portalRedirectTargetPortal
     ) {
         this.portalRedirectEnabled = portalRedirectEnabled;
         this.portalRedirectTargetServer = portalRedirectTargetServer;
         this.portalRedirectTargetPortal = portalRedirectTargetPortal;
-        this.portalRequestSecret = portalRequestSecret;
     }
 
     public boolean portalRedirectEnabled() {
@@ -41,9 +37,5 @@ public final class WitherControlConfig {
 
     public String portalRedirectTargetPortal() {
         return portalRedirectTargetPortal;
-    }
-
-    public String portalRequestSecret() {
-        return portalRequestSecret;
     }
 }
