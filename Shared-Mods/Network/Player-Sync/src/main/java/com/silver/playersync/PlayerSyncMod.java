@@ -42,6 +42,7 @@ public final class PlayerSyncMod implements ModInitializer {
                 .map(String::trim).toList();
             family = familyServers.contains(name);
             SyncStore.start(name, FabricLoader.getInstance().getConfigDir().resolve("player-sync").resolve("queue"));
+            SharedAdvancements.configure(name);
             LOGGER.info("Player Sync on {}{}", name, family ? " (shares whole inventories with " + familyServers + ")" : "");
         });
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
@@ -52,6 +53,7 @@ public final class PlayerSyncMod implements ModInitializer {
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             renameOldTags(handler.getPlayer());
             JoinAndLeave.joined(server, handler.getPlayer());
+            SharedAdvancements.joined(server, handler.getPlayer());
         });
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> JoinAndLeave.left(handler.getPlayer()));
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> PlayerSyncCommands.register(dispatcher));

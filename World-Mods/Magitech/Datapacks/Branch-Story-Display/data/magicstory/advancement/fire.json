@@ -1,0 +1,28 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:blaze_powder"
+    },
+    "title": {
+      "text": "Into the Embers"
+    },
+    "description": {
+      "text": "Reach a stronghold of the Nether and call your element there. The fire kept its piece close."
+    },
+    "frame": "task",
+    "show_toast": false,
+    "announce_to_chat": false,
+    "hidden": false
+  },
+  "parent": "magicstory:wizard",
+  "criteria": {
+    "called": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "requirements": [
+    [
+      "called"
+    ]
+  ]
+}

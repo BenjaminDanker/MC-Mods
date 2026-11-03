@@ -1,0 +1,28 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:ender_eye"
+    },
+    "title": {
+      "text": "The Edge of Everything"
+    },
+    "description": {
+      "text": "Cross into the End, reach the rift, and call your element there. The void kept the last piece."
+    },
+    "frame": "task",
+    "show_toast": false,
+    "announce_to_chat": false,
+    "hidden": false
+  },
+  "parent": "magicstory:fire",
+  "criteria": {
+    "called": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "requirements": [
+    [
+      "called"
+    ]
+  ]
+}

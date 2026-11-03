@@ -123,6 +123,7 @@ final class ProgressStore {
                     s.setString(3, branch);
                 });
             }
+            SharedAdvancements.revokeBranch(c, uuid, from);
             SyncStore.execute(c, "UPDATE " + T + " SET " + finished + "ElementUnlocks = 0, SkillPoints = 0, SkillTree = '',"
                 + " fmain = '', foff = '', farmor = '', fender = '' WHERE uuid = ?", s -> s.setString(1, uuid));
             return null;

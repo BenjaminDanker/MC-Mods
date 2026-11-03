@@ -134,6 +134,10 @@ final class SyncStore {
             schema.execute("CREATE TABLE IF NOT EXISTS branch_wipe (id bigint AUTO_INCREMENT PRIMARY KEY, uuid char(36) NOT NULL,"
                 + " name varchar(16), branch varchar(16) NOT NULL, requested_at timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),"
                 + " done_at timestamp(3) NULL, INDEX branch_pending(branch, done_at))");
+            // Shared advancements (SharedAdvancements): one row per player, advancement and criterion.
+            schema.execute("CREATE TABLE IF NOT EXISTS player_advancements (uuid char(36) NOT NULL, advancement varchar(255) NOT NULL,"
+                + " criterion varchar(255) NOT NULL, obtained bigint NOT NULL, revoked boolean NOT NULL DEFAULT FALSE,"
+                + " PRIMARY KEY (uuid, advancement, criterion))");
         }
         return connection;
     }

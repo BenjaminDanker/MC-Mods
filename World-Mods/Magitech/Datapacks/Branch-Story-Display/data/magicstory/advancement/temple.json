@@ -1,0 +1,28 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:lodestone"
+    },
+    "title": {
+      "text": "An Older Faith"
+    },
+    "description": {
+      "text": "Call your element inside an ancient temple. The currents were worshipped here long before the four kings took them home."
+    },
+    "frame": "task",
+    "show_toast": false,
+    "announce_to_chat": false,
+    "hidden": false
+  },
+  "parent": "magicstory:tower",
+  "criteria": {
+    "called": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "requirements": [
+    [
+      "called"
+    ]
+  ]
+}

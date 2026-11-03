@@ -1,0 +1,28 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:enchanted_book"
+    },
+    "title": {
+      "text": "Where the Mages Studied"
+    },
+    "description": {
+      "text": "Find a mage tower and call your element inside it. The scholars left their notes behind when the Spire fell."
+    },
+    "frame": "task",
+    "show_toast": false,
+    "announce_to_chat": false,
+    "hidden": false
+  },
+  "parent": "magicstory:awakened",
+  "criteria": {
+    "called": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "requirements": [
+    [
+      "called"
+    ]
+  ]
+}

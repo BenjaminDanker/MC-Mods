@@ -1,0 +1,28 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:lectern"
+    },
+    "title": {
+      "text": "The Wizard's Warning"
+    },
+    "description": {
+      "text": "Call your element in a wizard's tower. One last scholar left a warning: the Spire did not fall on its own, and the fire and the void each keep a piece."
+    },
+    "frame": "task",
+    "show_toast": false,
+    "announce_to_chat": false,
+    "hidden": false
+  },
+  "parent": "magicstory:temple",
+  "criteria": {
+    "called": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "requirements": [
+    [
+      "called"
+    ]
+  ]
+}
