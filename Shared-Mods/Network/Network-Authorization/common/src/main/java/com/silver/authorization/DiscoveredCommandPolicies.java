@@ -125,7 +125,7 @@ public final class DiscoveredCommandPolicies {
         add(policies, CommandClassification.PERMISSION, "playersync.items.modify", "player-sync", "playersync",
                 "/playersync soulbound add", "/playersync removeitems");
         add(policies, CommandClassification.PERMISSION, "playersync.items.inspect", "player-sync", "playersync",
-                "/playersync soulbound");
+                "/playersync", "/playersync soulbound");
 
         add(policies, CommandClassification.PERMISSION, "portal.registry.view", "portals", "portals",
                 "/portals list");
