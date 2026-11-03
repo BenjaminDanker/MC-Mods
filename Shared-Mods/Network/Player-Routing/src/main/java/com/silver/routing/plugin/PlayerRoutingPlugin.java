@@ -207,6 +207,8 @@ public class PlayerRoutingPlugin {
 
             commandRegistrar = new CommandRegistrar(proxy, runtime, this, logger);
             Routing.install(new RoutingBackend());
+            // A server's resource pack would otherwise stay on the player's game after they move to a server without it.
+            proxy.getEventManager().register(this, new ServerPackCleanup(logger));
 
             // On-demand start/stop, health and capacity answers live in the on-demand-servers plugin; feed it what only this plugin knows.
             OnDemandServers.setWakeHost(runtime::wakeHost);
