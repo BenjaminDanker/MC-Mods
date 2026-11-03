@@ -63,12 +63,8 @@ final class RoomsSuite {
         EXTRA.put("typing_race", 3);
         EXTRA.put("floor_is_falling", 3);
         EXTRA.put("block_party", 3);
-        EXTRA.put("lights_out", 2);
         EXTRA.put("simon_says", 2);
         EXTRA.put("maze", 2);
-        EXTRA.put("copy_the_picture", 2);
-        EXTRA.put("pairs", 2);
-        EXTRA.put("sliding_picture", 2);
         EXTRA.put("king_of_the_hill", 4);
         EXTRA.put("sumo", 2);
         ANIM.put("typing_race", List.of());

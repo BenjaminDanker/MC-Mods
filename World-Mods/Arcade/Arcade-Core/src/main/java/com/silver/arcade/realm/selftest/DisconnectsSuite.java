@@ -98,7 +98,7 @@ final class DisconnectsSuite {
 
     // 2. two bots in one room; one stays away past 90 s: the partner gets a room of their own; the leaver rejoins late
     private static void partnerRehomed(T t) throws Exception {
-        Cleanup.force("memory 1");
+        Cleanup.force("simon_says 1"); // a two-player room; a solo round still splits them, so the attempts below retry
         String[] bots = Pool.ensure(t, 2);
         UUID ida = t.on(() -> t.server.getPlayerList().getPlayerByName(bots[0]).getUUID());
         UUID idb = t.on(() -> t.server.getPlayerList().getPlayerByName(bots[1]).getUUID());

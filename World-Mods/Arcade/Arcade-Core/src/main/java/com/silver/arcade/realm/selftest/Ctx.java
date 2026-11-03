@@ -25,7 +25,7 @@ final class Ctx {
         this.tier = tier;
         this.label = label;
         // like a player, act only after the countdown's "Go!" (chat before it is not an answer)
-        t.until(() -> t.on(() -> Reflect.<Integer>get(live.party, "countdown")) == 0, 20 * 15);
+        t.until(() -> t.on(() -> Reflect.<Integer>get(live.party, "countdown")) == 0, 20 * 30); // a first-time countdown reads the rules for 10-20 s
     }
 
     int n() {
